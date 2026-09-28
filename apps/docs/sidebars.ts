@@ -267,6 +267,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/rate-limiting',
+              label: 'API rate limiting',
+            },
+            {
+              type: 'doc',
               id: 'architecture/developer-api',
               label: 'External developer API',
             },

@@ -344,6 +344,7 @@ export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
   app.post<{ Body: CreateTradeBody }>(
     '/trades',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       preHandler: secured,
       schema: {
         operationId: 'createCardTrade',
@@ -461,6 +462,7 @@ export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
   app.post<{ Body: SelectionPreviewBody }>(
     '/trades/selection-preview',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       preHandler: secured,
       schema: {
         operationId: 'previewCardTradeSelection',
@@ -646,6 +648,7 @@ export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
   app.post<{ Params: TradeParams; Body: AcceptTradeBody }>(
     '/trades/:tradeId/accept',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       preHandler: secured,
       schema: {
         operationId: 'acceptCardTrade',

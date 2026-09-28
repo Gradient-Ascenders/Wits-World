@@ -151,6 +151,7 @@ export const offlineChallengeRoutes: FastifyPluginAsync<{
   app.post<{ Body: { eventIds: string[] } }>(
     '/offline-challenge-packs',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       bodyLimit: 4096,
       schema: {
         operationId: 'prepareOfflineChallenges',
@@ -221,6 +222,7 @@ export const offlineChallengeRoutes: FastifyPluginAsync<{
   app.post<{ Body: OfflineSubmission }>(
     '/offline-challenge-attempts',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       bodyLimit: 160_000,
       schema: {
         operationId: 'syncOfflineChallenge',

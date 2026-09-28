@@ -7,6 +7,7 @@ import {
   MAX_NODE_TIMER_DELAY_MS,
   MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
 } from './timers.js';
+import type { RateLimitPolicyConfigMap } from '../security/rate-protection.js';
 
 export const apiLogLevels = [
   'fatal',
@@ -38,6 +39,11 @@ export interface ApiConfig {
   rateLimitWindowMs: number;
   developerApiRateLimitMaxRequests: number;
   developerApiRateLimitWindowMs: number;
+  rateLimitPolicies: RateLimitPolicyConfigMap;
+  rateLimitBackend: 'upstash' | 'local';
+  rateLimitTimeoutMs: number;
+  upstashRedisRestUrl?: string;
+  upstashRedisRestToken?: string;
   trustEvaluationIntervalMs: number;
   cardTradeMaintenanceIntervalMs: number;
 }
@@ -100,6 +106,35 @@ export function buildApiConfig({
   const developerApiRateLimitWindowMs = Number(
     env.DEVELOPER_API_RATE_LIMIT_WINDOW_MS?.trim() ?? '60000',
   );
+  const rateLimitTimeoutMs = Number(env.RATE_LIMIT_TIMEOUT_MS?.trim() ?? '500');
+  const rateLimitBackend = env.RATE_LIMIT_BACKEND?.trim() ?? 'upstash';
+  const policy = (
+    prefix: string,
+    defaultMax: number,
+  ): { maxRequests: number; windowMs: number } => ({
+    maxRequests: Number(
+      env[`${prefix}_MAX_REQUESTS`]?.trim() ?? String(defaultMax),
+    ),
+    windowMs: Number(env[`${prefix}_WINDOW_MS`]?.trim() ?? '60000'),
+  });
+  const rateLimitPolicies: RateLimitPolicyConfigMap = {
+    'player-general': {
+      maxRequests: rateLimitMaxRequests,
+      windowMs: rateLimitWindowMs,
+    },
+    'developer-api': {
+      maxRequests: developerApiRateLimitMaxRequests,
+      windowMs: developerApiRateLimitWindowMs,
+    },
+    'critical-write': policy('RATE_LIMIT_CRITICAL_WRITE', 10),
+    'credential-revoke': policy('RATE_LIMIT_CREDENTIAL_REVOKE', 10),
+    'gameplay-write': policy('RATE_LIMIT_GAMEPLAY_WRITE', 30),
+    'author-expensive': policy('RATE_LIMIT_AUTHOR_EXPENSIVE', 30),
+    'live-ticket': policy('RATE_LIMIT_LIVE_TICKET', 30),
+  };
+  const upstashRedisRestUrl = env.UPSTASH_REDIS_REST_URL?.trim() || undefined;
+  const upstashRedisRestToken =
+    env.UPSTASH_REDIS_REST_TOKEN?.trim() || undefined;
   const movementEvidenceRetentionMs = Number(
     env.MOVEMENT_EVIDENCE_RETENTION_MS?.trim() ?? '86400000',
   );
@@ -218,6 +253,50 @@ export function buildApiConfig({
       'DEVELOPER_API_RATE_LIMIT_WINDOW_MS must be an integer of at least 1000 milliseconds.',
     );
   }
+  for (const [name, settings] of Object.entries(rateLimitPolicies)) {
+    if (!Number.isInteger(settings.maxRequests) || settings.maxRequests < 1) {
+      throw new Error(`${name} rate-limit maximum must be a positive integer.`);
+    }
+    if (!Number.isInteger(settings.windowMs) || settings.windowMs < 1000) {
+      throw new Error(
+        `${name} rate-limit window must be an integer of at least 1000 milliseconds.`,
+      );
+    }
+  }
+  if (
+    !Number.isInteger(rateLimitTimeoutMs) ||
+    rateLimitTimeoutMs < 1 ||
+    rateLimitTimeoutMs > 10000
+  ) {
+    throw new Error(
+      'RATE_LIMIT_TIMEOUT_MS must be an integer between 1 and 10000 milliseconds.',
+    );
+  }
+  if (rateLimitBackend !== 'upstash' && rateLimitBackend !== 'local') {
+    throw new Error('RATE_LIMIT_BACKEND must be upstash or local.');
+  }
+  if (env.NODE_ENV === 'production' && rateLimitBackend !== 'upstash') {
+    throw new Error('RATE_LIMIT_BACKEND must be upstash in production.');
+  }
+  if (rateLimitBackend === 'upstash') {
+    let parsed: URL;
+    try {
+      parsed = new URL(upstashRedisRestUrl ?? '');
+    } catch {
+      throw new Error('UPSTASH_REDIS_REST_URL must be a valid HTTPS URL.');
+    }
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      throw new Error('UPSTASH_REDIS_REST_URL must be a valid HTTPS URL.');
+    }
+    if (!upstashRedisRestToken)
+      throw new Error('UPSTASH_REDIS_REST_TOKEN is required.');
+  }
 
   if (
     !Number.isSafeInteger(movementEvidenceRetentionMs) ||
@@ -277,6 +356,11 @@ export function buildApiConfig({
     rateLimitWindowMs,
     developerApiRateLimitMaxRequests,
     developerApiRateLimitWindowMs,
+    rateLimitPolicies,
+    rateLimitBackend,
+    rateLimitTimeoutMs,
+    upstashRedisRestUrl,
+    upstashRedisRestToken,
     trustEvaluationIntervalMs,
     cardTradeMaintenanceIntervalMs,
   };

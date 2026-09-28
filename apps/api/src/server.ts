@@ -32,8 +32,8 @@ import { createAuthorCardService } from './cards/author-card-service.js';
 import { createAuthorContentReadService } from './authoring/content-read-service.js';
 import { createCpuMatchService } from './matches/cpu-match-service.js';
 import {
-  createAuthenticatedRateProtection,
-  createRateProtection,
+  createLocalRateProtection,
+  createUpstashRateProtection,
 } from './security/rate-protection.js';
 import { createProgressionPersistence } from './progression/progression-persistence.js';
 import { createProgressionReadService } from './progression/progression-read-service.js';
@@ -73,6 +73,15 @@ async function startServer(): Promise<void> {
   loadApiEnvironment();
 
   const config = buildApiConfig();
+  const rateProtection =
+    config.rateLimitBackend === 'local'
+      ? createLocalRateProtection(config.rateLimitPolicies)
+      : createUpstashRateProtection({
+          url: config.upstashRedisRestUrl!,
+          token: config.upstashRedisRestToken!,
+          timeoutMs: config.rateLimitTimeoutMs,
+          policies: config.rateLimitPolicies,
+        });
   const authConfig = buildAuthConfig();
   const authManagementConfig = buildAuthManagementConfig({
     authConfig,
@@ -202,17 +211,11 @@ async function startServer(): Promise<void> {
     playerIdentityService,
     trustReviewService,
     playerNameSetupService: playerIdentityService,
-    rateProtection: createAuthenticatedRateProtection({
-      maxRequests: config.rateLimitMaxRequests,
-      windowMs: config.rateLimitWindowMs,
-    }),
+    rateProtection,
     developerApi: {
       keyService: developerApiKeyService,
       publicDataService: developerPublicDataService,
-      rateProtection: createRateProtection({
-        maxRequests: config.developerApiRateLimitMaxRequests,
-        windowMs: config.developerApiRateLimitWindowMs,
-      }),
+      rateProtection,
     },
 
     challengeAttemptServices: {

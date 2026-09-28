@@ -14,9 +14,79 @@ const validEnvironment: NodeJS.ProcessEnv = {
   LOG_LEVEL: 'info',
   MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND: '12.5',
   ASYNC_PVP_CURSOR_SIGNING_KEY: 'test-only-key-with-at-least-32-bytes',
+  RATE_LIMIT_BACKEND: 'local',
 };
 
 describe('API configuration', () => {
+  it('requires valid server-only Upstash credentials in production', () => {
+    expect(() =>
+      buildApiConfig({ env: { ...validEnvironment, NODE_ENV: 'production' } }),
+    ).toThrow(/RATE_LIMIT_BACKEND/u);
+    const productionEnvironment = {
+      ...validEnvironment,
+      RATE_LIMIT_BACKEND: 'upstash',
+      NODE_ENV: 'production',
+    };
+    expect(() => buildApiConfig({ env: productionEnvironment })).toThrow(
+      /UPSTASH_REDIS_REST_URL/u,
+    );
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...productionEnvironment,
+          UPSTASH_REDIS_REST_URL: 'http://example.test',
+          UPSTASH_REDIS_REST_TOKEN: 'token',
+        },
+      }),
+    ).toThrow(/UPSTASH_REDIS_REST_URL/u);
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...productionEnvironment,
+          UPSTASH_REDIS_REST_URL: 'https://example.test',
+        },
+      }),
+    ).toThrow(/UPSTASH_REDIS_REST_TOKEN/u);
+    expect(
+      buildApiConfig({
+        env: {
+          ...productionEnvironment,
+          UPSTASH_REDIS_REST_URL: 'https://example.test',
+          UPSTASH_REDIS_REST_TOKEN: 'token',
+        },
+      }).upstashRedisRestUrl,
+    ).toBe('https://example.test');
+  });
+
+  it('validates the named rate-limit settings and timeout', () => {
+    expect(() =>
+      buildApiConfig({
+        env: { ...validEnvironment, RATE_LIMIT_BACKEND: 'unknown' },
+      }),
+    ).toThrow(/RATE_LIMIT_BACKEND/u);
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          RATE_LIMIT_CRITICAL_WRITE_MAX_REQUESTS: '0',
+        },
+      }),
+    ).toThrow(/critical-write/u);
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          RATE_LIMIT_GAMEPLAY_WRITE_WINDOW_MS: '999',
+        },
+      }),
+    ).toThrow(/gameplay-write/u);
+    expect(() =>
+      buildApiConfig({
+        env: { ...validEnvironment, RATE_LIMIT_TIMEOUT_MS: '0' },
+      }),
+    ).toThrow(/RATE_LIMIT_TIMEOUT_MS/u);
+  });
+
   it('builds a valid API configuration', () => {
     expect(buildApiConfig({ env: validEnvironment })).toEqual({
       host: '127.0.0.1',
@@ -38,6 +108,19 @@ describe('API configuration', () => {
       rateLimitWindowMs: 60000,
       developerApiRateLimitMaxRequests: 120,
       developerApiRateLimitWindowMs: 60000,
+      rateLimitPolicies: {
+        'player-general': { maxRequests: 120, windowMs: 60000 },
+        'developer-api': { maxRequests: 120, windowMs: 60000 },
+        'critical-write': { maxRequests: 10, windowMs: 60000 },
+        'credential-revoke': { maxRequests: 10, windowMs: 60000 },
+        'gameplay-write': { maxRequests: 30, windowMs: 60000 },
+        'author-expensive': { maxRequests: 30, windowMs: 60000 },
+        'live-ticket': { maxRequests: 30, windowMs: 60000 },
+      },
+      rateLimitTimeoutMs: 500,
+      rateLimitBackend: 'local',
+      upstashRedisRestUrl: undefined,
+      upstashRedisRestToken: undefined,
       trustEvaluationIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       cardTradeMaintenanceIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
     });

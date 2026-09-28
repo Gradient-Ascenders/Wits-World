@@ -37,6 +37,7 @@ export const authorQuestionPerformanceRoutes: FastifyPluginAsync<
   app.get<{ Querystring: Query }>(
     '/author/question-performance',
     {
+      config: { rateLimitPolicy: 'author-expensive' },
       onRequest: [app.authenticate, app.requireActivePlayer, app.requireAuthor],
       schema: {
         operationId: 'listAuthorQuestionPerformance',

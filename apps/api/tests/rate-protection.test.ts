@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
-import { createAuthenticatedRateProtection } from '../src/security/rate-protection.js';
+import { createAuthenticatedRateProtection } from '../e2e/fake-rate-protection.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',

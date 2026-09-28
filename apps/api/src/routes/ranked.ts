@@ -264,6 +264,7 @@ export const rankedRoutes: FastifyPluginAsync<Options> = async (
   app.post<{ Body: JoinBody }>(
     '/ranked/queue',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       preHandler: [app.authenticate, app.requireActivePlayer],
       schema: {
         ...authenticated,

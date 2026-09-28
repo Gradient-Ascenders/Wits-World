@@ -269,6 +269,7 @@ export const developerApiRoutes: FastifyPluginAsync<
   app.post<{ Body: CreateKeyBody }>(
     '/developer/keys',
     {
+      config: { rateLimitPolicy: 'critical-write' },
       onRequest: [app.authenticate, app.loadActivePlayer],
       schema: {
         operationId: 'createDeveloperApiKey',
@@ -325,6 +326,7 @@ export const developerApiRoutes: FastifyPluginAsync<
   app.delete<{ Params: KeyParams }>(
     '/developer/keys/:keyId',
     {
+      config: { rateLimitPolicy: 'credential-revoke' },
       onRequest: [app.authenticate, app.loadActivePlayer],
       schema: {
         operationId: 'revokeDeveloperApiKey',

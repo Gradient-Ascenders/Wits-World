@@ -97,10 +97,35 @@ The local `.env` file is ignored by Git and must not contain values intended for
 | `MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS`         | No       | `1800000`     | Expired movement-evidence cleanup interval    |
 | `TRUST_EVALUATION_INTERVAL_MS`                  | No       | `1800000`     | Trust decay/recovery evaluation interval      |
 | `CARD_TRADE_MAINTENANCE_INTERVAL_MS`            | No       | `1800000`     | Trade expiry/retention maintenance interval   |
-| `RATE_LIMIT_MAX_REQUESTS`                       | No       | `120`         | Authenticated requests allowed per window     |
-| `RATE_LIMIT_WINDOW_MS`                          | No       | `60000`       | Per-process fixed-window duration in ms       |
-| `DEVELOPER_API_RATE_LIMIT_MAX_REQUESTS`         | No       | `120`         | Developer-key requests allowed per window     |
-| `DEVELOPER_API_RATE_LIMIT_WINDOW_MS`            | No       | `60000`       | Developer-key fixed-window duration in ms     |
+| `RATE_LIMIT_BACKEND`                            | No       | `upstash`     | `local` is an explicit non-production option  |
+| `UPSTASH_REDIS_REST_URL`                        | Upstash  | secret config | HTTPS endpoint for shared rate-limit state    |
+| `UPSTASH_REDIS_REST_TOKEN`                      | Upstash  | secret        | Server-only Upstash REST token                |
+| `RATE_LIMIT_TIMEOUT_MS`                         | No       | `500`         | Maximum limiter wait in ms                    |
+| `RATE_LIMIT_MAX_REQUESTS`                       | No       | `120`         | General player sliding-window maximum         |
+| `RATE_LIMIT_WINDOW_MS`                          | No       | `60000`       | General player window in ms                   |
+| `DEVELOPER_API_RATE_LIMIT_MAX_REQUESTS`         | No       | `120`         | Developer-key sliding-window maximum          |
+| `DEVELOPER_API_RATE_LIMIT_WINDOW_MS`            | No       | `60000`       | Developer-key window in ms                    |
+| `RATE_LIMIT_CRITICAL_WRITE_MAX_REQUESTS`        | No       | `10`          | Credential-write maximum                      |
+| `RATE_LIMIT_CRITICAL_WRITE_WINDOW_MS`           | No       | `60000`       | Credential-write window in ms                 |
+| `RATE_LIMIT_CREDENTIAL_REVOKE_MAX_REQUESTS`     | No       | `10`          | Developer-key revocation maximum              |
+| `RATE_LIMIT_CREDENTIAL_REVOKE_WINDOW_MS`        | No       | `60000`       | Developer-key revocation window in ms         |
+| `RATE_LIMIT_GAMEPLAY_WRITE_MAX_REQUESTS`        | No       | `30`          | Sensitive gameplay-write maximum              |
+| `RATE_LIMIT_GAMEPLAY_WRITE_WINDOW_MS`           | No       | `60000`       | Sensitive gameplay-write window in ms         |
+| `RATE_LIMIT_AUTHOR_EXPENSIVE_MAX_REQUESTS`      | No       | `30`          | Expensive author-query maximum                |
+| `RATE_LIMIT_AUTHOR_EXPENSIVE_WINDOW_MS`         | No       | `60000`       | Expensive author-query window in ms           |
+| `RATE_LIMIT_LIVE_TICKET_MAX_REQUESTS`           | No       | `30`          | Live PvP ticket-minting maximum               |
+| `RATE_LIMIT_LIVE_TICKET_WINDOW_MS`              | No       | `60000`       | Live PvP ticket-minting window in ms          |
+
+For normal local development without Upstash credentials, explicitly set
+`RATE_LIMIT_BACKEND=local` and keep `NODE_ENV` other than `production`. This
+selects a per-process, in-memory sliding-window limiter at startup. It is for
+development only: counters do not span restarts or API instances. The setting
+never activates in response to an Upstash error. `RATE_LIMIT_BACKEND=upstash`
+requires a valid HTTPS URL and token; production rejects `local` and rejects
+missing or malformed Upstash settings before starting the API. Production
+Upstash outages follow the policy-specific open/closed behavior in the
+[rate-limiting guide](../../docs/architecture/rate-limiting.md), without an
+in-memory fallback. Tests and Basic E2E inject deterministic fakes.
 
 Supported log levels are:
 
@@ -303,8 +328,8 @@ DELETE /api/v1/developer/keys/:keyId
 ```
 
 Developer keys never establish a player principal and cannot be used on normal
-player, author, or gameplay operations. Each key receives its own process-local
-quota using `DEVELOPER_API_RATE_LIMIT_*`. The reusable credential header is
+player, author, or gameplay operations. Each key receives its own shared
+sliding-window limit using `DEVELOPER_API_RATE_LIMIT_*`. The reusable credential header is
 redacted from API logs and is not accepted through URLs. See the
 [external developer API guide](../../docs/architecture/developer-api.md) and
 [developer-key persistence](../../docs/database/developer-api-keys.md).

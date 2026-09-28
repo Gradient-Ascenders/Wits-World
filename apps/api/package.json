@@ -29,6 +29,8 @@
     "@fastify/swagger": "^9.8.1",
     "@fastify/swagger-ui": "^6.1.1",
     "@fastify/websocket": "^11.3.0",
+    "@upstash/ratelimit": "^2.2.0",
+    "@upstash/redis": "^1.39.0",
     "@wits-world/account-policy": "0.0.0",
     "@wits-world/game-rules": "0.0.0",
     "dotenv": "^17.4.2",

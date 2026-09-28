@@ -1021,6 +1021,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
   app.get<{ Params: CaseParams }>(
     '/author/trust-cases/:caseId/export',
     {
+      config: { rateLimitPolicy: 'author-expensive' },
       onRequest: authorGuards,
       schema: {
         operationId: 'exportSuspectPlayerCase',

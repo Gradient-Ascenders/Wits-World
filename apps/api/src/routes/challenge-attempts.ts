@@ -644,6 +644,7 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
   }>(
     '/events/:eventId/challenge-attempts',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       onRequest: [
         app.authenticate,
         app.requireActivePlayer,
@@ -836,6 +837,7 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
     }>(
       '/challenge-attempts/:attemptId/answers',
       {
+        config: { rateLimitPolicy: 'gameplay-write' },
         onRequest: [
           app.authenticate,
           app.requireActivePlayer,

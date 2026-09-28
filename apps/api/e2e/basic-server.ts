@@ -21,7 +21,7 @@ import { createCpuMatchService } from '../src/matches/cpu-match-service.js';
 import { createAuthorEventService } from '../src/events/author-event-service.js';
 import { createAuthorChallengeService } from '../src/challenges/author-challenge-service.js';
 import { createAuthorCardService } from '../src/cards/author-card-service.js';
-import { createAuthenticatedRateProtection } from '../src/security/rate-protection.js';
+import { createAuthenticatedRateProtection } from './fake-rate-protection.js';
 import { createMovementEvidenceService } from '../src/events/movement-evidence.js';
 import { SPRINT1_E2E_ACCESS_TOKEN } from './sprint1-auth.js';
 

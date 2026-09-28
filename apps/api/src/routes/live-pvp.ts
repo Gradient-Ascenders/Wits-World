@@ -138,6 +138,7 @@ export const livePvpRoutes: FastifyPluginAsync<Options> = async (
   app.post<{ Params: MatchParams; Body: TicketBody }>(
     '/matches/live/:matchId/connection-tickets',
     {
+      config: { rateLimitPolicy: 'live-ticket' },
       preHandler: [app.authenticate, app.requireActivePlayer],
       schema: {
         operationId: 'createLivePvpConnectionTicket',

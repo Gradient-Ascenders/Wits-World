@@ -730,7 +730,7 @@ Errors use the existing problem-style envelope with `type`, `title`, `status`,
 | `409`  | `PVP_ACTION_ILLEGAL`              | Intent is not currently legal                        |
 | `409`  | `PVP_IDEMPOTENCY_CONFLICT`        | Submission ID reused with another payload            |
 | `409`  | `PVP_CLIENT_UPDATE_REQUIRED`      | Client contract cannot use/read a new terminal state |
-| `429`  | `RATE_LIMITED`                    | Existing authenticated per-process limit             |
+| `429`  | `RATE_LIMITED`                    | Shared authenticated sliding-window limit            |
 
 Authentication continues to use the existing `401` boundary. Object-level
 authorization uses the same `404` as absence so a caller cannot probe another

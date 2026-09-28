@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 
 import { ApiError } from '../errors/api-error.js';
-import type { RateProtection } from '../security/rate-protection.js';
+import {
+  enforceRateProtection,
+  type RateProtection,
+} from '../security/rate-protection.js';
 import type { DeveloperApiKeyService } from './developer-api-key-service.js';
 
 export function registerDeveloperApiAuthentication(
@@ -32,19 +35,13 @@ export function registerDeveloperApiAuthentication(
 
     request.developerApiKey = authenticated;
 
-    const decision = rateProtection.consume(authenticated.id);
-    reply.header('RateLimit-Limit', decision.limit);
-    reply.header('RateLimit-Remaining', decision.remaining);
-    if (!decision.allowed) {
-      reply.header('Retry-After', decision.retryAfterSeconds);
-      throw new ApiError({
-        statusCode: 429,
-        code: 'RATE_LIMITED',
-        title: 'Too many requests',
-        detail:
-          'This developer API key has made too many requests. Try again after the indicated delay.',
-      });
-    }
+    await enforceRateProtection(
+      request,
+      reply,
+      rateProtection,
+      authenticated.id,
+      'developer-api',
+    );
   });
 }
 

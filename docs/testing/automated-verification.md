@@ -4,6 +4,18 @@ title: 'Database and end-to-end test gates'
 
 # Database and end-to-end test gates
 
+## Rate-limit test isolation
+
+The API rate-limit unit and Fastify integration tests inject a deterministic
+fake limiter. They cover named policy selection, authenticated player and
+developer-key isolation, a shared counter across two app instances, quota
+responses, timeout/error policy behavior, and `/health` exclusion without
+contacting Upstash. The production server constructs the Upstash client only
+when it starts with server-only credentials; explicit non-production `local`
+mode uses a separate process-local backend without network access. Real Upstash latency, outages,
+multi-instance behavior, and stress performance require controlled deployment
+verification; the local fake does not establish those outcomes.
+
 Issue `#166` adds pull-request verification for the shared packages,
 PostgreSQL/PostGIS migrations and integration suites, and the deterministic
 Basic Playwright journey. The jobs use isolated PostGIS services and do not
