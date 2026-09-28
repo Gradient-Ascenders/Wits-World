@@ -350,6 +350,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           onConfirm={() => void startReauthentication()}
           phase="prepare"
           returnFocusRef={deletionTrigger}
+          statusFocusRef={statusHeading}
         />
       ) : null}
 
@@ -364,6 +365,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           }}
           phase="confirm"
           returnFocusRef={deletionTrigger}
+          statusFocusRef={statusHeading}
         />
       ) : null}
     </div>

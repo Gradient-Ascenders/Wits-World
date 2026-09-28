@@ -14,6 +14,7 @@ interface AccountDeletionDialogProps {
   onConfirm: () => void;
   phase: 'confirm' | 'prepare';
   returnFocusRef: RefObject<HTMLButtonElement | null>;
+  statusFocusRef: RefObject<HTMLHeadingElement | null>;
 }
 
 export function AccountDeletionDialog({
@@ -22,6 +23,7 @@ export function AccountDeletionDialog({
   onConfirm,
   phase,
   returnFocusRef,
+  statusFocusRef,
 }: AccountDeletionDialogProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -49,9 +51,9 @@ export function AccountDeletionDialog({
         element.inert = previousInert[index] ?? false;
       });
       document.body.style.overflow = previousOverflow;
-      returnFocusRef.current?.focus();
+      (statusFocusRef.current ?? returnFocusRef.current)?.focus();
     };
-  }, [returnFocusRef]);
+  }, [returnFocusRef, statusFocusRef]);
 
   useEffect(() => {
     if (busy) dialogRef.current?.focus();
