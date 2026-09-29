@@ -15,6 +15,7 @@ export function registerAutomaticUpdates(
   let active = true;
   let checking = false;
   let activating = false;
+  let replacingController = false;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let registration: ServiceWorkerRegistration | undefined;
   const observed = new Set<ServiceWorker>();
@@ -22,7 +23,8 @@ export function registerAutomaticUpdates(
   const controllerChanged = () => {
     if (active && activating) {
       activating = false;
-      reload();
+      if (replacingController) reload();
+      replacingController = false;
     }
   };
 
@@ -38,12 +40,14 @@ export function registerAutomaticUpdates(
           state.attempts.some((attempt) => attempt.status === 'active')
         )
           return;
+        replacingController = navigator.serviceWorker.controller !== null;
         activating = true;
         registration.waiting.postMessage('ACTIVATE_UPDATE');
       })
       .catch(() => {
         // Retry quietly if storage cannot confirm that a reload is safe.
         activating = false;
+        replacingController = false;
       })
       .finally(() => {
         checking = false;
