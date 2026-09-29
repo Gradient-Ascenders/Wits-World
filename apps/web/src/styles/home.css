@@ -1,17 +1,8 @@
-.main-content:has(.home-page) {
-  width: 100%;
-  max-width: none;
-  padding: 0;
-}
-
 .home-page {
   overflow: clip;
   background: var(--colour-background-app);
 }
 
-.site-frame:has(.home-page) .site-header__inner {
-  max-width: 76rem;
-}
 .site-frame:has(.home-page) .offline-status {
   padding: var(--space-4);
   background: var(--colour-surface-default);
@@ -265,11 +256,6 @@
   color: var(--colour-text-secondary);
   font-size: clamp(var(--text-md), 2.2vw, var(--text-lg));
   line-height: 1.55;
-}
-
-.site-frame:has(.home-page) .site-header-wrapper .site-header {
-  position: relative;
-  background: var(--colour-background-app);
 }
 
 html:has(.home-page) {

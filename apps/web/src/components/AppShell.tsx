@@ -311,7 +311,7 @@ export function AppShell({ children }: AppShellProps) {
     <div
       className={`site-frame site-frame--${
         hasPlayerNavigation ? 'product-navigation' : 'public'
-      }${isExplore ? ' site-frame--explore' : ''}${isBattleDetail ? ' site-frame--battle-focus' : ''}${isAuthorRoute ? ' site-frame--author' : ''}`}
+      }${pathname === '/' ? ' site-frame--home' : ''}${isExplore ? ' site-frame--explore' : ''}${isBattleDetail ? ' site-frame--battle-focus' : ''}${isAuthorRoute ? ' site-frame--author' : ''}`}
     >
       <a className="skip-link" href="#main-content">
         Skip to main content

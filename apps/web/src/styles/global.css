@@ -95,7 +95,7 @@ a:hover {
   background: rgb(5 11 22 / 96%);
 }
 
-.site-frame:has(.home-page) .site-header {
+.site-frame--home .site-header {
   position: absolute;
   z-index: 30;
   top: 0;
@@ -106,29 +106,35 @@ a:hover {
   backdrop-filter: none;
 }
 
-.site-frame:has(.home-page) .site-header__inner {
+.site-frame--home .site-header-wrapper .site-header {
+  position: relative;
+  background: var(--colour-background-app);
+}
+
+.site-frame--home .site-header__inner {
+  max-width: 76rem;
   min-height: 4.5rem;
   padding-block: var(--space-2);
 }
 
-.site-frame:has(.home-page) .product-name {
+.site-frame--home .product-name {
   gap: var(--space-2);
   text-shadow: 0 0.125rem 0.9rem rgb(0 0 0 / 95%);
 }
 
-.site-frame:has(.home-page) .product-name__mark {
+.site-frame--home .product-name__mark {
   width: 3.25rem;
 }
 
-.site-frame:has(.home-page) .product-name__title {
+.site-frame--home .product-name__title {
   font-size: 1.05rem;
 }
 
-.site-frame:has(.home-page) .product-name__tagline {
+.site-frame--home .product-name__tagline {
   display: none;
 }
 
-.site-frame:has(.home-page) .account-disclosure__trigger {
+.site-frame--home .account-disclosure__trigger {
   border-color: rgb(247 243 231 / 56%);
   background: rgb(3 9 20 / 22%);
   box-shadow: 0 0.25rem 1.2rem rgb(0 0 0 / 28%);
@@ -216,6 +222,12 @@ a:hover {
 .main-content {
   width: min(100%, var(--content-wide));
   margin-inline: auto;
+}
+
+.site-frame--home .main-content {
+  width: 100%;
+  max-width: none;
+  padding: 0;
 }
 
 .site-header__inner,
@@ -655,7 +667,7 @@ a:hover {
   padding: var(--space-6) var(--space-4);
 }
 
-.site-frame--public:has(.home-page) .site-footer__inner {
+.site-frame--public.site-frame--home .site-footer__inner {
   width: min(calc(100% - 3rem), 80rem);
   padding-inline: 0;
   padding-block: var(--space-6);
@@ -941,21 +953,21 @@ hr {
     padding-inline: var(--space-2);
   }
 
-  .site-frame--product-navigation:has(.home-page) .site-header__inner {
+  .site-frame--product-navigation.site-frame--home .site-header__inner {
     grid-template-columns: auto minmax(0, 1fr);
     column-gap: var(--space-2);
     padding-inline: var(--space-3);
   }
 
-  .site-frame--product-navigation:has(.home-page) .product-name__mark {
+  .site-frame--product-navigation.site-frame--home .product-name__mark {
     width: var(--touch-target-min);
   }
 
-  .site-frame--product-navigation:has(.home-page) .product-name__wordmark {
+  .site-frame--product-navigation.site-frame--home .product-name__wordmark {
     display: none;
   }
 
-  .site-frame--product-navigation:has(.home-page) .account-control {
+  .site-frame--product-navigation.site-frame--home .account-control {
     width: auto;
     min-width: 0;
     grid-row: 1;
@@ -964,7 +976,7 @@ hr {
     gap: var(--space-2);
   }
 
-  .site-frame--product-navigation:has(.home-page) .account-control__identity {
+  .site-frame--product-navigation.site-frame--home .account-control__identity {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

@@ -99,6 +99,11 @@
   flex-direction: column;
 }
 
+/* Keep the home footer below the viewport while its lazy route is loading. */
+.site-frame--home .main-content:has(> .page-loading-state) {
+  min-height: 100svh;
+}
+
 .main-content > .page-loading-state.state-message {
   width: min(36rem, 100%);
   flex: 0 0 auto;
