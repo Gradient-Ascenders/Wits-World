@@ -15,7 +15,10 @@ const emptyState = {
   receipts: [],
 };
 let cleanup: (() => void) | undefined;
-let container: EventTarget & { register: ReturnType<typeof vi.fn> };
+let container: EventTarget & {
+  controller: { state: string } | null;
+  register: ReturnType<typeof vi.fn>;
+};
 let registration: EventTarget & {
   waiting: { postMessage: ReturnType<typeof vi.fn> } | null;
   installing: EventTarget | null;
@@ -34,6 +37,7 @@ beforeEach(() => {
     installing: null,
   });
   container = Object.assign(new EventTarget(), {
+    controller: { state: 'activated' },
     register: vi.fn().mockResolvedValue(registration),
   });
   Object.defineProperty(navigator, 'serviceWorker', {
@@ -77,6 +81,18 @@ describe('automatic application updates', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  it('activates a waiting worker on first install without reloading', async () => {
+    container.controller = null;
+    await start();
+    expect(registration.waiting?.postMessage).toHaveBeenCalledWith(
+      'ACTIVATE_UPDATE',
+    );
+    container.controller = { state: 'activated' };
+    container.dispatchEvent(new Event('controllerchange'));
+    container.dispatchEvent(new Event('controllerchange'));
+    expect(reload).not.toHaveBeenCalled();
+  });
+
   it('waits for active attempts to finish, then applies the update automatically', async () => {
     vi.mocked(readOfflineState).mockResolvedValue({
       ...emptyState,
@@ -89,6 +105,8 @@ describe('automatic application updates', () => {
     vi.mocked(readOfflineState).mockResolvedValue(emptyState);
     await vi.advanceTimersByTimeAsync(10_000);
     expect(registration.waiting?.postMessage).toHaveBeenCalledTimes(1);
+    container.dispatchEvent(new Event('controllerchange'));
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('retries after a storage failure without reloading prematurely', async () => {
@@ -102,9 +120,11 @@ describe('automatic application updates', () => {
   });
 
   it('observes updates installed after registration without reloading on first install', async () => {
+    container.controller = null;
     const worker = registration.waiting;
     registration.waiting = null;
     await start();
+    container.controller = { state: 'activated' };
     container.dispatchEvent(new Event('controllerchange'));
     expect(reload).not.toHaveBeenCalled();
     const installing = new EventTarget();
@@ -114,6 +134,9 @@ describe('automatic application updates', () => {
     installing.dispatchEvent(new Event('statechange'));
     await vi.advanceTimersByTimeAsync(0);
     expect(worker?.postMessage).toHaveBeenCalledTimes(1);
+    container.controller = { state: 'activated' };
+    container.dispatchEvent(new Event('controllerchange'));
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('cleans up pending retries and controller listeners on unmount', async () => {
@@ -132,6 +155,13 @@ describe('automatic application updates', () => {
     container.register.mockRejectedValueOnce(new Error('Registration blocked'));
     await act(start);
     expect(readOfflineState).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when service workers are unavailable', () => {
+    Reflect.deleteProperty(navigator, 'serviceWorker');
+    expect(render(<ServiceWorkerUpdate />).container).toBeEmptyDOMElement();
+    expect(container.register).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
   });
 });
