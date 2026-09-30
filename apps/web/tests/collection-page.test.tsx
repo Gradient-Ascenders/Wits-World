@@ -1031,6 +1031,69 @@ describe('card collection page', () => {
     ]);
   });
 
+  it('uses responsive gallery artwork while keeping full-size detail art and image fallbacks', async () => {
+    const user = userEvent.setup();
+    const cards = [
+      buildCard(1, {
+        imageAlt: 'Ciphra artwork',
+        imageUrl: '/cards/ciphra.webp',
+        name: 'Alpha',
+      }),
+      buildCard(2, {
+        imageUrl: '/cards/prismole.webp',
+        name: 'Beta',
+      }),
+      buildCard(3, {
+        imageUrl: '/cards/quillip.webp',
+        name: 'Gamma',
+      }),
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(collectionResponse(cards)),
+    );
+
+    renderCollection();
+
+    const gallery = await screen.findByRole('list', {
+      name: 'Owned card designs',
+    });
+    const images = within(gallery).getAllByRole('img') as HTMLImageElement[];
+    expect(images).toHaveLength(3);
+    expect(images[0]).toHaveAttribute('src', '/cards/ciphra.webp');
+    expect(images[0]).toHaveAttribute(
+      'srcset',
+      expect.stringContaining('/cards/collection/ciphra-192.webp 192w'),
+    );
+    expect(images[0]).toHaveAttribute(
+      'sizes',
+      expect.stringContaining('12rem'),
+    );
+    expect(images[0]).toHaveAttribute('width', '1024');
+    expect(images[0]).toHaveAttribute('height', '1024');
+    expect(images[0]).toHaveAttribute('loading', 'eager');
+    expect(images[0]).toHaveAttribute('fetchpriority', 'high');
+    expect(images[1]).toHaveAttribute('loading', 'eager');
+    expect(images[2]).toHaveAttribute('loading', 'lazy');
+
+    fireEvent.error(images[0]!);
+    expect(images[0]).not.toHaveAttribute('srcset');
+    expect(images[0]).toHaveAttribute('src', '/cards/ciphra.webp');
+
+    await user.click(
+      within(gallery).getByRole('button', { name: 'View Alpha details' }),
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Alpha' });
+    const detailImage = within(dialog).getByRole('img') as HTMLImageElement;
+    expect(detailImage).toHaveAttribute('src', '/cards/ciphra.webp');
+    expect(detailImage).not.toHaveAttribute('srcset');
+
+    fireEvent.error(images[0]!);
+    expect(
+      within(gallery).getByRole('img', { name: 'Alpha artwork unavailable' }),
+    ).toBeVisible();
+  });
+
   it('replaces failed artwork with the accessible fallback', async () => {
     const card = buildCard(1, { imageUrl: 'https://example.test/missing.png' });
     vi.stubGlobal(

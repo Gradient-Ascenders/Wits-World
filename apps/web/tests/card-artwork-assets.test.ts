@@ -4,6 +4,8 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { collectionArtworkSrcSets } from '../src/components/cards/collection-artwork-assets';
+
 interface ArtworkManifest {
   attribution: string;
   cards: Array<{
@@ -25,6 +27,41 @@ const catalogueMigrationPath = path.resolve(
 );
 
 describe('production card artwork release', () => {
+  it('ships every responsive thumbnail source referenced by the catalogue', async () => {
+    const manifest = JSON.parse(
+      await readFile(path.join(artworkDirectory, 'manifest.json'), 'utf8'),
+    ) as ArtworkManifest;
+
+    expect(Object.keys(collectionArtworkSrcSets)).toHaveLength(
+      manifest.cards.length,
+    );
+
+    for (const card of manifest.cards) {
+      const candidates = collectionArtworkSrcSets[card.optimized]
+        ?.split(', ')
+        .map((entry) => {
+          const [url, width] = entry.split(' ');
+          return { url, width: Number(width?.replace('w', '')) };
+        });
+      expect(candidates?.map(({ width }) => width)).toEqual([
+        192, 384, 512, 768, 1024,
+      ]);
+      expect(candidates?.at(-1)?.url).toBe(card.optimized);
+
+      for (const candidate of candidates?.slice(0, -1) ?? []) {
+        const image = await readFile(
+          path.join(publicCardDirectory, candidate.url!.replace('/cards/', '')),
+        );
+        expect(image.subarray(0, 4).toString('ascii')).toBe('RIFF');
+        expect(image.subarray(8, 12).toString('ascii')).toBe('WEBP');
+        expect(readWebpDimensions(image)).toEqual({
+          height: candidate.width,
+          width: candidate.width,
+        });
+      }
+    }
+  });
+
   it('ships one distinct optimized and accessible artwork asset for every catalogue card', async () => {
     const manifest = JSON.parse(
       await readFile(path.join(artworkDirectory, 'manifest.json'), 'utf8'),

@@ -1041,7 +1041,7 @@ function CollectionGrid({
         </div>
       ) : (
         <ul aria-label="Owned card designs" className="owned-card-gallery">
-          {visibleGroups.map((group) => (
+          {visibleGroups.map((group, index) => (
             <li key={group.card.cardDefinitionId}>
               <CardThumbnail
                 accessibleLabel={`View ${group.card.name} details${group.copies.length > 1 ? `, ${group.copies.length} owned copies` : ''}`}
@@ -1051,6 +1051,8 @@ function CollectionGrid({
                     : undefined
                 }
                 card={group.card}
+                fetchPriority={index === 0 ? 'high' : undefined}
+                loading={index < 2 ? 'eager' : 'lazy'}
                 onClick={(event) => {
                   detailTriggerRef.current = event.currentTarget;
                   setSelectedGroup(group);
