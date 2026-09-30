@@ -80,7 +80,7 @@ describe('PR E2E verification orchestration', () => {
     ).toEqual([
       ['run', 'prepare:api'],
       ['run', 'db:check:test', '--workspace', '@wits-world/api'],
-      ['run', 'test:e2e:basic'],
+      ['run', 'test:e2e:basic', '--', '--api-build-prepared'],
     ]);
     expect(writtenJson('summary.json')).toMatchObject({
       profile: 'pr-e2e',

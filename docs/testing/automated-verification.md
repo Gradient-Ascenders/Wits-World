@@ -66,6 +66,13 @@ system dependencies, prepares shared API dependencies, checks database readiness
 and runs the existing Basic E2E runner, which migrates/seeds the database and
 starts the API and web harness. No remote database secret is supplied.
 
+Readiness builds the API once; the PR profile passes `--api-build-prepared` so
+migration and seeding reuse those compiled entrypoints. The seven Basic browser
+tests run with four workers in CI. Only the canonical journey writes to the
+database; the six shell/Explore tests intercept every API request within their
+own browser contexts. Its 21 dependent steps stay sequential. Action waits are
+capped at 15 seconds so a missing control does not consume an entire test budget.
+
 The profile validates the pinned isolated-service fingerprint and unreachable
 ordinary-database guard, but skips shared package tests and the full database
 integration suite because those run in separate PR jobs. It retains sanitized
