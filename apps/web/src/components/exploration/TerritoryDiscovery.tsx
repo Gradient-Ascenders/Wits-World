@@ -1,7 +1,6 @@
 import {
   ArrowClockwise,
   ArrowLeft,
-  CaretDown,
   FlagBanner,
   HourglassMedium,
   MapTrifold,
@@ -10,6 +9,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
+import { PanelCollapseButton } from './PanelCollapseButton';
 import { StateIcon } from '../StatusMessage';
 import type {
   TerritoryHistoryEntry,
@@ -76,14 +76,10 @@ export function TerritoryDiscovery({
           >
             <ArrowLeft aria-hidden="true" size={20} /> All territories
           </button>
-          <button
-            aria-label="Collapse territory details"
-            className="event-panel__close"
+          <PanelCollapseButton
+            label="Collapse territory details"
             onClick={onCollapse}
-            type="button"
-          >
-            <CaretDown aria-hidden="true" size={20} />
-          </button>
+          />
         </div>
         {modeNavigation}
         <div className="event-panel__scroll">
@@ -114,14 +110,10 @@ export function TerritoryDiscovery({
             </span>
           ) : null}
         </div>
-        <button
-          aria-label="Collapse territories"
-          className="event-panel__close"
+        <PanelCollapseButton
+          label="Collapse territories"
           onClick={onCollapse}
-          type="button"
-        >
-          <CaretDown aria-hidden="true" size={20} />
-        </button>
+        />
       </div>
       {modeNavigation}
       <div className="event-panel__scroll">

@@ -419,6 +419,13 @@ test('mobile sheet stays above navigation, supports selection, disclosure, gestu
   });
   await page.getByRole('button', { name: /Select Great Hall/ }).click();
   await expect(page.getByRole('heading', { name: 'Great Hall' })).toBeFocused();
+  const mobileCollapse = page.getByRole('button', {
+    name: 'Collapse event details',
+  });
+  await expect(mobileCollapse.locator('.event-panel__rail-icon')).toBeHidden();
+  await expect(
+    mobileCollapse.locator('.event-panel__collapse-chevron'),
+  ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Start challenge for Great Hall' }),
   ).toBeInViewport({ ratio: 1 });
@@ -506,13 +513,105 @@ test('tablet bounds the sheet and desktop reserves map space for discovery', asy
   const map = await page.locator('.campus-map').boundingBox();
   expect(map!.x).toBeGreaterThanOrEqual(panel!.x + panel!.width);
   expect(map!.width).toBeGreaterThan(1000);
+  const mapControls = page.locator('.mapboxgl-ctrl-group button');
+  expect(await mapControls.count()).toBeGreaterThan(0);
+  for (const control of await mapControls.all()) {
+    await control.hover();
+    await expect(control).toHaveCSS('background-color', 'rgb(17, 36, 64)');
+  }
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('desktop-map-control-hover.png'),
+  });
   await page.getByRole('button', { name: /View on map.*Great Hall/ }).click();
   await page.getByText('About this event', { exact: true }).click();
+  const desktopCollapse = page.getByRole('button', {
+    name: 'Collapse event details',
+  });
+  await expect(
+    desktopCollapse.locator('.event-panel__rail-icon'),
+  ).toBeVisible();
+  await expect(
+    desktopCollapse.locator('.event-panel__collapse-chevron'),
+  ).toBeHidden();
+  await expect(desktopCollapse).toHaveAttribute('aria-expanded', 'true');
   await page.screenshot({
     animations: 'disabled',
     path: info.outputPath('desktop-selected.png'),
   });
+  await page.getByRole('button', { name: 'Collapse event details' }).click();
+  const rail = page.locator('.event-panel--peek');
+  await expect(rail).toBeVisible();
+  const railBounds = await rail.boundingBox();
+  expect(railBounds!.width).toBeLessThanOrEqual(64);
+  expect(railBounds!.height).toBeGreaterThan(700);
+  const reopen = page.getByRole('button', {
+    name: 'Events — Great Hall selected, open details',
+  });
+  await expect(reopen).toHaveAttribute(
+    'aria-controls',
+    'explore-event-sheet-content',
+  );
+  await expect(reopen.locator('.event-panel__rail-icon')).toBeVisible();
+  await expect(reopen.locator('.event-panel__peek-copy')).toBeHidden();
+  const shortcuts = page.getByRole('navigation', { name: 'Explore shortcuts' });
+  await expect(shortcuts.getByRole('button')).toHaveCount(4);
+  await expect(
+    shortcuts.getByRole('button', { name: 'Open Events' }),
+  ).toHaveAttribute('aria-current', 'page');
+  await reopen.focus();
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('desktop-collapsed-rail.png'),
+  });
+  await reopen.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Great Hall' })).toBeFocused();
   await noOverflow(page);
+});
+
+test('desktop rail shortcuts open each section with keyboard focus and active feedback', async ({
+  page,
+}, info) => {
+  await installEvents(page);
+  await page.route('**/api/v1/trails', (route) =>
+    route.fulfill({ json: { trails: [], requestId: 'rail-trails' } }),
+  );
+  await page.route('**/api/v1/territory/zones', (route) =>
+    route.fulfill({ json: { zones: [], requestId: 'rail-territories' } }),
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/explore');
+  await page
+    .getByRole('button', { name: 'Collapse events', exact: true })
+    .click();
+  const shortcuts = page.getByRole('navigation', { name: 'Explore shortcuts' });
+  for (const [label, heading, collapse] of [
+    ['Nearby', 'Nearby events', 'Collapse nearby discovery'],
+    ['Trails', 'Trails', 'Collapse trails'],
+    ['Territories', 'Campus territories', 'Collapse territories'],
+    ['Events', 'Campus events', 'Collapse events'],
+  ] as const) {
+    const shortcut = shortcuts.getByRole('button', { name: `Open ${label}` });
+    await expect(shortcut).toHaveAttribute('title', label);
+    const bounds = await shortcut.boundingBox();
+    expect(bounds!.width).toBeGreaterThanOrEqual(44);
+    expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    await shortcut.focus();
+    await shortcut.press('Enter');
+    await expect(
+      page.getByRole('heading', { name: heading, exact: true }),
+    ).toBeFocused();
+    await page.getByRole('button', { name: collapse, exact: true }).click();
+    await expect(shortcut).toHaveAttribute('aria-current', 'page');
+    await expect(shortcut).toHaveCSS('color', 'rgb(224, 196, 108)');
+  }
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('desktop-rail-shortcuts.png'),
+  });
+  await noOverflow(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(shortcuts).toBeHidden();
 });
 
 test('map failure retains event discovery and a retry action', async ({

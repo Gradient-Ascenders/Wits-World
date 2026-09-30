@@ -2,17 +2,22 @@ import { StateIcon } from '../StatusMessage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  CaretDown,
+  CalendarDots,
   CaretLeft,
   CaretRight,
   CaretUp,
   Crosshair,
   Cube,
+  FlagBanner,
   MagnifyingGlass,
+  MapPin,
+  Path,
+  SidebarSimple,
 } from '@phosphor-icons/react';
 
 import { BottomSheetSurface, type BottomSheetSnap } from './BottomSheetSurface';
 import { CampusMap } from './CampusMap';
+import { PanelCollapseButton } from './PanelCollapseButton';
 import {
   availabilityLabels,
   EventList,
@@ -632,6 +637,12 @@ export function CampusExplorer({
   };
 
   const collapsePanel = (): void => {
+    if (window.matchMedia?.('(min-width: 64rem)').matches) {
+      setPanelMode('peek');
+      setSheetSnap('peek');
+      window.setTimeout(() => peekButtonRef.current?.focus(), 0);
+      return;
+    }
     dismissPanel();
   };
 
@@ -670,17 +681,21 @@ export function CampusExplorer({
       <span>3D</span>
     </button>
   ) : null;
-  const modeNavigation = (
-    <nav aria-label="Explore view" className="explore-mode-navigation">
+  const renderModeNavigation = (rail = false) => (
+    <nav
+      aria-label={rail ? 'Explore shortcuts' : 'Explore view'}
+      className={rail ? 'explore-rail-navigation' : 'explore-mode-navigation'}
+    >
       {(
         [
-          ['events', 'Events'],
-          ['nearby', 'Nearby'],
-          ['trails', 'Trails'],
-          ['territories', 'Territories'],
+          ['events', 'Events', CalendarDots],
+          ['nearby', 'Nearby', MapPin],
+          ['trails', 'Trails', Path],
+          ['territories', 'Territories', FlagBanner],
         ] as const
-      ).map(([section, label]) => (
+      ).map(([section, label, Icon]) => (
         <button
+          aria-controls="explore-event-sheet-content"
           aria-current={
             (
               section === 'territories'
@@ -697,6 +712,11 @@ export function CampusExplorer({
           onClick={() => {
             if (section === 'territories') {
               showExploreMode('territories');
+              if (rail) {
+                onClearTerritorySelection();
+                setPanelMode('list');
+                setSheetSnap('expanded');
+              }
             } else {
               onExploreModeChange('discover');
               showDiscoverySection(section);
@@ -704,13 +724,16 @@ export function CampusExplorer({
               setSheetSnap('expanded');
             }
           }}
+          aria-label={rail ? `Open ${label}` : undefined}
+          title={rail ? label : undefined}
           type="button"
         >
-          {label}
+          {rail ? <Icon aria-hidden="true" size={22} /> : label}
         </button>
       ))}
     </nav>
   );
+  const modeNavigation = renderModeNavigation();
 
   return (
     <section
@@ -824,62 +847,78 @@ export function CampusExplorer({
         view={panelMode}
       >
         {panelMode === 'peek' ? (
-          <button
-            aria-expanded="false"
-            aria-label={
-              exploreMode === 'territories'
-                ? selectedRegion === null
-                  ? `Territories — ${territoryList.zones.length} ${territoryList.zones.length === 1 ? 'zone' : 'zones'}`
-                  : `Territories — ${selectedRegion.label} selected, open details`
-                : selectedEvent === null
-                  ? `Events — ${visibleEvents.length} ${visibleEvents.length === 1 ? 'event' : 'events'}, ${activeEventCount} available now`
-                  : `Events — ${selectedEvent.title} selected, open details`
-            }
-            className="event-panel__peek"
-            onClick={openSheet}
-            ref={peekButtonRef}
-            type="button"
-          >
-            <span className="event-panel__peek-copy">
-              <strong>
-                {exploreMode === 'territories'
-                  ? (selectedRegion?.label ?? 'Campus territories')
+          <>
+            <button
+              aria-controls="explore-event-sheet-content"
+              aria-expanded="false"
+              aria-label={
+                exploreMode === 'territories'
+                  ? selectedRegion === null
+                    ? `Territories — ${territoryList.zones.length} ${territoryList.zones.length === 1 ? 'zone' : 'zones'}`
+                    : `Territories — ${selectedRegion.label} selected, open details`
                   : selectedEvent === null
-                    ? discovery.status === 'ready'
-                      ? `${visibleEvents.length} campus ${visibleEvents.length === 1 ? 'event' : 'events'}`
-                      : 'Campus events'
-                    : selectedEvent.title}
-              </strong>
-              <span>
-                {exploreMode === 'territories'
-                  ? selectedRegion !== null
-                    ? selectedRegion.ownerLabel
-                      ? `Owned by ${selectedRegion.ownerLabel} · View details`
-                      : 'Unclaimed · View details'
-                    : territoryList.status === 'loading'
-                      ? 'Loading ownership…'
-                      : territoryList.status === 'error'
-                        ? 'Territories could not load · Open to retry'
-                        : territoryList.status === 'empty'
-                          ? 'No territories available'
-                          : `${territoryList.zones.filter((zone) => zone.status === 'active').length} active`
-                  : selectedEvent === null
-                    ? discovery.status === 'ready'
-                      ? `${activeEventCount} available now`
-                      : discovery.status === 'loading'
-                        ? 'Loading events…'
-                        : discovery.status === 'error'
-                          ? 'Events could not load · Open to retry'
-                          : 'No events · Check back later'
-                    : `${availabilityLabels[selectedEvent.availability]} · View details`}
+                    ? `Events — ${visibleEvents.length} ${visibleEvents.length === 1 ? 'event' : 'events'}, ${activeEventCount} available now`
+                    : `Events — ${selectedEvent.title} selected, open details`
+              }
+              className="event-panel__peek"
+              onClick={openSheet}
+              ref={peekButtonRef}
+              title={
+                exploreMode === 'territories'
+                  ? 'Open territories'
+                  : selectedEvent !== null
+                    ? `Open ${selectedEvent.title}`
+                    : 'Open campus discovery'
+              }
+              type="button"
+            >
+              <SidebarSimple
+                aria-hidden="true"
+                className="event-panel__rail-icon"
+                size={20}
+              />
+              <span className="event-panel__peek-copy">
+                <strong>
+                  {exploreMode === 'territories'
+                    ? (selectedRegion?.label ?? 'Campus territories')
+                    : selectedEvent === null
+                      ? discovery.status === 'ready'
+                        ? `${visibleEvents.length} campus ${visibleEvents.length === 1 ? 'event' : 'events'}`
+                        : 'Campus events'
+                      : selectedEvent.title}
+                </strong>
+                <span>
+                  {exploreMode === 'territories'
+                    ? selectedRegion !== null
+                      ? selectedRegion.ownerLabel
+                        ? `Owned by ${selectedRegion.ownerLabel} · View details`
+                        : 'Unclaimed · View details'
+                      : territoryList.status === 'loading'
+                        ? 'Loading ownership…'
+                        : territoryList.status === 'error'
+                          ? 'Territories could not load · Open to retry'
+                          : territoryList.status === 'empty'
+                            ? 'No territories available'
+                            : `${territoryList.zones.filter((zone) => zone.status === 'active').length} active`
+                    : selectedEvent === null
+                      ? discovery.status === 'ready'
+                        ? `${activeEventCount} available now`
+                        : discovery.status === 'loading'
+                          ? 'Loading events…'
+                          : discovery.status === 'error'
+                            ? 'Events could not load · Open to retry'
+                            : 'No events · Check back later'
+                      : `${availabilityLabels[selectedEvent.availability]} · View details`}
+                </span>
               </span>
-            </span>
-            <CaretUp
-              aria-hidden="true"
-              className="event-panel__peek-chevron"
-              size={20}
-            />
-          </button>
+              <CaretUp
+                aria-hidden="true"
+                className="event-panel__peek-chevron"
+                size={20}
+              />
+            </button>
+            {renderModeNavigation(true)}
+          </>
         ) : null}
 
         {panelMode !== 'peek' && exploreMode === 'territories' ? (
@@ -918,20 +957,16 @@ export function CampusExplorer({
                   </span>
                 ) : null}
               </div>
-              <button
-                aria-label={
+              <PanelCollapseButton
+                label={
                   discoverySection === 'events'
                     ? 'Collapse events'
                     : discoverySection === 'nearby'
                       ? 'Collapse nearby discovery'
                       : 'Collapse trails'
                 }
-                className="event-panel__close"
                 onClick={collapsePanel}
-                type="button"
-              >
-                <CaretDown aria-hidden="true" size={20} />
-              </button>
+              />
             </div>
             {modeNavigation}
             <div className="event-panel__scroll">
@@ -1034,14 +1069,10 @@ export function CampusExplorer({
               >
                 <ArrowLeft aria-hidden="true" size={20} /> All trails
               </button>
-              <button
-                aria-label="Collapse trail details"
-                className="event-panel__close"
+              <PanelCollapseButton
+                label="Collapse trail details"
                 onClick={collapsePanel}
-                type="button"
-              >
-                <CaretDown aria-hidden="true" size={20} />
-              </button>
+              />
             </div>
             {modeNavigation}
             <div className="event-panel__scroll">
@@ -1118,14 +1149,10 @@ export function CampusExplorer({
                   </button>
                 </div>
               ) : null}
-              <button
-                aria-label="Collapse event details"
-                className="event-panel__close"
+              <PanelCollapseButton
+                label="Collapse event details"
                 onClick={collapsePanel}
-                type="button"
-              >
-                <CaretDown aria-hidden="true" size={20} />
-              </button>
+              />
             </div>
             {modeNavigation}
             <div className="event-panel__scroll">
