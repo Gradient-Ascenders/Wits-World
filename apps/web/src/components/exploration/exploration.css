@@ -1696,6 +1696,18 @@
 }
 
 @media (min-width: 64rem) {
+  .exploration-view {
+    --explore-rail-width: 4.5rem;
+    --explore-rail-icon-size: 1.75rem;
+  }
+
+  .explore-rail-navigation svg,
+  .event-panel__rail-icon,
+  .map-layers-control__trigger svg {
+    width: var(--explore-rail-icon-size);
+    height: var(--explore-rail-icon-size);
+  }
+
   .exploration-view:not(.exploration-view--panel-peek) .campus-map {
     left: 24rem;
   }
@@ -1709,7 +1721,16 @@
 
   .exploration-view--panel-peek .map-layers-control {
     bottom: var(--space-4);
-    left: 0.625rem;
+    left: calc(
+      var(--space-1) + (var(--explore-rail-width) - var(--touch-target-min)) / 2
+    );
+  }
+
+  .exploration-view--panel-peek .map-layers-control__panel {
+    left: calc(
+      100% + var(--space-3) +
+        (var(--explore-rail-width) - var(--touch-target-min)) / 2
+    );
   }
 
   .map-layers-control__trigger {
@@ -1837,14 +1858,14 @@
   }
 
   .exploration-view--panel-peek .campus-map {
-    left: 4rem;
+    left: calc(var(--explore-rail-width) + 2 * var(--space-1));
   }
 
   .event-panel--peek {
     top: var(--space-2);
     bottom: var(--space-2);
     left: var(--space-1);
-    width: 3.5rem;
+    width: var(--explore-rail-width);
     height: auto;
     max-height: none;
     border: 1px solid var(--colour-border-default);

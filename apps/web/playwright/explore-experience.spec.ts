@@ -462,6 +462,9 @@ test('mobile sheet stays above navigation, supports selection, disclosure, gestu
   await expect(mobileCollapse.locator('.event-panel__rail-icon')).toBeHidden();
   await expect(
     mobileCollapse.locator('.event-panel__collapse-chevron'),
+  ).toHaveCSS('width', '20px');
+  await expect(
+    mobileCollapse.locator('.event-panel__collapse-chevron'),
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Start challenge for Great Hall' }),
@@ -580,8 +583,19 @@ test('tablet bounds the sheet and desktop reserves map space for discovery', asy
   const rail = page.locator('.event-panel--peek');
   await expect(rail).toBeVisible();
   const railBounds = await rail.boundingBox();
-  expect(railBounds!.width).toBeLessThanOrEqual(64);
+  expect(railBounds!.width).toBeCloseTo(72, 0);
   expect(railBounds!.height).toBeGreaterThan(700);
+  const layersBounds = await page
+    .getByRole('button', { name: 'Map layers', exact: true })
+    .boundingBox();
+  expect(layersBounds!.x + layersBounds!.width / 2).toBeCloseTo(
+    railBounds!.x + railBounds!.width / 2,
+    0,
+  );
+  const mapBounds = await page.locator('.campus-map').boundingBox();
+  expect(mapBounds!.x).toBeGreaterThanOrEqual(
+    railBounds!.x + railBounds!.width,
+  );
   const reopen = page.getByRole('button', {
     name: 'Events — Great Hall selected, open details',
   });
@@ -593,6 +607,17 @@ test('tablet bounds the sheet and desktop reserves map space for discovery', asy
   await expect(reopen.locator('.event-panel__peek-copy')).toBeHidden();
   const shortcuts = page.getByRole('navigation', { name: 'Explore shortcuts' });
   await expect(shortcuts.getByRole('button')).toHaveCount(4);
+  const railIcons = [
+    reopen.locator('.event-panel__rail-icon'),
+    ...(await shortcuts.locator('svg').all()),
+    page
+      .getByRole('button', { name: 'Map layers', exact: true })
+      .locator('svg'),
+  ];
+  for (const icon of railIcons) {
+    await expect(icon).toHaveCSS('width', '28px');
+    await expect(icon).toHaveCSS('height', '28px');
+  }
   await expect(
     shortcuts.getByRole('button', { name: 'Open Events' }),
   ).toHaveAttribute('aria-current', 'page');
@@ -666,6 +691,15 @@ test('desktop layers change visibility without clearing selection or resetting t
   const radius = page.locator('[data-deterministic-event-radius]');
   const layers = page.getByRole('button', { name: 'Map layers', exact: true });
   await layers.click();
+  const layersPanelBounds = await page
+    .locator('.map-layers-control__panel')
+    .boundingBox();
+  const collapsedRailBounds = await page
+    .locator('.event-panel--peek')
+    .boundingBox();
+  expect(layersPanelBounds!.x).toBeGreaterThan(
+    collapsedRailBounds!.x + collapsedRailBounds!.width,
+  );
   await expect(
     page.getByRole('checkbox', { name: 'Event markers' }),
   ).toBeFocused();
