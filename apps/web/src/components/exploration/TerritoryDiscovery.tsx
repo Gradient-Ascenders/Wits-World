@@ -1,16 +1,16 @@
+import { createAppDateTimeFormatter } from '../../date-time';
 import {
   ArrowClockwise,
   ArrowLeft,
-  CaretDown,
   FlagBanner,
   HourglassMedium,
   MapTrifold,
-  ShieldChevron,
   UsersThree,
 } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { QuestMarker } from '../branding/QuestMarker';
+import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
+import { PanelCollapseButton } from './PanelCollapseButton';
 import { StateIcon } from '../StatusMessage';
 import type {
   TerritoryHistoryEntry,
@@ -75,16 +75,12 @@ export function TerritoryDiscovery({
             onClick={showList}
             type="button"
           >
-            <ArrowLeft aria-hidden="true" size={20} /> Territories
+            <ArrowLeft aria-hidden="true" size={20} /> All territories
           </button>
-          <button
-            aria-label="Collapse territory details"
-            className="event-panel__close"
+          <PanelCollapseButton
+            label="Collapse territory details"
             onClick={onCollapse}
-            type="button"
-          >
-            <CaretDown aria-hidden="true" size={20} />
-          </button>
+          />
         </div>
         {modeNavigation}
         <div className="event-panel__scroll">
@@ -110,18 +106,15 @@ export function TerritoryDiscovery({
           </h2>
           {list.status === 'ready' ? (
             <span className="event-panel__summary">
-              {list.zones.length} {list.zones.length === 1 ? 'zone' : 'zones'}
+              {list.zones.length}{' '}
+              {list.zones.length === 1 ? 'territory' : 'territories'}
             </span>
           ) : null}
         </div>
-        <button
-          aria-label="Collapse territories"
-          className="event-panel__close"
+        <PanelCollapseButton
+          label="Collapse territories"
           onClick={onCollapse}
-          type="button"
-        >
-          <CaretDown aria-hidden="true" size={20} />
-        </button>
+        />
       </div>
       {modeNavigation}
       <div className="event-panel__scroll">
@@ -134,10 +127,7 @@ export function TerritoryDiscovery({
         ) : null}
 
         {list.status === 'loading' ? (
-          <TerritoryLoadingState
-            description="Reading the current ownership map."
-            title="Loading campus territories…"
-          />
+          <ExplorationLoadingPanel label="Loading campus territories…" />
         ) : list.status === 'error' ? (
           <div
             className="territory-state state-message state-message--error"
@@ -157,8 +147,8 @@ export function TerritoryDiscovery({
         ) : list.status === 'empty' ? (
           <div className="territory-state state-message state-message--empty">
             <StateIcon tone="empty" />
-            <strong>No territories are available.</strong>
-            <p>Reviewed campus zones will appear here when published.</p>
+            <strong>No territories available.</strong>
+            <p>Check back later.</p>
           </div>
         ) : list.status === 'ready' ? (
           <>
@@ -191,42 +181,17 @@ export function TerritoryDiscovery({
                 </li>
               ))}
             </ul>
-            <div className="territory-explainer">
-              <ShieldChevron aria-hidden="true" size={22} />
-              <div>
-                <strong>Ranked wins shape territory.</strong>
-                <p>
-                  Choose a territory when joining Ranked. The server checks a
-                  fresh location and applies eligible influence after the match.
-                </p>
-              </div>
-            </div>
+            <details className="territory-explainer">
+              <summary>How territories work</summary>
+              <p>
+                Choose a territory when joining Ranked. Your location is checked
+                before you join. Eligible wins add influence after the match.
+              </p>
+            </details>
           </>
         ) : null}
       </div>
     </>
-  );
-}
-
-function TerritoryLoadingState({
-  description,
-  title,
-}: {
-  description: string;
-  title: string;
-}) {
-  return (
-    <div
-      aria-atomic="true"
-      aria-busy="true"
-      aria-live="polite"
-      className="territory-state territory-state--loading state-message"
-      role="status"
-    >
-      <QuestMarker className="territory-state__marker" />
-      <strong>{title}</strong>
-      <p>{description}</p>
-    </div>
   );
 }
 
@@ -268,34 +233,45 @@ function TerritoryDetail({
         <div className="territory-owner">
           <FlagBanner aria-hidden="true" size={24} />
           <div>
-            <span>Current owner</span>
+            <span>Owner</span>
             <strong>{displayedZone.owner?.playerName ?? 'Unclaimed'}</strong>
           </div>
         </div>
         <p className="territory-window">
           <HourglassMedium aria-hidden="true" size={18} />
-          {displayedZone.status === 'suspended'
-            ? 'This territory cannot currently receive influence.'
-            : displayedZone.seasonId === null
-              ? 'No ranked season is active. Ownership is unavailable.'
-              : displayedZone.windowEnd
-                ? `Current window settles at ${formatJohannesburgTime(displayedZone.windowEnd)}.`
-                : 'The current settlement window is unavailable.'}
+          {displayedZone.status === 'suspended' ? (
+            'Influence paused.'
+          ) : displayedZone.seasonId === null ? (
+            'No active Ranked season. Ownership unavailable.'
+          ) : displayedZone.windowEnd ? (
+            <span>
+              Updates at{' '}
+              <time
+                dateTime={displayedZone.windowEnd}
+                title="Johannesburg time (SAST, UTC+2)"
+              >
+                {formatJohannesburgTime(displayedZone.windowEnd)} SAST
+              </time>
+              .
+            </span>
+          ) : (
+            'Update time unavailable.'
+          )}
         </p>
       </header>
 
       {detail.stale ? (
         <TerritoryStaleNotice
           lastUpdatedAt={detail.lastUpdatedAt}
-          message="Some territory details may be out of date."
+          message="Territory details may be out of date."
           onRetry={onRefresh}
         />
       ) : null}
 
       {detail.status === 'loading' ? (
-        <TerritoryLoadingState
-          description="Reading standings and ownership history."
-          title="Loading territory activity…"
+        <ExplorationLoadingPanel
+          className="exploration-loading-panel--inline"
+          label="Loading territory activity…"
         />
       ) : detail.status === 'error' ? (
         <div
@@ -304,9 +280,7 @@ function TerritoryDetail({
         >
           <StateIcon tone="error" />
           <strong>Territory activity could not load.</strong>
-          <p>
-            The zone summary is still available. Retry for current activity.
-          </p>
+          <p>Retry to load standings and history.</p>
           <button
             className="button button--quiet"
             onClick={onRefresh}
@@ -326,8 +300,11 @@ function TerritoryDetail({
           >
             <div className="territory-section__heading">
               <div>
-                <h3 id="territory-contest-heading">Current contest</h3>
-                <p>Anonymous accepted influence in this settlement window.</p>
+                <h3 id="territory-contest-heading">This hour</h3>
+                {detail.standings !== null &&
+                detail.standings.top.length > 0 ? (
+                  <p>Anonymous standings</p>
+                ) : null}
               </div>
               <UsersThree aria-hidden="true" size={22} />
             </div>
@@ -335,12 +312,10 @@ function TerritoryDetail({
               <SectionUnavailable section="standings" onRetry={onRefresh} />
             ) : detail.standings.seasonId === null ? (
               <p className="territory-section__empty">
-                No ranked season is active.
+                No active Ranked season.
               </p>
             ) : detail.standings.top.length === 0 ? (
-              <p className="territory-section__empty">
-                No eligible influence has been recorded this hour.
-              </p>
+              <p className="territory-section__empty">No influence yet.</p>
             ) : (
               <ol className="territory-standings">
                 {detail.standings.top.map((standing) => (
@@ -356,9 +331,11 @@ function TerritoryDetail({
                 ))}
               </ol>
             )}
-            {detail.standings !== null ? (
+            {detail.standings !== null &&
+            (detail.standings.activity.influence > 0 ||
+              detail.standings.activity.contributors > 0) ? (
               <p className="territory-activity">
-                {detail.standings.activity.influence} accepted influence from{' '}
+                {detail.standings.activity.influence} influence from{' '}
                 {detail.standings.activity.contributors}{' '}
                 {detail.standings.activity.contributors === 1
                   ? 'contributor'
@@ -375,18 +352,18 @@ function TerritoryDetail({
               <h3 id="territory-your-influence">Your influence</h3>
               <dl className="territory-viewer-stats">
                 <div>
-                  <dt>This window</dt>
+                  <dt>This hour</dt>
                   <dd>{detail.standings.viewer.influence}</dd>
                 </div>
                 <div>
-                  <dt>Today</dt>
+                  <dt>Today / limit</dt>
                   <dd>
                     {detail.standings.viewer.todayInfluence} /{' '}
                     {detail.standings.viewer.dailyCap}
                   </dd>
                 </div>
                 <div>
-                  <dt>Remaining today</dt>
+                  <dt>Left today</dt>
                   <dd>{detail.standings.viewer.remainingDailyInfluence}</dd>
                 </div>
               </dl>
@@ -399,15 +376,14 @@ function TerritoryDetail({
           >
             <div className="territory-section__heading">
               <div>
-                <h3 id="territory-history-heading">Ownership history</h3>
-                <p>Recent authoritative ownership changes.</p>
+                <h3 id="territory-history-heading">History</h3>
               </div>
             </div>
             {failed.has('history') || detail.history === null ? (
               <SectionUnavailable section="history" onRetry={onRefresh} />
             ) : historyEntries.length === 0 ? (
               <p className="territory-section__empty">
-                No ownership changes have been recorded yet.
+                No ownership changes yet.
               </p>
             ) : (
               <>
@@ -443,10 +419,7 @@ function TerritoryDetail({
           </section>
 
           <div className="territory-detail__footer">
-            <p>
-              Map location is approximate. Territory eligibility is checked by
-              the server when you join Ranked.
-            </p>
+            <p>Approximate map. Location checked before joining Ranked.</p>
             <button
               className="button button--quiet"
               disabled={detail.refreshing}
@@ -454,7 +427,7 @@ function TerritoryDetail({
               type="button"
             >
               <ArrowClockwise aria-hidden="true" size={20} />
-              {detail.refreshing ? 'Refreshing…' : 'Refresh territory'}
+              {detail.refreshing ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
         </>
@@ -475,13 +448,10 @@ function TerritoryStaleNotice({
   return (
     <div className="territory-stale" role="status">
       <div>
-        <strong>Territory information may be stale.</strong>
-        <p>
-          {message}
-          {lastUpdatedAt === null
-            ? ''
-            : ` Last updated ${formatUpdatedTime(lastUpdatedAt)}.`}
-        </p>
+        <strong>{message}</strong>
+        {lastUpdatedAt !== null ? (
+          <p>Last updated {formatUpdatedTime(lastUpdatedAt)}.</p>
+        ) : null}
       </div>
       <button onClick={onRetry} type="button">
         Refresh
@@ -498,9 +468,9 @@ function SectionUnavailable({
   section: TerritoryDetailSection;
 }) {
   const message = {
-    detail: 'Latest zone metadata could not be refreshed.',
-    history: 'Ownership history could not be refreshed.',
-    standings: 'Current standings could not be refreshed.',
+    detail: 'Could not refresh territory details.',
+    history: 'Could not refresh history.',
+    standings: 'Could not refresh standings.',
   }[section];
   return (
     <div className="territory-section__unavailable">
@@ -537,23 +507,22 @@ function historyLabel(entry: TerritoryHistoryEntry): string {
 }
 
 function formatJohannesburgTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter('en-ZA', {
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'Africa/Johannesburg',
-    timeZoneName: 'short',
+    hourCycle: 'h23',
   }).format(new Date(value));
 }
 
 function formatHistoryTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
 }
 
 function formatUpdatedTime(value: number): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));

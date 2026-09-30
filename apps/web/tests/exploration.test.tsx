@@ -353,13 +353,30 @@ describe('map-first campus exploration', () => {
     expect(
       await screen.findByRole('heading', { name: event.title }),
     ).toBeVisible();
-    expect(screen.getByText('Event interaction area')).not.toBeVisible();
+    expect(screen.getByText('Challenge radius')).not.toBeVisible();
     await userEvent.setup().click(screen.getByText('About this event'));
-    expect(screen.getByText('Event interaction area')).toBeVisible();
+    expect(screen.getByText('Challenge radius')).toBeVisible();
     expect(screen.getByText('75 m radius')).toBeVisible();
     await waitFor(() =>
       expect(controller.setSelectedPoint).toHaveBeenCalledWith(point),
     );
+  });
+
+  it('labels a past event end time as Ended', async () => {
+    const endedEvent = { ...event, availability: 'ended' } as const;
+    render(
+      <CampusExplorer
+        {...explorerProps(vi.fn(async () => createController()))}
+        discovery={{ events: [endedEvent], status: 'ready' }}
+        selectedEventId={endedEvent.id}
+      />,
+    );
+
+    await userEvent.setup().click(screen.getByText('About this event'));
+    expect(screen.getByText('Ended', { selector: 'dt' })).toBeVisible();
+    expect(
+      screen.queryByText('Ends', { selector: 'dt' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps challenge-start status copy in separate mobile sheet rows', async () => {
@@ -378,9 +395,9 @@ describe('map-first campus exploration', () => {
     expect(status.querySelector(':scope > strong')).toHaveTextContent(
       'Starting challenge…',
     );
-    expect(status.querySelector(':scope > span')).toHaveTextContent(
-      'Wits World is checking your latest reported location again.',
-    );
+    expect(
+      status.querySelector('.exploration-loading-panel__description'),
+    ).toHaveTextContent('Checking your location before starting.');
   });
 
   it('connects an interactive map marker selection to the shared selection state', async () => {

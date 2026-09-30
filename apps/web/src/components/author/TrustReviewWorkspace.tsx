@@ -1,4 +1,8 @@
 import {
+  appCalendarDateBoundary,
+  createAppDateTimeFormatter,
+} from '../../date-time';
+import {
   ArrowLeftIcon,
   CheckCircleIcon,
   ClockCounterClockwiseIcon,
@@ -368,7 +372,7 @@ export function TrustReviewWorkspace({
                     </select>
                   </label>
                   <DateFilter
-                    label="Opened from (UTC)"
+                    label="Opened from (Johannesburg)"
                     onChange={(value) => {
                       setOpenedFrom(value);
                       setPage(1);
@@ -376,7 +380,7 @@ export function TrustReviewWorkspace({
                     value={openedFrom}
                   />
                   <DateFilter
-                    label="Opened to (UTC)"
+                    label="Opened to (Johannesburg)"
                     onChange={(value) => {
                       setOpenedTo(value);
                       setPage(1);
@@ -384,7 +388,7 @@ export function TrustReviewWorkspace({
                     value={openedTo}
                   />
                   <DateFilter
-                    label="Updated from (UTC)"
+                    label="Updated from (Johannesburg)"
                     onChange={(value) => {
                       setUpdatedFrom(value);
                       setPage(1);
@@ -392,7 +396,7 @@ export function TrustReviewWorkspace({
                     value={updatedFrom}
                   />
                   <DateFilter
-                    label="Updated to (UTC)"
+                    label="Updated to (Johannesburg)"
                     onChange={(value) => {
                       setUpdatedTo(value);
                       setPage(1);
@@ -1878,14 +1882,14 @@ function safeClass(value: string) {
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
 }
 
 function formatCompactDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     month: 'short',
     day: 'numeric',
   }).format(new Date(value));
@@ -1903,8 +1907,7 @@ function shortIdentifier(value: string) {
 }
 
 function dateBoundary(value: string, edge: 'end' | 'start') {
-  if (!value) return undefined;
-  return `${value}T${edge === 'start' ? '00:00:00.000' : '23:59:59.999'}Z`;
+  return appCalendarDateBoundary(value, edge);
 }
 
 function downloadJson(filename: string, contents: string) {

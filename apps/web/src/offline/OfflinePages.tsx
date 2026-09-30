@@ -1,4 +1,5 @@
 import { LoadingState, PageLoadingState } from '../components/LoadingState';
+import { createAppDateTimeFormatter } from '../date-time';
 import { StatusMessage } from '../components/StatusMessage';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'wouter';
@@ -125,7 +126,11 @@ export function OfflineExplorePage() {
                 <p>{cached.pack.event.description}</p>
                 <p>
                   Available until{' '}
-                  {new Date(cached.pack.validUntil).toLocaleString()}.
+                  {createAppDateTimeFormatter(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  }).format(new Date(cached.pack.validUntil))}
+                  .
                 </p>
                 <button
                   className="button"

@@ -845,7 +845,15 @@ test('focuses and filters Explore events without breaking map following', async 
       await page
         .getByRole('button', { name: 'Collapse event details' })
         .click();
-      await page.getByRole('button', { name: 'Collapse events' }).click();
+      if (viewport.width < 1024) {
+        await expect(
+          page.getByRole('complementary', { name: 'Campus discovery' }),
+        ).toHaveAttribute('data-sheet-view', 'list');
+        await page.getByRole('button', { name: 'Collapse events' }).click();
+      }
+      await expect(
+        page.getByRole('complementary', { name: 'Campus discovery' }),
+      ).toHaveAttribute('data-sheet-view', 'peek');
 
       await page
         .getByRole('button', {
@@ -1308,9 +1316,7 @@ test('keeps no-event discovery usable when location and map are unavailable', as
     page.getByRole('button', { name: 'Location access disabled' }),
   ).toBeDisabled();
   await page.getByRole('button', { name: /^Events/u }).click();
-  await expect(
-    page.getByText('No published events are available.'),
-  ).toBeVisible();
+  await expect(page.getByText('No events available.')).toBeVisible();
   await expect(
     page.getByRole('complementary', { name: 'Campus discovery' }),
   ).toHaveAttribute('data-sheet-snap', 'expanded');

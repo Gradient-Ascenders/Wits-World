@@ -8,7 +8,8 @@ title: 'Basic game end-to-end tests'
 It requires `TEST_DATABASE_URL` to identify a disposable PostgreSQL/PostGIS test
 database. The runner migrates that database, applies the deterministic Basic
 fixture, creates a unique player/Author identity for the run, starts the real
-Fastify API and Vite application, and executes one Playwright scenario.
+Fastify API and Vite application, and executes the canonical Playwright scenario
+alongside six mocked shell/Explore regression tests.
 
 The scenario contains exactly 21 named `test.step` blocks. They cover identity
 and role resolution, discovery and map-independent presentation, authoritative
@@ -32,6 +33,18 @@ The scenario source is `apps/web/playwright/basic.deterministic.spec.ts`; its
 API harness is `apps/api/e2e/basic-server.ts`. A passing result is executable
 Basic integration evidence, not manual accessibility, external-service
 acceptance, gameplay-balance approval, or production smoke evidence.
+
+The seven tests can run concurrently: only the canonical journey mutates the
+real API/database; the other six intercept every API request in their own
+browser contexts. CI uses four workers and local runs use two. The canonical
+journey's 21 dependent steps remain sequential within one test. Ordinary tests
+have a two-minute budget, with 15-second action and 30-second navigation limits;
+the canonical journey retains its explicit eight-minute overall budget.
+
+Standalone runs build the API once before invoking compiled migration and seed
+entrypoints with `--test`. PR verification passes `--api-build-prepared` after
+database readiness has already built the API. A missing prepared build fails
+before migration or seeding rather than proceeding with absent entrypoints.
 
 The preceding document was generated, edited, and reviewed with the assistance
 of Codex[GPT-5] and ChatGPT-Web[GPT-5.6 Sol].

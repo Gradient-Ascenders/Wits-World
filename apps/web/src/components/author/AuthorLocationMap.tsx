@@ -51,7 +51,6 @@ export function AuthorLocationMap({
         }),
     pitch: 52,
     standardConfig: {
-      lightPreset: 'dusk',
       show3dBuildings: true,
       show3dLandmarks: true,
       show3dObjects: true,

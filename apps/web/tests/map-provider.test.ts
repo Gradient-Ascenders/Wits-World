@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getCampusLightPreset } from '../src/components/exploration/map-lighting';
 
 import {
   createMapboxMap,
+  DEFAULT_MAP_LAYER_VISIBILITY,
   type CampusDataset,
   type MapRegion,
 } from '../src/components/exploration/map-provider';
@@ -35,6 +37,8 @@ const mapboxState = vi.hoisted(() => ({
   remove: vi.fn(),
   resize: vi.fn(),
   setPadding: vi.fn(),
+  setConfigProperty: vi.fn(),
+  setLayoutProperty: vi.fn(),
   sources: new Map<string, unknown>(),
   layers: new Set<string>(),
 }));
@@ -59,6 +63,8 @@ vi.mock('mapbox-gl/esm', () => ({
     public addLayer = mapboxState.addLayer;
 
     public addSource = mapboxState.addSource;
+    public setConfigProperty = mapboxState.setConfigProperty;
+    public setLayoutProperty = mapboxState.setLayoutProperty;
 
     public getLayer(layerId: string) {
       return mapboxState.layers.has(layerId) ? {} : undefined;
@@ -216,6 +222,8 @@ beforeEach(() => {
   mapboxState.layers.clear();
   mapboxState.isLoaded = false;
   mapboxState.isStyleLoaded = false;
+  mapboxState.setConfigProperty.mockClear();
+  mapboxState.setLayoutProperty.mockClear();
   mapboxState.markerElements.length = 0;
   mapboxState.markerDragEnd = null;
   mapboxState.markerLngLat = { lat: -26.19205, lng: 28.03038 };
@@ -249,7 +257,198 @@ beforeEach(() => {
   mapboxState.remove.mockClear();
 });
 
+afterEach(() => {
+  mapboxState.handlers.get('remove')?.();
+  vi.useRealTimers();
+});
+
 describe('Mapbox Standard provider', () => {
+  it('updates campus lighting in place, restores it after style reload, and cleans up on removal', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-30T14:59:30Z'));
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
+    expect(mapboxState.mapConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: {
+          basemap: { ...configuration.standardConfig, lightPreset: 'day' },
+        },
+      }),
+    );
+    mapboxState.isStyleLoaded = true;
+    mapboxState.handlers.get('style.load')?.();
+    mapboxState.setConfigProperty.mockClear();
+    vi.advanceTimersByTime(60_000);
+    expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
+      'basemap',
+      'lightPreset',
+      'dusk',
+    );
+    mapboxState.setConfigProperty.mockClear();
+    vi.advanceTimersByTime(60_000);
+    expect(mapboxState.setConfigProperty).not.toHaveBeenCalled();
+    mapboxState.handlers.get('style.load')?.();
+    expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
+      'basemap',
+      'lightPreset',
+      'dusk',
+    );
+    expect(mapboxState.mapConstructor).toHaveBeenCalledTimes(1);
+    expect(mapboxState.easeTo).not.toHaveBeenCalled();
+    expect(mapboxState.jumpTo).not.toHaveBeenCalled();
+    controller.remove();
+    mapboxState.setConfigProperty.mockClear();
+    vi.setSystemTime(new Date('2026-09-30T18:00:00Z'));
+    vi.advanceTimersByTime(60_000);
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(mapboxState.setConfigProperty).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('refreshes on return to the tab and stops refreshing when cancelled', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-30T04:00:00Z'));
+    const abort = new AbortController();
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      abort.signal,
+    );
+    vi.setSystemTime(new Date('2026-09-30T06:00:00Z'));
+    window.dispatchEvent(new Event('focus'));
+    expect(mapboxState.setConfigProperty).not.toHaveBeenCalled();
+    mapboxState.isStyleLoaded = true;
+    mapboxState.handlers.get('style.load')?.();
+    expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
+      'basemap',
+      'lightPreset',
+      'day',
+    );
+    vi.setSystemTime(new Date('2026-09-30T18:00:00Z'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
+      'basemap',
+      'lightPreset',
+      'night',
+    );
+    abort.abort();
+    mapboxState.setConfigProperty.mockClear();
+    vi.advanceTimersByTime(60_000);
+    window.dispatchEvent(new Event('focus'));
+    expect(mapboxState.setConfigProperty).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    controller.remove();
+  });
+
+  it('toggles layers without losing selected geometry, marker state, or the camera', async () => {
+    mapboxState.isStyleLoaded = true;
+    const point = {
+      id: 'layer-event',
+      label: 'Great Hall',
+      latitude: -26.19205,
+      longitude: 28.03038,
+      radiusMetres: 75,
+    };
+    const region: MapRegion = {
+      id: 'layer-territory',
+      label: 'East Campus',
+      status: 'active',
+      ownerLabel: null,
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [28, -26],
+            [28.01, -26],
+            [28.01, -26.01],
+            [28, -26],
+          ],
+        ],
+      },
+    };
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [point],
+      new AbortController().signal,
+    );
+    controller.setSelectedPoint?.(point);
+    controller.setRegions?.([region]);
+    controller.setSelectedRegion?.(region);
+    const radius = mapboxState.sources.get('wits-selected-event-radius') as {
+      setData: ReturnType<typeof vi.fn>;
+    };
+    const territories = mapboxState.sources.get('wits-territory-regions') as {
+      setData: ReturnType<typeof vi.fn>;
+    };
+    controller.setLayerVisibility?.({
+      events: false,
+      radius: false,
+      territories: false,
+      details: false,
+      labels: false,
+    });
+    expect(mapboxState.markerElements[0]).toHaveStyle({ display: 'none' });
+    expect(radius.setData).toHaveBeenLastCalledWith({
+      features: [],
+      type: 'FeatureCollection',
+    });
+    expect(territories.setData).toHaveBeenLastCalledWith({
+      features: [],
+      type: 'FeatureCollection',
+    });
+    expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
+      'basemap',
+      'show3dObjects',
+      false,
+    );
+    expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
+      'basemap',
+      'showPointOfInterestLabels',
+      false,
+    );
+    controller.setPoints([point]);
+    controller.setSelectedPoint?.(point);
+    mapboxState.handlers.get('style.load')?.();
+    expect(mapboxState.markerElements[0]).toHaveStyle({ display: 'none' });
+    expect(radius.setData).toHaveBeenLastCalledWith({
+      features: [],
+      type: 'FeatureCollection',
+    });
+    controller.setLayerVisibility?.(DEFAULT_MAP_LAYER_VISIBILITY);
+    expect(mapboxState.markerElements[0]?.style.display).toBe('');
+    expect(mapboxState.markerElements[0]).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(radius.setData).toHaveBeenLastCalledWith(
+      expect.objectContaining({ features: [expect.any(Object)] }),
+    );
+    expect(territories.setData).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        features: [
+          expect.objectContaining({
+            properties: expect.objectContaining({ selected: true }),
+          }),
+        ],
+      }),
+    );
+    expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
+      'basemap',
+      'show3dObjects',
+      true,
+    );
+    expect(mapboxState.mapConstructor).toHaveBeenCalledOnce();
+    expect(mapboxState.easeTo).not.toHaveBeenCalled();
+    expect(mapboxState.jumpTo).not.toHaveBeenCalled();
+  });
+
   it('fails before construction when the public token is absent', async () => {
     await expect(
       createMapboxMap(
@@ -275,7 +474,12 @@ describe('Mapbox Standard provider', () => {
       expect.objectContaining({
         accessToken: 'pk.test-token',
         bearing: 20,
-        config: { basemap: configuration.standardConfig },
+        config: {
+          basemap: {
+            ...configuration.standardConfig,
+            lightPreset: getCampusLightPreset(),
+          },
+        },
         performanceMetricsCollection: false,
         pitch: 52,
         respectPrefersReducedMotion: true,
@@ -519,6 +723,60 @@ describe('Mapbox Standard provider', () => {
     current.click();
     expect(listener).toHaveBeenCalledOnce();
     expect(listener).toHaveBeenCalledWith('current-stop');
+  });
+
+  it('numbers trail pins, respects marker visibility, and clears numbers outside trail detail without drawing a line', async () => {
+    const points = [1, 2, 3].map((position) => ({
+      id: `stop-${position}`,
+      label: `Place ${position}`,
+      latitude: -26.192 + position / 10_000,
+      longitude: 28.03 + position / 10_000,
+      trailPosition: position,
+      trailState: 'locked' as const,
+      selectable: false,
+    }));
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      points,
+      new AbortController().signal,
+    );
+    expect(mapboxState.sources.has('wits-trail-sequence')).toBe(false);
+    expect(mapboxState.markerElements[0]).toHaveAccessibleName(
+      'Stop 1: Place 1, locked trail stop',
+    );
+    expect(
+      mapboxState.markerElements[0]!.querySelector('.event-marker__glyph'),
+    ).toHaveTextContent('1');
+
+    mapboxState.isStyleLoaded = true;
+    mapboxState.handlers.get('style.load')?.();
+    expect(mapboxState.sources.has('wits-trail-sequence')).toBe(false);
+    expect(mapboxState.layers.has('wits-trail-sequence-line')).toBe(false);
+
+    controller.setLayerVisibility?.({
+      ...DEFAULT_MAP_LAYER_VISIBILITY,
+      events: false,
+    });
+    expect(mapboxState.markerElements[0]!.style.display).toBe('none');
+    controller.setLayerVisibility?.(DEFAULT_MAP_LAYER_VISIBILITY);
+    expect(mapboxState.markerElements[0]!.style.display).toBe('');
+    controller.setPoints([{ ...points[0]!, trailPosition: 4 }]);
+    expect(
+      mapboxState.markerElements[0]!.querySelector('.event-marker__glyph'),
+    ).toHaveTextContent('4');
+    controller.setPoints([
+      { ...points[0]!, trailPosition: undefined, trailState: undefined },
+    ]);
+    expect(mapboxState.markerElements[0]).not.toHaveClass(
+      'event-marker--numbered',
+    );
+    expect(
+      mapboxState.markerElements[0]!.querySelector('.event-marker__glyph')!
+        .textContent,
+    ).toBe('');
+    controller.setPoints([]);
+    expect(mapboxState.markerRemove).toHaveBeenCalledTimes(3);
   });
 
   it('renders and replaces only the selected event geodesic source', async () => {

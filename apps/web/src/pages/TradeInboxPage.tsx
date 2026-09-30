@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../date-time';
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -394,7 +395,7 @@ function summaryTime(trade: TradeSummary) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));

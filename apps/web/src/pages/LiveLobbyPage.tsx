@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../date-time';
 import {
   ArrowLeft,
   Binoculars,
@@ -92,7 +93,7 @@ const queuePollMs = 2_500;
 const queueHeartbeatMs = 8_000;
 const standingsPageSize = 25;
 const numberFormatter = new Intl.NumberFormat('en-ZA');
-const seasonDateFormatter = new Intl.DateTimeFormat('en-ZA', {
+const seasonDateFormatter = createAppDateTimeFormatter('en-ZA', {
   dateStyle: 'medium',
   timeStyle: 'short',
 });
@@ -1734,7 +1735,7 @@ function toLiveError(value: unknown): LiveApiError {
 }
 
 function formatTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     hour: 'numeric',
     minute: '2-digit',
     second: '2-digit',

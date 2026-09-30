@@ -2,17 +2,23 @@ import { StateIcon } from '../StatusMessage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  CaretDown,
+  CalendarDots,
   CaretLeft,
   CaretRight,
   CaretUp,
   Crosshair,
   Cube,
+  FlagBanner,
   MagnifyingGlass,
+  MapPin,
+  Path,
+  SidebarSimple,
 } from '@phosphor-icons/react';
 
 import { BottomSheetSurface, type BottomSheetSnap } from './BottomSheetSurface';
 import { CampusMap } from './CampusMap';
+import { MapLayersControl } from './MapLayersControl';
+import { PanelCollapseButton } from './PanelCollapseButton';
 import {
   availabilityLabels,
   EventList,
@@ -42,6 +48,7 @@ import type {
   MapRegion,
   ReportedMapLocation,
 } from './map-provider';
+import { DEFAULT_MAP_LAYER_VISIBILITY } from './map-provider';
 import './exploration.css';
 
 interface CampusExplorerProps {
@@ -129,7 +136,7 @@ export function filterEventPresentations(
 }
 
 type MapEventPresentation = EventPresentation &
-  Pick<MapPoint, 'selectable' | 'trailState'>;
+  Pick<MapPoint, 'selectable' | 'trailPosition' | 'trailState'>;
 
 function toMapPoints(
   events: readonly MapEventPresentation[],
@@ -145,6 +152,9 @@ function toMapPoints(
     reachable: eligibility[event.id]?.status === 'reachable',
     ...(event.selectable === undefined ? {} : { selectable: event.selectable }),
     ...(event.trailState === undefined ? {} : { trailState: event.trailState }),
+    ...(event.trailPosition === undefined
+      ? {}
+      : { trailPosition: event.trailPosition }),
   }));
 }
 
@@ -183,6 +193,12 @@ export function CampusExplorer({
     () => window.matchMedia?.(MOBILE_MAP_QUERY).matches ?? false,
   );
   const [mobile3dEnabled, setMobile3dEnabled] = useState(false);
+  const [isDesktopMapViewport, setIsDesktopMapViewport] = useState(
+    () => window.matchMedia?.('(min-width: 64rem)').matches ?? false,
+  );
+  const [layerVisibility, setLayerVisibility] = useState(
+    DEFAULT_MAP_LAYER_VISIBILITY,
+  );
   const [discoverySection, setDiscoverySection] =
     useState<DiscoverySection>('events');
   const [following, setFollowing] = useState(false);
@@ -239,6 +255,7 @@ export function CampusExplorer({
           selectable: step.state === 'current',
           startsAt: step.startsAt,
           title: step.title,
+          trailPosition: step.position,
           trailState:
             step.state === 'unavailable' &&
             (step.unavailableReason === 'event_retired' ||
@@ -329,6 +346,17 @@ export function CampusExplorer({
     return () => media.removeEventListener('change', updateViewport);
   }, []);
 
+  useEffect(() => {
+    const media = window.matchMedia?.('(min-width: 64rem)');
+    if (!media) return;
+    const updateViewport = (event: MediaQueryListEvent): void => {
+      setIsDesktopMapViewport(event.matches);
+    };
+    setIsDesktopMapViewport(media.matches);
+    media.addEventListener('change', updateViewport);
+    return () => media.removeEventListener('change', updateViewport);
+  }, []);
+
   const focusDiscoveryReturnTarget = useCallback(
     (
       eventId: string | null = selectedEventId,
@@ -349,7 +377,7 @@ export function CampusExplorer({
           eventControl ??
           panel.querySelector<HTMLElement>('[aria-pressed="true"]') ??
           panel.querySelector<HTMLElement>(
-            '.discovery-navigation__item[aria-current="page"]',
+            '.explore-mode-navigation [aria-current="page"]',
           ) ??
           panel.querySelector<HTMLElement>('h2');
         target?.focus();
@@ -632,6 +660,12 @@ export function CampusExplorer({
   };
 
   const collapsePanel = (): void => {
+    if (window.matchMedia?.('(min-width: 64rem)').matches) {
+      setPanelMode('peek');
+      setSheetSnap('peek');
+      window.setTimeout(() => peekButtonRef.current?.focus(), 0);
+      return;
+    }
     dismissPanel();
   };
 
@@ -670,25 +704,59 @@ export function CampusExplorer({
       <span>3D</span>
     </button>
   ) : null;
-  const modeNavigation = (
-    <nav aria-label="Explore view" className="explore-mode-navigation">
+  const renderModeNavigation = (rail = false) => (
+    <nav
+      aria-label={rail ? 'Explore shortcuts' : 'Explore view'}
+      className={rail ? 'explore-rail-navigation' : 'explore-mode-navigation'}
+    >
       {(
         [
-          ['discover', 'Discover'],
-          ['territories', 'Territories'],
+          ['events', 'Events', CalendarDots],
+          ['nearby', 'Nearby', MapPin],
+          ['trails', 'Trails', Path],
+          ['territories', 'Territories', FlagBanner],
         ] as const
-      ).map(([mode, label]) => (
+      ).map(([section, label, Icon]) => (
         <button
-          aria-current={exploreMode === mode ? 'page' : undefined}
-          key={mode}
-          onClick={() => showExploreMode(mode)}
+          aria-controls="explore-event-sheet-content"
+          aria-current={
+            (
+              section === 'territories'
+                ? exploreMode === 'territories'
+                : exploreMode === 'discover' &&
+                  (discoverySection === section ||
+                    (section === 'trails' &&
+                      discoverySection === 'trail-detail'))
+            )
+              ? 'page'
+              : undefined
+          }
+          key={section}
+          onClick={() => {
+            if (section === 'territories') {
+              showExploreMode('territories');
+              if (rail) {
+                onClearTerritorySelection();
+                setPanelMode('list');
+                setSheetSnap('expanded');
+              }
+            } else {
+              onExploreModeChange('discover');
+              showDiscoverySection(section);
+              setPanelMode('list');
+              setSheetSnap('expanded');
+            }
+          }}
+          aria-label={rail ? `Open ${label}` : undefined}
+          title={rail ? label : undefined}
           type="button"
         >
-          {label}
+          {rail ? <Icon aria-hidden="true" size={22} /> : label}
         </button>
       ))}
     </nav>
   );
+  const modeNavigation = renderModeNavigation();
 
   return (
     <section
@@ -718,6 +786,9 @@ export function CampusExplorer({
         focusPointRequest={focusPointRequest}
         focusRegionRequest={focusRegionRequest}
         mapFactory={mapFactory}
+        layerVisibility={
+          isDesktopMapViewport ? layerVisibility : DEFAULT_MAP_LAYER_VISIBILITY
+        }
         onFollowStateChange={setFollowing}
         onPointSelect={selectEvent}
         onRegionSelect={selectTerritory}
@@ -736,6 +807,12 @@ export function CampusExplorer({
       </p>
 
       {mapDetailToggle}
+      {isDesktopMapViewport ? (
+        <MapLayersControl
+          onChange={setLayerVisibility}
+          visibility={layerVisibility}
+        />
+      ) : null}
 
       <div className="location-control-wrap">
         <div className="location-control__stack">
@@ -802,62 +879,78 @@ export function CampusExplorer({
         view={panelMode}
       >
         {panelMode === 'peek' ? (
-          <button
-            aria-expanded="false"
-            aria-label={
-              exploreMode === 'territories'
-                ? selectedRegion === null
-                  ? `Territories — ${territoryList.zones.length} ${territoryList.zones.length === 1 ? 'zone' : 'zones'}`
-                  : `Territories — ${selectedRegion.label} selected, open details`
-                : selectedEvent === null
-                  ? `Events — ${visibleEvents.length} ${visibleEvents.length === 1 ? 'event' : 'events'}, ${activeEventCount} available now`
-                  : `Events — ${selectedEvent.title} selected, open details`
-            }
-            className="event-panel__peek"
-            onClick={openSheet}
-            ref={peekButtonRef}
-            type="button"
-          >
-            <span className="event-panel__peek-copy">
-              <strong>
-                {exploreMode === 'territories'
-                  ? (selectedRegion?.label ?? 'Campus territories')
+          <>
+            <button
+              aria-controls="explore-event-sheet-content"
+              aria-expanded="false"
+              aria-label={
+                exploreMode === 'territories'
+                  ? selectedRegion === null
+                    ? `Territories — ${territoryList.zones.length} ${territoryList.zones.length === 1 ? 'zone' : 'zones'}`
+                    : `Territories — ${selectedRegion.label} selected, open details`
                   : selectedEvent === null
-                    ? discovery.status === 'ready'
-                      ? `${visibleEvents.length} campus ${visibleEvents.length === 1 ? 'event' : 'events'}`
-                      : 'Campus events'
-                    : selectedEvent.title}
-              </strong>
-              <span>
-                {exploreMode === 'territories'
-                  ? selectedRegion !== null
-                    ? selectedRegion.ownerLabel
-                      ? `Owned by ${selectedRegion.ownerLabel} · View details`
-                      : 'Unclaimed · View details'
-                    : territoryList.status === 'loading'
-                      ? 'Loading ownership…'
-                      : territoryList.status === 'error'
-                        ? 'Territories could not load · Open to retry'
-                        : territoryList.status === 'empty'
-                          ? 'No territories available'
-                          : `${territoryList.zones.filter((zone) => zone.status === 'active').length} active`
-                  : selectedEvent === null
-                    ? discovery.status === 'ready'
-                      ? `${activeEventCount} available now`
-                      : discovery.status === 'loading'
-                        ? 'Loading published events…'
-                        : discovery.status === 'error'
-                          ? 'Events could not load · Open to retry'
-                          : 'No published events · Check back soon'
-                    : `${availabilityLabels[selectedEvent.availability]} · View details`}
+                    ? `Events — ${visibleEvents.length} ${visibleEvents.length === 1 ? 'event' : 'events'}, ${activeEventCount} available now`
+                    : `Events — ${selectedEvent.title} selected, open details`
+              }
+              className="event-panel__peek"
+              onClick={openSheet}
+              ref={peekButtonRef}
+              title={
+                exploreMode === 'territories'
+                  ? 'Open territories'
+                  : selectedEvent !== null
+                    ? `Open ${selectedEvent.title}`
+                    : 'Open campus discovery'
+              }
+              type="button"
+            >
+              <SidebarSimple
+                aria-hidden="true"
+                className="event-panel__rail-icon"
+                size={20}
+              />
+              <span className="event-panel__peek-copy">
+                <strong>
+                  {exploreMode === 'territories'
+                    ? (selectedRegion?.label ?? 'Campus territories')
+                    : selectedEvent === null
+                      ? discovery.status === 'ready'
+                        ? `${visibleEvents.length} campus ${visibleEvents.length === 1 ? 'event' : 'events'}`
+                        : 'Campus events'
+                      : selectedEvent.title}
+                </strong>
+                <span>
+                  {exploreMode === 'territories'
+                    ? selectedRegion !== null
+                      ? selectedRegion.ownerLabel
+                        ? `Owned by ${selectedRegion.ownerLabel} · View details`
+                        : 'Unclaimed · View details'
+                      : territoryList.status === 'loading'
+                        ? 'Loading ownership…'
+                        : territoryList.status === 'error'
+                          ? 'Territories could not load · Open to retry'
+                          : territoryList.status === 'empty'
+                            ? 'No territories available'
+                            : `${territoryList.zones.filter((zone) => zone.status === 'active').length} active`
+                    : selectedEvent === null
+                      ? discovery.status === 'ready'
+                        ? `${activeEventCount} available now`
+                        : discovery.status === 'loading'
+                          ? 'Loading events…'
+                          : discovery.status === 'error'
+                            ? 'Events could not load · Open to retry'
+                            : 'No events · Check back later'
+                      : `${availabilityLabels[selectedEvent.availability]} · View details`}
+                </span>
               </span>
-            </span>
-            <CaretUp
-              aria-hidden="true"
-              className="event-panel__peek-chevron"
-              size={20}
-            />
-          </button>
+              <CaretUp
+                aria-hidden="true"
+                className="event-panel__peek-chevron"
+                size={20}
+              />
+            </button>
+            {renderModeNavigation(true)}
+          </>
         ) : null}
 
         {panelMode !== 'peek' && exploreMode === 'territories' ? (
@@ -884,60 +977,31 @@ export function CampusExplorer({
                   {discoverySection === 'events'
                     ? 'Campus events'
                     : discoverySection === 'nearby'
-                      ? 'Nearby to you'
+                      ? 'Nearby events'
                       : 'Trails'}
                 </h2>
                 {discoverySection === 'events' &&
                 discovery.status === 'ready' ? (
                   <span className="event-panel__summary">
                     {visibleEvents.length === events.length
-                      ? `${events.length} published`
+                      ? `${events.length} ${events.length === 1 ? 'event' : 'events'}`
                       : `${visibleEvents.length} of ${events.length} shown`}
                   </span>
                 ) : null}
               </div>
-              <button
-                aria-label={
+              <PanelCollapseButton
+                label={
                   discoverySection === 'events'
                     ? 'Collapse events'
                     : discoverySection === 'nearby'
                       ? 'Collapse nearby discovery'
                       : 'Collapse trails'
                 }
-                className="event-panel__close"
                 onClick={collapsePanel}
-                type="button"
-              >
-                <CaretDown aria-hidden="true" size={20} />
-              </button>
+              />
             </div>
             {modeNavigation}
             <div className="event-panel__scroll">
-              <nav
-                aria-label="Campus discovery"
-                className="discovery-navigation"
-              >
-                {(
-                  [
-                    ['events', 'Events'],
-                    ['nearby', 'Nearby'],
-                    ['trails', 'Trails'],
-                  ] as const
-                ).map(([section, label]) => (
-                  <button
-                    aria-current={
-                      discoverySection === section ? 'page' : undefined
-                    }
-                    className="discovery-navigation__item"
-                    key={section}
-                    onClick={() => showDiscoverySection(section)}
-                    type="button"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </nav>
-
               {discoverySection === 'events' && discovery.status === 'ready' ? (
                 <div className="event-discovery-controls">
                   <label className="event-search">
@@ -949,7 +1013,7 @@ export function CampusExplorer({
                     />
                     <input
                       onChange={(event) => setSearchQuery(event.target.value)}
-                      placeholder="Search"
+                      placeholder="Search events"
                       type="search"
                       value={searchQuery}
                     />
@@ -984,7 +1048,7 @@ export function CampusExplorer({
                 >
                   <StateIcon tone="empty" />
                   <strong>No events match these filters.</strong>
-                  <p>Adjust the search or status to see more campus events.</p>
+                  <p>Change your search or clear the filters.</p>
                   <button
                     className="button button--quiet"
                     disabled={!hasActiveFilters}
@@ -1035,16 +1099,12 @@ export function CampusExplorer({
                 onClick={() => showDiscoverySection('trails')}
                 type="button"
               >
-                <ArrowLeft aria-hidden="true" size={20} /> Trails
+                <ArrowLeft aria-hidden="true" size={20} /> All trails
               </button>
-              <button
-                aria-label="Collapse trail details"
-                className="event-panel__close"
+              <PanelCollapseButton
+                label="Collapse trail details"
                 onClick={collapsePanel}
-                type="button"
-              >
-                <CaretDown aria-hidden="true" size={20} />
-              </button>
+              />
             </div>
             {modeNavigation}
             <div className="event-panel__scroll">
@@ -1077,7 +1137,7 @@ export function CampusExplorer({
               >
                 <ArrowLeft aria-hidden="true" size={20} />
                 {selectionOriginRef.current === 'nearby'
-                  ? 'Nearby'
+                  ? 'Back to nearby'
                   : selectionOriginRef.current === 'trail-detail'
                     ? 'Trail'
                     : 'All events'}
@@ -1121,14 +1181,10 @@ export function CampusExplorer({
                   </button>
                 </div>
               ) : null}
-              <button
-                aria-label="Collapse event details"
-                className="event-panel__close"
+              <PanelCollapseButton
+                label="Collapse event details"
                 onClick={collapsePanel}
-                type="button"
-              >
-                <CaretDown aria-hidden="true" size={20} />
-              </button>
+              />
             </div>
             {modeNavigation}
             <div className="event-panel__scroll">
@@ -1185,7 +1241,7 @@ function getLocationControl(
       label:
         state === 'checking-permission'
           ? 'Checking location access'
-          : 'Finding reported location',
+          : 'Finding your location',
     };
   }
 
@@ -1194,7 +1250,7 @@ function getLocationControl(
       action: 'none',
       active: false,
       disabled: true,
-      guidance: 'Enable location in browser settings to check event range.',
+      guidance: 'Allow location in browser settings, then reload this page.',
       label: 'Location access disabled',
     };
   }
@@ -1206,7 +1262,7 @@ function getLocationControl(
       disabled: true,
       guidance:
         state === 'blocked'
-          ? 'Live location needs a secure, permitted browser context.'
+          ? 'Open this page over HTTPS and allow location access.'
           : 'Live location is not supported in this browser.',
       label: 'Live location unavailable',
     };
@@ -1220,7 +1276,7 @@ function getLocationControl(
       state === 'timeout'
         ? 'The signal timed out. Move to an open area and retry.'
         : state === 'stale'
-          ? 'The last reported-location marker may be stale.'
+          ? 'The map shows your last known location.'
           : state === 'unavailable'
             ? 'Check device location services and retry.'
             : undefined,

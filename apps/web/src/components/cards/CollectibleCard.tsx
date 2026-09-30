@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../../date-time';
 import { useState, type MouseEventHandler, type ReactNode } from 'react';
 
 import type {
@@ -258,7 +259,7 @@ function acquisitionLabel(kind: OwnedCard['acquisitionKind']) {
 }
 
 function formatAcquiredDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
   }).format(new Date(value));
 }

@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../date-time';
 import {
   Broadcast,
   CheckCircle,
@@ -1021,7 +1022,7 @@ function formatCountdown(seconds: number): string {
 }
 
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));

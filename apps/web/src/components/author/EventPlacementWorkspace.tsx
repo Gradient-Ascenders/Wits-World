@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../../date-time';
 import {
   ArrowClockwiseIcon,
   ArrowCounterClockwiseIcon,
@@ -928,12 +929,7 @@ function PlacementStateRibbon({ state }: { state: AuthorPlacementState }) {
         </div>
         <div>
           <dt>Next rotation</dt>
-          <dd>
-            {formatDateTime(
-              state.nextRotationBoundary,
-              state.policy.rotationTimezone,
-            )}
-          </dd>
+          <dd>{formatDateTime(state.nextRotationBoundary)}</dd>
         </div>
         <div>
           <dt>Automatic rotation</dt>
@@ -1167,10 +1163,7 @@ function AssignmentComparison({
           </p>
         </div>
         {plan ? (
-          <span>
-            Preview expires{' '}
-            {formatDateTime(plan.validUntil, state.policy.rotationTimezone)}
-          </span>
+          <span>Preview expires {formatDateTime(plan.validUntil)}</span>
         ) : null}
       </div>
       {eventIds.length === 0 ? (
@@ -1995,14 +1988,13 @@ function isExpired(value: string): boolean {
   return Number.isFinite(timestamp) && timestamp <= Date.now();
 }
 
-function formatDateTime(value: string, timeZone?: string): string {
+function formatDateTime(value: string): string {
   try {
-    return new Intl.DateTimeFormat('en-ZA', {
+    return createAppDateTimeFormatter('en-ZA', {
       dateStyle: 'medium',
       timeStyle: 'short',
-      ...(timeZone ? { timeZone } : {}),
     }).format(new Date(value));
   } catch {
-    return new Date(value).toLocaleString();
+    return 'Time unavailable';
   }
 }

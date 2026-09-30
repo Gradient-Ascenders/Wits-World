@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../date-time';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   ArrowLeft,
@@ -609,7 +610,7 @@ function terminalCopy(trade: CardTrade) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));

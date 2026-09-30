@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowClockwise, MapTrifold } from '@phosphor-icons/react';
-import { QuestMarker } from '../branding/QuestMarker';
+import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
 import { useSignInMapStatus } from '../auth/startup-state';
 
 import {
   createMapboxMap,
+  DEFAULT_MAP_LAYER_VISIBILITY,
   type MapArea,
   type MapConfiguration,
   type MapCoordinate,
   type MapController,
   type MapFactory,
+  type MapLayerVisibility,
   type MapPoint,
   type MapRegion,
   type ReportedMapLocation,
@@ -22,6 +24,7 @@ interface CampusMapProps {
   errorDescription?: string;
   focusPointRequest?: number;
   mapFactory?: MapFactory;
+  layerVisibility?: MapLayerVisibility;
   onCoordinateSelect?: (coordinate: MapCoordinate) => void;
   onFollowStateChange?: (following: boolean) => void;
   onPointSelect?: (pointId: string) => void;
@@ -47,6 +50,7 @@ export function CampusMap({
   focusPointRequest = 0,
   focusRegionRequest = 0,
   mapFactory = createMapboxMap,
+  layerVisibility = DEFAULT_MAP_LAYER_VISIBILITY,
   onCoordinateSelect,
   onFollowStateChange,
   onPointSelect,
@@ -67,6 +71,7 @@ export function CampusMap({
   const pointsRef = useRef(points);
   const regionsRef = useRef(regions);
   const areasRef = useRef(areas);
+  const layerVisibilityRef = useRef(layerVisibility);
   const focusPointRequestRef = useRef(focusPointRequest);
   const focusRegionRequestRef = useRef(focusRegionRequest);
   const reportedLocationRef = useRef<ReportedMapLocation | null>(
@@ -82,6 +87,7 @@ export function CampusMap({
   pointsRef.current = points;
   regionsRef.current = regions;
   areasRef.current = areas;
+  layerVisibilityRef.current = layerVisibility;
   focusPointRequestRef.current = focusPointRequest;
   focusRegionRequestRef.current = focusRegionRequest;
   onCoordinateSelectRef.current = onCoordinateSelect;
@@ -95,6 +101,10 @@ export function CampusMap({
   useEffect(() => {
     controllerRef.current?.setPoints(points);
   }, [points]);
+
+  useEffect(() => {
+    controllerRef.current?.setLayerVisibility?.(layerVisibility);
+  }, [layerVisibility]);
 
   useEffect(() => {
     controllerRef.current?.setRegions?.(regions);
@@ -245,6 +255,7 @@ export function CampusMap({
         map.setPoints(pointsRef.current);
         map.setRegions?.(regionsRef.current);
         map.setAreas?.(areasRef.current);
+        map.setLayerVisibility?.(layerVisibilityRef.current);
         map.setReportedLocation(reportedLocationRef.current);
         map.setSelectedPoint?.(selectedPointRef.current);
         map.setSelectedRegion?.(selectedRegionRef.current);
@@ -316,10 +327,10 @@ export function CampusMap({
       />
 
       {status === 'loading' ? (
-        <div aria-live="polite" className="map-state" role="status">
-          <QuestMarker />
-          <span>Loading the campus map…</span>
-        </div>
+        <ExplorationLoadingPanel
+          className="map-state exploration-loading-panel--inline"
+          label="Loading the campus map…"
+        />
       ) : null}
 
       {status === 'error' ? (

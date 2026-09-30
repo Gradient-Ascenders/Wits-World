@@ -9,6 +9,8 @@ import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { prefersReducedMotion } from '../../accessibility/preferences';
+import { getCampusLightPreset, type MapboxLightPreset } from './map-lighting';
+export type { MapboxLightPreset } from './map-lighting';
 import type {
   IControl,
   Map as MapboxMap,
@@ -28,6 +30,7 @@ export interface MapPoint {
   reachable?: boolean;
   selectable?: boolean;
   placementStates?: readonly PlacementMapState[];
+  trailPosition?: number;
   trailState?: 'completed' | 'current' | 'locked' | 'retired' | 'unavailable';
 }
 
@@ -63,10 +66,24 @@ export type MapBounds = readonly [
   northEast: readonly [longitude: number, latitude: number],
 ];
 
-export type MapboxLightPreset = 'dawn' | 'day' | 'dusk' | 'night';
+export interface MapLayerVisibility {
+  events: boolean;
+  radius: boolean;
+  territories: boolean;
+  details: boolean;
+  labels: boolean;
+}
+
+export const DEFAULT_MAP_LAYER_VISIBILITY: MapLayerVisibility = {
+  events: true,
+  radius: true,
+  territories: true,
+  details: true,
+  labels: true,
+};
 
 export interface MapboxStandardConfiguration extends Record<string, unknown> {
-  lightPreset: MapboxLightPreset;
+  lightPreset?: MapboxLightPreset;
   show3dBuildings: boolean;
   show3dLandmarks: boolean;
   show3dObjects: boolean;
@@ -149,6 +166,7 @@ export interface MapController {
     listener: ((pointId: string) => void) | null,
   ) => void;
   setPoints: (points: readonly MapPoint[]) => void;
+  setLayerVisibility?: (visibility: MapLayerVisibility) => void;
   setRegions?: (regions: readonly MapRegion[]) => void;
   setRegionSelectionListener?: (
     listener: ((regionId: string) => void) | null,
@@ -871,12 +889,16 @@ export const createMapboxMap: MapFactory = async (
         zoom: configuration.zoom,
       };
 
+  const initialLightPreset = getCampusLightPreset();
   const map = new mapboxgl.Map({
     accessToken: configuration.accessToken,
     attributionControl: false,
     bearing: configuration.bearing,
     config: {
-      basemap: configuration.standardConfig,
+      basemap: {
+        ...configuration.standardConfig,
+        lightPreset: initialLightPreset,
+      },
     },
     container,
     performanceMetricsCollection: false,
@@ -911,6 +933,7 @@ export const createMapboxMap: MapFactory = async (
     });
   }
 
+  let layerVisibility = DEFAULT_MAP_LAYER_VISIBILITY;
   const markerInteraction = {
     coordinateSelectionListener: null as
       ((coordinate: MapCoordinate) => void) | null,
@@ -1008,6 +1031,7 @@ export const createMapboxMap: MapFactory = async (
         'event-marker',
         `event-marker--${availability}`,
         point.trailState ? `event-marker--trail-${point.trailState}` : '',
+        point.trailPosition === undefined ? '' : 'event-marker--numbered',
         ...(point.placementStates ?? []).map(
           (state) => `event-marker--placement-${state}`,
         ),
@@ -1022,6 +1046,7 @@ export const createMapboxMap: MapFactory = async (
       // These markers are interactive controls, including for keyboard users.
       record.button.setAttribute('role', 'button');
       record.button.dataset.trailState = point.trailState ?? '';
+      record.button.dataset.trailPosition = String(point.trailPosition ?? '');
       record.button.dataset.placementStates =
         point.placementStates?.join(' ') ?? '';
       record.button.setAttribute(
@@ -1029,11 +1054,16 @@ export const createMapboxMap: MapFactory = async (
         point.draggable
           ? `Focus ${point.label}. Drag the marker to adjust it, or use the coordinate fields for keyboard entry.`
           : point.trailState
-            ? `${selectable ? 'Select ' : ''}${point.label}, ${trailStateLabels[point.trailState]}`
+            ? `${selectable ? 'Select ' : ''}${point.trailPosition === undefined ? '' : `Stop ${point.trailPosition}: `}${point.label}, ${trailStateLabels[point.trailState]}`
             : `Select ${point.label}, ${availabilityLabels[availability]}${point.reachable ? ', in range' : ''}`,
       );
       record.button.setAttribute('aria-pressed', String(selected));
       record.button.title = point.label;
+      record.button.style.display = layerVisibility.events ? '' : 'none';
+      const markerGlyph = record.button.querySelector('.event-marker__glyph');
+      if (markerGlyph !== null) {
+        markerGlyph.textContent = String(point.trailPosition ?? '');
+      }
       const markerLabel = record.button.querySelector('.event-marker__label');
       if (markerLabel !== null) {
         markerLabel.textContent = point.label;
@@ -1075,24 +1105,26 @@ export const createMapboxMap: MapFactory = async (
   };
   const syncRegions = (): void => {
     const data: FeatureCollection<Polygon | MultiPolygon> = {
-      features: currentRegions.map((region) => ({
-        geometry: region.geometry,
-        properties: {
-          id: region.id,
-          label: region.label,
-          mapLabel: `${region.label}\n${
-            region.status === 'suspended'
-              ? 'Suspended'
-              : region.ownerLabel
-                ? `Owned by ${region.ownerLabel}`
-                : 'Unclaimed'
-          }`,
-          ownerLabel: region.ownerLabel,
-          selected: region.id === regionInteraction.selectedRegionId,
-          status: region.status,
-        },
-        type: 'Feature',
-      })),
+      features: (layerVisibility.territories ? currentRegions : []).map(
+        (region) => ({
+          geometry: region.geometry,
+          properties: {
+            id: region.id,
+            label: region.label,
+            mapLabel: `${region.label}\n${
+              region.status === 'suspended'
+                ? 'Suspended'
+                : region.ownerLabel
+                  ? `Owned by ${region.ownerLabel}`
+                  : 'Unclaimed'
+            }`,
+            ownerLabel: region.ownerLabel,
+            selected: region.id === regionInteraction.selectedRegionId,
+            status: region.status,
+          },
+          type: 'Feature',
+        }),
+      ),
       type: 'FeatureCollection',
     };
     const source = map.getSource(TERRITORY_SOURCE_ID) as
@@ -1232,6 +1264,7 @@ export const createMapboxMap: MapFactory = async (
   const syncSelectedRadius = (): void => {
     const data: FeatureCollection<Polygon> = {
       features:
+        !layerVisibility.radius ||
         selectedRadiusPoint === null ||
         selectedRadiusPoint.radiusMetres === undefined
           ? []
@@ -1329,6 +1362,89 @@ export const createMapboxMap: MapFactory = async (
     },
     renderAreas,
   );
+  let lightingStopped = false;
+  let appliedLightPreset = initialLightPreset;
+  const syncLighting = (force = false): void => {
+    if (lightingStopped || signal.aborted || !map.isStyleLoaded()) return;
+    const lightPreset = getCampusLightPreset();
+    if (!force && lightPreset === appliedLightPreset) return;
+    map.setConfigProperty('basemap', 'lightPreset', lightPreset);
+    appliedLightPreset = lightPreset;
+  };
+  const refreshLighting = (): void => syncLighting();
+  const lightingInterval = window.setInterval(refreshLighting, 60_000);
+  const stopLighting = (): void => {
+    lightingStopped = true;
+    window.clearInterval(lightingInterval);
+    document.removeEventListener('visibilitychange', refreshLighting);
+    window.removeEventListener('focus', refreshLighting);
+    signal.removeEventListener('abort', stopLighting);
+  };
+  document.addEventListener('visibilitychange', refreshLighting);
+  window.addEventListener('focus', refreshLighting);
+  signal.addEventListener('abort', stopLighting, { once: true });
+  map.on('style.load', () => syncLighting(true));
+  map.on('remove', stopLighting);
+  const removeMap = controller.remove;
+  controller.remove = () => {
+    stopLighting();
+    removeMap();
+  };
+  const syncBasemapVisibility = (): void => {
+    for (const key of [
+      'show3dObjects',
+      'show3dBuildings',
+      'show3dLandmarks',
+      'show3dTrees',
+    ] as const) {
+      map.setConfigProperty(
+        'basemap',
+        key,
+        layerVisibility.details && configuration.standardConfig[key],
+      );
+    }
+    for (const key of [
+      'showPlaceLabels',
+      'showPointOfInterestLabels',
+      'showRoadLabels',
+      'showTransitLabels',
+    ]) {
+      map.setConfigProperty(
+        'basemap',
+        key,
+        layerVisibility.labels && configuration.standardConfig[key] !== false,
+      );
+    }
+    if (map.getLayer(CAMPUS_BUILDING_LAYER_ID)) {
+      map.setLayoutProperty(
+        CAMPUS_BUILDING_LAYER_ID,
+        'visibility',
+        layerVisibility.details ? 'visible' : 'none',
+      );
+    }
+    if (map.getLayer(CAMPUS_LABEL_LAYER_ID)) {
+      map.setLayoutProperty(
+        CAMPUS_LABEL_LAYER_ID,
+        'visibility',
+        layerVisibility.labels ? 'visible' : 'none',
+      );
+    }
+  };
+  map.on('style.load', syncBasemapVisibility);
+  controller.setLayerVisibility = (visibility) => {
+    const basemapChanged =
+      visibility.details !== layerVisibility.details ||
+      visibility.labels !== layerVisibility.labels;
+    layerVisibility = visibility;
+    for (const { button } of markerRecords.values()) {
+      button.style.display = visibility.events ? '' : 'none';
+    }
+    if (map.isStyleLoaded()) {
+      syncSelectedRadius();
+      syncRegions();
+      if (basemapChanged) syncBasemapVisibility();
+    }
+  };
   controller.setPoints(points);
 
   return controller;
