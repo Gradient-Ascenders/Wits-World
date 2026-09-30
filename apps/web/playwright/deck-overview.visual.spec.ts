@@ -182,6 +182,103 @@ test('recovers the authoritative active match instead of creating another', asyn
   expect(createRequests).toBe(0);
 });
 
+test('loads the match API on deck start and creates only one match', async ({
+  page,
+}) => {
+  const deck = buildDeck('Active Campus Five', 'wit', true, 911);
+  const match = activeMatch();
+  const matchModuleRequests: string[] = [];
+  let createRequests = 0;
+  let releaseCreate: () => void = () => {};
+  const createGate = new Promise<void>((resolve) => {
+    releaseCreate = resolve;
+  });
+
+  page.on('request', (request) => {
+    if (/\/src\/api\/matches\.ts(?:\?|$)/u.test(request.url())) {
+      matchModuleRequests.push(request.url());
+    }
+  });
+  await page.route(`${API_BASE_URL}/auth/me`, (route) => json(route, PLAYER));
+  await page.route(`${API_BASE_URL}/cards/collection`, (route) =>
+    json(route, {
+      cards: buildStarterCards('wit'),
+      requestId: 'deck-create-cards',
+    }),
+  );
+  await page.route(`${API_BASE_URL}/decks`, (route) =>
+    json(route, { decks: [deck], requestId: 'deck-create-decks' }),
+  );
+  await page.route(`${API_BASE_URL}/matches/cpu`, async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        body: JSON.stringify({ code: 'CPU_MATCH_NOT_FOUND' }),
+        contentType: 'application/json',
+        status: 404,
+      });
+      return;
+    }
+    createRequests += 1;
+    await createGate;
+    await json(route, { ...match, requestId: 'deck-created-match' });
+  });
+  await page.route(`${API_BASE_URL}/matches/${match.matchId}`, (route) =>
+    json(route, { ...match, requestId: 'deck-created-state' }),
+  );
+
+  await page.goto('/decks');
+  const button = page.getByRole('button', { name: 'Start CPU match' });
+  await expect(button).toBeVisible();
+  expect(matchModuleRequests).toHaveLength(0);
+  const createRequest = page.waitForRequest(
+    (request) =>
+      request.url() === `${API_BASE_URL}/matches/cpu` &&
+      request.method() === 'POST',
+  );
+  await page.evaluate(() => {
+    const start = [...document.querySelectorAll('button')].find(
+      (candidate) => candidate.textContent?.trim() === 'Start CPU match',
+    );
+    start?.click();
+    start?.click();
+  });
+  try {
+    await createRequest;
+    await expect(
+      page.getByRole('button', { name: 'Starting CPU match…' }),
+    ).toBeDisabled();
+    expect(matchModuleRequests).toHaveLength(1);
+    expect(createRequests).toBe(1);
+  } finally {
+    releaseCreate();
+  }
+  await expect(page).toHaveURL(`/matches/${match.matchId}`);
+});
+
+test('surfaces a failed match-module load through the existing retry UI', async ({
+  page,
+}) => {
+  const deck = buildDeck('Active Campus Five', 'wit', true, 912);
+  await page.route(`${API_BASE_URL}/auth/me`, (route) => json(route, PLAYER));
+  await page.route(`${API_BASE_URL}/cards/collection`, (route) =>
+    json(route, {
+      cards: buildStarterCards('wit'),
+      requestId: 'deck-module-error-cards',
+    }),
+  );
+  await page.route(`${API_BASE_URL}/decks`, (route) =>
+    json(route, { decks: [deck], requestId: 'deck-module-error-decks' }),
+  );
+  await page.route('**/src/api/matches.ts*', (route) => route.abort());
+
+  await page.goto('/decks');
+  await page.getByRole('button', { name: 'Start CPU match' }).click();
+  await expect(page.getByRole('alert')).toContainText('CPU match not opened.');
+  await expect(
+    page.getByRole('button', { name: 'Reconcile and try again' }),
+  ).toBeVisible();
+});
+
 test('keeps exact-copy deck editing dense and reachable across viewports', async ({
   page,
 }) => {

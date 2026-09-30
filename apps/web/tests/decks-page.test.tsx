@@ -54,7 +54,7 @@ function createAuthValue(
 
 function renderDecks(
   authValue = createAuthValue(),
-  onStartMatch?: (deckId: string) => void,
+  onStartMatch?: (deckId: string, signal: AbortSignal) => Promise<void> | void,
 ) {
   return render(
     <Auth0Context.Provider value={authValue}>
@@ -764,5 +764,51 @@ describe('saved deck management page', () => {
     await user.keyboard('{Enter}');
 
     expect(onStartMatch).toHaveBeenCalledWith(deck.deckId);
+  });
+
+  it('keeps match start pending through lazy-load failure and allows a safe retry', async () => {
+    const user = userEvent.setup();
+    const deck = buildSavedDeck({ isSelected: true });
+    stubInitialState([deck], buildStarterCards('wit'));
+    let rejectStart: (reason: unknown) => void = () => {};
+    const onStartMatch = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectStart = reject;
+          }),
+      )
+      .mockResolvedValueOnce(undefined);
+
+    renderDecks(undefined, onStartMatch);
+    const start = await screen.findByRole('button', {
+      name: 'Start CPU match',
+    });
+    await user.click(start);
+    expect(
+      screen.getByRole('button', { name: 'Starting CPU match…' }),
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole('button', { name: 'Starting CPU match…' }),
+    );
+    expect(onStartMatch).toHaveBeenCalledTimes(1);
+
+    rejectStart(new TypeError('Failed to fetch dynamically imported module'));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('CPU match not opened.');
+    expect(alert).toHaveTextContent(
+      'Wits World will reconcile an active match before creating anything.',
+    );
+    await waitFor(() => expect(alert).toHaveFocus());
+    await user.click(
+      screen.getByRole('button', { name: 'Reconcile and try again' }),
+    );
+    expect(onStartMatch).toHaveBeenCalledTimes(2);
+    expect(onStartMatch).toHaveBeenNthCalledWith(
+      2,
+      deck.deckId,
+      expect.any(AbortSignal),
+    );
   });
 });
