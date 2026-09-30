@@ -165,17 +165,31 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           next.state.phase !== 'initial_selection'
             ? 'opening'
             : 'turn';
-        const nextBeats = orderPresentationBeats(
-          visibleBeats.length > 0 ? visibleBeats : newEvents,
-          mode,
-        );
-        presentationActive.current = true;
-        presentationTarget.current = next;
-        setPresentedMatch(current);
-        setPresentationMode(mode);
-        setBattleBeats(nextBeats);
-        setActiveBeatIndex(0);
-        setStatusMessage(presentationMessage(nextBeats[0]!, mode));
+        if (prefersReducedMotion()) {
+          presentationActive.current = false;
+          presentationTarget.current = null;
+          setPresentedMatch(next);
+          setPresentationMode(null);
+          setBattleBeats([]);
+          setActiveBeatIndex(null);
+          setStatusMessage(
+            `${(visibleBeats.length > 0 ? visibleBeats : newEvents)
+              .map((event) => presentationMessage(event, mode))
+              .join(' ')} ${getMatchStatusMessage(next)}`,
+          );
+        } else {
+          const nextBeats = orderPresentationBeats(
+            visibleBeats.length > 0 ? visibleBeats : newEvents,
+            mode,
+          );
+          presentationActive.current = true;
+          presentationTarget.current = next;
+          setPresentedMatch(current);
+          setPresentationMode(mode);
+          setBattleBeats(nextBeats);
+          setActiveBeatIndex(0);
+          setStatusMessage(presentationMessage(nextBeats[0]!, mode));
+        }
       } else {
         presentationActive.current = false;
         presentationTarget.current = null;
@@ -555,7 +569,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   return (
     <div
-      className={`matches-page battle-page battle-page--${viewMatch.status === 'completed' ? 'completed' : 'live'}`}
+      className={`matches-page battle-page battle-page--cpu battle-page--${viewMatch.status === 'completed' ? 'completed' : 'live'}`}
     >
       <p aria-live="polite" className="sr-only" role="status">
         {statusMessage}
@@ -953,11 +967,11 @@ function presentationMessage(event: BattleLogEvent, mode: PresentationMode) {
 }
 
 function presentationBeatDelay(event: BattleLogEvent, mode: PresentationMode) {
-  if (prefersReducedMotion()) return 1_000;
-  if (mode === 'opening') return 1_800;
-  if (event.kind === 'defeat' || event.kind === 'result') return 1_900;
-  if (event.kind === 'action') return 1_700;
-  return 1_600;
+  if (mode === 'opening') return 900;
+  if (event.kind === 'defeat' || event.kind === 'result') return 1_050;
+  if (event.kind === 'action') return 850;
+  if (event.kind === 'effect') return 700;
+  return 650;
 }
 
 function presentationActor(
