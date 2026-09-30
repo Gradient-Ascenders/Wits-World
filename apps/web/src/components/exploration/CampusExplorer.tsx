@@ -17,6 +17,7 @@ import {
 
 import { BottomSheetSurface, type BottomSheetSnap } from './BottomSheetSurface';
 import { CampusMap } from './CampusMap';
+import { MapLayersControl } from './MapLayersControl';
 import { PanelCollapseButton } from './PanelCollapseButton';
 import {
   availabilityLabels,
@@ -47,6 +48,7 @@ import type {
   MapRegion,
   ReportedMapLocation,
 } from './map-provider';
+import { DEFAULT_MAP_LAYER_VISIBILITY } from './map-provider';
 import './exploration.css';
 
 interface CampusExplorerProps {
@@ -188,6 +190,12 @@ export function CampusExplorer({
     () => window.matchMedia?.(MOBILE_MAP_QUERY).matches ?? false,
   );
   const [mobile3dEnabled, setMobile3dEnabled] = useState(false);
+  const [isDesktopMapViewport, setIsDesktopMapViewport] = useState(
+    () => window.matchMedia?.('(min-width: 64rem)').matches ?? false,
+  );
+  const [layerVisibility, setLayerVisibility] = useState(
+    DEFAULT_MAP_LAYER_VISIBILITY,
+  );
   const [discoverySection, setDiscoverySection] =
     useState<DiscoverySection>('events');
   const [following, setFollowing] = useState(false);
@@ -331,6 +339,17 @@ export function CampusExplorer({
     setIsMobileMapViewport(media.matches);
     media.addEventListener('change', updateViewport);
 
+    return () => media.removeEventListener('change', updateViewport);
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia?.('(min-width: 64rem)');
+    if (!media) return;
+    const updateViewport = (event: MediaQueryListEvent): void => {
+      setIsDesktopMapViewport(event.matches);
+    };
+    setIsDesktopMapViewport(media.matches);
+    media.addEventListener('change', updateViewport);
     return () => media.removeEventListener('change', updateViewport);
   }, []);
 
@@ -763,6 +782,9 @@ export function CampusExplorer({
         focusPointRequest={focusPointRequest}
         focusRegionRequest={focusRegionRequest}
         mapFactory={mapFactory}
+        layerVisibility={
+          isDesktopMapViewport ? layerVisibility : DEFAULT_MAP_LAYER_VISIBILITY
+        }
         onFollowStateChange={setFollowing}
         onPointSelect={selectEvent}
         onRegionSelect={selectTerritory}
@@ -781,6 +803,12 @@ export function CampusExplorer({
       </p>
 
       {mapDetailToggle}
+      {isDesktopMapViewport ? (
+        <MapLayersControl
+          onChange={setLayerVisibility}
+          visibility={layerVisibility}
+        />
+      ) : null}
 
       <div className="location-control-wrap">
         <div className="location-control__stack">

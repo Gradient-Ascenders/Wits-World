@@ -47,7 +47,6 @@ export function EventPlacementMap({
     pitch: 0,
     showResetViewControl: false,
     standardConfig: {
-      lightPreset: 'dusk',
       show3dBuildings: false,
       show3dLandmarks: false,
       show3dObjects: false,

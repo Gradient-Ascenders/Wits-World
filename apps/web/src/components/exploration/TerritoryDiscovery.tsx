@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../../date-time';
 import {
   ArrowClockwise,
   ArrowLeft,
@@ -495,23 +496,22 @@ function historyLabel(entry: TerritoryHistoryEntry): string {
 }
 
 function formatJohannesburgTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'Africa/Johannesburg',
     timeZoneName: 'short',
   }).format(new Date(value));
 }
 
 function formatHistoryTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
 }
 
 function formatUpdatedTime(value: number): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));

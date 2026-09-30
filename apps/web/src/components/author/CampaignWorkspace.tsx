@@ -1,3 +1,8 @@
+import {
+  createAppDateTimeFormatter,
+  parseAppDateTimeLocal,
+  toAppDateTimeLocal,
+} from '../../date-time';
 import { authorErrorDetail } from './author-error-copy';
 import { StateIcon } from '../StatusMessage';
 import { LoadingState } from '../LoadingState';
@@ -697,7 +702,7 @@ function CampaignForm({
 
       <div className="author-form-grid">
         <p className="author-form-grid__wide">
-          Title, Starts, and Ends are required.
+          Title, Starts, and Ends are required. Times use Johannesburg time.
         </p>
         <label className="form-field" htmlFor="campaign-title">
           <span>Title</span>
@@ -971,13 +976,13 @@ function campaignDraft(campaign?: AuthorCampaign): CampaignDraft {
 function validateCampaignDraft(draft: CampaignDraft) {
   const errors: Record<string, string> = {};
   if (!draft.title.trim()) errors.title = 'Enter a campaign title.';
-  if (!draft.startsAt) errors.startsAt = 'Choose a start date and time.';
-  if (!draft.endsAt) errors.endsAt = 'Choose an end date and time.';
-  if (
-    draft.startsAt &&
-    draft.endsAt &&
-    Date.parse(draft.endsAt) <= Date.parse(draft.startsAt)
-  )
+  const start = parseAppDateTimeLocal(draft.startsAt);
+  const end = parseAppDateTimeLocal(draft.endsAt);
+  if (!Number.isFinite(start.getTime()))
+    errors.startsAt = 'Choose a valid start date and time.';
+  if (!Number.isFinite(end.getTime()))
+    errors.endsAt = 'Choose a valid end date and time.';
+  if (!errors.startsAt && !errors.endsAt && end.getTime() <= start.getTime())
     errors.endsAt = 'End must be after start.';
   return errors;
 }
@@ -989,9 +994,9 @@ function fieldId(field: string) {
 function campaignInput(draft: CampaignDraft): AuthorCampaignInput {
   return {
     description: draft.description.trim() || null,
-    endsAt: new Date(draft.endsAt).toISOString(),
+    endsAt: parseAppDateTimeLocal(draft.endsAt).toISOString(),
     eventIds: draft.eventIds,
-    startsAt: new Date(draft.startsAt).toISOString(),
+    startsAt: parseAppDateTimeLocal(draft.startsAt).toISOString(),
     title: draft.title.trim(),
     trailIds: draft.trailIds,
   };
@@ -1012,19 +1017,17 @@ function campaignScheduleLabel(campaign: AuthorCampaign) {
 }
 
 function toLocalDateTime(value: string) {
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  return toAppDateTimeLocal(value);
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
+  return createAppDateTimeFormatter(undefined, { dateStyle: 'medium' }).format(
     new Date(value),
   );
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));

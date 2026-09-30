@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../../date-time';
 import { useEffect, useRef } from 'react';
 import { StatusMessage } from '../StatusMessage';
 import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
@@ -419,7 +420,7 @@ const locationContent: Record<
 };
 
 function formatEventTime(value: string): string {
-  return new Intl.DateTimeFormat('en-ZA', {
+  return createAppDateTimeFormatter('en-ZA', {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',

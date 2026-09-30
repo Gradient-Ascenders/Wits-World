@@ -55,7 +55,14 @@ describe('TrustReviewWorkspace', () => {
       screen.getByLabelText('Restriction state'),
       'active',
     );
-    await user.type(screen.getByLabelText('Opened from (UTC)'), '2026-09-01');
+    await user.type(
+      screen.getByLabelText('Opened from (Johannesburg)'),
+      '2026-09-01',
+    );
+    await user.type(
+      screen.getByLabelText('Opened to (Johannesburg)'),
+      '2026-09-02',
+    );
     await user.click(screen.getByRole('button', { name: 'Search' }));
 
     expect(await screen.findByText('No cases match this view.')).toBeVisible();
@@ -68,7 +75,10 @@ describe('TrustReviewWorkspace', () => {
     );
     expect(latest.searchParams.get('restrictionState')).toBe('active');
     expect(latest.searchParams.get('createdFrom')).toBe(
-      '2026-09-01T00:00:00.000Z',
+      '2026-08-31T22:00:00.000Z',
+    );
+    expect(latest.searchParams.get('createdTo')).toBe(
+      '2026-09-02T21:59:59.999Z',
     );
   });
 

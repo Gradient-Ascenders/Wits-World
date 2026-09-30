@@ -90,6 +90,16 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
     path: testInfo.outputPath('territory-detail-desktop.png'),
   });
 
+  await page.getByRole('button', { name: 'Map layers', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Territory boundaries' }).uncheck();
+  await expect(page.locator('[data-deterministic-territories]')).toBeHidden();
+  await expect(
+    page.getByRole('heading', { name: 'East Campus' }),
+  ).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Territory boundaries' }).check();
+  await expect(page.locator('[data-deterministic-territories]')).toBeVisible();
+  await page.keyboard.press('Escape');
+
   await page.setViewportSize({ height: 844, width: 390 });
   await page.reload();
   const sheetTrigger = page.getByRole('button', { name: /^Events —/ });

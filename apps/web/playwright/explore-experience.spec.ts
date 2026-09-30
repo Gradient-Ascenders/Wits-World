@@ -73,6 +73,43 @@ async function noOverflow(page: Page) {
   ).toBe(true);
 }
 
+test('event schedule times stay in Johannesburg on a device in another timezone', async ({
+  browser,
+}, info) => {
+  const context = await browser.newContext({
+    timezoneId: 'America/Los_Angeles',
+    locale: 'en-ZA',
+    viewport: { width: 1440, height: 900 },
+  });
+  try {
+    const page = await context.newPage();
+    await installEvents(page);
+    await page.goto('/explore');
+    await expect(
+      page.getByRole('heading', { name: 'Campus events' }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: /View on map.*Great Hall/ }).click();
+    await page.getByText('About this event', { exact: true }).click();
+    const time = page.locator('.selected-event__facts dd').last();
+    await expect(time).toHaveText(/1 Oct.*02:00/);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath('johannesburg-desktop.png'),
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    const trigger = page.getByRole('button', { name: /^Events —/ });
+    if (await trigger.isVisible()) await trigger.click();
+    await expect(time).toBeVisible();
+    await expect(time).toHaveText(/1 Oct.*02:00/);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath('johannesburg-mobile.png'),
+    });
+  } finally {
+    await context.close();
+  }
+});
+
 test('one discovery navigation stays readable with narrow screens and larger text', async ({
   page,
 }, info) => {
@@ -612,6 +649,72 @@ test('desktop rail shortcuts open each section with keyboard focus and active fe
   await noOverflow(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(shortcuts).toBeHidden();
+});
+
+test('desktop layers change visibility without clearing selection or resetting the map', async ({
+  page,
+}, info) => {
+  await installEvents(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/explore');
+  await page.getByRole('button', { name: /Select Great Hall/ }).click();
+  await page.getByRole('button', { name: 'Collapse event details' }).click();
+  const map = page.locator('.campus-map__canvas');
+  const provider = await map.getAttribute('data-map-provider');
+  const camera = await map.getAttribute('data-map-camera-center');
+  const markers = page.locator('[data-deterministic-markers] button');
+  const radius = page.locator('[data-deterministic-event-radius]');
+  const layers = page.getByRole('button', { name: 'Map layers', exact: true });
+  await layers.click();
+  await expect(
+    page.getByRole('checkbox', { name: 'Event markers' }),
+  ).toBeFocused();
+  await page.getByRole('checkbox', { name: 'Event markers' }).uncheck();
+  await expect(markers.first()).toBeHidden();
+  await expect(radius).toBeVisible();
+  await page
+    .getByRole('checkbox', { name: 'Selected challenge radius' })
+    .uncheck();
+  await expect(radius).toBeHidden();
+  await page
+    .getByRole('checkbox', { name: '3D buildings and trees' })
+    .uncheck();
+  await page.getByRole('checkbox', { name: 'Map labels' }).uncheck();
+  await expect(map).toHaveAttribute('data-map-details-visible', 'false');
+  await expect(map).toHaveAttribute('data-map-labels-visible', 'false');
+  await expect(map).toHaveAttribute('data-map-provider', provider!);
+  await expect(map).toHaveAttribute('data-map-camera-center', camera!);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('desktop-map-layers.png'),
+  });
+  await page.keyboard.press('Escape');
+  await expect(layers).toBeFocused();
+  await expect(page.locator('.event-panel--peek')).toBeVisible();
+  await layers.click();
+  await expect(
+    page.getByRole('checkbox', { name: 'Event markers' }),
+  ).not.toBeChecked();
+  await page.getByRole('checkbox', { name: 'Event markers' }).check();
+  await expect(markers.first()).toBeVisible();
+  await expect(markers.first()).toHaveAttribute('aria-pressed', 'true');
+  await page
+    .getByRole('checkbox', { name: 'Selected challenge radius' })
+    .check();
+  await expect(radius).toBeVisible();
+  await page
+    .locator('.campus-map__canvas')
+    .click({ position: { x: 100, y: 100 } });
+  await expect(layers).toHaveAttribute('aria-expanded', 'false');
+  await noOverflow(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(layers).toHaveCount(0);
+  await expect(map).toHaveAttribute('data-map-labels-visible', 'true');
+  await expect(markers.first()).toBeVisible();
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('mobile-without-layers.png'),
+  });
 });
 
 test('map failure retains event discovery and a retry action', async ({

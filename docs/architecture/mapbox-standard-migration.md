@@ -29,13 +29,28 @@ mapbox://styles/mapbox/standard
 
 The initial Wits Quest camera is centred on the approved Sprint 1 event area at
 `[28.03038, -26.19205]`, zoom `16.5`, pitch `52`, and bearing `20`. It uses
-Mapbox Standard's `dusk` preset with 3D objects, buildings, landmarks, trees,
-and pedestrian roads enabled. `dusk` is the implementation default selected to
-match the supplied art direction; a live `night` comparison remains a manual
-acceptance check. The bearing/pitch reset control is keyboard accessible, there
+Mapbox Standard with 3D objects, buildings, landmarks, trees, and pedestrian
+roads enabled. Lighting follows the device's current clock interpreted in
+`Africa/Johannesburg`: dawn from 05:00–07:00, day from 07:00–17:00, dusk from
+17:00–19:00, and night otherwise. These are fixed time periods, not seasonal
+sunrise or sunset calculations. Lighting checks every minute and on return to
+the tab, survives style reloads, and updates without resetting the camera.
+Live provider imagery across these presets remains a manual acceptance check.
+The bearing/pitch reset control is keyboard accessible, there
 is no automatic rotation, and Mapbox GL JS receives
 `respectPrefersReducedMotion: true`. Event markers remain DOM markers sourced
 from the protected API and are updated without reconstructing the map.
+
+Desktop Explore includes a Layers disclosure for event markers, the selected
+challenge radius, territory boundaries, 3D buildings and trees, and map labels.
+These choices change presentation only: lists, selections, eligibility, and
+camera state are retained. Mobile and tablet do not expose this control and
+use the default layer visibility, independently of desktop choices.
+
+Web timestamp displays and Author event/campaign scheduling inputs also use
+Johannesburg time. Scheduling inputs are converted to UTC instants for the
+existing API. Trust-review date filters use Johannesburg day boundaries;
+Author analytics reporting keeps its explicit UTC calendar-date contract.
 
 Custom layers use Mapbox Standard `bottom`, `middle`, and `top` slots. Their
 colour layers set type-specific emissive-strength properties so Standard's
@@ -148,3 +163,5 @@ Codex[GPT-5]
 ```
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Layers and campus-time lighting guidance updated with assistance from Codex[GPT-5].

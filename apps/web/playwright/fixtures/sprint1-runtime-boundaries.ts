@@ -12,6 +12,7 @@ import type {
   MapPoint,
   MapRegion,
 } from '../../src/components/exploration/map-provider';
+import { DEFAULT_MAP_LAYER_VISIBILITY } from '../../src/components/exploration/map-provider';
 
 let mapInstance = 0;
 
@@ -93,6 +94,7 @@ export const mapFactory: MapFactory = async (
   container.style.background =
     'radial-gradient(circle at 48% 42%, rgb(42 107 255 / 30%), transparent 22%), linear-gradient(145deg, #18304f, #071426 70%)';
   let points = initialPoints;
+  let layerVisibility = DEFAULT_MAP_LAYER_VISIBILITY;
   let areas: readonly MapArea[] = [];
   let selectedPoint: MapPoint | null = null;
   let regions: readonly MapRegion[] = [];
@@ -238,7 +240,7 @@ export const mapFactory: MapFactory = async (
   };
 
   const updateRadiusVisual = (): void => {
-    if (selectedPoint?.radiusMetres === undefined) {
+    if (!layerVisibility.radius || selectedPoint?.radiusMetres === undefined) {
       radius.style.display = 'none';
       delete radius.dataset.radiusMetres;
       return;
@@ -335,6 +337,7 @@ export const mapFactory: MapFactory = async (
       const applyFixtureSpread =
         !config.initialBounds && focusedPointId !== point.id;
       Object.assign(button.style, {
+        display: layerVisibility.events ? '' : 'none',
         cursor: point.draggable ? 'grab' : 'pointer',
         left: `${position.horizontal + (applyFixtureSpread ? index * 12 : 0)}%`,
         position: 'absolute',
@@ -376,6 +379,7 @@ export const mapFactory: MapFactory = async (
 
   const renderRegions = (): void => {
     regionLayer.replaceChildren();
+    regionLayer.style.display = layerVisibility.territories ? '' : 'none';
     const layouts = [
       {
         clipPath: 'polygon(4% 12%, 92% 0, 100% 78%, 18% 100%)',
@@ -543,6 +547,14 @@ export const mapFactory: MapFactory = async (
     setPoints: (nextPoints) => {
       points = nextPoints;
       renderMarkers();
+    },
+    setLayerVisibility: (visibility) => {
+      layerVisibility = visibility;
+      container.dataset.mapDetailsVisible = String(visibility.details);
+      container.dataset.mapLabelsVisible = String(visibility.labels);
+      renderMarkers();
+      renderRegions();
+      updateRadiusVisual();
     },
     setRegions: (nextRegions) => {
       regions = nextRegions;

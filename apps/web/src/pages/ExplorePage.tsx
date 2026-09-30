@@ -56,7 +56,6 @@ const CAMPUS_MAP_CONFIGURATION: MapConfiguration = {
   center: [28.03038, -26.19205],
   pitch: 0,
   standardConfig: {
-    lightPreset: 'dusk',
     show3dBuildings: true,
     show3dLandmarks: true,
     show3dObjects: true,
