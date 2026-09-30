@@ -8,6 +8,7 @@ import type {
 } from '../../api/cards';
 
 import { CardFrame } from './CardFrame';
+import { collectionArtworkSrcSets } from './collection-artwork-assets';
 import { useCardTilt } from './useCardTilt';
 
 interface CollectibleCardProps {
@@ -26,6 +27,8 @@ interface CardThumbnailProps {
   accessibleLabel: string;
   badge?: string;
   card: OwnedCard;
+  fetchPriority?: 'high';
+  loading?: 'eager' | 'lazy';
   onClick: MouseEventHandler<HTMLButtonElement>;
 }
 
@@ -33,6 +36,8 @@ export function CardThumbnail({
   accessibleLabel,
   badge,
   card,
+  fetchPriority,
+  loading,
   onClick,
 }: CardThumbnailProps) {
   const tilt = useCardTilt<HTMLButtonElement>();
@@ -48,7 +53,10 @@ export function CardThumbnail({
       <CardArtwork
         badge={badge}
         card={card}
+        fetchPriority={fetchPriority}
+        loading={loading}
         nameplate={<span className="card-thumbnail__title">{card.name}</span>}
+        thumbnail
       />
       {!card.isActive ? (
         <span className="card-thumbnail__status">Retired</span>
@@ -180,15 +188,30 @@ export function CardArtwork({
   badge,
   nameplate,
   card,
+  fetchPriority,
+  loading,
   showRarity = true,
+  thumbnail = false,
 }: {
   badge?: string;
   nameplate?: ReactNode;
   card: Pick<CardPresentation, 'name' | 'rarity' | 'imageUrl' | 'imageAlt'>;
+  fetchPriority?: 'high';
+  loading?: 'eager' | 'lazy';
   showRarity?: boolean;
+  thumbnail?: boolean;
 }) {
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const [failedResponsiveUrl, setFailedResponsiveUrl] = useState<string | null>(
+    null,
+  );
   const showImage = card.imageUrl !== null && card.imageUrl !== failedImageUrl;
+  const srcSet =
+    thumbnail && card.imageUrl !== failedResponsiveUrl
+      ? collectionArtworkSrcSets[card.imageUrl ?? '']
+      : undefined;
+  const knownArtwork =
+    card.imageUrl !== null && card.imageUrl in collectionArtworkSrcSets;
 
   return (
     <CardFrame
@@ -200,10 +223,24 @@ export function CardArtwork({
         {showImage ? (
           <img
             alt={card.imageAlt ?? `${card.name} card artwork`}
-            onError={(event) =>
-              setFailedImageUrl(event.currentTarget.getAttribute('src'))
+            fetchPriority={fetchPriority}
+            height={knownArtwork ? 1024 : undefined}
+            loading={loading}
+            onError={(event) => {
+              if (srcSet) {
+                setFailedResponsiveUrl(card.imageUrl);
+              } else {
+                setFailedImageUrl(event.currentTarget.getAttribute('src'));
+              }
+            }}
+            sizes={
+              srcSet
+                ? '(min-width: 64rem) 12rem, (min-width: 40rem) calc((100vw - 6rem) / 4), calc((100vw - 6rem) / 2)'
+                : undefined
             }
             src={card.imageUrl ?? undefined}
+            srcSet={srcSet}
+            width={knownArtwork ? 1024 : undefined}
           />
         ) : (
           <span
