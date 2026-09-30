@@ -2,7 +2,7 @@ import { AppToaster } from './components/AppToaster';
 import { lazy, Suspense, type ReactNode } from 'react';
 import { Redirect, Route, Switch, useLocation } from 'wouter';
 
-import { recoverOrCreateCpuMatch } from './api/matches';
+import { MatchModuleLoadError } from './api/match-errors';
 import { useApiAccessToken } from './auth/useApiAccessToken';
 import { AppShell } from './components/AppShell';
 import {
@@ -241,7 +241,14 @@ function DecksRoute({ apiBaseUrl }: { apiBaseUrl: string }) {
     <DecksPage
       apiBaseUrl={apiBaseUrl}
       onStartMatch={async (deckId, signal) => {
-        const match = await recoverOrCreateCpuMatch({
+        let matchApi: typeof import('./api/matches');
+        try {
+          matchApi = await import('./api/matches');
+        } catch {
+          throw new MatchModuleLoadError();
+        }
+        if (signal.aborted) return;
+        const match = await matchApi.recoverOrCreateCpuMatch({
           apiBaseUrl,
           deckId,
           getAccessToken,

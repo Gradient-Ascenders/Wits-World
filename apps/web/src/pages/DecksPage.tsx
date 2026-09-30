@@ -33,7 +33,7 @@ import {
   updateSavedDeck,
   type SavedDeck,
 } from '../api/decks';
-import { MatchApiError } from '../api/matches';
+import { MatchApiError, MatchModuleLoadError } from '../api/match-errors';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { CollectionSectionNavigation } from '../components/cards/CollectionSectionNavigation';
 import { CardArtwork } from '../components/cards/CollectibleCard';
@@ -379,7 +379,7 @@ export default function DecksPage({
   }
 
   async function startMatch(deck: SavedDeck) {
-    if (pending !== null || !onStartMatch) {
+    if (pending !== null || mutationRequest.current !== null || !onStartMatch) {
       return;
     }
 
@@ -1667,12 +1667,14 @@ const MatchStartError = forwardRef<
     reauthFailed: boolean;
   }
 >(function MatchStartError({ error, onRetry, onSignIn, reauthFailed }, ref) {
-  const message =
-    error.failure === 'authorization'
+  const moduleLoadFailed = error instanceof MatchModuleLoadError;
+  const message = moduleLoadFailed
+    ? 'The match code could not load. Check your connection, then reload this page to try again.'
+    : error.failure === 'authorization'
       ? 'Your session expired before the match could be opened. Sign in again to reconcile your active match.'
       : error.failure === 'deck-invalid'
         ? 'The server no longer accepts this selected deck for a CPU match. Review and reselect it before trying again.'
-        : 'The match could not be opened after a bounded active-match check. Check your connection and try again; Wits World will reconcile before creating anything.';
+        : 'The match could not be opened. Check your connection and try again; Wits World will reconcile an active match before creating anything.';
 
   return (
     <div
@@ -1686,7 +1688,15 @@ const MatchStartError = forwardRef<
       {error.options.requestId ? (
         <small> Support reference: {error.options.requestId}</small>
       ) : null}
-      {error.failure === 'authorization' ? (
+      {moduleLoadFailed ? (
+        <button
+          className="button"
+          onClick={() => window.location.reload()}
+          type="button"
+        >
+          Reload page
+        </button>
+      ) : error.failure === 'authorization' ? (
         <>
           <button
             className="button"
