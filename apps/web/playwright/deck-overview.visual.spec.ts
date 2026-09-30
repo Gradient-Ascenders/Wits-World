@@ -255,10 +255,14 @@ test('loads the match API on deck start and creates only one match', async ({
   await expect(page).toHaveURL(`/matches/${match.matchId}`);
 });
 
-test('surfaces a failed match-module load through the existing retry UI', async ({
+test('reloads after a failed match-module load and then opens the match', async ({
   page,
 }) => {
   const deck = buildDeck('Active Campus Five', 'wit', true, 912);
+  const match = activeMatch();
+  let moduleRequests = 0;
+  let matchRequests = 0;
+  let createRequests = 0;
   await page.route(`${API_BASE_URL}/auth/me`, (route) => json(route, PLAYER));
   await page.route(`${API_BASE_URL}/cards/collection`, (route) =>
     json(route, {
@@ -269,14 +273,47 @@ test('surfaces a failed match-module load through the existing retry UI', async 
   await page.route(`${API_BASE_URL}/decks`, (route) =>
     json(route, { decks: [deck], requestId: 'deck-module-error-decks' }),
   );
-  await page.route('**/src/api/matches.ts*', (route) => route.abort());
+  await page.route(`${API_BASE_URL}/matches/cpu`, async (route) => {
+    matchRequests += 1;
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        body: JSON.stringify({ code: 'CPU_MATCH_NOT_FOUND' }),
+        contentType: 'application/json',
+        status: 404,
+      });
+      return;
+    }
+    createRequests += 1;
+    await json(route, { ...match, requestId: 'deck-reloaded-match' });
+  });
+  await page.route(`${API_BASE_URL}/matches/${match.matchId}`, (route) =>
+    json(route, { ...match, requestId: 'deck-reloaded-state' }),
+  );
+  await page.route('**/src/api/matches.ts*', (route) => {
+    moduleRequests += 1;
+    return moduleRequests === 1 ? route.abort() : route.fallback();
+  });
 
   await page.goto('/decks');
   await page.getByRole('button', { name: 'Start CPU match' }).click();
-  await expect(page.getByRole('alert')).toContainText('CPU match not opened.');
+  const alert = page.getByRole('alert');
+  await expect(alert).toContainText('The match code could not load.');
+  await expect(alert).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Reload page' })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Reconcile and try again' }),
-  ).toBeVisible();
+  ).toHaveCount(0);
+  expect(moduleRequests).toBe(1);
+  expect(matchRequests).toBe(0);
+
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'load' }),
+    page.getByRole('button', { name: 'Reload page' }).click(),
+  ]);
+  await page.getByRole('button', { name: 'Start CPU match' }).click();
+  await expect(page).toHaveURL(`/matches/${match.matchId}`);
+  expect(moduleRequests).toBe(2);
+  expect(createRequests).toBe(1);
 });
 
 test('keeps exact-copy deck editing dense and reachable across viewports', async ({

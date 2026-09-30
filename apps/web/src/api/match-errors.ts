@@ -23,3 +23,10 @@ export class MatchApiError extends Error {
     this.name = 'MatchApiError';
   }
 }
+
+export class MatchModuleLoadError extends MatchApiError {
+  public constructor() {
+    super('unavailable');
+    this.name = 'MatchModuleLoadError';
+  }
+}
