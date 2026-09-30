@@ -1,12 +1,12 @@
 import { StateIcon } from '../StatusMessage';
-import { LoadingState } from '../LoadingState';
-import { QuestMarker } from '../branding/QuestMarker';
+import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
 import {
-  Archive,
   ArrowCircleRight,
   CheckCircle,
-  Lock,
+  LockKey,
   MapPin,
+  MapPinLine,
+  Prohibit,
   WarningCircle,
 } from '@phosphor-icons/react';
 import type {
@@ -54,25 +54,20 @@ interface TrailListProps {
 
 export function TrailList({ onOpenTrail, onRetry, state }: TrailListProps) {
   if (state.status === 'idle' || state.status === 'loading') {
-    return (
-      <LoadingState
-        className="trail-list__loading"
-        label="Loading trails and progress…"
-      />
-    );
+    return <ExplorationLoadingPanel label="Loading trails…" />;
   }
 
   if (state.status === 'error') {
     return (
       <DiscoveryError
-        action="Try loading trails again"
+        action="Retry trails"
         detail={
           state.failure === 'authorization'
-            ? 'Your session could not load trail progress. Try again, or sign out and sign in again.'
+            ? 'Try again. If this continues, sign out and sign in again.'
             : 'Check your connection and try again.'
         }
         onRetry={onRetry}
-        title="Trails are unavailable right now."
+        title="Trails could not load."
       />
     );
   }
@@ -80,8 +75,8 @@ export function TrailList({ onOpenTrail, onRetry, state }: TrailListProps) {
   if (state.status === 'empty') {
     return (
       <div className="event-list__state">
-        <strong>No trails are available yet.</strong>
-        <p>Published campus trails will appear here.</p>
+        <strong>No trails available.</strong>
+        <p>Check back later.</p>
       </div>
     );
   }
@@ -140,9 +135,9 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
     return (
       <article className="trail-detail trail-detail--state">
         <h2 tabIndex={-1}>Trail details</h2>
-        <LoadingState
-          className="trail-detail__loading"
-          label="Loading ordered trail…"
+        <ExplorationLoadingPanel
+          className="exploration-loading-panel--inline"
+          label="Loading trail…"
         />
       </article>
     );
@@ -153,16 +148,16 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
       <article className="trail-detail trail-detail--state">
         <h2 tabIndex={-1}>Trail unavailable</h2>
         <DiscoveryError
-          action="Try loading this trail again"
+          action="Retry trail"
           detail={
             state.failure === 'not-found'
-              ? 'This trail may have been retired or is no longer visible.'
+              ? 'This trail may have been retired or removed.'
               : state.failure === 'authorization'
-                ? 'Your session could not load this trail. Try again, or sign out and sign in again.'
+                ? 'Try again. If this continues, sign out and sign in again.'
                 : 'Check your connection and try again.'
           }
           onRetry={onRetry}
-          title="This trail is unavailable right now."
+          title="This trail could not load."
         />
       </article>
     );
@@ -198,7 +193,6 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
         ) : trail.progressStatus === 'completed' ? (
           <div className="trail-detail__complete" role="status">
             <strong>Trail complete</strong>
-            <span>Every stop in this trail has been completed.</span>
           </div>
         ) : null}
         {trail.description ? <p>{trail.description}</p> : null}
@@ -206,7 +200,7 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
 
       {trail.progressStatus === 'retired' ? (
         <div className="trail-notice" role="status">
-          <strong>This trail has retired.</strong>
+          <strong>This trail is retired.</strong>
           <span>Your completed stops remain part of your history.</span>
         </div>
       ) : trail.availability === 'upcoming' ||
@@ -217,7 +211,6 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
               ? 'This trail is not open yet.'
               : 'This trail is no longer active.'}
           </strong>
-          <span>The ordered stops remain visible for context.</span>
         </div>
       ) : null}
 
@@ -244,7 +237,11 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
                   {step.position}. {step.title}
                 </strong>
                 {step.description ? <p>{step.description}</p> : null}
-                {presentation.guidance ? (
+                {presentation.guidance &&
+                !(
+                  trail.progressStatus === 'retired' &&
+                  step.unavailableReason === 'trail_retired'
+                ) ? (
                   <p className="trail-step__guidance">
                     {presentation.guidance}
                   </p>
@@ -257,7 +254,6 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
               </span>
               {step.state === 'current' ? (
                 <div className="trail-step__current-action">
-                  <span>Next stop</span>
                   <button
                     className="button trail-step__action"
                     data-event-id={step.eventId}
@@ -307,12 +303,7 @@ export function NearbyList({
   }
 
   if (state.status === 'loading') {
-    return (
-      <LoadingState
-        className="event-list__state"
-        label="Finding nearby unvisited events…"
-      />
-    );
+    return <ExplorationLoadingPanel label="Finding nearby unvisited events…" />;
   }
 
   if (state.status === 'error') {
@@ -320,18 +311,18 @@ export function NearbyList({
       <DiscoveryError
         action={
           state.failure === 'location-retry'
-            ? 'Get a new reported location'
-            : 'Try nearby search again'
+            ? 'Refresh location'
+            : 'Retry nearby search'
         }
         detail={
           state.failure === 'authorization'
-            ? 'Your session could not search nearby events. Try again, or sign out and sign in again.'
+            ? 'Try again. If this continues, sign out and sign in again.'
             : state.failure === 'location-retry'
-              ? 'The reported location was too old or not accurate enough for this search.'
+              ? 'Your location is out of date or not accurate enough. Refresh it to search again.'
               : 'Check your connection and try again.'
         }
         onRetry={onRetry}
-        title="Nearby events could not be loaded."
+        title="Nearby events could not load."
       />
     );
   }
@@ -341,8 +332,7 @@ export function NearbyList({
       <div className="event-list__state">
         <strong>No nearby unvisited events.</strong>
         <p>
-          You have explored everything active within about 1 km, or there are no
-          events nearby right now.
+          No active, unvisited events within about 1 km of your last location.
         </p>
         <button
           className="button button--quiet"
@@ -358,22 +348,21 @@ export function NearbyList({
   return (
     <div className="nearby-discovery">
       <p className="nearby-discovery__context">
-        Active, unvisited events within about 1 km of your last reported
-        location.
+        Unvisited events open now, within about 1 km of your last location.
       </p>
       <ul aria-label="Nearby unvisited events" className="nearby-list">
         {state.events.map((event) => (
           <li className="nearby-event" key={event.eventId}>
             <span aria-hidden="true" className="nearby-event__marker">
-              ⌖
+              <MapPin aria-hidden="true" size={20} />
             </span>
             <div className="nearby-event__copy">
               <h3>{event.title}</h3>
-              <p>{formatDistance(event.distanceMetres)} · Unvisited</p>
+              <p>{formatDistance(event.distanceMetres)}</p>
               {event.trailContexts.map((context) => (
                 <span className="nearby-event__trail" key={context.trailId}>
-                  Current stop {context.position} of {context.totalSteps} on{' '}
-                  {context.title}
+                  {context.title} · Stop {context.position} of{' '}
+                  {context.totalSteps}
                 </span>
               ))}
             </div>
@@ -418,18 +407,22 @@ function NearbyLocationState({
     locationState,
   );
 
+  if (checking) {
+    return (
+      <ExplorationLoadingPanel
+        description={content.detail}
+        label={content.title}
+      />
+    );
+  }
+
   return (
     <div
       aria-live="polite"
       className="event-list__state nearby-location-state"
       role="status"
     >
-      <strong
-        className={checking ? 'selected-event__status-heading' : undefined}
-      >
-        {checking ? <QuestMarker /> : null}
-        {content.title}
-      </strong>
+      <strong>{content.title}</strong>
       <p>{content.detail}</p>
       {canEnable ? (
         <button className="button" onClick={onEnableLocation} type="button">
@@ -448,7 +441,7 @@ const nearbyLocationContent: Record<
 > = {
   blocked: {
     detail:
-      'Use a secure, permitted browser context. You can still browse all events and trails.',
+      'Open this page over HTTPS and allow location access. You can still browse Events and Trails.',
     title: 'Live location is not allowed here.',
   },
   'checking-permission': {
@@ -456,40 +449,37 @@ const nearbyLocationContent: Record<
     title: 'Checking location access…',
   },
   denied: {
-    detail:
-      'Enable location in browser settings to find nearby unvisited events. All events and trails remain available without the map.',
-    title: 'Location permission is denied.',
+    detail: 'Allow location in browser settings, or browse Events and Trails.',
+    title: 'Live location is disabled.',
   },
   locating: {
-    detail:
-      'Nearby search will start when a usable reported location is available.',
-    title: 'Finding your reported location…',
+    detail: 'Nearby events will appear once your location is available.',
+    title: 'Finding your location…',
   },
   'permission-required': {
     detail:
-      'Share a one-time reported location with the nearby search. Wits World does not store it as trail history.',
-    title: 'Location is needed for nearby discovery.',
+      'Your location is used for this search, not saved as trail history. You can also browse Events and Trails without it.',
+    title: 'Enable location to search nearby.',
   },
   stale: {
-    detail: 'Get a fresh reported location to update nearby results.',
-    title: 'Your reported location is no longer current.',
+    detail: 'Refresh your location to update nearby events.',
+    title: 'Location is out of date.',
   },
   timeout: {
-    detail: 'Move to an open area and try the location request again.',
-    title: 'The location signal timed out.',
+    detail: 'Move to an open area and retry.',
+    title: 'Location signal timed out.',
   },
   tracking: {
-    detail: 'Nearby search will use the latest reported location.',
-    title: 'Preparing nearby discovery…',
+    detail: 'Searching from your latest location.',
+    title: 'Finding nearby events…',
   },
   unavailable: {
     detail: 'Check device location services and try again.',
-    title: 'A usable reported location is unavailable.',
+    title: 'Location is unavailable.',
   },
   unsupported: {
-    detail:
-      'This browser cannot provide a reported location. All events and trails remain available without the map.',
-    title: 'Nearby discovery is unavailable in this browser.',
+    detail: 'You can still browse Events and Trails.',
+    title: 'This browser does not support live location.',
   },
 };
 
@@ -542,7 +532,7 @@ function trailSummaryStatus(trail: PlayerTrailSummary): {
 
   return {
     icon: 'current',
-    label: `Stop ${trail.currentStepPosition ?? trail.completedStepCount + 1} next`,
+    label: `Next: stop ${trail.currentStepPosition ?? trail.completedStepCount + 1}`,
     tone: 'current',
   };
 }
@@ -598,14 +588,14 @@ function trailStepPresentation(
       };
     case 'event_retired':
       return {
-        guidance: 'This event has retired and cannot be opened.',
+        guidance: 'This event is retired and cannot be opened.',
         icon: 'retired',
         label: 'Retired',
         tone: 'retired',
       };
     case 'trail_retired':
       return {
-        guidance: 'This trail has retired; completed stops remain visible.',
+        guidance: 'This trail is retired. Completed stops remain visible.',
         icon: 'retired',
         label: 'Retired',
         tone: 'retired',
@@ -633,13 +623,20 @@ function TrailStatusIcon({
 }) {
   const Icon = {
     completed: CheckCircle,
-    current: MapPin,
-    locked: Lock,
+    current: MapPinLine,
+    locked: LockKey,
     open: ArrowCircleRight,
-    retired: Archive,
+    retired: Prohibit,
     unavailable: WarningCircle,
   }[name];
-  return <Icon aria-hidden="true" className={className} size={20} />;
+  return (
+    <Icon
+      aria-hidden="true"
+      className={className}
+      size={24}
+      weight={name === 'completed' ? 'fill' : 'bold'}
+    />
+  );
 }
 
 function formatDistance(distanceMetres: number): string {

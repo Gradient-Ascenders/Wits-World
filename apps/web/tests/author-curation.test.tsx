@@ -221,6 +221,8 @@ describe('Author curation workspaces', () => {
             eventIds: [eventId],
             title: 'Welcome Week',
             trailIds: [],
+            startsAt: '2026-09-01T06:00:00.000Z',
+            endsAt: '2026-09-05T16:00:00.000Z',
           });
           return jsonResponse(
             { campaign: created, requestId: 'request-create' },
@@ -407,6 +409,8 @@ describe('Author curation workspaces', () => {
     );
 
     const title = await screen.findByLabelText('Title');
+    expect(screen.getByLabelText('Starts')).toHaveValue('2026-09-01T08:00');
+    expect(screen.getByLabelText('Ends')).toHaveValue('2026-09-05T18:00');
     await user.clear(title);
     await user.type(title, 'Welcome Week revised');
     await user.click(screen.getByRole('button', { name: 'Save campaign' }));

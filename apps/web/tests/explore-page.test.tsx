@@ -384,7 +384,7 @@ describe('selected-event authoritative eligibility', () => {
       await screen.findByText('Location accuracy is too low.'),
     ).toBeVisible();
     expect(
-      screen.getByText('Waiting for a better reported-location reading…'),
+      screen.getByText('Waiting for a more accurate location…'),
     ).toBeVisible();
     expect(mapController.setReportedLocation).toHaveBeenCalled();
   });
@@ -419,9 +419,7 @@ describe('selected-event authoritative eligibility', () => {
       await screen.findByText('Travel time needs another check.'),
     ).toBeVisible();
     expect(
-      screen.getByText(
-        'This event cannot be confirmed from recent reported-location activity yet. Wait briefly, then try again with a fresh reading.',
-      ),
+      screen.getByText('Wait a moment, then try again with a fresh location.'),
     ).toBeVisible();
     expect(screen.getByRole('button', { name: /^Try again/ })).toBeEnabled();
   });
@@ -474,9 +472,7 @@ describe('selected-event authoritative eligibility', () => {
         name: `Start challenge for ${event.title}`,
       }),
     );
-    expect(
-      await screen.findByText('Reported location needs refreshing.'),
-    ).toBeVisible();
+    expect(await screen.findByText('Location is out of date.')).toBeVisible();
 
     const newerClaim = {
       ...initialClaim,
@@ -761,16 +757,12 @@ describe('selected-event authoritative eligibility', () => {
         name: `Start challenge for ${event.title}`,
       }),
     );
-    expect(
-      await screen.findByText('Reported location needs refreshing.'),
-    ).toBeVisible();
+    expect(await screen.findByText('Location is out of date.')).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: /^Try again/ }));
     await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledOnce());
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(
-      await screen.findByText('Reported location needs refreshing.'),
-    ).toBeVisible();
+    expect(await screen.findByText('Location is out of date.')).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: /^Try again/ }));
     await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledTimes(2));
@@ -853,6 +845,12 @@ describe('trails and nearby vertical discovery', () => {
 
     expect(screen.getByRole('heading', { name: event.title })).toBeVisible();
     expect(screen.getByText('Live location is disabled.')).toBeVisible();
+    expect(
+      screen.getByText(
+        'Allow location in browser settings, then reload this page.',
+        { selector: 'span' },
+      ),
+    ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledWith(
       `${apiBaseUrl}/trails/${trailId}`,
       expect.any(Object),
@@ -868,7 +866,7 @@ describe('trails and nearby vertical discovery', () => {
     await user.click(await screen.findByRole('button', { name: /^Events/ }));
     await user.click(screen.getByRole('button', { name: 'Nearby' }));
 
-    expect(screen.getByText('Location permission is denied.')).toBeVisible();
+    expect(screen.getByText('Live location is disabled.')).toBeVisible();
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
@@ -947,12 +945,10 @@ describe('trails and nearby vertical discovery', () => {
     await user.click(screen.getByRole('button', { name: 'Nearby' }));
     await user.click(
       await screen.findByRole('button', {
-        name: 'Get a new reported location',
+        name: 'Refresh location',
       }),
     );
-    expect(
-      await screen.findByText('The location signal timed out.'),
-    ).toBeVisible();
+    expect(await screen.findByText('Location signal timed out.')).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: 'Retry location' }));
     await waitFor(() => expect(observation.provider).toHaveBeenCalledTimes(2));
@@ -1019,7 +1015,7 @@ describe('trails and nearby vertical discovery', () => {
     await user.click(screen.getByRole('button', { name: 'Nearby' }));
     await user.click(
       await screen.findByRole('button', {
-        name: 'Get a new reported location',
+        name: 'Refresh location',
       }),
     );
     await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledOnce());

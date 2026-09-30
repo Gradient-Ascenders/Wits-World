@@ -1,3 +1,8 @@
+import {
+  createAppDateTimeFormatter,
+  parseAppDateTimeLocal,
+  toAppDateTimeLocal,
+} from '../../date-time';
 import { authorErrorDetail } from './author-error-copy';
 import { StateIcon } from '../StatusMessage';
 import { LoadingState } from '../LoadingState';
@@ -972,7 +977,7 @@ function EventForm({
         </section>
 
         <fieldset className="author-fieldset" disabled={busy}>
-          <legend>Active times</legend>
+          <legend>Active times (Johannesburg)</legend>
           <div className="author-form__grid">
             <FormField
               error={errors.startsAt}
@@ -2844,8 +2849,8 @@ function validateEventDraft(draft: EventDraft): {
   }
   if (!draft.radiusMetres || !Number.isInteger(radius) || radius <= 0)
     errors.radiusMetres = 'Enter a positive whole-number radius.';
-  const start = new Date(draft.startsAt);
-  const end = new Date(draft.endsAt);
+  const start = parseAppDateTimeLocal(draft.startsAt);
+  const end = parseAppDateTimeLocal(draft.endsAt);
   if (!draft.startsAt || Number.isNaN(start.getTime()))
     errors.startsAt = 'Enter a valid start time.';
   if (!draft.endsAt || Number.isNaN(end.getTime()))
@@ -2990,7 +2995,7 @@ function eventScheduleLabel(event: AuthorEvent) {
 }
 
 function formatAuthorDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
@@ -3002,10 +3007,7 @@ function questionPromptExcerpt(prompt: string) {
 }
 
 function toDateTimeLocal(value: string): string {
-  const date = new Date(value);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-    .toISOString()
-    .slice(0, 16);
+  return toAppDateTimeLocal(value);
 }
 
 function toAuthorError(error: unknown): AuthorApiError {

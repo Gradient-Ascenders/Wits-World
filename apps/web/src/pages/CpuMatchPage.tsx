@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../date-time';
 import { StateIcon } from '../components/StatusMessage';
 import { PageLoadingState } from '../components/LoadingState';
 import {
@@ -1302,7 +1303,7 @@ function sideLabel(side: 'cpu' | 'player') {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));

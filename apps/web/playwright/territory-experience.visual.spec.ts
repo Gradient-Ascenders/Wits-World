@@ -7,6 +7,9 @@ const ZONE_IDS = [
 ] as const;
 const SEASON_ID = '37700000-0000-4000-8000-000000000001';
 
+// Campus times must stay in Johannesburg even on a device abroad.
+test.use({ timezoneId: 'America/Los_Angeles' });
+
 test('territory map and list stay equivalent at desktop and mobile widths', async ({
   page,
 }, testInfo) => {
@@ -46,6 +49,12 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
     path: testInfo.outputPath('territory-list-desktop.png'),
   });
 
+  const rules = page.getByText(/Eligible wins add influence after the match/);
+  await expect(rules).toBeHidden();
+  await page.getByText('How territories work').focus();
+  await page.keyboard.press('Enter');
+  await expect(rules).toBeVisible();
+
   await eastZone.focus();
   await page.keyboard.press('Enter');
   const territoryLoading = page.getByRole('status').filter({
@@ -62,9 +71,12 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
   ).toBeFocused();
   await expect(page.locator('.site-header--explore')).toBeVisible();
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
-  await expect(
-    page.getByText('9 accepted influence from 4 contributors'),
-  ).toBeVisible();
+  await expect(page.getByText('9 influence from 4 contributors')).toBeVisible();
+  await expect(page.getByText('22:00 SAST')).toBeVisible();
+  await expect(page.getByText('22:00 SAST')).toHaveAttribute(
+    'title',
+    'Johannesburg time (SAST, UTC+2)',
+  );
   await expect(page.getByText('2 / 5')).toBeVisible();
   await expect(page.getByText('blue_witsie took ownership')).toBeVisible();
   await expect(page.locator('.territory-detail')).not.toContainText(
@@ -83,6 +95,16 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
     animations: 'disabled',
     path: testInfo.outputPath('territory-detail-desktop.png'),
   });
+
+  await page.getByRole('button', { name: 'Map layers', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Territory boundaries' }).uncheck();
+  await expect(page.locator('[data-deterministic-territories]')).toBeHidden();
+  await expect(
+    page.getByRole('heading', { name: 'East Campus' }),
+  ).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Territory boundaries' }).check();
+  await expect(page.locator('[data-deterministic-territories]')).toBeVisible();
+  await page.keyboard.press('Escape');
 
   await page.setViewportSize({ height: 844, width: 390 });
   await page.reload();
@@ -122,9 +144,7 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
   await expect(
     page.getByRole('button', { name: 'Lower territory sheet' }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('heading', { name: 'Current contest' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'This hour' })).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     animations: 'disabled',
@@ -132,7 +152,7 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
   });
 
   await page
-    .getByRole('heading', { name: 'Ownership history' })
+    .getByRole('heading', { name: 'History', exact: true })
     .scrollIntoViewIfNeeded();
   await expect(page.getByText('blue_witsie took ownership')).toBeVisible();
   await expectNoHorizontalOverflow(page);
@@ -141,17 +161,38 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
     path: testInfo.outputPath('territory-history-mobile.png'),
   });
 
+  await installRoutes(page, true);
+  await page.reload();
+  await page.getByRole('button', { name: /^Events —/ }).click();
+  await page.getByRole('button', { name: 'Territories', exact: true }).click();
+  await page.getByRole('button', { name: /Open Arts and Community/ }).click();
+  await expect(page.getByText('No influence yet.')).toBeVisible();
+  await expect(page.getByText('22:00 SAST')).toBeVisible();
+  await expect(page.locator('.territory-activity')).toHaveCount(0);
+  await expect(page.getByText('0 / 5')).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    animations: 'disabled',
+    path: testInfo.outputPath('territory-empty-mobile.png'),
+  });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    animations: 'disabled',
+    path: testInfo.outputPath('territory-empty-desktop.png'),
+  });
+
   expect(consoleErrors).toEqual([]);
   expect(runtimeErrors).toEqual([]);
 });
 
-async function installRoutes(page: Page): Promise<void> {
+async function installRoutes(page: Page, emptyContest = false): Promise<void> {
   const zones = [
     zoneFixture(
       ZONE_IDS[0],
-      'East Campus',
+      emptyContest ? 'Arts and Community' : 'East Campus',
       'active',
-      { playerName: 'blue_witsie' },
+      emptyContest ? null : { playerName: 'blue_witsie' },
       0,
     ),
     zoneFixture(ZONE_IDS[1], 'West Campus', 'active', null, 0.003),
@@ -202,18 +243,22 @@ async function installRoutes(page: Page): Promise<void> {
     if (path.endsWith(`/territory/zones/${ZONE_IDS[0]}/standings`)) {
       await route.fulfill({
         json: {
-          activity: { contributors: 4, influence: 9 },
+          activity: emptyContest
+            ? { contributors: 0, influence: 0 }
+            : { contributors: 4, influence: 9 },
           seasonId: SEASON_ID,
-          top: [
-            { influence: 4, rank: 1 },
-            { influence: 3, rank: 2 },
-            { influence: 2, rank: 3 },
-          ],
+          top: emptyContest
+            ? []
+            : [
+                { influence: 4, rank: 1 },
+                { influence: 3, rank: 2 },
+                { influence: 2, rank: 3 },
+              ],
           viewer: {
             dailyCap: 5,
-            influence: 2,
-            remainingDailyInfluence: 3,
-            todayInfluence: 2,
+            influence: emptyContest ? 0 : 2,
+            remainingDailyInfluence: emptyContest ? 5 : 3,
+            todayInfluence: emptyContest ? 0 : 2,
           },
           zoneId: ZONE_IDS[0],
         },
@@ -223,20 +268,29 @@ async function installRoutes(page: Page): Promise<void> {
     if (path.endsWith(`/territory/zones/${ZONE_IDS[0]}/history`)) {
       await route.fulfill({
         json: {
-          entries: [
-            {
-              effectiveAt: '2026-09-26T14:00:05.000Z',
-              owner: { playerName: 'blue_witsie' },
-              seasonId: SEASON_ID,
-              transitionKind: 'settlement',
-            },
-            {
-              effectiveAt: '2026-09-20T06:00:00.000Z',
-              owner: null,
-              seasonId: SEASON_ID,
-              transitionKind: 'activated',
-            },
-          ],
+          entries: emptyContest
+            ? [
+                {
+                  effectiveAt: '2026-09-20T06:00:00.000Z',
+                  owner: null,
+                  seasonId: SEASON_ID,
+                  transitionKind: 'activated',
+                },
+              ]
+            : [
+                {
+                  effectiveAt: '2026-09-26T14:00:05.000Z',
+                  owner: { playerName: 'blue_witsie' },
+                  seasonId: SEASON_ID,
+                  transitionKind: 'settlement',
+                },
+                {
+                  effectiveAt: '2026-09-20T06:00:00.000Z',
+                  owner: null,
+                  seasonId: SEASON_ID,
+                  transitionKind: 'activated',
+                },
+              ],
           zoneId: ZONE_IDS[0],
         },
       });

@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../../date-time';
 import { Link } from 'wouter';
 
 import type { CpuMatchHistoryItem } from '../../api/matches';
@@ -168,7 +169,7 @@ function PlayerResultSummary({
 }
 
 export function formatMatchDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));

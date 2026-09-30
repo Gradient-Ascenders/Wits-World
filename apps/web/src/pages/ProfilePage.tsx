@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../date-time';
 import { StateIcon } from '../components/StatusMessage';
 import { LoadingState } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
@@ -39,9 +40,8 @@ interface StandingsQuery {
 
 const STANDINGS_PAGE_SIZE = 20;
 const numberFormatter = new Intl.NumberFormat('en-ZA');
-const monthFormatter = new Intl.DateTimeFormat('en-ZA', {
+const monthFormatter = createAppDateTimeFormatter('en-ZA', {
   month: 'long',
-  timeZone: 'Africa/Johannesburg',
   year: 'numeric',
 });
 
@@ -665,9 +665,8 @@ function ProgressionErrorState({
 }
 
 function currentJohannesburgMonth() {
-  const parts = new Intl.DateTimeFormat('en-ZA', {
+  const parts = createAppDateTimeFormatter('en-ZA', {
     month: '2-digit',
-    timeZone: 'Africa/Johannesburg',
     year: 'numeric',
   }).formatToParts(new Date());
   const year = parts.find((part) => part.type === 'year')?.value;

@@ -120,6 +120,10 @@ and total step counts. Trail detail preserves the server-returned order and
 labels every stop as completed, current, locked, unavailable, or retired with
 text and an icon rather than colour alone.
 
+Trail pins are numbered to match the server-provided stop positions in the list.
+Retired trails retain their completed stops and show the shared retirement notice
+once; stop-specific availability warnings remain visible.
+
 Only a server-returned `current` step exposes **Open current event**. That action
 opens the existing event detail, reported-location eligibility, and challenge
 start journey; it does not create a trail-specific challenge path or infer

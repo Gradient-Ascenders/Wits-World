@@ -93,7 +93,7 @@ describe('trail discovery presentation', () => {
     expect(screen.getByText('1/3')).toHaveAccessibleName(
       '1 of 3 steps completed',
     );
-    expect(screen.getByText('Stop 2 next')).toBeVisible();
+    expect(screen.getByText('Next: stop 2')).toBeVisible();
     await user.click(
       screen.getByRole('button', {
         name: `View trail: ${summary.title}`,
@@ -143,14 +143,10 @@ describe('trail discovery presentation', () => {
       'This stop is temporarily unavailable.',
       'event_unavailable',
     ],
+    ['Retired', 'This event is retired and cannot be opened.', 'event_retired'],
     [
       'Retired',
-      'This event has retired and cannot be opened.',
-      'event_retired',
-    ],
-    [
-      'Retired',
-      'This trail has retired; completed stops remain visible.',
+      'Your completed stops remain part of your history.',
       'trail_retired',
     ],
   ] as const)(
@@ -184,6 +180,40 @@ describe('trail discovery presentation', () => {
       ).not.toBeInTheDocument();
     },
   );
+
+  it('explains trail retirement once while keeping completed history and stop-specific warnings', () => {
+    render(
+      <TrailDetail
+        onOpenEvent={vi.fn()}
+        onRetry={vi.fn()}
+        state={{
+          status: 'ready',
+          trail: {
+            ...activeTrail,
+            availability: 'retired',
+            progressStatus: 'retired',
+            steps: [
+              step(1, 'completed'),
+              step(2, 'unavailable', 'trail_retired'),
+              step(3, 'unavailable', 'trail_retired'),
+            ],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText('This trail is retired.')).toBeVisible();
+    expect(screen.getAllByText('Retired')).toHaveLength(2);
+    expect(screen.getByText('Completed')).toBeVisible();
+    expect(
+      screen.queryByText(
+        'This trail is retired. Completed stops remain visible.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Dashed line/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Open event/ }),
+    ).not.toBeInTheDocument();
+  });
 
   it('announces a fully completed trail without offering a next step', () => {
     render(
@@ -228,9 +258,7 @@ describe('trail discovery presentation', () => {
         state={{ status: 'loading' }}
       />,
     );
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Loading trails and progress…',
-    );
+    expect(screen.getByRole('status')).toHaveTextContent('Loading trails…');
 
     view.rerender(
       <TrailList
@@ -239,9 +267,7 @@ describe('trail discovery presentation', () => {
         state={{ failure: 'unavailable', status: 'error' }}
       />,
     );
-    await user.click(
-      screen.getByRole('button', { name: 'Try loading trails again' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Retry trails' }));
     expect(onRetry).toHaveBeenCalledOnce();
 
     view.rerender(
@@ -252,13 +278,9 @@ describe('trail discovery presentation', () => {
       />,
     );
     expect(
-      screen.getByText(
-        'This trail may have been retired or is no longer visible.',
-      ),
+      screen.getByText('This trail may have been retired or removed.'),
     ).toBeVisible();
-    expect(
-      screen.getByRole('button', { name: 'Try loading this trail again' }),
-    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Retry trail' })).toBeEnabled();
   });
 });
 
@@ -276,9 +298,9 @@ describe('nearby unvisited presentation', () => {
       />,
     );
 
-    expect(screen.getByText('~182 m away · Unvisited')).toBeVisible();
+    expect(screen.getByText('~182 m away')).toBeVisible();
     expect(
-      screen.getByText('Current stop 2 of 3 on Campus History Trail'),
+      screen.getByText('Campus History Trail · Stop 2 of 3'),
     ).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'View event: Senate House' }),
@@ -298,7 +320,7 @@ describe('nearby unvisited presentation', () => {
         state={{ status: 'waiting-location' }}
       />,
     );
-    expect(screen.getByText('Location permission is denied.')).toBeVisible();
+    expect(screen.getByText('Live location is disabled.')).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Retry location' }),
     ).toBeEnabled();
@@ -327,11 +349,11 @@ describe('nearby unvisited presentation', () => {
     );
     expect(
       screen.getByText(
-        'The reported location was too old or not accurate enough for this search.',
+        'Your location is out of date or not accurate enough. Refresh it to search again.',
       ),
     ).toBeVisible();
     expect(
-      screen.getByRole('button', { name: 'Get a new reported location' }),
+      screen.getByRole('button', { name: 'Refresh location' }),
     ).toBeEnabled();
   });
 });
@@ -487,26 +509,31 @@ describe('exploration integration', () => {
         expect.objectContaining({
           id: activeTrail.steps[0]!.eventId,
           selectable: false,
+          trailPosition: 1,
           trailState: 'completed',
         }),
         expect.objectContaining({
           id: activeTrail.steps[1]!.eventId,
           selectable: true,
+          trailPosition: 2,
           trailState: 'current',
         }),
         expect.objectContaining({
           id: activeTrail.steps[2]!.eventId,
           selectable: false,
+          trailPosition: 3,
           trailState: 'locked',
         }),
         expect.objectContaining({
           id: trailWithRetiredStop.steps[3]!.eventId,
           selectable: false,
+          trailPosition: 4,
           trailState: 'retired',
         }),
         expect.objectContaining({
           id: trailWithRetiredStop.steps[4]!.eventId,
           selectable: false,
+          trailPosition: 5,
           trailState: 'retired',
         }),
       ]),
@@ -601,14 +628,12 @@ describe('exploration integration', () => {
         selectedEventId={nearbyEvent.eventId}
       />,
     );
-    await user.click(screen.getByRole('button', { name: 'Nearby' }));
+    await user.click(screen.getByRole('button', { name: 'Back to nearby' }));
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Nearby' })).toHaveFocus(),
     );
-    expect(
-      screen.getByText('Nearby events could not be loaded.'),
-    ).toBeVisible();
+    expect(screen.getByText('Nearby events could not load.')).toBeVisible();
   });
 
   it('hands the authoritative current trail stop to the existing event selection journey', async () => {

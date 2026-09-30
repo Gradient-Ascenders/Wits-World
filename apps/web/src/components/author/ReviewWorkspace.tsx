@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../../date-time';
 import { authorErrorDetail } from './author-error-copy';
 import { StateIcon } from '../StatusMessage';
 import { LoadingState } from '../LoadingState';
@@ -233,7 +234,7 @@ function titleCase(value: string) {
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));

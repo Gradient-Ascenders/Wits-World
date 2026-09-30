@@ -1,7 +1,7 @@
+import { createAppDateTimeFormatter } from '../../date-time';
 import { useEffect, useRef } from 'react';
 import { StatusMessage } from '../StatusMessage';
-import { LoadingState } from '../LoadingState';
-import { QuestMarker } from '../branding/QuestMarker';
+import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
 import type { PlayerEventAvailability } from '../../api/events';
 
 export interface EventPresentation {
@@ -74,21 +74,16 @@ export function EventList({
   selectedEventId,
 }: EventListProps) {
   if (discovery.status === 'loading') {
-    return (
-      <LoadingState
-        className="event-list__loading"
-        label="Loading published events…"
-      />
-    );
+    return <ExplorationLoadingPanel label="Loading events…" />;
   }
 
   if (discovery.status === 'error') {
     return (
       <StatusMessage tone="error" className="event-list__state">
-        <strong>Events are unavailable right now.</strong>
+        <strong>Events could not load.</strong>
         <p>{discovery.message}</p>
         <button className="button" onClick={onRetry} type="button">
-          Try loading events again
+          Retry events
         </button>
       </StatusMessage>
     );
@@ -97,8 +92,8 @@ export function EventList({
   if (discovery.status === 'empty' || discovery.events.length === 0) {
     return (
       <StatusMessage tone="empty" className="event-list__state">
-        <strong>No published events are available.</strong>
-        <p>Check again later.</p>
+        <strong>No events available.</strong>
+        <p>Check back later.</p>
       </StatusMessage>
     );
   }
@@ -188,11 +183,17 @@ export function SelectedEventDetails({
         ) : null}
         <dl className="selected-event__facts">
           <div>
-            <dt>Event interaction area</dt>
+            <dt>Challenge radius</dt>
             <dd>{formatRadius(event.radiusMetres)} radius</dd>
           </div>
           <div>
-            <dt>{event.availability === 'upcoming' ? 'Starts' : 'Ends'}</dt>
+            <dt>
+              {event.availability === 'upcoming'
+                ? 'Starts'
+                : event.availability === 'ended'
+                  ? 'Ended'
+                  : 'Ends'}
+            </dt>
             <dd>
               {formatEventTime(
                 event.availability === 'upcoming'
@@ -250,7 +251,6 @@ function EligibilityStatus({
         role="status"
       >
         <strong>In range</strong>
-        <span>Confirmed by Wits World for this reported location.</span>
         <button
           aria-label={`Start challenge for ${event.title}`}
           className="button selected-event__start"
@@ -266,13 +266,11 @@ function EligibilityStatus({
 
   if (state.status === 'starting') {
     return (
-      <div aria-live="polite" className="selected-event__status" role="status">
-        <strong className="selected-event__status-heading">
-          <QuestMarker />
-          Starting challenge…
-        </strong>
-        <span>Wits World is checking your latest reported location again.</span>
-      </div>
+      <ExplorationLoadingPanel
+        className="exploration-loading-panel--inline"
+        description="Checking your location before starting."
+        label="Starting challenge…"
+      />
     );
   }
 
@@ -291,18 +289,23 @@ function EligibilityStatus({
     state.status === 'location-stale' ||
     state.status === 'start-error';
 
+  if (checking) {
+    return (
+      <ExplorationLoadingPanel
+        className="exploration-loading-panel--inline"
+        description={content.detail}
+        label={content.title}
+      />
+    );
+  }
+
   return (
     <div
       aria-live="polite"
       className={`selected-event__status selected-event__status--${state.status}${emphasizeDecision ? ' selected-event__status--settle' : ''}`}
       role="status"
     >
-      <strong
-        className={checking ? 'selected-event__status-heading' : undefined}
-      >
-        {checking ? <QuestMarker /> : null}
-        {content.title}
-      </strong>
+      <strong>{content.title}</strong>
       {content.detail ? <span>{content.detail}</span> : null}
       {canRetry ? (
         <button
@@ -330,23 +333,22 @@ function getEligibilityContent(
       return { title: 'This event is unavailable.' };
     case 'location-uncertain':
       return {
-        detail: 'Waiting for a better reported-location reading…',
+        detail: 'Waiting for a more accurate location…',
         title: 'Location accuracy is too low.',
       };
     case 'location-stale':
       return {
-        detail: 'A newer reading is needed before Wits World can decide.',
-        title: 'Reported location needs refreshing.',
+        detail: 'Try again to refresh your location and check range.',
+        title: 'Location is out of date.',
       };
     case 'journey-too-fast':
       return {
-        detail:
-          'This event cannot be confirmed from recent reported-location activity yet. Wait briefly, then try again with a fresh reading.',
+        detail: 'Wait a moment, then try again with a fresh location.',
         title: 'Travel time needs another check.',
       };
     case 'unreachable':
       return {
-        detail: 'Move closer and live location will check again.',
+        detail: 'Move closer. Range is checked again as your location updates.',
         title: 'Out of range',
       };
     case 'api-error':
@@ -361,15 +363,15 @@ function getEligibilityContent(
       };
     case 'start-error':
       return {
-        detail: 'Your previous range result was not used as authorization.',
+        detail: 'Try again. Your location will be checked before starting.',
         title: 'The challenge could not start.',
       };
     case 'location-denied':
-      return { title: 'Live location is disabled.' };
+      return locationContent.denied;
     case 'location-timeout':
-      return { title: 'Location signal timed out.' };
+      return locationContent.timeout;
     case 'location-unavailable':
-      return { title: 'Reported location is unavailable.' };
+      return locationContent.unavailable;
     case 'idle':
     case 'locating':
       return locationContent[locationState];
@@ -384,28 +386,32 @@ const locationContent: Record<
   { detail?: string; title: string }
 > = {
   blocked: {
-    detail: 'Use a secure page and check browser Permissions Policy settings.',
+    detail: 'Open this page over HTTPS and allow location access.',
     title: 'Live location is not allowed here.',
   },
   'checking-permission': { title: 'Checking location access…' },
   denied: {
-    detail: 'Enable it in browser settings to check event range.',
+    detail: 'Allow location in browser settings, then reload this page.',
     title: 'Live location is disabled.',
   },
-  locating: { title: 'Finding your reported location…' },
-  'permission-required': { title: 'Live location is off.' },
+  locating: { title: 'Finding your location…' },
+  'permission-required': {
+    detail: 'Enable live location on the map to check event range.',
+    title: 'Live location is off.',
+  },
   stale: {
-    detail: 'The last marker remains visible while you retry.',
-    title: 'Reported location is unavailable.',
+    detail:
+      'Retry location on the map. The marker shows your last known location.',
+    title: 'Location is out of date.',
   },
   timeout: {
-    detail: 'Move to an open area and retry when ready.',
+    detail: 'Move to an open area, then retry location on the map.',
     title: 'Location signal timed out.',
   },
   tracking: { title: 'Checking range…' },
   unavailable: {
-    detail: 'Check device location services and retry.',
-    title: 'Reported location is unavailable.',
+    detail: 'Check device location services, then retry location on the map.',
+    title: 'Location is unavailable.',
   },
   unsupported: {
     detail: 'You can still browse every event in the list.',
@@ -414,7 +420,7 @@ const locationContent: Record<
 };
 
 function formatEventTime(value: string): string {
-  return new Intl.DateTimeFormat('en-ZA', {
+  return createAppDateTimeFormatter('en-ZA', {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',

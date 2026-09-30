@@ -1,3 +1,4 @@
+import { createAppDateTimeFormatter } from '../../date-time';
 import { StateIcon } from '../StatusMessage';
 import { LoadingState } from '../LoadingState';
 import {
@@ -824,7 +825,7 @@ function toCollectibleCard(card: AuthorCard): OwnedCard {
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));

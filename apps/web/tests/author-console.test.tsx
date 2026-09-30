@@ -513,6 +513,8 @@ describe('Basic author console', () => {
       longitude: 28.03038,
       radiusMetres: 75,
       title: 'Library discovery',
+      startsAt: '2026-09-01T06:00:00.000Z',
+      endsAt: '2026-09-01T10:00:00.000Z',
     });
   });
 

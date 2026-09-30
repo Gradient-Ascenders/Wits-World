@@ -73,6 +73,98 @@ async function noOverflow(page: Page) {
   ).toBe(true);
 }
 
+test('event schedule times stay in Johannesburg on a device in another timezone', async ({
+  browser,
+}, info) => {
+  const context = await browser.newContext({
+    timezoneId: 'America/Los_Angeles',
+    locale: 'en-ZA',
+    viewport: { width: 1440, height: 900 },
+  });
+  try {
+    const page = await context.newPage();
+    await installEvents(page);
+    await page.goto('/explore');
+    await expect(
+      page.getByRole('heading', { name: 'Campus events' }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: /View on map.*Great Hall/ }).click();
+    await page.getByText('About this event', { exact: true }).click();
+    const time = page.locator('.selected-event__facts dd').last();
+    await expect(time).toHaveText(/1 Oct.*02:00/);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath('johannesburg-desktop.png'),
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    const trigger = page.getByRole('button', { name: /^Events —/ });
+    if (await trigger.isVisible()) await trigger.click();
+    await expect(time).toBeVisible();
+    await expect(time).toHaveText(/1 Oct.*02:00/);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath('johannesburg-mobile.png'),
+    });
+  } finally {
+    await context.close();
+  }
+});
+
+test('one discovery navigation stays readable with narrow screens and larger text', async ({
+  page,
+}, info) => {
+  await installEvents(page);
+  for (const [width, scale] of [
+    [320, '100'],
+    [390, '150'],
+    [1440, '150'],
+  ] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript((scale) => {
+      localStorage.setItem(
+        'wits-world.accessibility-preferences.v1',
+        JSON.stringify({ scale }),
+      );
+    }, scale);
+    await page.goto('/explore');
+    await expect(page.locator('.exploration-view')).toBeVisible();
+    const trigger = page.getByRole('button', { name: /^Events —/ });
+    if (await trigger.isVisible()) await trigger.click();
+    const navigation = page.getByRole('navigation', { name: 'Explore view' });
+    await expect(navigation.getByRole('button')).toHaveText([
+      'Events',
+      'Nearby',
+      'Trails',
+      'Territories',
+    ]);
+    const crowded = await navigation
+      .getByRole('button')
+      .evaluateAll((buttons) =>
+        buttons
+          .filter((button) => button.scrollWidth > button.clientWidth)
+          .map((button) => button.textContent),
+      );
+    expect(crowded).toEqual([]);
+    await noOverflow(page);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath(`explore-tabs-${width}-${scale}.png`),
+    });
+    await navigation
+      .getByRole('button', { name: 'Nearby', exact: true })
+      .click();
+    await expect(
+      navigation.getByRole('button', { name: 'Nearby', exact: true }),
+    ).toHaveAttribute('aria-current', 'page');
+    await navigation
+      .getByRole('button', { name: 'Events', exact: true })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Campus events' }),
+    ).toBeFocused();
+  }
+});
+
 test('keeps the read aloud icon clear of map controls and the collapsible header', async ({
   page,
 }, info) => {
@@ -263,7 +355,7 @@ test('map and event loading preserve discovery space', async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/explore?map-loading', { waitUntil: 'domcontentloaded' });
   await expect(page.getByText('Loading the campus map…')).toBeVisible();
-  await expect(page.getByText('Loading published events…')).toBeVisible();
+  await expect(page.getByText('Loading events…')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Events —/ })).toBeInViewport({
     ratio: 1,
   });
@@ -272,6 +364,70 @@ test('map and event loading preserve discovery space', async ({
     path: info.outputPath('mobile-loading.png'),
   });
   release();
+  await page.getByRole('button', { name: /^Events —/ }).click();
+  await expect(page.getByText('No events available.')).toBeVisible();
+
+  let releaseTrails: () => void = () => undefined;
+  const pendingTrails = new Promise<void>((resolve) => {
+    releaseTrails = resolve;
+  });
+  await page.route('**/api/v1/trails', async (route) => {
+    await pendingTrails;
+    await route.fulfill({ json: { trails: [], requestId: 'explore-browser' } });
+  });
+  await page.getByRole('button', { name: 'Trails', exact: true }).click();
+  const trailLoading = page
+    .getByRole('status')
+    .filter({ hasText: 'Loading trails…' });
+  await expect(trailLoading).toHaveClass(/exploration-loading-panel/);
+  await expect(trailLoading).toHaveAttribute('aria-busy', 'true');
+  await expect(trailLoading.locator('.quest-marker')).toHaveCSS(
+    'width',
+    '36px',
+  );
+  await expect(trailLoading).toHaveCSS('border-top-width', '1px');
+  const pin = trailLoading.locator('.quest-marker svg');
+  await expect(pin).toHaveCSS('animation-name', 'quest-marker-glow');
+  await expect(pin.locator('.quest-marker__base')).toHaveCSS(
+    'stroke-dasharray',
+    'none',
+  );
+  await pin.evaluate((element) => {
+    const animation = element.getAnimations()[0]!;
+    animation.pause();
+    animation.currentTime = 900;
+  });
+  await page.screenshot({
+    animations: 'allow',
+    path: info.outputPath('mobile-loader-glow-peak.png'),
+  });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(pin).toHaveCSS('animation-name', 'none');
+  await page.evaluate(() => {
+    document.documentElement.dataset.motion = 'full';
+  });
+  await expect(pin).toHaveCSS('animation-name', 'quest-marker-glow');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.evaluate(() => {
+    document.documentElement.dataset.motion = 'reduce';
+  });
+  await expect(pin).toHaveCSS('animation-name', 'none');
+  await page.evaluate(() => {
+    document.documentElement.dataset.motion = 'system';
+  });
+  await expect(pin).toHaveCSS('animation-name', 'quest-marker-glow');
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('mobile-trails-loading.png'),
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(trailLoading).toBeVisible();
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('desktop-trails-loading.png'),
+  });
+  releaseTrails();
+  await expect(page.getByText('No trails available.')).toBeVisible();
 });
 
 test('mobile sheet stays above navigation, supports selection, disclosure, gestures and keyboard return', async ({
@@ -300,6 +456,16 @@ test('mobile sheet stays above navigation, supports selection, disclosure, gestu
   });
   await page.getByRole('button', { name: /Select Great Hall/ }).click();
   await expect(page.getByRole('heading', { name: 'Great Hall' })).toBeFocused();
+  const mobileCollapse = page.getByRole('button', {
+    name: 'Collapse event details',
+  });
+  await expect(mobileCollapse.locator('.event-panel__rail-icon')).toBeHidden();
+  await expect(
+    mobileCollapse.locator('.event-panel__collapse-chevron'),
+  ).toHaveCSS('width', '20px');
+  await expect(
+    mobileCollapse.locator('.event-panel__collapse-chevron'),
+  ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Start challenge for Great Hall' }),
   ).toBeInViewport({ ratio: 1 });
@@ -387,13 +553,202 @@ test('tablet bounds the sheet and desktop reserves map space for discovery', asy
   const map = await page.locator('.campus-map').boundingBox();
   expect(map!.x).toBeGreaterThanOrEqual(panel!.x + panel!.width);
   expect(map!.width).toBeGreaterThan(1000);
+  const mapControls = page.locator('.mapboxgl-ctrl-group button');
+  expect(await mapControls.count()).toBeGreaterThan(0);
+  for (const control of await mapControls.all()) {
+    await control.hover();
+    await expect(control).toHaveCSS('background-color', 'rgb(17, 36, 64)');
+  }
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('desktop-map-control-hover.png'),
+  });
   await page.getByRole('button', { name: /View on map.*Great Hall/ }).click();
   await page.getByText('About this event', { exact: true }).click();
+  const desktopCollapse = page.getByRole('button', {
+    name: 'Collapse event details',
+  });
+  await expect(
+    desktopCollapse.locator('.event-panel__rail-icon'),
+  ).toBeVisible();
+  await expect(
+    desktopCollapse.locator('.event-panel__collapse-chevron'),
+  ).toBeHidden();
+  await expect(desktopCollapse).toHaveAttribute('aria-expanded', 'true');
   await page.screenshot({
     animations: 'disabled',
     path: info.outputPath('desktop-selected.png'),
   });
+  await page.getByRole('button', { name: 'Collapse event details' }).click();
+  const rail = page.locator('.event-panel--peek');
+  await expect(rail).toBeVisible();
+  const railBounds = await rail.boundingBox();
+  expect(railBounds!.width).toBeCloseTo(72, 0);
+  expect(railBounds!.height).toBeGreaterThan(700);
+  const layersBounds = await page
+    .getByRole('button', { name: 'Map layers', exact: true })
+    .boundingBox();
+  expect(layersBounds!.x + layersBounds!.width / 2).toBeCloseTo(
+    railBounds!.x + railBounds!.width / 2,
+    0,
+  );
+  const mapBounds = await page.locator('.campus-map').boundingBox();
+  expect(mapBounds!.x).toBeGreaterThanOrEqual(
+    railBounds!.x + railBounds!.width,
+  );
+  const reopen = page.getByRole('button', {
+    name: 'Events — Great Hall selected, open details',
+  });
+  await expect(reopen).toHaveAttribute(
+    'aria-controls',
+    'explore-event-sheet-content',
+  );
+  await expect(reopen.locator('.event-panel__rail-icon')).toBeVisible();
+  await expect(reopen.locator('.event-panel__peek-copy')).toBeHidden();
+  const shortcuts = page.getByRole('navigation', { name: 'Explore shortcuts' });
+  await expect(shortcuts.getByRole('button')).toHaveCount(4);
+  const railIcons = [
+    reopen.locator('.event-panel__rail-icon'),
+    ...(await shortcuts.locator('svg').all()),
+    page
+      .getByRole('button', { name: 'Map layers', exact: true })
+      .locator('svg'),
+  ];
+  for (const icon of railIcons) {
+    await expect(icon).toHaveCSS('width', '28px');
+    await expect(icon).toHaveCSS('height', '28px');
+  }
+  await expect(
+    shortcuts.getByRole('button', { name: 'Open Events' }),
+  ).toHaveAttribute('aria-current', 'page');
+  await reopen.focus();
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('desktop-collapsed-rail.png'),
+  });
+  await reopen.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Great Hall' })).toBeFocused();
   await noOverflow(page);
+});
+
+test('desktop rail shortcuts open each section with keyboard focus and active feedback', async ({
+  page,
+}, info) => {
+  await installEvents(page);
+  await page.route('**/api/v1/trails', (route) =>
+    route.fulfill({ json: { trails: [], requestId: 'rail-trails' } }),
+  );
+  await page.route('**/api/v1/territory/zones', (route) =>
+    route.fulfill({ json: { zones: [], requestId: 'rail-territories' } }),
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/explore');
+  await page
+    .getByRole('button', { name: 'Collapse events', exact: true })
+    .click();
+  const shortcuts = page.getByRole('navigation', { name: 'Explore shortcuts' });
+  for (const [label, heading, collapse] of [
+    ['Nearby', 'Nearby events', 'Collapse nearby discovery'],
+    ['Trails', 'Trails', 'Collapse trails'],
+    ['Territories', 'Campus territories', 'Collapse territories'],
+    ['Events', 'Campus events', 'Collapse events'],
+  ] as const) {
+    const shortcut = shortcuts.getByRole('button', { name: `Open ${label}` });
+    await expect(shortcut).toHaveAttribute('title', label);
+    const bounds = await shortcut.boundingBox();
+    expect(bounds!.width).toBeGreaterThanOrEqual(44);
+    expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    await shortcut.focus();
+    await shortcut.press('Enter');
+    await expect(
+      page.getByRole('heading', { name: heading, exact: true }),
+    ).toBeFocused();
+    await page.getByRole('button', { name: collapse, exact: true }).click();
+    await expect(shortcut).toHaveAttribute('aria-current', 'page');
+    await expect(shortcut).toHaveCSS('color', 'rgb(224, 196, 108)');
+  }
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('desktop-rail-shortcuts.png'),
+  });
+  await noOverflow(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(shortcuts).toBeHidden();
+});
+
+test('desktop layers change visibility without clearing selection or resetting the map', async ({
+  page,
+}, info) => {
+  await installEvents(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/explore');
+  await page.getByRole('button', { name: /Select Great Hall/ }).click();
+  await page.getByRole('button', { name: 'Collapse event details' }).click();
+  const map = page.locator('.campus-map__canvas');
+  const provider = await map.getAttribute('data-map-provider');
+  const camera = await map.getAttribute('data-map-camera-center');
+  const markers = page.locator('[data-deterministic-markers] button');
+  const radius = page.locator('[data-deterministic-event-radius]');
+  const layers = page.getByRole('button', { name: 'Map layers', exact: true });
+  await layers.click();
+  const layersPanelBounds = await page
+    .locator('.map-layers-control__panel')
+    .boundingBox();
+  const collapsedRailBounds = await page
+    .locator('.event-panel--peek')
+    .boundingBox();
+  expect(layersPanelBounds!.x).toBeGreaterThan(
+    collapsedRailBounds!.x + collapsedRailBounds!.width,
+  );
+  await expect(
+    page.getByRole('checkbox', { name: 'Event markers' }),
+  ).toBeFocused();
+  await page.getByRole('checkbox', { name: 'Event markers' }).uncheck();
+  await expect(markers.first()).toBeHidden();
+  await expect(radius).toBeVisible();
+  await page
+    .getByRole('checkbox', { name: 'Selected challenge radius' })
+    .uncheck();
+  await expect(radius).toBeHidden();
+  await page
+    .getByRole('checkbox', { name: '3D buildings and trees' })
+    .uncheck();
+  await page.getByRole('checkbox', { name: 'Map labels' }).uncheck();
+  await expect(map).toHaveAttribute('data-map-details-visible', 'false');
+  await expect(map).toHaveAttribute('data-map-labels-visible', 'false');
+  await expect(map).toHaveAttribute('data-map-provider', provider!);
+  await expect(map).toHaveAttribute('data-map-camera-center', camera!);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('desktop-map-layers.png'),
+  });
+  await page.keyboard.press('Escape');
+  await expect(layers).toBeFocused();
+  await expect(page.locator('.event-panel--peek')).toBeVisible();
+  await layers.click();
+  await expect(
+    page.getByRole('checkbox', { name: 'Event markers' }),
+  ).not.toBeChecked();
+  await page.getByRole('checkbox', { name: 'Event markers' }).check();
+  await expect(markers.first()).toBeVisible();
+  await expect(markers.first()).toHaveAttribute('aria-pressed', 'true');
+  await page
+    .getByRole('checkbox', { name: 'Selected challenge radius' })
+    .check();
+  await expect(radius).toBeVisible();
+  await page
+    .locator('.campus-map__canvas')
+    .click({ position: { x: 100, y: 100 } });
+  await expect(layers).toHaveAttribute('aria-expanded', 'false');
+  await noOverflow(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(layers).toHaveCount(0);
+  await expect(map).toHaveAttribute('data-map-labels-visible', 'true');
+  await expect(markers.first()).toBeVisible();
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('mobile-without-layers.png'),
+  });
 });
 
 test('map failure retains event discovery and a retry action', async ({
@@ -424,9 +779,7 @@ for (const mode of ['empty', 'error'] as const) {
     await page.getByRole('button', { name: /^Events —/ }).click();
     await expect(
       page.getByText(
-        mode === 'empty'
-          ? 'No published events are available.'
-          : 'Events are unavailable right now.',
+        mode === 'empty' ? 'No events available.' : 'Events could not load.',
       ),
     ).toBeVisible();
     await page.screenshot({
@@ -499,7 +852,7 @@ for (const state of ['prompt', 'denied', 'unavailable', 'locating'] as const) {
           ? 'Location access disabled'
           : state === 'unavailable'
             ? 'Retry live location'
-            : 'Finding reported location';
+            : 'Finding your location';
     await expect(
       page.getByRole('button', { name: label, exact: true }),
     ).toBeVisible();

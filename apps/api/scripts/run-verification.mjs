@@ -152,7 +152,11 @@ async function runBasicE2eStep() {
   process.env.BASIC_E2E_JSON_REPORT_PATH = rawPlaywrightReportPath;
 
   try {
-    runNpmStep('deterministic Basic Playwright E2E', ['run', 'test:e2e:basic']);
+    runNpmStep('deterministic Basic Playwright E2E', [
+      'run',
+      'test:e2e:basic',
+      ...(profile === 'pr-e2e' ? ['--', '--api-build-prepared'] : []),
+    ]);
   } catch (error) {
     await writeSanitizedPlaywrightDiagnostics();
     throw error;

@@ -3,11 +3,13 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { LocationObservationProvider } from '../src/browser-location';
+import type { TerritoryZoneSummary } from '../src/api/territory';
+import { TerritoryDiscovery } from '../src/components/exploration/TerritoryDiscovery';
 import type {
   MapController,
   MapFactory,
@@ -36,7 +38,7 @@ const zone = {
   windowEnd: '2026-09-26T15:00:00.000Z',
   windowStart: '2026-09-26T14:00:00.000Z',
   zoneId: ZONE_ID,
-} as const;
+} satisfies TerritoryZoneSummary;
 
 function authValue(): Auth0ContextInterface {
   return {
@@ -137,6 +139,34 @@ afterEach(() => {
 });
 
 describe('territory exploration experience', () => {
+  it('shows one empty-contest message and keeps daily limits and recovery', () => {
+    renderEmptyTerritory();
+
+    expect(screen.getByText('No influence yet.')).toBeVisible();
+    expect(screen.queryByText(/0 influence from/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Anonymous standings')).not.toBeInTheDocument();
+    expect(screen.getByText('0 / 5')).toBeVisible();
+    expect(screen.getByText('Left today').nextElementSibling).toHaveTextContent(
+      '5',
+    );
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled();
+  });
+
+  it('converts an update across midnight to Johannesburg time', () => {
+    renderEmptyTerritory({ windowEnd: '2026-09-30T23:30:00.000Z' });
+    expect(screen.getByText('01:30 SAST')).toBeVisible();
+  });
+
+  it.each([
+    [{ status: 'suspended' as const }, 'Influence paused.'],
+    [{ seasonId: null }, 'No active Ranked season. Ownership unavailable.'],
+    [{ windowEnd: null }, 'Update time unavailable.'],
+  ])('keeps the warning for %j', (overrides, warning) => {
+    renderEmptyTerritory(overrides);
+    expect(screen.getByText(warning)).toBeVisible();
+    expect(screen.queryByText(/SAST/)).not.toBeInTheDocument();
+  });
+
   it('loads territories only on demand and exposes map-equivalent details in the list', async () => {
     const user = userEvent.setup();
     const fetchMock = territoryFetch();
@@ -165,6 +195,12 @@ describe('territory exploration experience', () => {
     ).toBe(false);
 
     await user.click(screen.getByRole('button', { name: /Events —/ }));
+    const navigation = screen.getByRole('navigation', { name: 'Explore view' });
+    expect(
+      within(navigation)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Events', 'Nearby', 'Trails', 'Territories']);
     await user.click(screen.getByRole('button', { name: 'Territories' }));
 
     const zoneButton = await screen.findByRole('button', {
@@ -178,15 +214,39 @@ describe('territory exploration experience', () => {
     const pointUpdatesBeforeSelection = vi.mocked(controller.setPoints).mock
       .calls.length;
 
+    const explainer = screen.getByText('How territories work');
+    const rules = screen.getByText(
+      /Eligible wins add influence after the match/,
+    );
+    expect(rules).not.toBeVisible();
+    await user.click(explainer);
+    expect(rules).toBeVisible();
+
     await user.click(zoneButton);
 
-    expect(await screen.findByText('Current contest')).toBeVisible();
+    expect(
+      await screen.findByRole('heading', { name: 'This hour' }),
+    ).toBeVisible();
     expect(controller.setPoints).toHaveBeenCalledTimes(
       pointUpdatesBeforeSelection,
     );
     expect(screen.getByText('blue_witsie')).toBeVisible();
+    expect(screen.getByText('9 influence from 4 contributors')).toBeVisible();
+    expect(screen.getByText('17:00 SAST')).toHaveAttribute(
+      'title',
+      'Johannesburg time (SAST, UTC+2)',
+    );
+    expect(screen.getByText('17:00 SAST')).toHaveAttribute(
+      'dateTime',
+      zone.windowEnd,
+    );
+    expect(screen.getByText('Anonymous standings')).toBeVisible();
+    expect(screen.getByText('Today / limit')).toBeVisible();
+    expect(screen.getByText('Left today')).toBeVisible();
     expect(
-      screen.getByText('9 accepted influence from 4 contributors'),
+      screen.getByText(
+        'Approximate map. Location checked before joining Ranked.',
+      ),
     ).toBeVisible();
     expect(screen.getByText('2 / 5')).toBeVisible();
     expect(screen.getByText('blue_witsie took ownership')).toBeVisible();
@@ -196,6 +256,18 @@ describe('territory exploration experience', () => {
     expect(
       screen.queryByRole('button', { name: /contest/i }),
     ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Events' }));
+    expect(
+      screen.getByRole('heading', { name: 'Campus events' }),
+    ).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Events' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await waitFor(() =>
+      expect(controller.setRegions).toHaveBeenLastCalledWith([]),
+    );
   });
 
   it('keeps the zone summary usable when one detail section fails', async () => {
@@ -231,9 +303,52 @@ describe('territory exploration experience', () => {
     );
 
     expect(await screen.findByText('East Campus')).toBeVisible();
-    expect(
-      screen.getByText('Current standings could not be refreshed.'),
-    ).toBeVisible();
+    expect(screen.getByText('Could not refresh standings.')).toBeVisible();
     expect(screen.getByText('blue_witsie took ownership')).toBeVisible();
   });
 });
+
+function renderEmptyTerritory(overrides: Partial<TerritoryZoneSummary> = {}) {
+  const selectedZone = { ...zone, owner: null, ...overrides };
+  render(
+    <TerritoryDiscovery
+      detail={{
+        detail: { ...selectedZone, lastSettledAt: null, lifecycleVersion: 1 },
+        failedSections: [],
+        history: { entries: [], zoneId: ZONE_ID },
+        lastUpdatedAt: null,
+        refreshing: false,
+        stale: false,
+        standings: {
+          activity: { contributors: 0, influence: 0 },
+          seasonId: selectedZone.seasonId,
+          top: [],
+          viewer: {
+            dailyCap: 5,
+            influence: 0,
+            remainingDailyInfluence: 5,
+            todayInfluence: 0,
+          },
+          zoneId: ZONE_ID,
+        },
+        status: 'ready',
+        zoneId: ZONE_ID,
+      }}
+      list={{
+        lastUpdatedAt: null,
+        message: null,
+        refreshing: false,
+        stale: false,
+        status: 'ready',
+        zones: [selectedZone],
+      }}
+      modeNavigation={null}
+      onCollapse={vi.fn()}
+      onRefreshDetail={vi.fn()}
+      onRefreshZones={vi.fn()}
+      onSelect={vi.fn()}
+      onShowList={vi.fn()}
+      selectedZoneId={ZONE_ID}
+    />,
+  );
+}
