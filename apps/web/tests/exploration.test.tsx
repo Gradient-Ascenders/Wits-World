@@ -362,6 +362,23 @@ describe('map-first campus exploration', () => {
     );
   });
 
+  it('labels a past event end time as Ended', async () => {
+    const endedEvent = { ...event, availability: 'ended' } as const;
+    render(
+      <CampusExplorer
+        {...explorerProps(vi.fn(async () => createController()))}
+        discovery={{ events: [endedEvent], status: 'ready' }}
+        selectedEventId={endedEvent.id}
+      />,
+    );
+
+    await userEvent.setup().click(screen.getByText('About this event'));
+    expect(screen.getByText('Ended', { selector: 'dt' })).toBeVisible();
+    expect(
+      screen.queryByText('Ends', { selector: 'dt' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('keeps challenge-start status copy in separate mobile sheet rows', async () => {
     const controller = createController();
     const mapFactory: MapFactory = vi.fn(async () => controller);

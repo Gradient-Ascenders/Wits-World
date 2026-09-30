@@ -92,7 +92,7 @@ export function EventList({
     return (
       <StatusMessage tone="empty" className="event-list__state">
         <strong>No events available.</strong>
-        <p>Check again later.</p>
+        <p>Check back later.</p>
       </StatusMessage>
     );
   }
@@ -186,7 +186,13 @@ export function SelectedEventDetails({
             <dd>{formatRadius(event.radiusMetres)} radius</dd>
           </div>
           <div>
-            <dt>{event.availability === 'upcoming' ? 'Starts' : 'Ends'}</dt>
+            <dt>
+              {event.availability === 'upcoming'
+                ? 'Starts'
+                : event.availability === 'ended'
+                  ? 'Ended'
+                  : 'Ends'}
+            </dt>
             <dd>
               {formatEventTime(
                 event.availability === 'upcoming'
@@ -331,7 +337,7 @@ function getEligibilityContent(
       };
     case 'location-stale':
       return {
-        detail: 'Get a fresh location and try again.',
+        detail: 'Try again to refresh your location and check range.',
         title: 'Location is out of date.',
       };
     case 'journey-too-fast':
@@ -341,7 +347,7 @@ function getEligibilityContent(
       };
     case 'unreachable':
       return {
-        detail: 'Move closer and live location will check again.',
+        detail: 'Move closer. Range is checked again as your location updates.',
         title: 'Out of range',
       };
     case 'api-error':
@@ -360,11 +366,11 @@ function getEligibilityContent(
         title: 'The challenge could not start.',
       };
     case 'location-denied':
-      return { title: 'Live location is disabled.' };
+      return locationContent.denied;
     case 'location-timeout':
-      return { title: 'Location signal timed out.' };
+      return locationContent.timeout;
     case 'location-unavailable':
-      return { title: 'Location is unavailable.' };
+      return locationContent.unavailable;
     case 'idle':
     case 'locating':
       return locationContent[locationState];
@@ -384,22 +390,26 @@ const locationContent: Record<
   },
   'checking-permission': { title: 'Checking location access…' },
   denied: {
-    detail: 'Enable it in browser settings to check event range.',
+    detail: 'Allow location in browser settings, then reload this page.',
     title: 'Live location is disabled.',
   },
   locating: { title: 'Finding your location…' },
-  'permission-required': { title: 'Live location is off.' },
+  'permission-required': {
+    detail: 'Enable live location on the map to check event range.',
+    title: 'Live location is off.',
+  },
   stale: {
-    detail: 'The last marker remains visible while you retry.',
-    title: 'Location is unavailable.',
+    detail:
+      'Retry location on the map. The marker shows your last known location.',
+    title: 'Location is out of date.',
   },
   timeout: {
-    detail: 'Move to an open area and retry when ready.',
+    detail: 'Move to an open area, then retry location on the map.',
     title: 'Location signal timed out.',
   },
   tracking: { title: 'Checking range…' },
   unavailable: {
-    detail: 'Check device location services and retry.',
+    detail: 'Check device location services, then retry location on the map.',
     title: 'Location is unavailable.',
   },
   unsupported: {

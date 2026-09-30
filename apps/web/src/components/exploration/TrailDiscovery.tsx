@@ -199,7 +199,7 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
 
       {trail.progressStatus === 'retired' ? (
         <div className="trail-notice" role="status">
-          <strong>This trail has retired.</strong>
+          <strong>This trail is retired.</strong>
           <span>Your completed stops remain part of your history.</span>
         </div>
       ) : trail.availability === 'upcoming' ||
@@ -445,7 +445,7 @@ const nearbyLocationContent: Record<
   },
   denied: {
     detail: 'Allow location in browser settings, or browse Events and Trails.',
-    title: 'Location permission is denied.',
+    title: 'Live location is disabled.',
   },
   locating: {
     detail: 'Nearby events will appear once your location is available.',
@@ -453,7 +453,7 @@ const nearbyLocationContent: Record<
   },
   'permission-required': {
     detail:
-      'Use your location to find nearby events. It is not saved as trail history.',
+      'Your location is used for this search, not saved as trail history. You can also browse Events and Trails without it.',
     title: 'Enable location to search nearby.',
   },
   stale: {
@@ -462,7 +462,7 @@ const nearbyLocationContent: Record<
   },
   timeout: {
     detail: 'Move to an open area and retry.',
-    title: 'The location signal timed out.',
+    title: 'Location signal timed out.',
   },
   tracking: {
     detail: 'Searching from your latest location.',
@@ -474,7 +474,7 @@ const nearbyLocationContent: Record<
   },
   unsupported: {
     detail: 'You can still browse Events and Trails.',
-    title: 'This browser cannot share your location.',
+    title: 'This browser does not support live location.',
   },
 };
 
@@ -527,7 +527,7 @@ function trailSummaryStatus(trail: PlayerTrailSummary): {
 
   return {
     icon: 'current',
-    label: `Stop ${trail.currentStepPosition ?? trail.completedStepCount + 1} next`,
+    label: `Next: stop ${trail.currentStepPosition ?? trail.completedStepCount + 1}`,
     tone: 'current',
   };
 }
@@ -583,14 +583,14 @@ function trailStepPresentation(
       };
     case 'event_retired':
       return {
-        guidance: 'This event has retired and cannot be opened.',
+        guidance: 'This event is retired and cannot be opened.',
         icon: 'retired',
         label: 'Retired',
         tone: 'retired',
       };
     case 'trail_retired':
       return {
-        guidance: 'This trail has retired; completed stops remain visible.',
+        guidance: 'This trail is retired. Completed stops remain visible.',
         icon: 'retired',
         label: 'Retired',
         tone: 'retired',

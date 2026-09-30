@@ -946,7 +946,7 @@ export function CampusExplorer({
                     />
                     <input
                       onChange={(event) => setSearchQuery(event.target.value)}
-                      placeholder="Search"
+                      placeholder="Search events"
                       type="search"
                       value={searchQuery}
                     />
@@ -1191,7 +1191,7 @@ function getLocationControl(
       action: 'none',
       active: false,
       disabled: true,
-      guidance: 'Enable location in browser settings to check event range.',
+      guidance: 'Allow location in browser settings, then reload this page.',
       label: 'Location access disabled',
     };
   }

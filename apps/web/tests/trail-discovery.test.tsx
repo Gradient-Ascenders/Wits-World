@@ -93,7 +93,7 @@ describe('trail discovery presentation', () => {
     expect(screen.getByText('1/3')).toHaveAccessibleName(
       '1 of 3 steps completed',
     );
-    expect(screen.getByText('Stop 2 next')).toBeVisible();
+    expect(screen.getByText('Next: stop 2')).toBeVisible();
     await user.click(
       screen.getByRole('button', {
         name: `View trail: ${summary.title}`,
@@ -143,14 +143,10 @@ describe('trail discovery presentation', () => {
       'This stop is temporarily unavailable.',
       'event_unavailable',
     ],
+    ['Retired', 'This event is retired and cannot be opened.', 'event_retired'],
     [
       'Retired',
-      'This event has retired and cannot be opened.',
-      'event_retired',
-    ],
-    [
-      'Retired',
-      'This trail has retired; completed stops remain visible.',
+      'This trail is retired. Completed stops remain visible.',
       'trail_retired',
     ],
   ] as const)(
@@ -290,7 +286,7 @@ describe('nearby unvisited presentation', () => {
         state={{ status: 'waiting-location' }}
       />,
     );
-    expect(screen.getByText('Location permission is denied.')).toBeVisible();
+    expect(screen.getByText('Live location is disabled.')).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Retry location' }),
     ).toBeEnabled();

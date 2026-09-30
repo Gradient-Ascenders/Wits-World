@@ -845,6 +845,12 @@ describe('trails and nearby vertical discovery', () => {
 
     expect(screen.getByRole('heading', { name: event.title })).toBeVisible();
     expect(screen.getByText('Live location is disabled.')).toBeVisible();
+    expect(
+      screen.getByText(
+        'Allow location in browser settings, then reload this page.',
+        { selector: 'span' },
+      ),
+    ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledWith(
       `${apiBaseUrl}/trails/${trailId}`,
       expect.any(Object),
@@ -860,7 +866,7 @@ describe('trails and nearby vertical discovery', () => {
     await user.click(await screen.findByRole('button', { name: /^Events/ }));
     await user.click(screen.getByRole('button', { name: 'Nearby' }));
 
-    expect(screen.getByText('Location permission is denied.')).toBeVisible();
+    expect(screen.getByText('Live location is disabled.')).toBeVisible();
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
@@ -942,9 +948,7 @@ describe('trails and nearby vertical discovery', () => {
         name: 'Refresh location',
       }),
     );
-    expect(
-      await screen.findByText('The location signal timed out.'),
-    ).toBeVisible();
+    expect(await screen.findByText('Location signal timed out.')).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: 'Retry location' }));
     await waitFor(() => expect(observation.provider).toHaveBeenCalledTimes(2));

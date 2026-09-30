@@ -109,7 +109,8 @@ export function TerritoryDiscovery({
           </h2>
           {list.status === 'ready' ? (
             <span className="event-panel__summary">
-              {list.zones.length} {list.zones.length === 1 ? 'zone' : 'zones'}
+              {list.zones.length}{' '}
+              {list.zones.length === 1 ? 'territory' : 'territories'}
             </span>
           ) : null}
         </div>
@@ -147,13 +148,13 @@ export function TerritoryDiscovery({
               onClick={onRefreshZones}
               type="button"
             >
-              <ArrowClockwise aria-hidden="true" size={20} /> Retry
+              <ArrowClockwise aria-hidden="true" size={20} /> Retry territories
             </button>
           </div>
         ) : list.status === 'empty' ? (
           <div className="territory-state state-message state-message--empty">
             <StateIcon tone="empty" />
-            <strong>No territories are available.</strong>
+            <strong>No territories available.</strong>
             <p>Check back later.</p>
           </div>
         ) : list.status === 'ready' ? (
@@ -251,7 +252,7 @@ function TerritoryDetail({
               ? 'No ranked season is active. Ownership is unavailable.'
               : displayedZone.windowEnd
                 ? `Ownership updates at ${formatJohannesburgTime(displayedZone.windowEnd)}.`
-                : 'The next ownership update is unavailable.'}
+                : 'The next ownership update time is unavailable.'}
         </p>
       </header>
 
@@ -308,7 +309,7 @@ function TerritoryDetail({
               </p>
             ) : detail.standings.top.length === 0 ? (
               <p className="territory-section__empty">
-                No eligible influence has been recorded this hour.
+                No eligible influence recorded this hour.
               </p>
             ) : (
               <ol className="territory-standings">
@@ -348,7 +349,7 @@ function TerritoryDetail({
                   <dd>{detail.standings.viewer.influence}</dd>
                 </div>
                 <div>
-                  <dt>Today</dt>
+                  <dt>Today / daily limit</dt>
                   <dd>
                     {detail.standings.viewer.todayInfluence} /{' '}
                     {detail.standings.viewer.dailyCap}
