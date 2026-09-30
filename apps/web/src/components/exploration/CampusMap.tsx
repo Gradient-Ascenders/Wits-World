@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowClockwise, MapTrifold } from '@phosphor-icons/react';
-import { QuestMarker } from '../branding/QuestMarker';
+import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
 import { useSignInMapStatus } from '../auth/startup-state';
 
 import {
@@ -316,10 +316,10 @@ export function CampusMap({
       />
 
       {status === 'loading' ? (
-        <div aria-live="polite" className="map-state" role="status">
-          <QuestMarker />
-          <span>Loading the campus map…</span>
-        </div>
+        <ExplorationLoadingPanel
+          className="map-state exploration-loading-panel--inline"
+          label="Loading the campus map…"
+        />
       ) : null}
 
       {status === 'error' ? (

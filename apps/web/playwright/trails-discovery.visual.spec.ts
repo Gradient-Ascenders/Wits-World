@@ -90,7 +90,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
   await expect(
     page.getByRole('list', { name: 'Nearby unvisited events' }),
   ).toBeVisible();
-  await expect(page.getByText('~182 m away · Unvisited')).toBeVisible();
+  await expect(page.getByText('~182 m away')).toBeVisible();
   await expect(
     page.locator('[data-deterministic-markers] [data-event-marker-id]'),
   ).toHaveCount(1);

@@ -3,7 +3,7 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -165,6 +165,12 @@ describe('territory exploration experience', () => {
     ).toBe(false);
 
     await user.click(screen.getByRole('button', { name: /Events —/ }));
+    const navigation = screen.getByRole('navigation', { name: 'Explore view' });
+    expect(
+      within(navigation)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Events', 'Nearby', 'Trails', 'Territories']);
     await user.click(screen.getByRole('button', { name: 'Territories' }));
 
     const zoneButton = await screen.findByRole('button', {
@@ -177,6 +183,14 @@ describe('territory exploration experience', () => {
     );
     const pointUpdatesBeforeSelection = vi.mocked(controller.setPoints).mock
       .calls.length;
+
+    const explainer = screen.getByText('How territories work');
+    const rules = screen.getByText(
+      /Eligible wins add influence after the match/,
+    );
+    expect(rules).not.toBeVisible();
+    await user.click(explainer);
+    expect(rules).toBeVisible();
 
     await user.click(zoneButton);
 
@@ -196,6 +210,18 @@ describe('territory exploration experience', () => {
     expect(
       screen.queryByRole('button', { name: /contest/i }),
     ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Events' }));
+    expect(
+      screen.getByRole('heading', { name: 'Campus events' }),
+    ).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Events' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await waitFor(() =>
+      expect(controller.setRegions).toHaveBeenLastCalledWith([]),
+    );
   });
 
   it('keeps the zone summary usable when one detail section fails', async () => {

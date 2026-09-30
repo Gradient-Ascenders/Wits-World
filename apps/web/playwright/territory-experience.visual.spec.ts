@@ -46,6 +46,12 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
     path: testInfo.outputPath('territory-list-desktop.png'),
   });
 
+  const rules = page.getByText(/Eligible wins add influence after the match/);
+  await expect(rules).toBeHidden();
+  await page.getByText('How territories work').focus();
+  await page.keyboard.press('Enter');
+  await expect(rules).toBeVisible();
+
   await eastZone.focus();
   await page.keyboard.press('Enter');
   const territoryLoading = page.getByRole('status').filter({

@@ -349,7 +349,7 @@ export function CampusExplorer({
           eventControl ??
           panel.querySelector<HTMLElement>('[aria-pressed="true"]') ??
           panel.querySelector<HTMLElement>(
-            '.discovery-navigation__item[aria-current="page"]',
+            '.explore-mode-navigation [aria-current="page"]',
           ) ??
           panel.querySelector<HTMLElement>('h2');
         target?.focus();
@@ -674,14 +674,36 @@ export function CampusExplorer({
     <nav aria-label="Explore view" className="explore-mode-navigation">
       {(
         [
-          ['discover', 'Discover'],
+          ['events', 'Events'],
+          ['nearby', 'Nearby'],
+          ['trails', 'Trails'],
           ['territories', 'Territories'],
         ] as const
-      ).map(([mode, label]) => (
+      ).map(([section, label]) => (
         <button
-          aria-current={exploreMode === mode ? 'page' : undefined}
-          key={mode}
-          onClick={() => showExploreMode(mode)}
+          aria-current={
+            (
+              section === 'territories'
+                ? exploreMode === 'territories'
+                : exploreMode === 'discover' &&
+                  (discoverySection === section ||
+                    (section === 'trails' &&
+                      discoverySection === 'trail-detail'))
+            )
+              ? 'page'
+              : undefined
+          }
+          key={section}
+          onClick={() => {
+            if (section === 'territories') {
+              showExploreMode('territories');
+            } else {
+              onExploreModeChange('discover');
+              showDiscoverySection(section);
+              setPanelMode('list');
+              setSheetSnap('expanded');
+            }
+          }}
           type="button"
         >
           {label}
@@ -845,10 +867,10 @@ export function CampusExplorer({
                     ? discovery.status === 'ready'
                       ? `${activeEventCount} available now`
                       : discovery.status === 'loading'
-                        ? 'Loading published events…'
+                        ? 'Loading events…'
                         : discovery.status === 'error'
                           ? 'Events could not load · Open to retry'
-                          : 'No published events · Check back soon'
+                          : 'No events · Check back later'
                     : `${availabilityLabels[selectedEvent.availability]} · View details`}
               </span>
             </span>
@@ -884,14 +906,14 @@ export function CampusExplorer({
                   {discoverySection === 'events'
                     ? 'Campus events'
                     : discoverySection === 'nearby'
-                      ? 'Nearby to you'
+                      ? 'Nearby events'
                       : 'Trails'}
                 </h2>
                 {discoverySection === 'events' &&
                 discovery.status === 'ready' ? (
                   <span className="event-panel__summary">
                     {visibleEvents.length === events.length
-                      ? `${events.length} published`
+                      ? `${events.length} ${events.length === 1 ? 'event' : 'events'}`
                       : `${visibleEvents.length} of ${events.length} shown`}
                   </span>
                 ) : null}
@@ -913,31 +935,6 @@ export function CampusExplorer({
             </div>
             {modeNavigation}
             <div className="event-panel__scroll">
-              <nav
-                aria-label="Campus discovery"
-                className="discovery-navigation"
-              >
-                {(
-                  [
-                    ['events', 'Events'],
-                    ['nearby', 'Nearby'],
-                    ['trails', 'Trails'],
-                  ] as const
-                ).map(([section, label]) => (
-                  <button
-                    aria-current={
-                      discoverySection === section ? 'page' : undefined
-                    }
-                    className="discovery-navigation__item"
-                    key={section}
-                    onClick={() => showDiscoverySection(section)}
-                    type="button"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </nav>
-
               {discoverySection === 'events' && discovery.status === 'ready' ? (
                 <div className="event-discovery-controls">
                   <label className="event-search">
@@ -984,7 +981,7 @@ export function CampusExplorer({
                 >
                   <StateIcon tone="empty" />
                   <strong>No events match these filters.</strong>
-                  <p>Adjust the search or status to see more campus events.</p>
+                  <p>Change your search or clear the filters.</p>
                   <button
                     className="button button--quiet"
                     disabled={!hasActiveFilters}
@@ -1035,7 +1032,7 @@ export function CampusExplorer({
                 onClick={() => showDiscoverySection('trails')}
                 type="button"
               >
-                <ArrowLeft aria-hidden="true" size={20} /> Trails
+                <ArrowLeft aria-hidden="true" size={20} /> All trails
               </button>
               <button
                 aria-label="Collapse trail details"
@@ -1077,7 +1074,7 @@ export function CampusExplorer({
               >
                 <ArrowLeft aria-hidden="true" size={20} />
                 {selectionOriginRef.current === 'nearby'
-                  ? 'Nearby'
+                  ? 'Back to nearby'
                   : selectionOriginRef.current === 'trail-detail'
                     ? 'Trail'
                     : 'All events'}
@@ -1185,7 +1182,7 @@ function getLocationControl(
       label:
         state === 'checking-permission'
           ? 'Checking location access'
-          : 'Finding reported location',
+          : 'Finding your location',
     };
   }
 
@@ -1206,7 +1203,7 @@ function getLocationControl(
       disabled: true,
       guidance:
         state === 'blocked'
-          ? 'Live location needs a secure, permitted browser context.'
+          ? 'Open this page over HTTPS and allow location access.'
           : 'Live location is not supported in this browser.',
       label: 'Live location unavailable',
     };
@@ -1220,7 +1217,7 @@ function getLocationControl(
       state === 'timeout'
         ? 'The signal timed out. Move to an open area and retry.'
         : state === 'stale'
-          ? 'The last reported-location marker may be stale.'
+          ? 'The map shows your last known location.'
           : state === 'unavailable'
             ? 'Check device location services and retry.'
             : undefined,

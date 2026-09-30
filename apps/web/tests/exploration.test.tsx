@@ -353,9 +353,9 @@ describe('map-first campus exploration', () => {
     expect(
       await screen.findByRole('heading', { name: event.title }),
     ).toBeVisible();
-    expect(screen.getByText('Event interaction area')).not.toBeVisible();
+    expect(screen.getByText('Challenge radius')).not.toBeVisible();
     await userEvent.setup().click(screen.getByText('About this event'));
-    expect(screen.getByText('Event interaction area')).toBeVisible();
+    expect(screen.getByText('Challenge radius')).toBeVisible();
     expect(screen.getByText('75 m radius')).toBeVisible();
     await waitFor(() =>
       expect(controller.setSelectedPoint).toHaveBeenCalledWith(point),
@@ -378,9 +378,9 @@ describe('map-first campus exploration', () => {
     expect(status.querySelector(':scope > strong')).toHaveTextContent(
       'Starting challenge…',
     );
-    expect(status.querySelector(':scope > span')).toHaveTextContent(
-      'Wits World is checking your latest reported location again.',
-    );
+    expect(
+      status.querySelector('.exploration-loading-panel__description'),
+    ).toHaveTextContent('Checking your location before starting.');
   });
 
   it('connects an interactive map marker selection to the shared selection state', async () => {

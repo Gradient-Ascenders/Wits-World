@@ -5,12 +5,11 @@ import {
   FlagBanner,
   HourglassMedium,
   MapTrifold,
-  ShieldChevron,
   UsersThree,
 } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { QuestMarker } from '../branding/QuestMarker';
+import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
 import { StateIcon } from '../StatusMessage';
 import type {
   TerritoryHistoryEntry,
@@ -75,7 +74,7 @@ export function TerritoryDiscovery({
             onClick={showList}
             type="button"
           >
-            <ArrowLeft aria-hidden="true" size={20} /> Territories
+            <ArrowLeft aria-hidden="true" size={20} /> All territories
           </button>
           <button
             aria-label="Collapse territory details"
@@ -134,10 +133,7 @@ export function TerritoryDiscovery({
         ) : null}
 
         {list.status === 'loading' ? (
-          <TerritoryLoadingState
-            description="Reading the current ownership map."
-            title="Loading campus territories…"
-          />
+          <ExplorationLoadingPanel label="Loading campus territories…" />
         ) : list.status === 'error' ? (
           <div
             className="territory-state state-message state-message--error"
@@ -158,7 +154,7 @@ export function TerritoryDiscovery({
           <div className="territory-state state-message state-message--empty">
             <StateIcon tone="empty" />
             <strong>No territories are available.</strong>
-            <p>Reviewed campus zones will appear here when published.</p>
+            <p>Check back later.</p>
           </div>
         ) : list.status === 'ready' ? (
           <>
@@ -191,42 +187,17 @@ export function TerritoryDiscovery({
                 </li>
               ))}
             </ul>
-            <div className="territory-explainer">
-              <ShieldChevron aria-hidden="true" size={22} />
-              <div>
-                <strong>Ranked wins shape territory.</strong>
-                <p>
-                  Choose a territory when joining Ranked. The server checks a
-                  fresh location and applies eligible influence after the match.
-                </p>
-              </div>
-            </div>
+            <details className="territory-explainer">
+              <summary>How territories work</summary>
+              <p>
+                Choose a territory when joining Ranked. Your location is checked
+                before you join. Eligible wins add influence after the match.
+              </p>
+            </details>
           </>
         ) : null}
       </div>
     </>
-  );
-}
-
-function TerritoryLoadingState({
-  description,
-  title,
-}: {
-  description: string;
-  title: string;
-}) {
-  return (
-    <div
-      aria-atomic="true"
-      aria-busy="true"
-      aria-live="polite"
-      className="territory-state territory-state--loading state-message"
-      role="status"
-    >
-      <QuestMarker className="territory-state__marker" />
-      <strong>{title}</strong>
-      <p>{description}</p>
-    </div>
   );
 }
 
@@ -275,12 +246,12 @@ function TerritoryDetail({
         <p className="territory-window">
           <HourglassMedium aria-hidden="true" size={18} />
           {displayedZone.status === 'suspended'
-            ? 'This territory cannot currently receive influence.'
+            ? 'Influence is paused for this territory.'
             : displayedZone.seasonId === null
               ? 'No ranked season is active. Ownership is unavailable.'
               : displayedZone.windowEnd
-                ? `Current window settles at ${formatJohannesburgTime(displayedZone.windowEnd)}.`
-                : 'The current settlement window is unavailable.'}
+                ? `Ownership updates at ${formatJohannesburgTime(displayedZone.windowEnd)}.`
+                : 'The next ownership update is unavailable.'}
         </p>
       </header>
 
@@ -293,9 +264,9 @@ function TerritoryDetail({
       ) : null}
 
       {detail.status === 'loading' ? (
-        <TerritoryLoadingState
-          description="Reading standings and ownership history."
-          title="Loading territory activity…"
+        <ExplorationLoadingPanel
+          className="exploration-loading-panel--inline"
+          label="Loading territory activity…"
         />
       ) : detail.status === 'error' ? (
         <div
@@ -304,9 +275,7 @@ function TerritoryDetail({
         >
           <StateIcon tone="error" />
           <strong>Territory activity could not load.</strong>
-          <p>
-            The zone summary is still available. Retry for current activity.
-          </p>
+          <p>Retry to load standings and history.</p>
           <button
             className="button button--quiet"
             onClick={onRefresh}
@@ -327,7 +296,7 @@ function TerritoryDetail({
             <div className="territory-section__heading">
               <div>
                 <h3 id="territory-contest-heading">Current contest</h3>
-                <p>Anonymous accepted influence in this settlement window.</p>
+                <p>Influence this hour. Players are anonymous.</p>
               </div>
               <UsersThree aria-hidden="true" size={22} />
             </div>
@@ -375,7 +344,7 @@ function TerritoryDetail({
               <h3 id="territory-your-influence">Your influence</h3>
               <dl className="territory-viewer-stats">
                 <div>
-                  <dt>This window</dt>
+                  <dt>This hour</dt>
                   <dd>{detail.standings.viewer.influence}</dd>
                 </div>
                 <div>
@@ -400,14 +369,13 @@ function TerritoryDetail({
             <div className="territory-section__heading">
               <div>
                 <h3 id="territory-history-heading">Ownership history</h3>
-                <p>Recent authoritative ownership changes.</p>
               </div>
             </div>
             {failed.has('history') || detail.history === null ? (
               <SectionUnavailable section="history" onRetry={onRefresh} />
             ) : historyEntries.length === 0 ? (
               <p className="territory-section__empty">
-                No ownership changes have been recorded yet.
+                No ownership changes yet.
               </p>
             ) : (
               <>
@@ -444,8 +412,8 @@ function TerritoryDetail({
 
           <div className="territory-detail__footer">
             <p>
-              Map location is approximate. Territory eligibility is checked by
-              the server when you join Ranked.
+              The map is approximate. Ranked checks your location before you
+              join.
             </p>
             <button
               className="button button--quiet"
@@ -475,13 +443,10 @@ function TerritoryStaleNotice({
   return (
     <div className="territory-stale" role="status">
       <div>
-        <strong>Territory information may be stale.</strong>
-        <p>
-          {message}
-          {lastUpdatedAt === null
-            ? ''
-            : ` Last updated ${formatUpdatedTime(lastUpdatedAt)}.`}
-        </p>
+        <strong>{message}</strong>
+        {lastUpdatedAt !== null ? (
+          <p>Last updated {formatUpdatedTime(lastUpdatedAt)}.</p>
+        ) : null}
       </div>
       <button onClick={onRetry} type="button">
         Refresh
@@ -498,7 +463,7 @@ function SectionUnavailable({
   section: TerritoryDetailSection;
 }) {
   const message = {
-    detail: 'Latest zone metadata could not be refreshed.',
+    detail: 'Territory details could not be refreshed.',
     history: 'Ownership history could not be refreshed.',
     standings: 'Current standings could not be refreshed.',
   }[section];

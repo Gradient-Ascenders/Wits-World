@@ -73,6 +73,61 @@ async function noOverflow(page: Page) {
   ).toBe(true);
 }
 
+test('one discovery navigation stays readable with narrow screens and larger text', async ({
+  page,
+}, info) => {
+  await installEvents(page);
+  for (const [width, scale] of [
+    [320, '100'],
+    [390, '150'],
+    [1440, '150'],
+  ] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript((scale) => {
+      localStorage.setItem(
+        'wits-world.accessibility-preferences.v1',
+        JSON.stringify({ scale }),
+      );
+    }, scale);
+    await page.goto('/explore');
+    await expect(page.locator('.exploration-view')).toBeVisible();
+    const trigger = page.getByRole('button', { name: /^Events —/ });
+    if (await trigger.isVisible()) await trigger.click();
+    const navigation = page.getByRole('navigation', { name: 'Explore view' });
+    await expect(navigation.getByRole('button')).toHaveText([
+      'Events',
+      'Nearby',
+      'Trails',
+      'Territories',
+    ]);
+    const crowded = await navigation
+      .getByRole('button')
+      .evaluateAll((buttons) =>
+        buttons
+          .filter((button) => button.scrollWidth > button.clientWidth)
+          .map((button) => button.textContent),
+      );
+    expect(crowded).toEqual([]);
+    await noOverflow(page);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath(`explore-tabs-${width}-${scale}.png`),
+    });
+    await navigation
+      .getByRole('button', { name: 'Nearby', exact: true })
+      .click();
+    await expect(
+      navigation.getByRole('button', { name: 'Nearby', exact: true }),
+    ).toHaveAttribute('aria-current', 'page');
+    await navigation
+      .getByRole('button', { name: 'Events', exact: true })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Campus events' }),
+    ).toBeFocused();
+  }
+});
+
 test('keeps the read aloud icon clear of map controls and the collapsible header', async ({
   page,
 }, info) => {
@@ -263,7 +318,7 @@ test('map and event loading preserve discovery space', async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/explore?map-loading', { waitUntil: 'domcontentloaded' });
   await expect(page.getByText('Loading the campus map…')).toBeVisible();
-  await expect(page.getByText('Loading published events…')).toBeVisible();
+  await expect(page.getByText('Loading events…')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Events —/ })).toBeInViewport({
     ratio: 1,
   });
@@ -272,6 +327,70 @@ test('map and event loading preserve discovery space', async ({
     path: info.outputPath('mobile-loading.png'),
   });
   release();
+  await page.getByRole('button', { name: /^Events —/ }).click();
+  await expect(page.getByText('No events available.')).toBeVisible();
+
+  let releaseTrails: () => void = () => undefined;
+  const pendingTrails = new Promise<void>((resolve) => {
+    releaseTrails = resolve;
+  });
+  await page.route('**/api/v1/trails', async (route) => {
+    await pendingTrails;
+    await route.fulfill({ json: { trails: [], requestId: 'explore-browser' } });
+  });
+  await page.getByRole('button', { name: 'Trails', exact: true }).click();
+  const trailLoading = page
+    .getByRole('status')
+    .filter({ hasText: 'Loading trails…' });
+  await expect(trailLoading).toHaveClass(/exploration-loading-panel/);
+  await expect(trailLoading).toHaveAttribute('aria-busy', 'true');
+  await expect(trailLoading.locator('.quest-marker')).toHaveCSS(
+    'width',
+    '36px',
+  );
+  await expect(trailLoading).toHaveCSS('border-top-width', '1px');
+  const pin = trailLoading.locator('.quest-marker svg');
+  await expect(pin).toHaveCSS('animation-name', 'quest-marker-glow');
+  await expect(pin.locator('.quest-marker__base')).toHaveCSS(
+    'stroke-dasharray',
+    'none',
+  );
+  await pin.evaluate((element) => {
+    const animation = element.getAnimations()[0]!;
+    animation.pause();
+    animation.currentTime = 900;
+  });
+  await page.screenshot({
+    animations: 'allow',
+    path: info.outputPath('mobile-loader-glow-peak.png'),
+  });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(pin).toHaveCSS('animation-name', 'none');
+  await page.evaluate(() => {
+    document.documentElement.dataset.motion = 'full';
+  });
+  await expect(pin).toHaveCSS('animation-name', 'quest-marker-glow');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.evaluate(() => {
+    document.documentElement.dataset.motion = 'reduce';
+  });
+  await expect(pin).toHaveCSS('animation-name', 'none');
+  await page.evaluate(() => {
+    document.documentElement.dataset.motion = 'system';
+  });
+  await expect(pin).toHaveCSS('animation-name', 'quest-marker-glow');
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('mobile-trails-loading.png'),
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(trailLoading).toBeVisible();
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('desktop-trails-loading.png'),
+  });
+  releaseTrails();
+  await expect(page.getByText('No trails available.')).toBeVisible();
 });
 
 test('mobile sheet stays above navigation, supports selection, disclosure, gestures and keyboard return', async ({
@@ -424,9 +543,7 @@ for (const mode of ['empty', 'error'] as const) {
     await page.getByRole('button', { name: /^Events —/ }).click();
     await expect(
       page.getByText(
-        mode === 'empty'
-          ? 'No published events are available.'
-          : 'Events are unavailable right now.',
+        mode === 'empty' ? 'No events available.' : 'Events could not load.',
       ),
     ).toBeVisible();
     await page.screenshot({
@@ -499,7 +616,7 @@ for (const state of ['prompt', 'denied', 'unavailable', 'locating'] as const) {
           ? 'Location access disabled'
           : state === 'unavailable'
             ? 'Retry live location'
-            : 'Finding reported location';
+            : 'Finding your location';
     await expect(
       page.getByRole('button', { name: label, exact: true }),
     ).toBeVisible();
