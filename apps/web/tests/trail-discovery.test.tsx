@@ -146,7 +146,7 @@ describe('trail discovery presentation', () => {
     ['Retired', 'This event is retired and cannot be opened.', 'event_retired'],
     [
       'Retired',
-      'This trail is retired. Completed stops remain visible.',
+      'Your completed stops remain part of your history.',
       'trail_retired',
     ],
   ] as const)(
@@ -180,6 +180,40 @@ describe('trail discovery presentation', () => {
       ).not.toBeInTheDocument();
     },
   );
+
+  it('explains trail retirement once while keeping completed history and stop-specific warnings', () => {
+    render(
+      <TrailDetail
+        onOpenEvent={vi.fn()}
+        onRetry={vi.fn()}
+        state={{
+          status: 'ready',
+          trail: {
+            ...activeTrail,
+            availability: 'retired',
+            progressStatus: 'retired',
+            steps: [
+              step(1, 'completed'),
+              step(2, 'unavailable', 'trail_retired'),
+              step(3, 'unavailable', 'trail_retired'),
+            ],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText('This trail is retired.')).toBeVisible();
+    expect(screen.getAllByText('Retired')).toHaveLength(2);
+    expect(screen.getByText('Completed')).toBeVisible();
+    expect(
+      screen.queryByText(
+        'This trail is retired. Completed stops remain visible.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Dashed line/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Open event/ }),
+    ).not.toBeInTheDocument();
+  });
 
   it('announces a fully completed trail without offering a next step', () => {
     render(
@@ -475,26 +509,31 @@ describe('exploration integration', () => {
         expect.objectContaining({
           id: activeTrail.steps[0]!.eventId,
           selectable: false,
+          trailPosition: 1,
           trailState: 'completed',
         }),
         expect.objectContaining({
           id: activeTrail.steps[1]!.eventId,
           selectable: true,
+          trailPosition: 2,
           trailState: 'current',
         }),
         expect.objectContaining({
           id: activeTrail.steps[2]!.eventId,
           selectable: false,
+          trailPosition: 3,
           trailState: 'locked',
         }),
         expect.objectContaining({
           id: trailWithRetiredStop.steps[3]!.eventId,
           selectable: false,
+          trailPosition: 4,
           trailState: 'retired',
         }),
         expect.objectContaining({
           id: trailWithRetiredStop.steps[4]!.eventId,
           selectable: false,
+          trailPosition: 5,
           trailState: 'retired',
         }),
       ]),

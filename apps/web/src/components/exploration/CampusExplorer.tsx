@@ -136,7 +136,7 @@ export function filterEventPresentations(
 }
 
 type MapEventPresentation = EventPresentation &
-  Pick<MapPoint, 'selectable' | 'trailState'>;
+  Pick<MapPoint, 'selectable' | 'trailPosition' | 'trailState'>;
 
 function toMapPoints(
   events: readonly MapEventPresentation[],
@@ -152,6 +152,9 @@ function toMapPoints(
     reachable: eligibility[event.id]?.status === 'reachable',
     ...(event.selectable === undefined ? {} : { selectable: event.selectable }),
     ...(event.trailState === undefined ? {} : { trailState: event.trailState }),
+    ...(event.trailPosition === undefined
+      ? {}
+      : { trailPosition: event.trailPosition }),
   }));
 }
 
@@ -252,6 +255,7 @@ export function CampusExplorer({
           selectable: step.state === 'current',
           startsAt: step.startsAt,
           title: step.title,
+          trailPosition: step.position,
           trailState:
             step.state === 'unavailable' &&
             (step.unavailableReason === 'event_retired' ||

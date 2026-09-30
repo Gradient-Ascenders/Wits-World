@@ -229,11 +229,11 @@ export const mapFactory: MapFactory = async (
 
     return {
       horizontal:
-        focusedPointId === point.id
+        focusedPointId === point.id && point.trailPosition === undefined
           ? 48
           : Math.min(95, Math.max(5, finitePosition(horizontalPosition, 42))),
       vertical:
-        focusedPointId === point.id
+        focusedPointId === point.id && point.trailPosition === undefined
           ? 42
           : Math.min(95, Math.max(5, finitePosition(verticalPosition, 36))),
     };
@@ -246,7 +246,12 @@ export const mapFactory: MapFactory = async (
       return;
     }
 
-    const position = pointPosition(selectedPoint);
+    const selectedId = selectedPoint.id;
+    const index = points.findIndex((point) => point.id === selectedId);
+    const position =
+      index < 0
+        ? pointPosition(selectedPoint)
+        : markerPosition(selectedPoint, index);
     const diameter = Math.min(
       220,
       Math.max(64, selectedPoint.radiusMetres * 2),
@@ -296,6 +301,16 @@ export const mapFactory: MapFactory = async (
   navigationArea.append(navigationGroup);
   container.append(logoArea, attributionArea, navigationArea);
 
+  const markerPosition = (point: MapPoint, index: number) => {
+    const position = pointPosition(point);
+    const spread =
+      !config.initialBounds &&
+      (focusedPointId !== point.id || point.trailPosition !== undefined);
+    return {
+      horizontal: position.horizontal + (spread ? index * 12 : 0),
+      vertical: position.vertical + (spread ? (index % 2) * 13 : 0),
+    };
+  };
   const renderMarkers = (): void => {
     markerLayer.replaceChildren();
     points.forEach((point, index) => {
@@ -308,6 +323,7 @@ export const mapFactory: MapFactory = async (
       button.dataset.markerLatitude = String(point.latitude);
       button.dataset.markerLongitude = String(point.longitude);
       button.dataset.trailState = point.trailState ?? '';
+      button.dataset.trailPosition = String(point.trailPosition ?? '');
       button.className = [
         'event-marker',
         `event-marker--${availability}`,
@@ -315,6 +331,7 @@ export const mapFactory: MapFactory = async (
           (state) => `event-marker--placement-${state}`,
         ),
         point.trailState ? `event-marker--trail-${point.trailState}` : '',
+        point.trailPosition === undefined ? '' : 'event-marker--numbered',
         selectedPoint?.id === point.id ? 'event-marker--selected' : '',
         point.reachable ? 'event-marker--reachable' : '',
       ]
@@ -326,30 +343,30 @@ export const mapFactory: MapFactory = async (
         point.draggable
           ? `Focus ${point.label}. Drag the marker to adjust it, or use the coordinate fields for keyboard entry.`
           : point.trailState
-            ? `${selectable ? 'Select ' : ''}${point.label}, ${point.trailState} trail stop`
+            ? `${selectable ? 'Select ' : ''}${point.trailPosition === undefined ? '' : `Stop ${point.trailPosition}: `}${point.label}, ${point.trailState} trail stop`
             : `Select ${point.label}, ${availability === 'active' ? 'available now' : availability}`,
       );
       button.setAttribute(
         'aria-pressed',
         String(selectedPoint?.id === point.id),
       );
-      const position = pointPosition(point);
-      const applyFixtureSpread =
-        !config.initialBounds && focusedPointId !== point.id;
+      const position = markerPosition(point, index);
       Object.assign(button.style, {
         display: layerVisibility.events ? '' : 'none',
         cursor: point.draggable ? 'grab' : 'pointer',
-        left: `${position.horizontal + (applyFixtureSpread ? index * 12 : 0)}%`,
+        left: `${position.horizontal}%`,
         position: 'absolute',
         pointerEvents: 'auto',
-        top: `${position.vertical + (applyFixtureSpread ? (index % 2) * 13 : 0)}%`,
+        top: `${position.vertical}%`,
+        transform:
+          point.trailPosition === undefined ? '' : 'translate(-50%, -50%)',
       });
       const markerBody = document.createElement('span');
       markerBody.className = 'event-marker__body';
       markerBody.setAttribute('aria-hidden', 'true');
       const markerGlyph = document.createElement('span');
       markerGlyph.className = 'event-marker__glyph';
-      markerGlyph.textContent = '✦';
+      markerGlyph.textContent = String(point.trailPosition ?? '');
       markerBody.append(markerGlyph);
       const markerLabel = document.createElement('span');
       markerLabel.className = 'event-marker__label';

@@ -1,11 +1,12 @@
 import { StateIcon } from '../StatusMessage';
 import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
 import {
-  Archive,
   ArrowCircleRight,
   CheckCircle,
-  Lock,
+  LockKey,
   MapPin,
+  MapPinLine,
+  Prohibit,
   WarningCircle,
 } from '@phosphor-icons/react';
 import type {
@@ -236,7 +237,11 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
                   {step.position}. {step.title}
                 </strong>
                 {step.description ? <p>{step.description}</p> : null}
-                {presentation.guidance ? (
+                {presentation.guidance &&
+                !(
+                  trail.progressStatus === 'retired' &&
+                  step.unavailableReason === 'trail_retired'
+                ) ? (
                   <p className="trail-step__guidance">
                     {presentation.guidance}
                   </p>
@@ -618,13 +623,20 @@ function TrailStatusIcon({
 }) {
   const Icon = {
     completed: CheckCircle,
-    current: MapPin,
-    locked: Lock,
+    current: MapPinLine,
+    locked: LockKey,
     open: ArrowCircleRight,
-    retired: Archive,
+    retired: Prohibit,
     unavailable: WarningCircle,
   }[name];
-  return <Icon aria-hidden="true" className={className} size={20} />;
+  return (
+    <Icon
+      aria-hidden="true"
+      className={className}
+      size={24}
+      weight={name === 'completed' ? 'fill' : 'bold'}
+    />
+  );
 }
 
 function formatDistance(distanceMetres: number): string {

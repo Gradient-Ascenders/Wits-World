@@ -30,6 +30,7 @@ export interface MapPoint {
   reachable?: boolean;
   selectable?: boolean;
   placementStates?: readonly PlacementMapState[];
+  trailPosition?: number;
   trailState?: 'completed' | 'current' | 'locked' | 'retired' | 'unavailable';
 }
 
@@ -1030,6 +1031,7 @@ export const createMapboxMap: MapFactory = async (
         'event-marker',
         `event-marker--${availability}`,
         point.trailState ? `event-marker--trail-${point.trailState}` : '',
+        point.trailPosition === undefined ? '' : 'event-marker--numbered',
         ...(point.placementStates ?? []).map(
           (state) => `event-marker--placement-${state}`,
         ),
@@ -1044,6 +1046,7 @@ export const createMapboxMap: MapFactory = async (
       // These markers are interactive controls, including for keyboard users.
       record.button.setAttribute('role', 'button');
       record.button.dataset.trailState = point.trailState ?? '';
+      record.button.dataset.trailPosition = String(point.trailPosition ?? '');
       record.button.dataset.placementStates =
         point.placementStates?.join(' ') ?? '';
       record.button.setAttribute(
@@ -1051,12 +1054,16 @@ export const createMapboxMap: MapFactory = async (
         point.draggable
           ? `Focus ${point.label}. Drag the marker to adjust it, or use the coordinate fields for keyboard entry.`
           : point.trailState
-            ? `${selectable ? 'Select ' : ''}${point.label}, ${trailStateLabels[point.trailState]}`
+            ? `${selectable ? 'Select ' : ''}${point.trailPosition === undefined ? '' : `Stop ${point.trailPosition}: `}${point.label}, ${trailStateLabels[point.trailState]}`
             : `Select ${point.label}, ${availabilityLabels[availability]}${point.reachable ? ', in range' : ''}`,
       );
       record.button.setAttribute('aria-pressed', String(selected));
       record.button.title = point.label;
       record.button.style.display = layerVisibility.events ? '' : 'none';
+      const markerGlyph = record.button.querySelector('.event-marker__glyph');
+      if (markerGlyph !== null) {
+        markerGlyph.textContent = String(point.trailPosition ?? '');
+      }
       const markerLabel = record.button.querySelector('.event-marker__label');
       if (markerLabel !== null) {
         markerLabel.textContent = point.label;

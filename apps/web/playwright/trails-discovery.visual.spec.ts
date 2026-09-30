@@ -52,6 +52,16 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
     '[data-deterministic-markers] [data-event-marker-id]',
   );
   await expect(trailMarkers).toHaveCount(3);
+  await expect(trailMarkers.nth(0).locator('.event-marker__glyph')).toHaveText(
+    '1',
+  );
+  await expect(trailMarkers.nth(1).locator('.event-marker__glyph')).toHaveText(
+    '2',
+  );
+  await expect(trailMarkers.nth(2).locator('.event-marker__glyph')).toHaveText(
+    '3',
+  );
+  await expect(page.getByText(/Dashed line/)).toHaveCount(0);
   await expect(
     page.locator('[data-deterministic-markers] [data-trail-state="completed"]'),
   ).toBeDisabled();
@@ -120,6 +130,15 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
   await expect(
     desktopPanel.getByText('Complete the previous stop to unlock.'),
   ).toBeVisible();
+  await desktopPanel
+    .getByRole('heading', { name: 'Campus History Trail' })
+    .scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Map layers', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Event markers' }).uncheck();
+  await expect(trailMarkers.nth(0)).toBeHidden();
+  await page.getByRole('checkbox', { name: 'Event markers' }).check();
+  await expect(trailMarkers.nth(0)).toBeVisible();
+  await page.getByRole('button', { name: 'Close map layers' }).click();
   await page.screenshot({
     animations: 'disabled',
     fullPage: true,
@@ -138,12 +157,39 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
   await expect(retiredMarker).toBeDisabled();
   await expect(retiredMarker).toHaveAttribute(
     'aria-label',
-    'Origins Centre, retired trail stop',
+    'Stop 3: Origins Centre, retired trail stop',
   );
   await page.screenshot({
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('trail-retired-desktop.png'),
+  });
+
+  routeState.showRetiredTrail();
+  await page.getByRole('button', { name: 'Trails', exact: true }).click();
+  await page
+    .getByRole('button', { name: /View trail.*Campus History Trail/ })
+    .click();
+  await expect(
+    page.getByText('This trail is retired.', { exact: true }),
+  ).toHaveCount(1);
+  await expect(page.getByText('Retired', { exact: true })).toHaveCount(2);
+  await expect(
+    page.getByText('This trail is retired. Completed stops remain visible.'),
+  ).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Open event/ })).toHaveCount(0);
+  await page.screenshot({
+    animations: 'disabled',
+    fullPage: true,
+    path: testInfo.outputPath('trail-history-desktop.png'),
+  });
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.getByRole('button', { name: 'Collapse trail details' }).click();
+  await expect(trailMarkers).toHaveCount(3);
+  await page.screenshot({
+    animations: 'disabled',
+    fullPage: true,
+    path: testInfo.outputPath('trail-pins-mobile.png'),
   });
 
   expect(consoleErrors).toEqual([]);
@@ -152,6 +198,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
 
 async function installRoutes(page: Page) {
   let retiredStopVisible = false;
+  let retiredTrailVisible = false;
   await page.route(`${API_BASE_URL}/auth/me`, (route) =>
     json(route, {
       connectionStrategy: 'auth0',
@@ -197,7 +244,11 @@ async function installRoutes(page: Page) {
   await page.route(`${API_BASE_URL}/trails/${trailId}`, (route) =>
     json(
       route,
-      trailDetailFixture(page.viewportSize()?.width ?? 390, retiredStopVisible),
+      trailDetailFixture(
+        page.viewportSize()?.width ?? 390,
+        retiredStopVisible,
+        retiredTrailVisible,
+      ),
     ),
   );
   await page.route(`${API_BASE_URL}/events/nearby-unvisited`, (route) =>
@@ -241,10 +292,17 @@ async function installRoutes(page: Page) {
     showRetiredStop() {
       retiredStopVisible = true;
     },
+    showRetiredTrail() {
+      retiredTrailVisible = true;
+    },
   };
 }
 
-function trailDetailFixture(viewportWidth: number, retiredStopVisible = false) {
+function trailDetailFixture(
+  viewportWidth: number,
+  retiredStopVisible = false,
+  retiredTrailVisible = false,
+) {
   const trail = trailSummary();
   const steps = [
     trailStep(0, 'completed'),
@@ -254,6 +312,10 @@ function trailDetailFixture(viewportWidth: number, retiredStopVisible = false) {
 
   if (retiredStopVisible) {
     steps[2] = trailStep(2, 'unavailable', 'event_retired');
+  }
+  if (retiredTrailVisible) {
+    steps[1] = trailStep(1, 'unavailable', 'trail_retired');
+    steps[2] = trailStep(2, 'unavailable', 'trail_retired');
   }
 
   if (viewportWidth >= 1024) {
@@ -268,7 +330,18 @@ function trailDetailFixture(viewportWidth: number, retiredStopVisible = false) {
 
   return {
     requestId: 'trail-browser-detail',
-    trail: { ...trail, steps },
+    trail: {
+      ...trail,
+      ...(retiredTrailVisible
+        ? {
+            availability: 'retired',
+            progressStatus: 'retired',
+            publicationStatus: 'retired',
+            currentStepPosition: null,
+          }
+        : {}),
+      steps,
+    },
   };
 }
 
@@ -292,7 +365,7 @@ function trailSummary() {
 function trailStep(
   index: number,
   state: 'completed' | 'current' | 'locked' | 'unavailable',
-  unavailableReason: null | 'event_retired' = null,
+  unavailableReason: null | 'event_retired' | 'trail_retired' = null,
 ) {
   return {
     completedAt: state === 'completed' ? '2026-09-04T10:00:00.000Z' : null,

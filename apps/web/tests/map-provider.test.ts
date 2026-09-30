@@ -725,6 +725,60 @@ describe('Mapbox Standard provider', () => {
     expect(listener).toHaveBeenCalledWith('current-stop');
   });
 
+  it('numbers trail pins, respects marker visibility, and clears numbers outside trail detail without drawing a line', async () => {
+    const points = [1, 2, 3].map((position) => ({
+      id: `stop-${position}`,
+      label: `Place ${position}`,
+      latitude: -26.192 + position / 10_000,
+      longitude: 28.03 + position / 10_000,
+      trailPosition: position,
+      trailState: 'locked' as const,
+      selectable: false,
+    }));
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      points,
+      new AbortController().signal,
+    );
+    expect(mapboxState.sources.has('wits-trail-sequence')).toBe(false);
+    expect(mapboxState.markerElements[0]).toHaveAccessibleName(
+      'Stop 1: Place 1, locked trail stop',
+    );
+    expect(
+      mapboxState.markerElements[0]!.querySelector('.event-marker__glyph'),
+    ).toHaveTextContent('1');
+
+    mapboxState.isStyleLoaded = true;
+    mapboxState.handlers.get('style.load')?.();
+    expect(mapboxState.sources.has('wits-trail-sequence')).toBe(false);
+    expect(mapboxState.layers.has('wits-trail-sequence-line')).toBe(false);
+
+    controller.setLayerVisibility?.({
+      ...DEFAULT_MAP_LAYER_VISIBILITY,
+      events: false,
+    });
+    expect(mapboxState.markerElements[0]!.style.display).toBe('none');
+    controller.setLayerVisibility?.(DEFAULT_MAP_LAYER_VISIBILITY);
+    expect(mapboxState.markerElements[0]!.style.display).toBe('');
+    controller.setPoints([{ ...points[0]!, trailPosition: 4 }]);
+    expect(
+      mapboxState.markerElements[0]!.querySelector('.event-marker__glyph'),
+    ).toHaveTextContent('4');
+    controller.setPoints([
+      { ...points[0]!, trailPosition: undefined, trailState: undefined },
+    ]);
+    expect(mapboxState.markerElements[0]).not.toHaveClass(
+      'event-marker--numbered',
+    );
+    expect(
+      mapboxState.markerElements[0]!.querySelector('.event-marker__glyph')!
+        .textContent,
+    ).toBe('');
+    controller.setPoints([]);
+    expect(mapboxState.markerRemove).toHaveBeenCalledTimes(3);
+  });
+
   it('renders and replaces only the selected event geodesic source', async () => {
     mapboxState.isStyleLoaded = true;
     const controller = await createMapboxMap(

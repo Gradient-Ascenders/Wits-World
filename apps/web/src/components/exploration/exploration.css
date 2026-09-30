@@ -916,8 +916,8 @@
 }
 
 .trail-step__icon > svg {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
 }
 
 .trail-step--completed .trail-step__icon {
@@ -1627,6 +1627,29 @@
   border-radius: 50%;
   background: currentcolor;
   font-size: 0;
+}
+
+.event-marker--numbered .event-marker__glyph {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--text-sm);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  opacity: 1;
+}
+
+.event-marker--numbered:is(
+  .event-marker--trail-locked,
+  .event-marker--trail-retired,
+  .event-marker--trail-unavailable
+) {
+  opacity: 0.9;
+}
+
+.event-marker--numbered.event-marker--trail-retired .event-marker__glyph {
+  color: var(--colour-text-primary);
 }
 
 .event-summary__copy .event-summary__eligibility--unreachable {
