@@ -1,5 +1,9 @@
 import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
 import { cardAffinities, type CardAffinity, type CardRarity } from './cards';
+import { MatchApiError, type MatchApiFailure } from './match-errors';
+
+export { MatchApiError } from './match-errors';
+export type { MatchApiFailure } from './match-errors';
 
 export type BattleSide = 'cpu' | 'player';
 export type BattlePhase =
@@ -181,32 +185,6 @@ export interface CpuMatchHistoryItem {
   startedAt: string;
   status: 'completed';
   winner: BattleSide;
-}
-
-export type MatchApiFailure =
-  | 'already-active'
-  | 'authorization'
-  | 'completed'
-  | 'deck-invalid'
-  | 'illegal-action'
-  | 'not-found'
-  | 'stale-action'
-  | 'unavailable'
-  | 'validation';
-
-export class MatchApiError extends Error {
-  public constructor(
-    public readonly failure: MatchApiFailure,
-    public readonly options: {
-      ambiguous?: boolean;
-      code?: string;
-      detail?: string;
-      requestId?: string;
-    } = {},
-  ) {
-    super(options.detail ?? 'The CPU match request could not be completed.');
-    this.name = 'MatchApiError';
-  }
 }
 
 interface MatchRequestOptions {

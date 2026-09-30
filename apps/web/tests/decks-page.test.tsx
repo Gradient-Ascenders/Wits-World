@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { OwnedCard } from '../src/api/cards';
 import type { SavedDeck } from '../src/api/decks';
+import { MatchApiError, MatchModuleLoadError } from '../src/api/match-errors';
 import DecksPage, { SelectedDeckHandoff } from '../src/pages/DecksPage';
 import { buildCard, buildStarterCards, jsonResponse } from './fixtures/cards';
 import {
@@ -54,7 +55,7 @@ function createAuthValue(
 
 function renderDecks(
   authValue = createAuthValue(),
-  onStartMatch?: (deckId: string) => void,
+  onStartMatch?: (deckId: string, signal: AbortSignal) => Promise<void> | void,
 ) {
   return render(
     <Auth0Context.Provider value={authValue}>
@@ -764,5 +765,67 @@ describe('saved deck management page', () => {
     await user.keyboard('{Enter}');
 
     expect(onStartMatch).toHaveBeenCalledWith(deck.deckId);
+  });
+
+  it('keeps match start pending and offers reload when the module cannot load', async () => {
+    const user = userEvent.setup();
+    const deck = buildSavedDeck({ isSelected: true });
+    stubInitialState([deck], buildStarterCards('wit'));
+    let rejectStart: (reason: unknown) => void = () => {};
+    const onStartMatch = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectStart = reject;
+        }),
+    );
+
+    renderDecks(undefined, onStartMatch);
+    const start = await screen.findByRole('button', {
+      name: 'Start CPU match',
+    });
+    await user.click(start);
+    expect(
+      screen.getByRole('button', { name: 'Starting CPU match…' }),
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole('button', { name: 'Starting CPU match…' }),
+    );
+    expect(onStartMatch).toHaveBeenCalledTimes(1);
+
+    rejectStart(new MatchModuleLoadError());
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('CPU match not opened.');
+    expect(alert).toHaveTextContent(
+      'The match code could not load. Check your connection, then reload this page to try again.',
+    );
+    await waitFor(() => expect(alert).toHaveFocus());
+    expect(screen.getByRole('button', { name: 'Reload page' })).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Reconcile and try again' }),
+    ).not.toBeInTheDocument();
+    expect(onStartMatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the reconciliation retry for match API failures', async () => {
+    const user = userEvent.setup();
+    const deck = buildSavedDeck({ isSelected: true });
+    stubInitialState([deck], buildStarterCards('wit'));
+    const onStartMatch = vi
+      .fn()
+      .mockRejectedValueOnce(new MatchApiError('unavailable'))
+      .mockResolvedValueOnce(undefined);
+
+    renderDecks(undefined, onStartMatch);
+    await user.click(
+      await screen.findByRole('button', { name: 'Start CPU match' }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Wits World will reconcile an active match before creating anything.',
+    );
+    expect(screen.queryByRole('button', { name: 'Reload page' })).toBeNull();
+    await user.click(
+      screen.getByRole('button', { name: 'Reconcile and try again' }),
+    );
+    expect(onStartMatch).toHaveBeenCalledTimes(2);
   });
 });
