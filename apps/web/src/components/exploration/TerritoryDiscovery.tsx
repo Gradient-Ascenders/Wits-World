@@ -141,7 +141,7 @@ export function TerritoryDiscovery({
               onClick={onRefreshZones}
               type="button"
             >
-              <ArrowClockwise aria-hidden="true" size={20} /> Retry territories
+              <ArrowClockwise aria-hidden="true" size={20} /> Retry
             </button>
           </div>
         ) : list.status === 'empty' ? (
@@ -233,26 +233,37 @@ function TerritoryDetail({
         <div className="territory-owner">
           <FlagBanner aria-hidden="true" size={24} />
           <div>
-            <span>Current owner</span>
+            <span>Owner</span>
             <strong>{displayedZone.owner?.playerName ?? 'Unclaimed'}</strong>
           </div>
         </div>
         <p className="territory-window">
           <HourglassMedium aria-hidden="true" size={18} />
-          {displayedZone.status === 'suspended'
-            ? 'Influence is paused for this territory.'
-            : displayedZone.seasonId === null
-              ? 'No ranked season is active. Ownership is unavailable.'
-              : displayedZone.windowEnd
-                ? `Ownership updates at ${formatJohannesburgTime(displayedZone.windowEnd)}.`
-                : 'The next ownership update time is unavailable.'}
+          {displayedZone.status === 'suspended' ? (
+            'Influence paused.'
+          ) : displayedZone.seasonId === null ? (
+            'No active Ranked season. Ownership unavailable.'
+          ) : displayedZone.windowEnd ? (
+            <span>
+              Updates at{' '}
+              <time
+                dateTime={displayedZone.windowEnd}
+                title="Johannesburg time (SAST, UTC+2)"
+              >
+                {formatJohannesburgTime(displayedZone.windowEnd)} SAST
+              </time>
+              .
+            </span>
+          ) : (
+            'Update time unavailable.'
+          )}
         </p>
       </header>
 
       {detail.stale ? (
         <TerritoryStaleNotice
           lastUpdatedAt={detail.lastUpdatedAt}
-          message="Some territory details may be out of date."
+          message="Territory details may be out of date."
           onRetry={onRefresh}
         />
       ) : null}
@@ -289,8 +300,11 @@ function TerritoryDetail({
           >
             <div className="territory-section__heading">
               <div>
-                <h3 id="territory-contest-heading">Current contest</h3>
-                <p>Influence this hour. Players are anonymous.</p>
+                <h3 id="territory-contest-heading">This hour</h3>
+                {detail.standings !== null &&
+                detail.standings.top.length > 0 ? (
+                  <p>Anonymous standings</p>
+                ) : null}
               </div>
               <UsersThree aria-hidden="true" size={22} />
             </div>
@@ -298,12 +312,10 @@ function TerritoryDetail({
               <SectionUnavailable section="standings" onRetry={onRefresh} />
             ) : detail.standings.seasonId === null ? (
               <p className="territory-section__empty">
-                No ranked season is active.
+                No active Ranked season.
               </p>
             ) : detail.standings.top.length === 0 ? (
-              <p className="territory-section__empty">
-                No eligible influence recorded this hour.
-              </p>
+              <p className="territory-section__empty">No influence yet.</p>
             ) : (
               <ol className="territory-standings">
                 {detail.standings.top.map((standing) => (
@@ -319,9 +331,11 @@ function TerritoryDetail({
                 ))}
               </ol>
             )}
-            {detail.standings !== null ? (
+            {detail.standings !== null &&
+            (detail.standings.activity.influence > 0 ||
+              detail.standings.activity.contributors > 0) ? (
               <p className="territory-activity">
-                {detail.standings.activity.influence} accepted influence from{' '}
+                {detail.standings.activity.influence} influence from{' '}
                 {detail.standings.activity.contributors}{' '}
                 {detail.standings.activity.contributors === 1
                   ? 'contributor'
@@ -342,14 +356,14 @@ function TerritoryDetail({
                   <dd>{detail.standings.viewer.influence}</dd>
                 </div>
                 <div>
-                  <dt>Today / daily limit</dt>
+                  <dt>Today / limit</dt>
                   <dd>
                     {detail.standings.viewer.todayInfluence} /{' '}
                     {detail.standings.viewer.dailyCap}
                   </dd>
                 </div>
                 <div>
-                  <dt>Remaining today</dt>
+                  <dt>Left today</dt>
                   <dd>{detail.standings.viewer.remainingDailyInfluence}</dd>
                 </div>
               </dl>
@@ -362,7 +376,7 @@ function TerritoryDetail({
           >
             <div className="territory-section__heading">
               <div>
-                <h3 id="territory-history-heading">Ownership history</h3>
+                <h3 id="territory-history-heading">History</h3>
               </div>
             </div>
             {failed.has('history') || detail.history === null ? (
@@ -405,10 +419,7 @@ function TerritoryDetail({
           </section>
 
           <div className="territory-detail__footer">
-            <p>
-              The map is approximate. Ranked checks your location before you
-              join.
-            </p>
+            <p>Approximate map. Location checked before joining Ranked.</p>
             <button
               className="button button--quiet"
               disabled={detail.refreshing}
@@ -416,7 +427,7 @@ function TerritoryDetail({
               type="button"
             >
               <ArrowClockwise aria-hidden="true" size={20} />
-              {detail.refreshing ? 'Refreshing…' : 'Refresh territory'}
+              {detail.refreshing ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
         </>
@@ -457,9 +468,9 @@ function SectionUnavailable({
   section: TerritoryDetailSection;
 }) {
   const message = {
-    detail: 'Territory details could not be refreshed.',
-    history: 'Ownership history could not be refreshed.',
-    standings: 'Current standings could not be refreshed.',
+    detail: 'Could not refresh territory details.',
+    history: 'Could not refresh history.',
+    standings: 'Could not refresh standings.',
   }[section];
   return (
     <div className="territory-section__unavailable">
@@ -496,10 +507,10 @@ function historyLabel(entry: TerritoryHistoryEntry): string {
 }
 
 function formatJohannesburgTime(value: string): string {
-  return createAppDateTimeFormatter(undefined, {
+  return createAppDateTimeFormatter('en-ZA', {
     hour: '2-digit',
     minute: '2-digit',
-    timeZoneName: 'short',
+    hourCycle: 'h23',
   }).format(new Date(value));
 }
 
