@@ -89,6 +89,128 @@ function stubInitialState(decks: SavedDeck[], cards: object[]) {
 }
 
 describe('saved deck management page', () => {
+  it('opens shared card rules from the roster, picker, and draft without changing the lineup', async () => {
+    const user = userEvent.setup();
+    const cards = buildStarterCards('wit');
+    stubInitialState([buildSavedDeck()], cards);
+    renderDecks();
+    const roster = await screen.findByRole('list', {
+      name: 'Campus Five cards',
+    });
+    const rosterCard = within(roster).getByRole('button', {
+      name: `View ${cards[0]!.name} details`,
+    });
+    await user.click(rosterCard);
+    const creatureDetails = screen.getByRole('dialog', {
+      name: cards[0]!.name,
+    });
+    expect(
+      within(creatureDetails).getByRole('heading', { name: 'Moves' }),
+    ).toBeVisible();
+    expect(
+      within(creatureDetails).getByText(cards[0]!.moves[0]!.name),
+    ).toBeVisible();
+    await user.keyboard('{Escape}');
+    expect(rosterCard).toHaveFocus();
+
+    await user.click(screen.getByRole('button', { name: 'Edit or rename' }));
+    const picker = screen.getByRole('list', {
+      name: 'Owned cards available for this deck',
+    });
+    const powerCard = within(picker).getByRole('button', {
+      name: `View ${cards[3]!.name} details`,
+    });
+    await user.click(powerCard);
+    expect(
+      within(screen.getByRole('dialog', { name: cards[3]!.name })).getByRole(
+        'heading',
+        { name: 'Effects' },
+      ),
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole('button', { name: `Close ${cards[3]!.name} details` }),
+    );
+    expect(powerCard).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'Deck name' })).toHaveValue(
+      'Campus Five',
+    );
+
+    const draft = screen.getByRole('region', { name: 'Your lineup' });
+    await user.click(
+      within(draft).getByRole('button', {
+        name: `View ${cards[1]!.name} details`,
+      }),
+    );
+    expect(screen.getByRole('dialog', { name: cards[1]!.name })).toBeVisible();
+    await user.keyboard('{Escape}');
+    expect(
+      within(draft).getAllByRole('button', { name: /^Remove /u }),
+    ).toHaveLength(5);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves exact selected copies across gallery pages and resets the page when filtering', async () => {
+    const user = userEvent.setup();
+    const cards = [
+      ...buildStarterCards('wit'),
+      ...Array.from({ length: 9 }, (_, index) =>
+        buildCard(index + 6, { name: `Archive card ${index + 6}` }),
+      ),
+    ];
+    stubInitialState([], cards);
+    renderDecks();
+    await user.click(
+      await screen.findByRole('button', { name: 'Create a deck' }),
+    );
+    await user.type(
+      screen.getByRole('textbox', { name: 'Deck name' }),
+      'Across the library',
+    );
+    const picker = screen.getByRole('list', {
+      name: 'Owned cards available for this deck',
+    });
+    expect(within(picker).getAllByRole('article')).toHaveLength(6);
+    await user.click(
+      screen.getByRole('button', { name: `Add a copy of ${cards[0]!.name}` }),
+    );
+    const pages = screen.getByRole('navigation', {
+      name: 'Card gallery pages',
+    });
+    await user.click(
+      within(pages).getByRole('button', { name: 'Next card page' }),
+    );
+    expect(within(picker).getAllByRole('article')).toHaveLength(6);
+    await user.click(
+      within(pages).getByRole('button', { name: 'Next card page' }),
+    );
+    expect(within(picker).getAllByRole('article')).toHaveLength(2);
+    await user.click(
+      screen.getByRole('button', { name: `Add a copy of ${cards[12]!.name}` }),
+    );
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search cards' }),
+      cards[0]!.name,
+    );
+    expect(within(picker).getAllByRole('article')).toHaveLength(1);
+    expect(
+      within(picker).getByText('Owned 1 · Selected 1 · 1 point'),
+    ).toBeVisible();
+    await user.clear(screen.getByRole('searchbox', { name: 'Search cards' }));
+    expect(within(picker).getAllByRole('article')).toHaveLength(6);
+    expect(
+      within(pages).getByRole('button', { name: 'Previous card page' }),
+    ).toBeDisabled();
+    const draft = screen.getByRole('region', { name: 'Your lineup' });
+    expect(within(draft).getByText(cards[0]!.name)).toBeVisible();
+    expect(within(draft).getByText(cards[12]!.name)).toBeVisible();
+    expect(
+      within(draft).getAllByRole('button', { name: /^Remove /u }),
+    ).toHaveLength(2);
+    expect(screen.getByRole('textbox', { name: 'Deck name' })).toHaveValue(
+      'Across the library',
+    );
+  });
+
   it('uses exact owned copies for saved artwork and keeps an unavailable copy honest', async () => {
     const cards = buildStarterCards('wit');
     const deck = buildSavedDeck();

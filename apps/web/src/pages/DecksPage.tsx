@@ -4,6 +4,7 @@ import { PageLoadingState } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   CaretDown,
+  CaretLeft,
   CaretRight,
   CheckCircle,
   Plus,
@@ -37,7 +38,12 @@ import {
 import { MatchApiError, MatchModuleLoadError } from '../api/match-errors';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { CollectionSectionNavigation } from '../components/cards/CollectionSectionNavigation';
-import { CardArtwork } from '../components/cards/CollectibleCard';
+import { CardThumbnail } from '../components/cards/CollectibleCard';
+import {
+  CardPresentationDialog,
+  type CardDialogPresentation,
+} from '../components/cards/CardPresentationDialog';
+import { useCardTilt } from '../components/cards/useCardTilt';
 import { collectionArtworkSrcSets } from '../components/cards/collection-artwork-assets';
 import '../components/cards/cards.css';
 import './decks.css';
@@ -100,6 +106,8 @@ export default function DecksPage({
   const [revision, setRevision] = useState(0);
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DeckDraft | null>(null);
+  const [inspectedCard, setInspectedCard] =
+    useState<CardDialogPresentation | null>(null);
   const [pending, setPending] = useState<PendingOperation>(null);
   const [actionError, setActionError] = useState<DeckApiError | null>(null);
   const [matchError, setMatchError] = useState<MatchApiError | null>(null);
@@ -549,6 +557,7 @@ export default function DecksPage({
               <SavedDeckDetail
                 deck={selectedDeck}
                 collection={state.cards}
+                onInspect={setInspectedCard}
                 deleteButtonRef={
                   deleteConfirmation === selectedDeck.deckId
                     ? deleteButton
@@ -626,9 +635,16 @@ export default function DecksPage({
           onCancel={cancelEdit}
           onChange={setDraft}
           onSubmit={submitDraft}
+          onInspect={setInspectedCard}
         />
       ) : null}
       <RulesPanel />
+      {inspectedCard ? (
+        <CardPresentationDialog
+          card={inspectedCard}
+          onClose={() => setInspectedCard(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -806,10 +822,12 @@ function DeckArtwork({
   card,
   collection,
   compact = false,
+  onInspect,
 }: {
   card: SavedDeckCard;
   collection: OwnedCard[];
   compact?: boolean;
+  onInspect?: (card: CardDialogPresentation) => void;
 }) {
   const owned = collection.find(
     (copy) => copy.ownedCardId === card.ownedCardId,
@@ -823,7 +841,13 @@ function DeckArtwork({
   return compact ? (
     <DeckCopyPreview card={presentation} />
   ) : (
-    <CardArtwork card={presentation} loading="lazy" thumbnail />
+    <CardThumbnail
+      accessibleLabel={`View ${card.name} details`}
+      card={{ ...presentation, ...(owned ? { isActive: owned.isActive } : {}) }}
+      loading="lazy"
+      nameplate={null}
+      onClick={() => onInspect?.(owned ?? { ...card, ...presentation })}
+    />
   );
 }
 
@@ -865,9 +889,78 @@ function DeckCopyPreview({
   );
 }
 
+function DeckDraftPreviewButton({
+  card,
+  onInspect,
+}: {
+  card: OwnedCard;
+  onInspect: (card: CardDialogPresentation) => void;
+}) {
+  const tilt = useCardTilt<HTMLButtonElement>();
+  return (
+    <button
+      {...tilt}
+      aria-label={`View ${card.name} details`}
+      className="card-thumbnail__button deck-draft-preview"
+      onClick={() => onInspect(card)}
+      type="button"
+    >
+      <DeckCopyPreview card={card} />
+    </button>
+  );
+}
+
+function DeckGalleryPages({
+  currentPage,
+  totalPages,
+  onChange,
+  label,
+  compact = false,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onChange: (page: number) => void;
+  label: string;
+  compact?: boolean;
+}) {
+  return (
+    <nav
+      aria-label={label}
+      className={`deck-gallery-pages${compact ? ' deck-gallery-pages--compact' : ''}`}
+    >
+      <button
+        aria-label="Previous card page"
+        aria-controls="deck-picker-cards"
+        className="button button--quiet"
+        disabled={currentPage === 1}
+        onClick={() => onChange(currentPage - 1)}
+        type="button"
+      >
+        {compact ? <CaretLeft size={18} aria-hidden="true" /> : 'Previous'}
+      </button>
+      {!compact ? (
+        <span>
+          Page {currentPage} of {totalPages}
+        </span>
+      ) : null}
+      <button
+        aria-label="Next card page"
+        aria-controls="deck-picker-cards"
+        className="button button--quiet"
+        disabled={currentPage === totalPages}
+        onClick={() => onChange(currentPage + 1)}
+        type="button"
+      >
+        {compact ? <CaretRight size={18} aria-hidden="true" /> : 'Next'}
+      </button>
+    </nav>
+  );
+}
+
 function SavedDeckDetail({
   deck,
   collection,
+  onInspect,
   deleteButtonRef,
   headingRef,
   isConfirmingDelete,
@@ -882,6 +975,7 @@ function SavedDeckDetail({
 }: {
   deck: SavedDeck;
   collection: OwnedCard[];
+  onInspect: (card: CardDialogPresentation) => void;
   deleteButtonRef?: RefObject<HTMLButtonElement | null>;
   headingRef: RefObject<HTMLHeadingElement | null>;
   isConfirmingDelete: boolean;
@@ -1044,11 +1138,19 @@ function SavedDeckDetail({
         {deck.cards.map((card) => (
           <li key={card.ownedCardId}>
             <span className="deck-lineup__art">
-              <DeckArtwork card={card} collection={collection} />
-              <span className="deck-detail__position">{card.position}</span>
+              <DeckArtwork
+                card={card}
+                collection={collection}
+                onInspect={onInspect}
+              />
             </span>
             <span>
-              <strong>{card.name}</strong>
+              <span className="deck-detail__card-heading">
+                <span className="deck-detail__position" aria-hidden="true">
+                  {card.position}.
+                </span>
+                <strong>{card.name}</strong>
+              </span>
               <small>
                 {card.affinity ? titleCase(card.affinity) : 'Typeless'} ·{' '}
                 {titleCase(card.category)} · {titleCase(card.rarity)}
@@ -1071,6 +1173,7 @@ function DeckEditor({
   onCancel,
   onChange,
   onSubmit,
+  onInspect,
 }: {
   cards: OwnedCard[];
   draft: DeckDraft;
@@ -1081,12 +1184,15 @@ function DeckEditor({
   onCancel: () => void;
   onChange: (draft: DeckDraft) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onInspect: (card: CardDialogPresentation) => void;
 }) {
   const summary = summarizeDraft(draft, cards);
   const [view, setView] = useState<'deck' | 'collection'>('collection');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [rarity, setRarity] = useState('all');
+  const [page, setPage] = useState(1);
+  const resultsHeading = useRef<HTMLParagraphElement>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [nameTouched, setNameTouched] = useState(false);
   const cancelControl = useRef<HTMLButtonElement | null>(null);
@@ -1133,6 +1239,16 @@ function DeckEditor({
     () => new Map(cards.map((card) => [card.ownedCardId, card])),
     [cards],
   );
+  const pageSize = 6;
+  const totalPages = Math.max(1, Math.ceil(filteredCards.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageCards = filteredCards.slice(pageStart, pageStart + pageSize);
+
+  function changePage(nextPage: number) {
+    setPage(nextPage);
+    queueMicrotask(() => resultsHeading.current?.focus());
+  }
 
   function addCopy(group: OwnedCard[]) {
     const nextCopy = group.find(
@@ -1262,15 +1378,18 @@ function DeckEditor({
 
                     return (
                       <li key={ownedCardId}>
-                        <span className="draft-card-art" aria-hidden="true">
-                          {card ? (
-                            <DeckCopyPreview card={card} />
-                          ) : (
+                        {card ? (
+                          <DeckDraftPreviewButton
+                            card={card}
+                            onInspect={onInspect}
+                          />
+                        ) : (
+                          <span className="draft-card-art" aria-hidden="true">
                             <span className="draft-card-position">
                               {index + 1}
                             </span>
-                          )}
-                        </span>
+                          </span>
+                        )}
                         <span>
                           <strong>
                             {card?.name ??
@@ -1313,7 +1432,10 @@ function DeckEditor({
                 <input
                   type="search"
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPage(1);
+                  }}
                   placeholder="Find a card by name"
                 />
               </label>
@@ -1322,7 +1444,10 @@ function DeckEditor({
                   Type
                   <select
                     value={category}
-                    onChange={(event) => setCategory(event.target.value)}
+                    onChange={(event) => {
+                      setCategory(event.target.value);
+                      setPage(1);
+                    }}
                   >
                     <option value="all">All types</option>
                     <option value="creature">Creature</option>
@@ -1333,7 +1458,10 @@ function DeckEditor({
                   Rarity
                   <select
                     value={rarity}
-                    onChange={(event) => setRarity(event.target.value)}
+                    onChange={(event) => {
+                      setRarity(event.target.value);
+                      setPage(1);
+                    }}
                   >
                     <option value="all">All rarities</option>
                     {(['common', 'rare', 'epic', 'legendary'] as const).map(
@@ -1347,6 +1475,30 @@ function DeckEditor({
                 </label>
               </div>
             </div>
+
+            {filteredCards.length > 0 ? (
+              <div className="deck-gallery-navigation">
+                <p
+                  aria-live="polite"
+                  className="deck-gallery-navigation__range"
+                  ref={resultsHeading}
+                  tabIndex={-1}
+                >
+                  {pageStart + 1}–
+                  {Math.min(pageStart + pageSize, filteredCards.length)} of{' '}
+                  {filteredCards.length} card designs
+                </p>
+                {totalPages > 1 ? (
+                  <DeckGalleryPages
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onChange={changePage}
+                    label="Card gallery pages"
+                    compact
+                  />
+                ) : null}
+              </div>
+            ) : null}
 
             {groupedCards.length === 0 ? (
               <div className="deck-empty state-message state-message--empty">
@@ -1366,6 +1518,7 @@ function DeckEditor({
                     setSearch('');
                     setCategory('all');
                     setRarity('all');
+                    setPage(1);
                   }}
                 >
                   Clear filters
@@ -1375,8 +1528,9 @@ function DeckEditor({
               <ul
                 aria-label="Owned cards available for this deck"
                 className="card-picker__list"
+                id="deck-picker-cards"
               >
-                {filteredCards.map((group) => {
+                {pageCards.map((group) => {
                   const card = group[0]!;
                   const used = group.filter((copy) =>
                     draft.ownedCardIds.includes(copy.ownedCardId),
@@ -1390,11 +1544,14 @@ function DeckEditor({
                     <li key={card.cardDefinitionId}>
                       <article
                         aria-labelledby={titleId}
-                        className={`deck-picker-card card-thumbnail collectible-card--${card.rarity}${used > 0 ? ' deck-picker-card--selected' : ''}${card.isActive ? '' : ' card-thumbnail--inactive'}`}
+                        className={`deck-picker-card collectible-card--${card.rarity}${used > 0 ? ' deck-picker-card--selected' : ''}`}
                       >
-                        <CardArtwork
+                        <CardThumbnail
+                          accessibleLabel={`View ${card.name} details`}
                           badge={used > 0 ? `×${used}` : undefined}
                           card={card}
+                          loading="lazy"
+                          onClick={() => onInspect(card)}
                           nameplate={
                             <span id={titleId} role="heading" aria-level={4}>
                               {card.name}
@@ -1466,6 +1623,14 @@ function DeckEditor({
                 })}
               </ul>
             )}
+            {totalPages > 1 ? (
+              <DeckGalleryPages
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onChange={changePage}
+                label="Card gallery pages below cards"
+              />
+            ) : null}
           </section>
         </div>
         <div

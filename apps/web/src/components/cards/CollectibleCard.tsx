@@ -27,7 +27,9 @@ interface CollectibleCardProps {
 interface CardThumbnailProps {
   accessibleLabel: string;
   badge?: string;
-  card: OwnedCard;
+  card: Pick<CardPresentation, 'name' | 'rarity' | 'imageUrl' | 'imageAlt'> &
+    Partial<Pick<CardPresentation, 'isActive'>>;
+  nameplate?: ReactNode;
   fetchPriority?: 'high';
   loading?: 'eager' | 'lazy';
   onClick: MouseEventHandler<HTMLButtonElement>;
@@ -39,6 +41,7 @@ export function CardThumbnail({
   card,
   fetchPriority,
   loading,
+  nameplate,
   onClick,
 }: CardThumbnailProps) {
   const tilt = useCardTilt<HTMLButtonElement>();
@@ -47,7 +50,7 @@ export function CardThumbnail({
     <button
       {...tilt}
       aria-label={accessibleLabel}
-      className={`card-thumbnail card-thumbnail__button collectible-card--${card.rarity}${card.isActive ? '' : ' card-thumbnail--inactive'}`}
+      className={`card-thumbnail card-thumbnail__button collectible-card--${card.rarity}${card.isActive === false ? ' card-thumbnail--inactive' : ''}`}
       onClick={onClick}
       type="button"
     >
@@ -56,10 +59,16 @@ export function CardThumbnail({
         card={card}
         fetchPriority={fetchPriority}
         loading={loading}
-        nameplate={<span className="card-thumbnail__title">{card.name}</span>}
+        nameplate={
+          nameplate === undefined ? (
+            <span className="card-thumbnail__title">{card.name}</span>
+          ) : (
+            nameplate
+          )
+        }
         thumbnail
       />
-      {!card.isActive ? (
+      {card.isActive === false ? (
         <span className="card-thumbnail__status">Retired</span>
       ) : null}
     </button>

@@ -202,22 +202,25 @@
 }
 
 .deck-lineup__art {
-  position: relative;
   display: block;
 }
 
+.deck-detail__card-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
 .deck-detail__position {
-  position: absolute;
-  top: var(--space-2);
-  left: var(--space-2);
-  display: grid;
-  place-items: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: var(--radius-pill);
-  background: var(--colour-background-app);
-  color: var(--colour-text-primary);
-  font-size: var(--text-xs);
+  flex-shrink: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.deck-detail__cards li,
+.card-picker__list li,
+.draft-cards li {
+  perspective: 55rem;
 }
 
 .deck-master__summary {
@@ -480,6 +483,8 @@
 }
 
 .deck-editor__draft {
+  position: sticky;
+  top: var(--space-5);
   min-width: 0;
   grid-column: 2;
   grid-row: 1;
@@ -525,7 +530,58 @@
   border: 1px solid var(--colour-border-subtle);
   border-radius: var(--radius-lg);
   background: transparent;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.deck-picker-card > .card-thumbnail__button {
+  height: auto;
+}
+
+.deck-gallery-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.deck-gallery-pages--compact {
+  padding: 0;
+}
+
+.deck-gallery-pages--compact .button {
+  width: var(--touch-target-min);
+  padding: 0;
+}
+
+.deck-gallery-navigation__range {
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-xs);
+  scroll-margin-top: var(--space-4);
+}
+
+.deck-gallery-pages {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+}
+
+.deck-gallery-pages span {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.deck-gallery-pages .button {
+  padding-inline: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.deck-draft-preview {
+  height: auto;
+  border-radius: var(--radius-sm);
 }
 
 .deck-picker-card--selected {
@@ -746,7 +802,14 @@
   margin-bottom: var(--space-1);
 }
 
-.decks-page :is(button, input, select, summary):focus-visible {
+.decks-page
+  :is(
+    button,
+    input,
+    select,
+    summary,
+    .deck-gallery-navigation__range
+  ):focus-visible {
   outline: 3px solid var(--colour-focus);
   outline-offset: 3px;
 }
@@ -771,6 +834,7 @@
   }
 
   .deck-editor__draft {
+    position: static;
     border: 0;
     padding: 0;
   }

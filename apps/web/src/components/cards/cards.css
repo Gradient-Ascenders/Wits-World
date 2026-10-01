@@ -526,10 +526,14 @@
   background: rgb(8 20 38 / 94%);
   box-shadow: 0 0.25rem 0.75rem rgb(0 0 0 / 18%);
   cursor: pointer;
-  transform: translateZ(var(--card-z)) rotateX(var(--card-tilt-x))
-    rotateY(var(--card-tilt-y)) scale(var(--card-scale));
+  transform: none;
   transform-origin: center;
   transform-style: preserve-3d;
+}
+
+.card-thumbnail__button:is([data-hovered], [data-tilting]) {
+  transform: translateZ(var(--card-z)) rotateX(var(--card-tilt-x))
+    rotateY(var(--card-tilt-y)) scale(var(--card-scale));
 }
 
 .card-thumbnail__button[data-tilting] {
@@ -1591,7 +1595,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card-thumbnail__button {
+  :root:not([data-motion='full']) .card-thumbnail__button {
     transform: none !important;
   }
 }

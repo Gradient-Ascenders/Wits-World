@@ -747,6 +747,193 @@ test('minimises the mobile save bar deliberately and preserves keyboard access',
   await expectNoHorizontalOverflow(page);
 });
 
+test('shares card hover and details while preserving a draft across large-gallery pages', async ({
+  page,
+}) => {
+  const starter = buildStarterCards('wit') as OwnedCard[];
+  const collection: OwnedCard[] = [
+    ...starter,
+    ...Array.from({ length: 9 }, (_, index) => ({
+      ...starter[index >= 7 ? 3 : 0]!,
+      cardDefinitionId: buildUuid(1100 + index),
+      name: `Archive card ${index + 6}`,
+      ownedCardId: buildUuid(1200 + index),
+    })),
+  ];
+  let decks = [
+    buildDeckFromSelection(
+      'Campus Five',
+      starter.map((card) => card.ownedCardId),
+      collection,
+    ),
+  ];
+  let submitted: string[] = [];
+  await page.route(`${API_BASE_URL}/auth/me`, (route) => json(route, PLAYER));
+  await page.route(`${API_BASE_URL}/cards/collection`, (route) =>
+    json(route, { cards: collection, requestId: 'paged-cards' }),
+  );
+  await page.route(`${API_BASE_URL}/decks`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as {
+        name: string;
+        ownedCardIds: string[];
+      };
+      submitted = body.ownedCardIds;
+      const saved = buildDeckFromSelection(body.name, submitted, collection);
+      decks = [...decks, saved];
+      await json(route, { ...saved, requestId: 'paged-save' }, 201);
+    } else {
+      await json(route, { decks, requestId: 'paged-decks' });
+    }
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/collection/decks');
+
+  for (const preference of [
+    { motion: 'system', os: 'reduce', tilts: false },
+    { motion: 'full', os: 'reduce', tilts: true },
+    { motion: 'reduce', os: 'no-preference', tilts: false },
+  ] as const) {
+    await page.evaluate(
+      (motion) =>
+        localStorage.setItem(
+          'wits-world.accessibility-preferences.v1',
+          JSON.stringify({ motion }),
+        ),
+      preference.motion,
+    );
+    await page.emulateMedia({ reducedMotion: preference.os });
+    await page.reload();
+    const preview = page
+      .locator('.deck-detail__cards .card-thumbnail__button')
+      .first();
+    await preview.hover({ position: { x: 30, y: 40 } });
+    if (preference.tilts) {
+      await expect(preview).toHaveAttribute('data-hovered', '');
+      await expect
+        .poll(() =>
+          preview.evaluate((element) =>
+            Number(element.style.getPropertyValue('--card-scale')),
+          ),
+        )
+        .toBeGreaterThan(1.02);
+      expect(
+        await preview.evaluate(
+          (element) => getComputedStyle(element).transform,
+        ),
+      ).not.toBe('none');
+    } else {
+      await expect(preview).not.toHaveAttribute('data-hovered');
+      expect(
+        await preview.evaluate(
+          (element) => getComputedStyle(element).transform,
+        ),
+      ).toBe('none');
+    }
+  }
+  await page.evaluate(() =>
+    localStorage.setItem(
+      'wits-world.accessibility-preferences.v1',
+      JSON.stringify({ motion: 'system' }),
+    ),
+  );
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.reload();
+  const rosterCard = page
+    .locator('.deck-detail__cards .card-thumbnail__button')
+    .first();
+  await rosterCard.hover({ position: { x: 30, y: 40 } });
+  await expect(rosterCard).toHaveAttribute('data-hovered', '');
+  const cardBox = await rosterCard.boundingBox();
+  const numberBox = await page
+    .locator('.deck-detail__position')
+    .first()
+    .boundingBox();
+  expect(numberBox!.y).toBeGreaterThanOrEqual(
+    cardBox!.y + cardBox!.height - 16,
+  );
+  await rosterCard.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByRole('dialog', { name: starter[0]!.name }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('dialog').getByRole('heading', { name: 'Moves' }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(rosterCard).toBeFocused();
+
+  await page.getByRole('button', { name: 'Edit or rename' }).click();
+  const picker = page.getByRole('list', {
+    name: 'Owned cards available for this deck',
+  });
+  const editorCard = picker.getByRole('button', {
+    name: `View ${starter[3]!.name} details`,
+  });
+  await editorCard.hover({ position: { x: 30, y: 40 } });
+  await expect(editorCard).toHaveAttribute('data-hovered', '');
+  await editorCard.click();
+  await expect(
+    page.getByRole('dialog').getByRole('heading', { name: 'Effects' }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(editorCard).toBeFocused();
+  await expect(page.getByRole('textbox', { name: 'Deck name' })).toHaveValue(
+    'Campus Five',
+  );
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Create a deck' }).click();
+  await page.getByRole('textbox', { name: 'Deck name' }).fill('Across pages');
+  for (const card of starter.slice(0, 3)) {
+    await page
+      .getByRole('button', { name: `Add a copy of ${card.name}` })
+      .click();
+  }
+  const pages = page.getByRole('navigation', {
+    name: 'Card gallery pages',
+    exact: true,
+  });
+  await pages.getByRole('button', { name: 'Next card page' }).click();
+  await pages.getByRole('button', { name: 'Next card page' }).click();
+  await expect(picker.locator(':scope > li')).toHaveCount(2);
+  const lastCard = picker.getByRole('button', {
+    name: `View ${collection[13]!.name} details`,
+  });
+  await lastCard.click();
+  const dialog = page.getByRole('dialog', { name: collection[13]!.name });
+  await expect(dialog.getByRole('heading', { name: 'Effects' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(lastCard).toBeFocused();
+  for (const card of collection.slice(12)) {
+    await page
+      .getByRole('button', { name: `Add a copy of ${card.name}` })
+      .click();
+  }
+  await page
+    .getByRole('searchbox', { name: 'Search cards' })
+    .fill(starter[0]!.name);
+  await expect(picker.locator(':scope > li')).toHaveCount(1);
+  await expect(
+    picker.getByText('Owned 1 · Selected 1 · 1 point'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Review your deck' }).click();
+  await expect(page.locator('.draft-cards ol > li')).toHaveCount(5);
+  await page
+    .getByRole('button', { name: 'Create saved deck', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Across pages', exact: true }),
+  ).toBeVisible();
+  expect(submitted).toEqual(
+    [...starter.slice(0, 3), ...collection.slice(12)].map(
+      (card) => card.ownedCardId,
+    ),
+  );
+  await expectNoHorizontalOverflow(page);
+});
+
 function buildDeck(
   name: string,
   affinity: 'grit' | 'spark' | 'wit',
