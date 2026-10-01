@@ -650,14 +650,8 @@ describe('authoritative CPU battle page', () => {
 
   it.each([
     {
-      appMotion: 'reduce' as const,
-      beatDelay: 1_000,
-      description: 'app reduce over OS normal',
-      osReduced: false,
-    },
-    {
       appMotion: 'full' as const,
-      beatDelay: 1_700,
+      beatDelay: 850,
       description: 'app full over OS reduce',
       osReduced: true,
     },
@@ -713,6 +707,65 @@ describe('authoritative CPU battle page', () => {
       );
     },
   );
+
+  it('settles reduced-motion results immediately while announcing each confirmed outcome once', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    updateAccessibilityPreferences({ motion: 'reduce' });
+    const next = activeMatch(2);
+    next.state.cpu.activeCreature!.currentHp = 88;
+    next.battleLog = [
+      {
+        events: [
+          {
+            id: '2:0',
+            kind: 'action',
+            message: "Player's Wit Creature used Knowledge Strike 1.",
+            sequence: 2,
+            side: 'player',
+          },
+          {
+            id: '2:1',
+            kind: 'effect',
+            message: "CPU's Grit Creature took 12 damage.",
+            sequence: 2,
+            side: 'cpu',
+          },
+        ],
+        id: 'turn-2',
+        label: 'Turn 2',
+        turnNumber: 2,
+      },
+    ];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(matchResponse(activeMatch(1)))
+      .mockResolvedValueOnce(matchResponse(next));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMatchPage();
+    await user.click(
+      await screen.findByRole('button', { name: /Knowledge Strike 1/ }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /Knowledge Strike 1/ }),
+      ).toBeEnabled(),
+    );
+    expect(document.querySelector('.battle-stage--resolving')).toBeNull();
+    expect(screen.getByLabelText('Grit Creature HP')).toHaveAttribute(
+      'value',
+      '88',
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Your Wit Creature used Knowledge Strike 1.',
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'The CPU’s Grit Creature took 12 damage.',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 
   it('paces the opening as opponent first, then player, before unlocking moves', async () => {
     const initial = buildMatch({ version: 1 });
@@ -784,7 +837,7 @@ describe('authoritative CPU battle page', () => {
     ).toBeNull();
 
     await act(async () => {
-      vi.advanceTimersByTime(1_800);
+      vi.advanceTimersByTime(900);
     });
     expect(screen.getAllByText('Go, Wit Creature!').length).toBeGreaterThan(0);
     expect(document.querySelector('.combatant--player')).toHaveClass(
@@ -796,7 +849,7 @@ describe('authoritative CPU battle page', () => {
     );
 
     await act(async () => {
-      vi.advanceTimersByTime(1_800);
+      vi.advanceTimersByTime(900);
     });
     expect(
       screen.getByRole('button', { name: /Knowledge Strike 1/ }),
@@ -884,12 +937,12 @@ describe('authoritative CPU battle page', () => {
       act(async () => {
         vi.advanceTimersByTime(milliseconds);
       });
-    await advance(1_700);
+    await advance(850);
     expect(screen.getByLabelText('Grit Creature HP')).toHaveAttribute(
       'value',
       '88',
     );
-    await advance(1_600);
+    await advance(700);
     expect(
       screen.getAllByText('The CPU’s Grit Creature used Counter.').length,
     ).toBeGreaterThan(0);
@@ -899,13 +952,48 @@ describe('authoritative CPU battle page', () => {
     expect(document.querySelector('.combatant--player')).toHaveClass(
       'combatant--dimmed',
     );
-    await advance(1_700);
+    await advance(850);
     expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
       'value',
       '90',
     );
-    await advance(1_600);
+    await advance(700);
     expect(move).toBeEnabled();
+  });
+
+  it('keeps a winning result locked until its final authoritative presentation beat', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(matchResponse(activeMatch(1)))
+      .mockResolvedValueOnce(matchResponse(completedMatch(2)));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMatchPage();
+    const move = await screen.findByRole('button', {
+      name: /Knowledge Strike 1/,
+    });
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(move);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(move).toBeDisabled();
+    expect(
+      screen.queryByRole('heading', { name: 'CPU battle victory' }),
+    ).toBeNull();
+    await act(async () => vi.advanceTimersByTime(850));
+    await act(async () => vi.advanceTimersByTime(1_050));
+    expect(
+      screen.queryByRole('heading', { name: 'CPU battle victory' }),
+    ).toBeNull();
+    await act(async () => vi.advanceTimersByTime(1_050));
+    expect(
+      screen.getByRole('heading', { name: 'CPU battle victory' }),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('shows the swapped Creature before the CPU acts and keeps outgoing effects on the old Creature', async () => {
@@ -995,12 +1083,12 @@ describe('authoritative CPU battle page', () => {
       'combatant--dimmed',
     );
 
-    await act(async () => vi.advanceTimersByTime(1_700));
+    await act(async () => vi.advanceTimersByTime(850));
     expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
       'value',
       '70',
     );
-    await act(async () => vi.advanceTimersByTime(1_600));
+    await act(async () => vi.advanceTimersByTime(700));
     expect(
       screen.getAllByText('The CPU’s Grit Creature used Counter.').length,
     ).toBeGreaterThan(0);
@@ -1008,7 +1096,7 @@ describe('authoritative CPU battle page', () => {
       'value',
       '70',
     );
-    await act(async () => vi.advanceTimersByTime(1_700));
+    await act(async () => vi.advanceTimersByTime(850));
     expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
       'value',
       '60',

@@ -5810,6 +5810,11 @@
   animation: battle-creature-entry 1.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.battle-page--cpu .combatant--entering .battle-picture-button,
+.battle-page--cpu .combatant--entering .combatant__sigil {
+  animation-duration: 700ms;
+}
+
 .combatant__feedback {
   position: absolute;
   z-index: 5;
@@ -5826,6 +5831,10 @@
   white-space: nowrap;
   transform: translate(-50%, -50%);
   animation: battle-feedback-label 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.battle-page--cpu .combatant__feedback {
+  animation-duration: 620ms;
 }
 
 .combatant[data-feedback='damage'] .combatant__feedback,
@@ -5857,6 +5866,10 @@
 .combatant[data-feedback] .battle-picture-button {
   animation-duration: 1.2s;
   animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.battle-page--cpu .combatant[data-feedback] .battle-picture-button {
+  animation-duration: 620ms;
 }
 
 .combatant[data-feedback='damage'] .battle-picture-button,
