@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { buildCard, buildUuid } from '../tests/fixtures/cards';
 
 for (const reducedMotion of [false, true]) {
@@ -166,7 +166,7 @@ for (const reducedMotion of [false, true]) {
         page.getByRole('button', { name: 'Review evolution' }),
       ).toHaveCount(0);
       await page.keyboard.press('Escape');
-      holdPreview = width === 1440 && !reducedMotion;
+      holdPreview = true;
       await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
       if (holdPreview) {
         await expect(
@@ -174,8 +174,20 @@ for (const reducedMotion of [false, true]) {
             .getByRole('status')
             .filter({ hasText: 'Checking evolution paths…' }),
         ).toBeVisible();
+        const loading = page
+          .getByRole('status')
+          .filter({ hasText: 'Checking evolution paths…' });
+        await expect(loading.locator('.loading-seal')).toHaveCount(1);
+        await expect(loading.locator('.quest-marker')).toHaveCount(0);
+        await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+          'Loading your evolutions',
+        );
+        await expect(
+          page.getByRole('navigation', { name: 'Collection sections' }),
+        ).toBeVisible();
+        await expectCollectionLoaderCentred(page);
         await page.screenshot({
-          path: testInfo.outputPath('loading-1440.png'),
+          path: testInfo.outputPath(`loading-${width}.png`),
           fullPage: true,
         });
         holdPreview = false;
@@ -400,4 +412,95 @@ for (const reducedMotion of [false, true]) {
       ),
     ).toEqual([]);
   });
+}
+
+test('centres loading screens across every Collection section', async ({
+  page,
+}, testInfo) => {
+  let releaseLoad!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    releaseLoad = resolve;
+  });
+  await page.route('**/api/v1/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/auth/me')) {
+      return route.fulfill({
+        json: {
+          connectionStrategy: 'auth0',
+          id: buildUuid(980),
+          lifecycleStatus: 'active',
+          playerName: 'collection_loading_player',
+          playerNameSetupRequired: false,
+          requestId: 'loading-player',
+          role: 'player',
+        },
+      });
+    }
+    if (/\/(cards\/collection|decks|trades)$/.test(url.pathname)) await gate;
+    return route.fulfill({
+      json: {
+        cards: [buildCard(1)],
+        decks: [],
+        trades: [],
+        nextCursor: null,
+        requestId: 'loading-fixture',
+      },
+    });
+  });
+  try {
+    for (const section of ['cards', 'decks', 'evolutions', 'trades']) {
+      await page.goto(
+        section === 'cards' ? '/collection' : `/collection/${section}`,
+      );
+      await expect(page.locator('.page-loading-state')).toHaveCount(1);
+      await expect(
+        page.locator('.page-loading-state .loading-seal'),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('navigation', { name: 'Collection sections' }),
+      ).toBeVisible();
+      for (const viewport of [
+        { width: 390, height: 844 },
+        { width: 768, height: 1024 },
+        { width: 1440, height: 960 },
+      ]) {
+        await page.setViewportSize(viewport);
+        await expectCollectionLoaderCentred(page);
+        await page.screenshot({
+          path: testInfo.outputPath(`${section}-loading-${viewport.width}.png`),
+        });
+      }
+    }
+  } finally {
+    releaseLoad();
+  }
+});
+
+async function expectCollectionLoaderCentred(page: Page) {
+  const geometry = await page.locator('#main-content').evaluate((main) => {
+    const loader = main.querySelector('.page-loading-state')!;
+    const navigation = main.querySelector('.collection-navigation')!;
+    const mainBox = main.getBoundingClientRect();
+    const loaderBox = loader.getBoundingClientRect();
+    const navBox = navigation.getBoundingClientRect();
+    const contentTop =
+      navBox.bottom +
+      Number.parseFloat(getComputedStyle(navigation).marginBottom);
+    const contentBottom =
+      mainBox.bottom - Number.parseFloat(getComputedStyle(main).paddingBottom);
+    return {
+      horizontalDelta:
+        loaderBox.x + loaderBox.width / 2 - (mainBox.x + mainBox.width / 2),
+      verticalDelta:
+        loaderBox.y + loaderBox.height / 2 - (contentTop + contentBottom) / 2,
+      overlapsNavigation: loaderBox.top < navBox.bottom,
+      overflows:
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth,
+    };
+  });
+  expect(Math.abs(geometry.horizontalDelta)).toBeLessThan(2);
+  expect(Math.abs(geometry.verticalDelta)).toBeLessThan(2);
+  expect(geometry.overlapsNavigation).toBe(false);
+  expect(geometry.overflows).toBe(false);
 }

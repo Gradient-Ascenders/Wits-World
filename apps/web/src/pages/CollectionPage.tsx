@@ -310,10 +310,17 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
 
   if (collection.status === 'loading') {
     return (
-      <PageLoadingState
-        title="Loading your cards"
-        description="Fetching your collection…"
-      />
+      <div className="collection-page">
+        <CollectionSectionNavigation />
+        <PageLoadingState
+          title={
+            section === 'evolutions'
+              ? 'Loading your evolutions'
+              : 'Loading your cards'
+          }
+          description="Fetching your collection…"
+        />
+      </div>
     );
   }
 
@@ -360,21 +367,25 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   return (
     <div className="collection-page">
       <CollectionSectionNavigation />
-      <header className="collection-page__header">
-        <h1>{section === 'cards' ? 'Your cards' : 'Evolutions'}</h1>
-        {section === 'evolutions' ? (
-          <p className="lead">
-            Combine three available copies into one evolved card.
-          </p>
-        ) : null}
-        {collection.status === 'ready' && section === 'cards' ? (
-          <p aria-live="polite" className="collection-summary">
-            {cards.length} {cards.length === 1 ? 'copy' : 'copies'} ·{' '}
-            {cardDefinitionCount}{' '}
-            {cardDefinitionCount === 1 ? 'design' : 'designs'}
-          </p>
-        ) : null}
-      </header>
+      {section !== 'evolutions' ||
+      collection.status !== 'ready' ||
+      cards.length === 0 ? (
+        <header className="collection-page__header">
+          <h1>{section === 'cards' ? 'Your cards' : 'Evolutions'}</h1>
+          {section === 'evolutions' ? (
+            <p className="lead">
+              Combine three available copies into one evolved card.
+            </p>
+          ) : null}
+          {collection.status === 'ready' && section === 'cards' ? (
+            <p aria-live="polite" className="collection-summary">
+              {cards.length} {cards.length === 1 ? 'copy' : 'copies'} ·{' '}
+              {cardDefinitionCount}{' '}
+              {cardDefinitionCount === 1 ? 'design' : 'designs'}
+            </p>
+          ) : null}
+        </header>
+      ) : null}
 
       {collection.status === 'error' ? (
         <CollectionErrorState

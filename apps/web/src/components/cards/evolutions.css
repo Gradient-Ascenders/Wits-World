@@ -5,10 +5,6 @@
   display: grid;
   gap: var(--space-5);
 }
-.evolution-candidates__loading.state-message {
-  width: fit-content;
-  padding-block: var(--space-2);
-}
 .evolution-candidate {
   display: grid;
   grid-template-columns: 6.5rem minmax(0, 1fr);

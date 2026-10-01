@@ -8,7 +8,7 @@ import {
   type OwnedCard,
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
-import { LoadingState } from '../LoadingState';
+import { PageLoadingState } from '../LoadingState';
 import { CardDetailModal } from './CardDetailModal';
 import { CardPresentationDialog } from './CardPresentationDialog';
 import { CardThumbnail } from './CollectibleCard';
@@ -119,140 +119,153 @@ export function CollectionEvolutions({
     );
   }
 
+  const isChecking = loading || loadedSnapshot.current?.cards !== cards;
+
   return (
-    <section
-      className="collection-evolutions"
-      aria-labelledby="collection-evolutions-title"
-    >
-      <h2
-        className="sr-only"
-        id="collection-evolutions-title"
-        ref={heading}
-        tabIndex={-1}
+    <>
+      {!isChecking ? (
+        <header className="collection-page__header">
+          <h1>Evolutions</h1>
+          <p className="lead">
+            Combine three available copies into one evolved card.
+          </p>
+        </header>
+      ) : null}
+      <section
+        className="collection-evolutions"
+        aria-labelledby="collection-evolutions-title"
       >
-        Evolution candidates
-      </h2>
-      {loading || loadedSnapshot.current?.cards !== cards ? (
-        <LoadingState
-          announce={!selected}
-          className="evolution-candidates__loading"
-          label="Checking evolution paths…"
-        />
-      ) : (
-        <>
-          {candidates.length === 0 ? (
-            <StatusMessage tone="empty">
-              <p>No evolutions are available for your current cards.</p>
-            </StatusMessage>
-          ) : null}
-          <ul
-            className="evolution-candidates"
-            aria-label="Evolution candidates"
-          >
-            {candidates.map(({ card, preview, unavailable, failed }) => (
-              <li key={card.cardDefinitionId} className="evolution-candidate">
-                <div className="evolution-candidate__art">
-                  <CardThumbnail
-                    accessibleLabel={`View ${card.name} details`}
-                    card={card}
-                    onClick={() => setDetailsCard(card)}
-                  />
-                </div>
-                <div className="evolution-candidate__info">
-                  <p
-                    className={`evolution-candidate__state${preview?.canEvolve ? ' evolution-candidate__state--ready' : ''}`}
-                  >
-                    {preview
-                      ? preview.canEvolve
-                        ? 'Ready to evolve'
-                        : preview.unavailableReason === 'trade_reservation'
-                          ? 'Copies reserved for trade'
-                          : preview.unavailableReason === 'saved_deck_lock'
-                            ? 'Copies locked in decks'
-                            : 'Not enough copies'
-                      : unavailable
-                        ? 'No evolution available'
-                        : 'Availability unknown'}
-                  </p>
-                  <h3>{card.name}</h3>
-                  {preview ? (
-                    <>
-                      <p className="evolution-candidate__target">
-                        <ArrowRight size={18} aria-hidden="true" />{' '}
-                        {preview.target.name}{' '}
-                        <span>· {preview.target.rarity}</span>
-                      </p>
-                      <p>
-                        <strong>
-                          {preview.eligibleCopyCount} / {preview.copiesRequired}
-                        </strong>{' '}
-                        copies available
-                      </p>
-                      {preview.deckLockedCopyCount > 0 ? (
-                        <p className="evolution-candidate__counts">
-                          <LockKey size={16} aria-hidden="true" />{' '}
-                          {preview.deckLockedCopyCount} used in a deck
-                        </p>
-                      ) : null}
-                      {preview.tradeReservedCopyCount > 0 ? (
-                        <p className="evolution-candidate__counts">
-                          {preview.tradeReservedCopyCount} reserved for trade
-                        </p>
-                      ) : null}
-                      <button
-                        className="button button--quiet"
-                        type="button"
-                        onClick={(event) => {
-                          trigger.current = event.currentTarget;
-                          setSelected({ card, preview });
-                        }}
-                        aria-label={`Preview ${card.name} evolution`}
-                      >
-                        Preview evolution
-                      </button>
-                    </>
-                  ) : failed ? (
-                    <p>Could not check this card. Try again.</p>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-          {candidates.some((candidate) => candidate.failed) ? (
-            <button
-              className="button button--quiet"
-              type="button"
-              onClick={() => setRevision((value) => value + 1)}
+        <h2
+          className="sr-only"
+          id="collection-evolutions-title"
+          ref={heading}
+          tabIndex={-1}
+        >
+          Evolution candidates
+        </h2>
+        {isChecking ? (
+          <PageLoadingState
+            announce={!selected}
+            title="Loading your evolutions"
+            description="Checking evolution paths…"
+          />
+        ) : (
+          <>
+            {candidates.length === 0 ? (
+              <StatusMessage tone="empty">
+                <p>No evolutions are available for your current cards.</p>
+              </StatusMessage>
+            ) : null}
+            <ul
+              className="evolution-candidates"
+              aria-label="Evolution candidates"
             >
-              Retry availability
-            </button>
-          ) : null}
-        </>
-      )}
-      {selected?.preview ? (
-        <CardDetailModal
-          apiBaseUrl={apiBaseUrl}
-          getAccessToken={getAccessToken}
-          group={{
-            card: selected.card,
-            copies: cards.filter(
-              (card) =>
-                card.cardDefinitionId === selected.card.cardDefinitionId,
-            ),
-          }}
-          evolutionPreview={selected.preview}
-          collectionCards={cards}
-          onApplyEvolutionResult={onApplyResult}
-          onRefreshCollection={onRefreshCollection}
-          onClose={close}
-        />
-      ) : null}
-      {detailsCard ? (
-        <CardPresentationDialog
-          card={detailsCard}
-          onClose={() => setDetailsCard(null)}
-        />
-      ) : null}
-    </section>
+              {candidates.map(({ card, preview, unavailable, failed }) => (
+                <li key={card.cardDefinitionId} className="evolution-candidate">
+                  <div className="evolution-candidate__art">
+                    <CardThumbnail
+                      accessibleLabel={`View ${card.name} details`}
+                      card={card}
+                      onClick={() => setDetailsCard(card)}
+                    />
+                  </div>
+                  <div className="evolution-candidate__info">
+                    <p
+                      className={`evolution-candidate__state${preview?.canEvolve ? ' evolution-candidate__state--ready' : ''}`}
+                    >
+                      {preview
+                        ? preview.canEvolve
+                          ? 'Ready to evolve'
+                          : preview.unavailableReason === 'trade_reservation'
+                            ? 'Copies reserved for trade'
+                            : preview.unavailableReason === 'saved_deck_lock'
+                              ? 'Copies locked in decks'
+                              : 'Not enough copies'
+                        : unavailable
+                          ? 'No evolution available'
+                          : 'Availability unknown'}
+                    </p>
+                    <h3>{card.name}</h3>
+                    {preview ? (
+                      <>
+                        <p className="evolution-candidate__target">
+                          <ArrowRight size={18} aria-hidden="true" />{' '}
+                          {preview.target.name}{' '}
+                          <span>· {preview.target.rarity}</span>
+                        </p>
+                        <p>
+                          <strong>
+                            {preview.eligibleCopyCount} /{' '}
+                            {preview.copiesRequired}
+                          </strong>{' '}
+                          copies available
+                        </p>
+                        {preview.deckLockedCopyCount > 0 ? (
+                          <p className="evolution-candidate__counts">
+                            <LockKey size={16} aria-hidden="true" />{' '}
+                            {preview.deckLockedCopyCount} used in a deck
+                          </p>
+                        ) : null}
+                        {preview.tradeReservedCopyCount > 0 ? (
+                          <p className="evolution-candidate__counts">
+                            {preview.tradeReservedCopyCount} reserved for trade
+                          </p>
+                        ) : null}
+                        <button
+                          className="button button--quiet"
+                          type="button"
+                          onClick={(event) => {
+                            trigger.current = event.currentTarget;
+                            setSelected({ card, preview });
+                          }}
+                          aria-label={`Preview ${card.name} evolution`}
+                        >
+                          Preview evolution
+                        </button>
+                      </>
+                    ) : failed ? (
+                      <p>Could not check this card. Try again.</p>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {candidates.some((candidate) => candidate.failed) ? (
+              <button
+                className="button button--quiet"
+                type="button"
+                onClick={() => setRevision((value) => value + 1)}
+              >
+                Retry availability
+              </button>
+            ) : null}
+          </>
+        )}
+        {selected?.preview ? (
+          <CardDetailModal
+            apiBaseUrl={apiBaseUrl}
+            getAccessToken={getAccessToken}
+            group={{
+              card: selected.card,
+              copies: cards.filter(
+                (card) =>
+                  card.cardDefinitionId === selected.card.cardDefinitionId,
+              ),
+            }}
+            evolutionPreview={selected.preview}
+            collectionCards={cards}
+            onApplyEvolutionResult={onApplyResult}
+            onRefreshCollection={onRefreshCollection}
+            onClose={close}
+          />
+        ) : null}
+        {detailsCard ? (
+          <CardPresentationDialog
+            card={detailsCard}
+            onClose={() => setDetailsCard(null)}
+          />
+        ) : null}
+      </section>
+    </>
   );
 }

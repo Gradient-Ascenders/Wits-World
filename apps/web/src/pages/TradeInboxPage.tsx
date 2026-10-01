@@ -150,10 +150,13 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   if (state.status === 'loading') {
     return (
-      <PageLoadingState
-        description="Checking your open offers and recent trade history."
-        title="Loading card trades"
-      />
+      <div className="trades-page">
+        <CollectionSectionNavigation />
+        <PageLoadingState
+          description="Checking your open offers and recent trade history."
+          title="Loading card trades"
+        />
+      </div>
     );
   }
 
