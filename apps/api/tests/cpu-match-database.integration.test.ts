@@ -4,6 +4,7 @@ import type { QueryResultRow } from 'pg';
 import {
   applyBattleAction,
   createBattleState,
+  type BattleActionResult,
   type BattleCreatureCard,
   type BattleDeck,
   type BattlePowerCard,
@@ -393,9 +394,45 @@ describe.skipIf(!runIntegrationTests)(
       });
     }, 30_000);
 
-    it('persists a normal player move and CPU response as two ordered actions with one receipt', async () => {
+    it('persists a multi-effect player move and CPU response as two ordered actions with one receipt', async () => {
       const battle = activeBattle(1, { playerDamage: 1, cpuDamage: 1 });
-      const fixture = await insertActionMatch(pool, battle.state);
+      const player = battle.state.participants.player;
+      const creature = player.creatures[0]!;
+      const move = creature.card.moves[0]!;
+      const state: BattleState = {
+        ...battle.state,
+        participants: {
+          ...battle.state.participants,
+          player: {
+            ...player,
+            creatures: [
+              {
+                ...creature,
+                currentHp: 8,
+                card: {
+                  ...creature.card,
+                  moves: [
+                    {
+                      ...move,
+                      effects: [
+                        ...move.effects,
+                        {
+                          id: integrationUuid(99_001),
+                          effectType: 'heal',
+                          effectValue: 2,
+                        },
+                      ],
+                    },
+                    ...creature.card.moves.slice(1),
+                  ],
+                },
+              },
+              ...player.creatures.slice(1),
+            ],
+          },
+        },
+      };
+      const fixture = await insertActionMatch(pool, state);
       const service = createCpuMatchService(pool, { randomInt: () => 0 });
       const input = {
         playerId: fixture.playerId,
@@ -415,6 +452,14 @@ describe.skipIf(!runIntegrationTests)(
         winner: null,
       });
       expect(persisted.rounds).toHaveLength(1);
+      expect(persisted.rounds[0]?.state_after).toEqual(persisted.match.state);
+      expect(
+        persisted.match.state.participants.player.creatures[0]?.currentHp,
+      ).toBe(9);
+      expect(persisted.actions[0]?.result.effects).toHaveLength(2);
+      await expect(
+        service.getMatch(fixture.playerId, fixture.matchId),
+      ).resolves.toEqual(response);
       expect(persisted.actions.map(({ sequence }) => sequence)).toEqual([1, 2]);
       expect(persisted.actions.map(({ side }) => side)).toEqual([
         'player',
@@ -1350,7 +1395,7 @@ async function loadActionPersistence(
   const actions = await pool.query<{
     action: { type: string };
     response: unknown;
-    result: { action: { type: string }; winner: 'cpu' | 'player' | null };
+    result: BattleActionResult;
     round_number: number;
     sequence: number;
     side: 'cpu' | 'player';

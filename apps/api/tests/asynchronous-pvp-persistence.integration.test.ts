@@ -18,7 +18,10 @@ import {
 import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
-import { createAsyncPvpService } from '../src/matches/asynchronous-pvp-service.js';
+import {
+  createAsyncPvpService,
+  type AsyncPvpDatabase,
+} from '../src/matches/asynchronous-pvp-service.js';
 import { TrustActivityRestrictedError } from '../src/trust/trust-restrictions.js';
 import { createAsyncPvpDeadlineProcessor } from '../src/matches/asynchronous-pvp-deadline-processor.js';
 import { createSignedCursorCodec } from '../src/security/signed-cursor.js';
@@ -442,7 +445,25 @@ describe.skipIf(!runIntegrationTests)(
         `select player_name from public.players where id = $1::uuid`,
         [recipientPlayerId],
       );
-      const service = createAsyncPvpService(pool, {
+      let statementCount = 0;
+      const countedDatabase: AsyncPvpDatabase = {
+        async connect() {
+          const client = await pool.connect();
+          return {
+            query<T extends pg.QueryResultRow>(
+              statement: string,
+              values?: unknown[],
+            ) {
+              statementCount += 1;
+              return client.query<T>(statement, values);
+            },
+            release() {
+              client.release();
+            },
+          };
+        },
+      };
+      const service = createAsyncPvpService(countedDatabase, {
         cursorCodec: createSignedCursorCodec(
           'database-test-only-cursor-key-with-32-bytes',
         ),
@@ -567,6 +588,15 @@ describe.skipIf(!runIntegrationTests)(
       const action = challengerView.legalActions[0]!;
       await expect(
         service.submitAction({
+          playerId: recipientPlayerId,
+          matchId: challengerView.matchId,
+          submissionId: randomUUID(),
+          expectedVersion: challengerView.version,
+          action,
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_ACTION_ILLEGAL' });
+      await expect(
+        service.submitAction({
           playerId: challengerPlayerId,
           matchId: challengerView.matchId,
           submissionId: randomUUID(),
@@ -582,9 +612,14 @@ describe.skipIf(!runIntegrationTests)(
         expectedVersion: challengerView.version,
         action,
       };
+      statementCount = 0;
       const advanced = await service.submitAction({
         ...actionInput,
       });
+      expect(statementCount).toBe(11);
+      await expect(
+        service.getMatch(challengerPlayerId, challengerView.matchId),
+      ).resolves.toEqual(advanced);
       expect(advanced.version).toBe(1);
       expect(advanced.lastAction).toMatchObject({ side: 'self' });
       expect(advanced.history).toEqual([
@@ -597,6 +632,9 @@ describe.skipIf(!runIntegrationTests)(
       await expect(service.submitAction(actionInput)).resolves.toEqual(
         advanced,
       );
+      await expect(
+        service.submitAction({ ...actionInput, expectedVersion: 1 }),
+      ).rejects.toMatchObject({ code: 'PVP_IDEMPOTENCY_CONFLICT' });
 
       const recipientView = await service.getMatch(
         recipientPlayerId,
@@ -628,6 +666,47 @@ describe.skipIf(!runIntegrationTests)(
       await expect(
         service.getMatch(challengerPlayerId, challengerView.matchId),
       ).resolves.toMatchObject({ version: 2 });
+
+      const current = await service.getMatch(
+        challengerPlayerId,
+        challengerView.matchId,
+      );
+      const duplicateInput = {
+        playerId: challengerPlayerId,
+        matchId: current.matchId,
+        submissionId: randomUUID(),
+        expectedVersion: current.version,
+        action: current.legalActions[0]!,
+      };
+      const duplicates = await Promise.all([
+        service.submitAction(duplicateInput),
+        service.submitAction(duplicateInput),
+      ]);
+      expect(duplicates[0]).toEqual(duplicates[1]);
+      expect(duplicates[0]?.version).toBe(3);
+      await expect(
+        service.getMatch(challengerPlayerId, current.matchId),
+      ).resolves.toEqual(duplicates[0]);
+      const persisted = await pool.query<{
+        version: number;
+        action_count: number;
+        response: unknown;
+      }>(
+        `select match.version,
+                (select count(*)::integer from public.async_pvp_match_actions action
+                  where action.match_id = match.id) as action_count,
+                receipt.committed_response as response
+           from public.async_pvp_matches match
+           join private.async_pvp_submission_receipts receipt
+             on receipt.match_id = match.id
+          where match.id = $1::uuid and receipt.submission_id = $2::uuid`,
+        [current.matchId, duplicateInput.submissionId],
+      );
+      expect(persisted.rows[0]).toEqual({
+        version: 3,
+        action_count: 3,
+        response: duplicates[0],
+      });
     });
 
     it('cancels only the challenger, retains an auditable terminal record, and supports replay and pagination', async () => {
