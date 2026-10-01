@@ -1523,7 +1523,7 @@ test('renders recent results and starts from the selected deck dashboard', async
     );
   expect(dashboardBorderColours).toHaveLength(4);
   expect(new Set(dashboardBorderColours).size).toBe(1);
-  await expectRecentResultActionsAligned(page, 'start');
+  await expectRecentResultActionsAligned(page);
   await expectNoHorizontalOverflow(page);
 
   await page.setViewportSize({ height: 1024, width: 768 });
@@ -1547,7 +1547,7 @@ test('renders recent results and starts from the selected deck dashboard', async
   expect(practiceBox!.x).toBeGreaterThan(playerBox!.x);
   expect(practiceBox!.y).toBe(playerBox!.y);
   expect(resultsBox!.y).toBeGreaterThan(playerBox!.y + playerBox!.height);
-  await expectRecentResultActionsAligned(page, 'end');
+  await expectRecentResultActionsAligned(page);
 
   for (const width of [390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1024 });
@@ -2001,10 +2001,10 @@ async function expectVerticallySeparated(upper: Locator, lower: Locator) {
   expect(upperBox!.y + upperBox!.height).toBeLessThanOrEqual(lowerBox!.y);
 }
 
-async function expectRecentResultActionsAligned(
-  page: Page,
-  edge: 'start' | 'end',
-) {
+async function expectRecentResultActionsAligned(page: Page) {
+  const historyHeading = await page
+    .getByRole('heading', { name: 'Recent battles', exact: true })
+    .boundingBox();
   const historyAction = await page
     .getByRole('link', { name: 'View history' })
     .boundingBox();
@@ -2018,13 +2018,22 @@ async function expectRecentResultActionsAligned(
       }),
     );
   expect(historyAction).not.toBeNull();
-  const historyEdge =
-    edge === 'start'
-      ? historyAction!.x
-      : historyAction!.x + historyAction!.width;
+  expect(historyHeading).not.toBeNull();
+  expect(historyHeading!.x + historyHeading!.width).toBeLessThanOrEqual(
+    historyAction!.x,
+  );
+  expect(
+    Math.abs(
+      historyHeading!.y +
+        historyHeading!.height / 2 -
+        (historyAction!.y + historyAction!.height / 2),
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(historyAction!.height).toBeGreaterThanOrEqual(44);
+  const firstAction = battleActions[0]!;
   for (const action of battleActions) {
-    const actionEdge = edge === 'start' ? action.left : action.right;
-    expect(Math.abs(actionEdge - historyEdge)).toBeLessThanOrEqual(1);
+    expect(Math.abs(action.left - firstAction.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(action.right - firstAction.right)).toBeLessThanOrEqual(1);
   }
 }
 
