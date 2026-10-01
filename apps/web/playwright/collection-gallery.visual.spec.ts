@@ -90,15 +90,27 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     ),
   );
 
-  await page.setViewportSize({ height: 844, width: 390 });
+  await page.setViewportSize({ height: 844, width: 320 });
   await page.goto('/collection');
+  await expect(
+    page.getByRole('heading', { name: 'Your cards', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Trades', exact: true }),
+  ).toBeInViewport();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: testInfo.outputPath('collection-narrow-mobile.png'),
+  });
+  await page.setViewportSize({ height: 844, width: 390 });
 
   const gallery = page.getByRole('list', { name: 'Owned card designs' });
   await expect(gallery.locator(':scope > li')).toHaveCount(24);
   await expect(page.getByRole('contentinfo')).toHaveCount(0);
   await expect(
-    page.getByText('27 owned copies across 24 designs'),
-  ).toBeVisible();
+    page.getByRole('link', { name: 'Trades', exact: true }),
+  ).toBeInViewport();
+  await expect(page.getByText('27 copies · 24 designs')).toBeVisible();
   await expect(page.getByText('×4')).toBeVisible();
   await expect(
     page.getByRole('img', { name: 'Campus Guardian 2 artwork unavailable' }),
@@ -167,6 +179,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   ).toBeVisible();
   await page.getByRole('button', { name: 'Clear' }).click();
   await page.getByRole('button', { name: 'Filters & sort' }).click();
+  await page.screenshot({ path: testInfo.outputPath('filters-mobile.png') });
   await page.getByRole('combobox', { name: 'Category' }).selectOption('power');
   await expect(gallery.locator(':scope > li')).toHaveCount(8);
   await page.getByRole('combobox', { name: 'Rarity' }).selectOption('epic');

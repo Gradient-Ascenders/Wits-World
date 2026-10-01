@@ -219,11 +219,13 @@ describe('card collection page', () => {
     expect(
       screen.queryByRole('radio', { name: /Mystic/i }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/Spirit, Mystic, and other cards/i)).toBeVisible();
+    expect(
+      screen.getByText(/Earn Spirit, Mystic, and other cards/i),
+    ).toBeVisible();
 
     const sparkOption = sparkChoice.closest('article');
     expect(sparkOption).not.toBeNull();
-    await user.click(within(sparkOption!).getByText('View exact package'));
+    await user.click(within(sparkOption!).getByText('View cards'));
     expect(within(sparkOption!).getByText('spark Creature 1')).toBeVisible();
     const moveList = within(sparkOption!).getByRole('list', {
       name: 'spark Creature 1 moves',
@@ -275,7 +277,7 @@ describe('card collection page', () => {
       expect.objectContaining({ body: JSON.stringify({ affinity: 'grit' }) }),
     );
     expect(
-      screen.getByText('5 cards recorded · 3 Creatures · 2 Power cards'),
+      screen.getByText('5 cards · 3 Creatures · 2 Power cards'),
     ).toBeVisible();
   });
 
@@ -329,7 +331,7 @@ describe('card collection page', () => {
       }),
     ).toBeVisible();
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Cards you own' }),
+      screen.getByRole('heading', { level: 1, name: 'Your cards' }),
     ).toBeVisible();
     expect(
       screen.getByRole('heading', {
