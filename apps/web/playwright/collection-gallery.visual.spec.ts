@@ -4,6 +4,7 @@ import {
   type Locator,
   type Page,
   type Route,
+  type CDPSession,
 } from '@playwright/test';
 
 import {
@@ -168,6 +169,66 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   const mobilePanel = await dialog.boundingBox();
   expect(mobilePanel).not.toBeNull();
   expect(Math.round(mobilePanel!.y + mobilePanel!.height)).toBe(844);
+
+  const body = dialog.locator('.trade-card-detail__body');
+  await expect(body).toHaveCSS('scrollbar-width', 'none');
+  const handle = dialog.getByRole('button', { name: 'Close card sheet' });
+  await handle.focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog).toBeHidden();
+  await expect(duplicateTrigger).toBeFocused();
+  await duplicateTrigger.click();
+  await handle.click();
+  await expect(dialog).toBeHidden();
+  await duplicateTrigger.click();
+
+  // Trusted touch events exercise native scrolling and the sheet handoff.
+  await page.setViewportSize({ height: 700, width: 390 });
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
+  const openPanel = (await dialog.boundingBox())!;
+  const touch = await page.context().newCDPSession(page);
+  await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  await body.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const bodyBox = (await body.boundingBox())!;
+  await swipe(touch, 320, bodyBox.y + 160, bodyBox.y + 30);
+  await expect
+    .poll(() => body.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  expect((await dialog.boundingBox())!.height).toBe(openPanel.height);
+  await swipe(touch, 320, bodyBox.y + 30, bodyBox.y + 70);
+  expect((await dialog.boundingBox())!.height).toBe(openPanel.height);
+
+  await body.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  // A short pull returns fully open, with no intermediate resting position.
+  await swipe(touch, 320, bodyBox.y + 40, bodyBox.y + 120, 65);
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
+  await expect(dialog).toBeVisible();
+  expect((await dialog.boundingBox())!.y).toBe(openPanel.y);
+  expect((await dialog.boundingBox())!.height).toBe(openPanel.height);
+  await expect(dialog).not.toHaveAttribute('data-card-snap', 'medium');
+  await swipe(touch, 320, bodyBox.y + 40, bodyBox.y + 240, 65);
+  await expect(dialog).toBeHidden();
+  await expect(duplicateTrigger).toBeFocused();
+  await duplicateTrigger.click();
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
+  const handleBox = (await handle.boundingBox())!;
+  await swipe(touch, 195, handleBox.y + 20, handleBox.y + 450);
+  await expect(dialog).toBeHidden();
+  await expect(duplicateTrigger).toBeFocused();
+  await touch.detach();
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await duplicateTrigger.click();
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await expect(duplicateTrigger).toBeFocused();
@@ -304,6 +365,14 @@ function buildLargeCollection() {
       power: 10 + number,
       rarity: ['common', 'rare', 'epic', 'legendary'][number % 4],
     });
+    if (number === 1) {
+      const move = card.moves[0]!;
+      card.moves = [
+        move,
+        { ...move, id: buildUuid(993), name: 'Quick Read', powerCost: 0 },
+        { ...move, id: buildUuid(994), name: 'Flash Feint', powerCost: 2 },
+      ];
+    }
     return number % 3 === 0
       ? {
           ...card,
@@ -348,5 +417,29 @@ async function json(route: Route, body: object, status = 200) {
     body: JSON.stringify(body),
     contentType: 'application/json',
     status,
+  });
+}
+
+async function swipe(
+  session: CDPSession,
+  x: number,
+  fromY: number,
+  toY: number,
+  stepDelay = 25,
+) {
+  await session.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x, y: fromY }],
+  });
+  for (let step = 1; step <= 8; step++) {
+    await new Promise((resolve) => setTimeout(resolve, stepDelay));
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x, y: fromY + ((toY - fromY) * step) / 8 }],
+    });
+  }
+  await session.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
   });
 }

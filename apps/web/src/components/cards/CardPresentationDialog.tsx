@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import type { CardPresentation } from '../../api/cards';
 import { useModalFocus } from '../useModalFocus';
 import { CardArtwork, formatEffect, formatModifier } from './CollectibleCard';
+import { useCardSheet } from './useCardSheet';
 import './card-presentation-dialog.css';
 
 export type CardDialogPresentation = Pick<
@@ -33,7 +34,10 @@ export function CardPresentationDialog({
 }) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const bodyId = `${titleId}-content`;
+  const { dismiss } = useCardSheet(dialogRef, bodyRef, onClose);
   const trapFocus = useModalFocus({
     busy: false,
     dialogRef,
@@ -67,8 +71,17 @@ export function CardPresentationDialog({
         role="dialog"
         tabIndex={-1}
       >
-        <header className="trade-card-detail__header">
-          <span aria-hidden="true" className="trade-card-detail__handle" />
+        <header className="trade-card-detail__header" data-card-sheet-header>
+          <button
+            aria-controls={bodyId}
+            aria-label="Close card sheet"
+            className="trade-card-detail__handle"
+            data-card-sheet-handle
+            onClick={dismiss}
+            type="button"
+          >
+            <span aria-hidden="true" />
+          </button>
           <div>
             <p className="trade-card-detail__eyebrow">Card details</p>
             <h2 id={titleId}>{card.name}</h2>
@@ -88,7 +101,12 @@ export function CardPresentationDialog({
           </button>
         </header>
 
-        <div className="trade-card-detail__body">
+        <div
+          className="trade-card-detail__body"
+          id={bodyId}
+          ref={bodyRef}
+          tabIndex={0}
+        >
           <div className="trade-card-detail__overview">
             <div className="trade-card-detail__artwork">
               <CardArtwork card={card} showRarity />
