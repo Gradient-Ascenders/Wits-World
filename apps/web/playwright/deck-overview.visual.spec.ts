@@ -83,9 +83,7 @@ test('keeps multiple deck summaries compact and reveals one detail surface', asy
   await expect(selectedDetail).toHaveAccessibleName(
     'The Exceptionally Long-Named Senate House Strategy Deck',
   );
-  await expect(
-    page.getByRole('button', { name: 'Edit or rename' }),
-  ).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Edit deck' })).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Delete' })).toHaveCount(1);
   await expect(page.locator('.deck-rules')).not.toHaveAttribute('open');
   await expectNoHorizontalOverflow(page);
@@ -124,7 +122,7 @@ test('keeps multiple deck summaries compact and reveals one detail surface', asy
   await expect(
     page.getByText('Campus Five is now your active deck.'),
   ).toBeVisible();
-  await expect(page.getByText('Selected for matches')).toBeVisible();
+  await expect(page.getByText('Active', { exact: true }).first()).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Start CPU match' }),
   ).toBeVisible();
@@ -431,7 +429,7 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
   await expectSquareArtwork(picker);
   await expectNoHorizontalOverflow(page);
   await expect(
-    page.getByRole('button', { exact: true, name: 'Create saved deck' }),
+    page.getByRole('button', { exact: true, name: 'Create deck' }),
   ).toBeDisabled();
 
   const duplicateCard = page.getByRole('article', { name: longName });
@@ -446,27 +444,17 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
   });
   await addDuplicate.click();
   await addDuplicate.click();
-  await expect(duplicateCard.getByText('Owned 2 · Selected 2')).toBeVisible();
+  await expect(
+    duplicateCard.getByRole('status', { name: /2 copies .* selected/ }),
+  ).toBeVisible();
   await expect(duplicateCard.getByText('All copies selected')).toHaveCount(0);
-  const quantityBadge = duplicateCard.locator('.card-frame__quantity');
-  await expect(quantityBadge).toHaveText('×2');
-  expect(
-    await quantityBadge.evaluate((badge) => {
-      const styles = getComputedStyle(badge);
-      return {
-        backgroundColor: styles.backgroundColor,
-        color: styles.color,
-      };
-    }),
-  ).toEqual({
-    backgroundColor: 'rgb(8, 16, 29)',
-    color: 'rgb(247, 243, 231)',
-  });
   await expect(addDuplicate).toBeDisabled();
   await duplicateCard
     .getByRole('button', { name: `Remove a copy of ${longName}` })
     .click();
-  await expect(duplicateCard.getByText('Owned 2 · Selected 1')).toBeVisible();
+  await expect(
+    duplicateCard.getByRole('status', { name: /1 copy .* selected/ }),
+  ).toBeVisible();
   await addDuplicate.click();
 
   for (const card of [starterCards[1]!, starterCards[3]!, starterCards[4]!]) {
@@ -491,7 +479,7 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
     .click();
   await picker.locator(':scope > li').last().scrollIntoViewIfNeeded();
   const mobileSave = page.getByRole('button', {
-    name: /^(Save|Create saved deck)$/,
+    name: /^(Save|Create deck)$/,
   });
   await expect(mobileSave).toBeInViewport();
   await mobileSave.click();
@@ -501,7 +489,7 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
   expect(submittedOwnedCardIds).toEqual(validSelection);
 
   await page.setViewportSize({ height: 1024, width: 768 });
-  await page.getByRole('button', { name: 'Edit or rename' }).click();
+  await page.getByRole('button', { name: 'Edit deck' }).click();
   await page
     .getByRole('group', { name: 'Editor view' })
     .getByRole('button', { name: 'Add cards' })
@@ -510,11 +498,11 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
   await page
     .getByRole('button', { name: `Remove a copy of ${longName}` })
     .click();
-  await expect(page.locator('.deck-save-summary')).toContainText(
-    `${validSelection.length - 1} / 5 cards`,
-  );
   await expect(
-    page.getByRole('button', { name: /^(Save|Save deck changes)$/ }),
+    page.getByRole('button', { name: /Your deck \(/ }),
+  ).toContainText(`${validSelection.length - 1}/5`);
+  await expect(
+    page.getByRole('button', { name: /^(Save|Save deck)$/ }),
   ).toBeDisabled();
   await page.getByRole('button', { name: `Add a copy of ${longName}` }).click();
   await page.getByRole('button', { name: /Your deck \(/ }).click();
@@ -548,9 +536,7 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
     cardListBox!.y + cardListBox!.height,
   );
   await expectNoHorizontalOverflow(page);
-  await page
-    .getByRole('button', { exact: true, name: 'Save deck changes' })
-    .click();
+  await page.getByRole('button', { exact: true, name: 'Save deck' }).click();
   await expect(
     page.getByRole('heading', {
       name: 'The Exceptionally Long-Named Compact Campus Deck',
@@ -633,23 +619,15 @@ test('keeps a filtered mobile draft through saving and a recoverable failure', a
   await expect(page.locator('.deck-save-summary')).toContainText(
     'Ready to save',
   );
-  await page
-    .getByRole('button', { name: /^(Save|Create saved deck)$/ })
-    .click();
-  await expect(
-    page.getByRole('button', { name: 'Saving with the server…' }),
-  ).toBeDisabled();
+  await page.getByRole('button', { name: /^(Save|Create deck)$/ }).click();
+  await expect(page.getByRole('button', { name: 'Saving…' })).toBeDisabled();
   await expect(
     page.getByRole('button', { name: 'Cancel', exact: true }),
   ).toBeDisabled();
   finishSave!();
   await expect(page.getByRole('alert')).toContainText('Deck change not saved.');
-  await expect(page.locator('.deck-save-summary')).toContainText(
-    'Unsaved changes',
-  );
-  await page
-    .getByRole('button', { name: 'Create saved deck', exact: true })
-    .click();
+  await expect(page.locator('.deck-save-summary')).toContainText('Save failed');
+  await page.getByRole('button', { name: 'Create deck', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Retry Five' })).toBeVisible();
   const confirmation = page.locator('[data-sonner-toast]');
   await expect(confirmation).toHaveCount(1);
@@ -672,7 +650,7 @@ test('minimises the mobile save bar deliberately and preserves keyboard access',
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/decks');
-  await page.getByRole('button', { name: 'Edit or rename' }).click();
+  await page.getByRole('button', { name: 'Edit deck' }).click();
   await page
     .getByRole('group', { name: 'Editor view' })
     .getByRole('button', { name: 'Add cards' })
@@ -714,7 +692,7 @@ test('minimises the mobile save bar deliberately and preserves keyboard access',
   await details.focus();
   await page.keyboard.press('Enter');
   await expect(
-    page.getByRole('button', { name: 'Save deck changes', exact: true }),
+    page.getByRole('button', { name: 'Save deck', exact: true }),
   ).toBeFocused();
   await page.mouse.wheel(0, 100);
   await expect(bar).toHaveAttribute('data-collapsed', 'false');
@@ -742,7 +720,7 @@ test('minimises the mobile save bar deliberately and preserves keyboard access',
   await page.mouse.wheel(0, 400);
   await expect(bar).toHaveAttribute('data-collapsed', 'false');
   await expect(
-    page.getByRole('button', { name: 'Save deck changes', exact: true }),
+    page.getByRole('button', { name: 'Save deck', exact: true }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
@@ -863,7 +841,7 @@ test('shares card hover and details while preserving a draft across large-galler
   await page.keyboard.press('Escape');
   await expect(rosterCard).toBeFocused();
 
-  await page.getByRole('button', { name: 'Edit or rename' }).click();
+  await page.getByRole('button', { name: 'Edit deck' }).click();
   const picker = page.getByRole('list', {
     name: 'Owned cards available for this deck',
   });
@@ -915,14 +893,10 @@ test('shares card hover and details while preserving a draft across large-galler
     .getByRole('searchbox', { name: 'Search cards' })
     .fill(starter[0]!.name);
   await expect(picker.locator(':scope > li')).toHaveCount(1);
-  await expect(
-    picker.getByText('Owned 1 · Selected 1 · 1 point'),
-  ).toBeVisible();
+  await expect(picker.getByText('Owned 1 · 1 point')).toBeVisible();
   await page.getByRole('button', { name: 'Review your deck' }).click();
   await expect(page.locator('.draft-cards ol > li')).toHaveCount(5);
-  await page
-    .getByRole('button', { name: 'Create saved deck', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Create deck', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Across pages', exact: true }),
   ).toBeVisible();

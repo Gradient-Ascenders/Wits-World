@@ -290,7 +290,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       .getByRole('group', { name: 'Editor view' })
       .getByRole('button', { name: /^Your deck \(5\/5\)$/u })
       .click();
-    await expect(page.getByText('Ready to submit')).toBeVisible();
+    await expect(page.getByText('Complete lineup')).toBeVisible();
   });
 
   await test.step('14 persist only the server-validated owned deck copies', async () => {
@@ -308,7 +308,9 @@ test('completes the canonical 21-step Basic journey against the real API and tes
     );
     await page.getByRole('button', { name: 'Make active' }).click();
     expect((await response).status()).toBe(200);
-    await expect(page.getByText('Selected for matches')).toBeVisible();
+    await expect(
+      page.locator('.saved-deck-detail').getByText('Active', { exact: true }),
+    ).toBeVisible();
   });
 
   await test.step('16 create a server-authoritative CPU battle snapshot', async () => {

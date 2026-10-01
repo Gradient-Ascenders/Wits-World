@@ -419,7 +419,7 @@ export default function DecksPage({
       setDraft((current) => (current?.deckId === staleDeckId ? null : current));
       setDeleteConfirmation(null);
       setNotice(
-        'That deck changed or was deleted elsewhere. Your saved decks are being refreshed.',
+        'That deck changed or was deleted elsewhere. Saved decks are being refreshed.',
       );
       setRevision((value) => value + 1);
     }
@@ -464,7 +464,7 @@ export default function DecksPage({
           <h2>
             {isAuthorization
               ? 'Your session has expired'
-              : 'Your saved decks could not load'}
+              : 'Saved decks could not load'}
           </h2>
           <p>
             {isAuthorization
@@ -547,9 +547,7 @@ export default function DecksPage({
             <h2 id="saved-decks-title" ref={deckListHeading} tabIndex={-1}>
               No saved decks yet
             </h2>
-            <p>
-              Build your first deck from the card copies in your collection.
-            </p>
+            <p>Build a deck with cards from your collection.</p>
           </div>
         ) : (
           <div className="deck-workspace">
@@ -595,7 +593,7 @@ export default function DecksPage({
                     ref={deckListHeading}
                     tabIndex={-1}
                   >
-                    Your saved decks
+                    Saved decks
                   </h2>
                 </div>
               </div>
@@ -660,7 +658,6 @@ function PageHeader({
     <header className="decks-page__header">
       <div>
         <h1>Your decks</h1>
-        <p>Choose your lineup. Make it yours.</p>
       </div>
       {onCreate ? (
         <button
@@ -681,38 +678,25 @@ function RulesPanel() {
   return (
     <details className="deck-rules">
       <summary>
-        <span>Basic deck rules</span>
-        <small>
-          {basicDeckRules.deckSize} cards · {basicDeckRules.creatureCount}{' '}
-          Creature · {basicDeckRules.powerCount} Power ·{' '}
-          {basicDeckRules.pointCap} points maximum
-        </small>
+        <span>Deck rules</span>
         <CaretDown size={20} aria-hidden="true" />
       </summary>
       <div>
-        <h2>A balanced deck from owned copies</h2>
         <ul>
           <li>
-            Exactly {basicDeckRules.deckSize} cards:{' '}
-            {basicDeckRules.creatureCount} Creature cards and{' '}
-            {basicDeckRules.powerCount} Power cards.
+            {basicDeckRules.deckSize} cards: {basicDeckRules.creatureCount}{' '}
+            Creature cards and {basicDeckRules.powerCount} Power cards.
           </li>
-          <li>
-            No more than {basicDeckRules.pointCap} rarity points in total.
-          </li>
+          <li>{basicDeckRules.pointCap} rarity points or fewer.</li>
           <li>
             Common costs {basicDeckRules.rarityPoints.common}, Rare{' '}
             {basicDeckRules.rarityPoints.rare}, Epic{' '}
             {basicDeckRules.rarityPoints.epic}, and Legendary{' '}
             {basicDeckRules.rarityPoints.legendary} points.
           </li>
-          <li>A duplicate needs another separately owned copy in this deck.</li>
+          <li>Each duplicate uses another copy you own.</li>
         </ul>
-        <p>
-          These checks explain your draft. The server verifies ownership,
-          composition, rarity points, and final validity when you save or
-          select.
-        </p>
+        <p>Cards can be used in more than one deck.</p>
       </div>
     </details>
   );
@@ -735,14 +719,13 @@ export function SelectedDeckHandoff({
       className={`active-deck${deck ? ' active-deck--ready' : ''}`}
     >
       <div>
-        <p className="eyebrow">CPU match handoff</p>
         <h2 id="active-deck-title" ref={headingRef} tabIndex={-1}>
           {deck ? `${deck.name} is active` : 'Choose an active deck'}
         </h2>
         <p>
           {deck
-            ? 'Ready for a CPU match. Match creation will use this selected server-validated deck and snapshot it.'
-            : 'Select one saved deck before starting a CPU match.'}
+            ? 'Ready for a CPU match.'
+            : 'Make a deck active to start a CPU match.'}
         </p>
       </div>
       {deck && onStartMatch ? (
@@ -799,13 +782,6 @@ function DeckSummaryButton({
         {deck.isSelected ? (
           <span className="deck-active-badge">Active</span>
         ) : null}
-      </span>
-      <span className="deck-summary-button__meta">
-        {deck.cards.length} cards
-        <span aria-hidden="true"> · </span>
-        {summary.creatureCount} Creature
-        <span aria-hidden="true"> · </span>
-        {summary.powerCount} Power
       </span>
       <span className="deck-summary-button__affinity">
         {summary.affinities} · {deck.totalPoints}/{basicDeckRules.pointCap}{' '}
@@ -1017,11 +993,9 @@ function SavedDeckDetail({
           </h3>
         </div>
         {deck.isSelected ? (
-          <span className="deck-active-badge">Selected for matches</span>
+          <span className="deck-active-badge">Active</span>
         ) : (
-          <span className="deck-view-badge">
-            Viewing · Not active for matches
-          </span>
+          <span className="deck-view-badge">Not active</span>
         )}
       </div>
 
@@ -1032,8 +1006,8 @@ function SavedDeckDetail({
           role="group"
         >
           <p>
-            Delete this saved deck? Its card copies stay in your collection.
-            {deck.isSelected ? ' It will no longer be your active deck.' : ''}
+            Delete this deck? Your cards stay in your collection.
+            {deck.isSelected ? ' You will have no active deck.' : ''}
           </p>
           <div>
             <button
@@ -1088,7 +1062,7 @@ function SavedDeckDetail({
             onClick={onEdit}
             type="button"
           >
-            <PencilSimple size={20} aria-hidden="true" /> Edit or rename
+            <PencilSimple size={20} aria-hidden="true" /> Edit deck
           </button>
           <button
             className="button button--quiet"
@@ -1107,31 +1081,20 @@ function SavedDeckDetail({
         className="deck-detail__stats"
       >
         <div>
-          <dt>Cards</dt>
-          <dd>
-            {deck.cards.length} / {basicDeckRules.deckSize}
-          </dd>
-        </div>
-        <div>
           <dt>Rarity points</dt>
           <dd>
             {deck.totalPoints} / {basicDeckRules.pointCap}
           </dd>
         </div>
         <div>
-          <dt>Composition</dt>
+          <dt className="sr-only">Cards</dt>
           <dd>
             {summary.creatureCount} Creature · {summary.powerCount} Power
           </dd>
         </div>
       </dl>
-      <p className="deck-saved-status">
-        <CheckCircle size={20} aria-hidden="true" /> Saved deck · Validated when
-        saved
-      </p>
-
       <div className="deck-detail__roster-heading">
-        <h4>Card roster</h4>
+        <h4>Cards</h4>
         <span>{summary.affinities}</span>
       </div>
       <ol aria-label={`${deck.name} cards`} className="deck-detail__cards">
@@ -1153,7 +1116,7 @@ function SavedDeckDetail({
               </span>
               <small>
                 {card.affinity ? titleCase(card.affinity) : 'Typeless'} ·{' '}
-                {titleCase(card.category)} · {titleCase(card.rarity)}
+                {titleCase(card.category)}
               </small>
             </span>
           </li>
@@ -1323,7 +1286,7 @@ function DeckEditor({
             className={nameTouched ? 'field-error' : 'deck-name-help'}
             id="deck-name-error"
           >
-            Enter a name for this saved deck.
+            Enter a deck name.
           </p>
         ) : null}
 
@@ -1365,8 +1328,7 @@ function DeckEditor({
               </div>
               {draft.ownedCardIds.length === 0 ? (
                 <p className="draft-cards__empty">
-                  Your lineup starts here. Choose Add cards to browse your
-                  collection.
+                  Choose Add cards to build your deck.
                 </p>
               ) : (
                 <ol>
@@ -1422,8 +1384,7 @@ function DeckEditor({
 
           <section aria-labelledby="card-picker-title" className="card-picker">
             <div className="card-picker__heading">
-              <h3 id="card-picker-title">Add to your lineup</h3>
-              <p>Cards can belong to more than one saved deck.</p>
+              <h3 id="card-picker-title">Add cards</h3>
             </div>
 
             <div className="deck-filters">
@@ -1436,7 +1397,7 @@ function DeckEditor({
                     setSearch(event.target.value);
                     setPage(1);
                   }}
-                  placeholder="Find a card by name"
+                  placeholder="Card name"
                 />
               </label>
               <div className="deck-filters__choices">
@@ -1504,7 +1465,7 @@ function DeckEditor({
               <div className="deck-empty state-message state-message--empty">
                 <StateIcon tone="empty" />
                 <h4>Your collection is empty</h4>
-                <p>Claim or earn cards before building a saved deck.</p>
+                <p>Earn cards to build a deck.</p>
               </div>
             ) : filteredCards.length === 0 ? (
               <div className="deck-empty state-message state-message--empty">
@@ -1544,11 +1505,10 @@ function DeckEditor({
                     <li key={card.cardDefinitionId}>
                       <article
                         aria-labelledby={titleId}
-                        className={`deck-picker-card collectible-card--${card.rarity}${used > 0 ? ' deck-picker-card--selected' : ''}`}
+                        className={`deck-picker-card collectible-card--${card.rarity}`}
                       >
                         <CardThumbnail
                           accessibleLabel={`View ${card.name} details`}
-                          badge={used > 0 ? `×${used}` : undefined}
                           card={card}
                           loading="lazy"
                           onClick={() => onInspect(card)}
@@ -1566,7 +1526,7 @@ function DeckEditor({
                               : 'Typeless'}
                           </p>
                           <p className="deck-picker-card__quantity">
-                            Owned {group.length} · Selected {used} ·{' '}
+                            Owned {group.length} ·{' '}
                             {basicDeckRules.rarityPoints[card.rarity]}{' '}
                             {basicDeckRules.rarityPoints[card.rarity] === 1
                               ? 'point'
@@ -1613,7 +1573,7 @@ function DeckEditor({
                             </p>
                           ) : (
                             <p className="deck-picker-card__availability">
-                              All owned copies in deck
+                              All copies added
                             </p>
                           )}
                         </div>
@@ -1675,7 +1635,7 @@ function DeckEditor({
               aria-live="polite"
             >
               <strong>
-                Review lineup <CaretRight size={16} aria-hidden="true" />
+                Review deck <CaretRight size={16} aria-hidden="true" />
               </strong>
               <span>
                 {summary.creatureCount}/{basicDeckRules.creatureCount} Creature
@@ -1691,26 +1651,23 @@ function DeckEditor({
           >
             <div className="deck-save-full__content">
               <div className="deck-save-summary" aria-live="polite">
-                <strong>
-                  {summary.totalCards} / {basicDeckRules.deckSize} cards ·{' '}
-                  {readiness}
-                </strong>
+                <strong>{readiness}</strong>
                 <span>
                   {isSaving
                     ? 'Saving…'
                     : hasSaveError
-                      ? 'Save failed · Unsaved changes'
+                      ? 'Save failed'
                       : isDirty
                         ? 'Unsaved changes'
                         : draft.mode === 'create'
-                          ? 'New deck · Not saved yet'
-                          : 'No unsaved changes'}
+                          ? 'Not saved yet'
+                          : 'No changes'}
                 </span>
                 <small>
                   {!summary.isValid
                     ? summary.issues[0]
                     : draft.name.trim() === ''
-                      ? 'Give your deck a name above.'
+                      ? 'Enter a deck name.'
                       : ''}
                 </small>
               </div>
@@ -1725,10 +1682,10 @@ function DeckEditor({
                 type="submit"
               >
                 {isSaving
-                  ? 'Saving with the server…'
+                  ? 'Saving…'
                   : draft.mode === 'create'
-                    ? 'Create saved deck'
-                    : 'Save deck changes'}
+                    ? 'Create deck'
+                    : 'Save deck'}
               </button>
               <button
                 className="button button--quiet"
@@ -1746,9 +1703,7 @@ function DeckEditor({
                   role="group"
                   aria-label="Discard unsaved changes"
                 >
-                  <p>
-                    Discard your changes? Your saved deck will stay as it was.
-                  </p>
+                  <p>Discard your changes?</p>
                   <button
                     className="button button--danger"
                     type="button"
@@ -1839,19 +1794,13 @@ function DraftSummaryPanel({ summary }: { summary: DraftSummary }) {
             <WarningCircle size={20} aria-hidden="true" />
           )}
           {summary.isValid
-            ? 'Ready to submit'
+            ? 'Complete lineup'
             : summary.totalCards < basicDeckRules.deckSize
-              ? 'Incomplete deck'
+              ? 'Incomplete'
               : 'Needs changes'}
         </span>
       </div>
       <dl>
-        <div>
-          <dt>Cards</dt>
-          <dd>
-            {summary.totalCards} / {basicDeckRules.deckSize}
-          </dd>
-        </div>
         <div>
           <dt>Creature</dt>
           <dd>
@@ -1878,12 +1827,7 @@ function DraftSummaryPanel({ summary }: { summary: DraftSummary }) {
               <li key={issue}>{issue}</li>
             ))}
           </ul>
-        ) : (
-          <p>
-            Ready to save. Ownership and deck rules are checked again when you
-            save.
-          </p>
-        )}
+        ) : null}
       </div>
     </section>
   );
@@ -2025,21 +1969,19 @@ function summarizeDraft(draft: DeckDraft, cards: OwnedCard[]): DraftSummary {
   const issues: string[] = [];
 
   if (draft.ownedCardIds.length !== basicDeckRules.deckSize) {
-    issues.push(`Choose exactly ${basicDeckRules.deckSize} owned copies.`);
+    issues.push(`Choose ${basicDeckRules.deckSize} cards.`);
   }
 
   if (selectedCards.length !== draft.ownedCardIds.length) {
-    issues.push('Remove any copy no longer returned by your collection.');
+    issues.push('Remove cards no longer in your collection.');
   }
 
   if (creatureCount !== basicDeckRules.creatureCount) {
-    issues.push(
-      `Choose exactly ${basicDeckRules.creatureCount} Creature cards.`,
-    );
+    issues.push(`Choose ${basicDeckRules.creatureCount} Creature cards.`);
   }
 
   if (powerCount !== basicDeckRules.powerCount) {
-    issues.push(`Choose exactly ${basicDeckRules.powerCount} Power cards.`);
+    issues.push(`Choose ${basicDeckRules.powerCount} Power cards.`);
   }
 
   if (totalPoints > basicDeckRules.pointCap) {
@@ -2047,7 +1989,7 @@ function summarizeDraft(draft: DeckDraft, cards: OwnedCard[]): DraftSummary {
   }
 
   if (new Set(draft.ownedCardIds).size !== draft.ownedCardIds.length) {
-    issues.push('The same owned copy cannot be used twice.');
+    issues.push('Each card needs its own copy.');
   }
 
   return {

@@ -113,7 +113,7 @@ describe('saved deck management page', () => {
     await user.keyboard('{Escape}');
     expect(rosterCard).toHaveFocus();
 
-    await user.click(screen.getByRole('button', { name: 'Edit or rename' }));
+    await user.click(screen.getByRole('button', { name: 'Edit deck' }));
     const picker = screen.getByRole('list', {
       name: 'Owned cards available for this deck',
     });
@@ -192,9 +192,7 @@ describe('saved deck management page', () => {
       cards[0]!.name,
     );
     expect(within(picker).getAllByRole('article')).toHaveLength(1);
-    expect(
-      within(picker).getByText('Owned 1 · Selected 1 · 1 point'),
-    ).toBeVisible();
+    expect(within(picker).getByText('Owned 1 · 1 point')).toBeVisible();
     await user.clear(screen.getByRole('searchbox', { name: 'Search cards' }));
     expect(within(picker).getAllByRole('article')).toHaveLength(6);
     expect(
@@ -246,10 +244,8 @@ describe('saved deck management page', () => {
     const cards = buildStarterCards('wit');
     stubInitialState([buildSavedDeck()], cards);
     renderDecks();
-    await user.click(
-      await screen.findByRole('button', { name: 'Edit or rename' }),
-    );
-    expect(screen.getByText('No unsaved changes')).toBeVisible();
+    await user.click(await screen.findByRole('button', { name: 'Edit deck' }));
+    expect(screen.getByText('No changes')).toBeVisible();
     await user.click(
       screen.getByRole('button', {
         name: `Remove a copy of ${cards[0]!.name}`,
@@ -278,8 +274,8 @@ describe('saved deck management page', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     await user.click(screen.getByRole('button', { name: 'Discard changes' }));
     expect(screen.getByRole('heading', { name: 'Campus Five' })).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Edit or rename' }));
-    expect(screen.getByText('No unsaved changes')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Edit deck' }));
+    expect(screen.getByText('No changes')).toBeVisible();
   });
 
   it('announces loading before showing empty saved-deck and collection states', async () => {
@@ -320,7 +316,9 @@ describe('saved deck management page', () => {
     expect(
       screen.getByRole('heading', { name: 'Your collection is empty' }),
     ).toBeVisible();
-    expect(screen.getByText(/Your lineup starts here\./)).toBeVisible();
+    expect(
+      screen.getByText('Choose Add cards to build your deck.'),
+    ).toBeVisible();
   });
 
   it('creates, renames, edits, selects, hands off, and deletes a deck', async () => {
@@ -416,19 +414,19 @@ describe('saved deck management page', () => {
       );
     }
 
-    expect(screen.getByText('Ready to submit')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Create saved deck' }));
+    expect(screen.getByText('Complete lineup')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Create deck' }));
 
     expect(
       await screen.findByRole('heading', { name: 'Campus Five' }),
     ).toBeVisible();
     expect(screen.getByText('Campus Five was created.')).toBeVisible();
 
-    await user.click(screen.getByRole('button', { name: 'Edit or rename' }));
+    await user.click(screen.getByRole('button', { name: 'Edit deck' }));
     const nameField = screen.getByRole('textbox', { name: 'Deck name' });
     await user.clear(nameField);
     await user.type(nameField, 'Library Lineup');
-    await user.click(screen.getByRole('button', { name: 'Save deck changes' }));
+    await user.click(screen.getByRole('button', { name: 'Save deck' }));
     expect(
       await screen.findByRole('heading', { name: 'Library Lineup' }),
     ).toBeVisible();
@@ -442,7 +440,12 @@ describe('saved deck management page', () => {
     expect(
       screen.getByRole('heading', { name: 'Library Lineup' }),
     ).toHaveFocus();
-    expect(screen.getByText('Selected for matches')).toBeVisible();
+    expect(
+      within(screen.getByRole('article', { name: 'Library Lineup' })).getByText(
+        'Active',
+        { exact: true },
+      ),
+    ).toBeVisible();
 
     const startButton = screen.getByRole('button', { name: 'Start CPU match' });
     startButton.focus();
@@ -521,9 +524,9 @@ describe('saved deck management page', () => {
       }),
     ).toBeVisible();
     expect(screen.getAllByRole('list', { name: / cards$/u })).toHaveLength(1);
-    expect(
-      screen.getAllByRole('button', { name: 'Edit or rename' }),
-    ).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Edit deck' })).toHaveLength(
+      1,
+    );
     expect(screen.getAllByText(/Wit ×5/u)).toHaveLength(3);
 
     const sparkSummary = screen.getByRole('button', {
@@ -571,14 +574,18 @@ describe('saved deck management page', () => {
 
     await user.click(addDuplicate);
     expect(
-      within(duplicatePickerCard).getByText('Owned 2 · Selected 1 · 1 point'),
+      within(duplicatePickerCard).getByRole('status', {
+        name: `1 copy of ${first.name} selected`,
+      }),
     ).toBeVisible();
     expect(
       within(duplicatePickerCard).getByText('1 copy available'),
     ).toBeVisible();
     await user.click(addDuplicate);
     expect(
-      within(duplicatePickerCard).getByText('Owned 2 · Selected 2 · 1 point'),
+      within(duplicatePickerCard).getByRole('status', {
+        name: `2 copies of ${first.name} selected`,
+      }),
     ).toBeVisible();
     expect(
       within(duplicatePickerCard).queryByText('All copies selected'),
@@ -591,7 +598,9 @@ describe('saved deck management page', () => {
       }),
     );
     expect(
-      within(duplicatePickerCard).getByText('Owned 2 · Selected 1 · 1 point'),
+      within(duplicatePickerCard).getByRole('status', {
+        name: `1 copy of ${first.name} selected`,
+      }),
     ).toBeVisible();
     expect(addDuplicate).toBeEnabled();
     expect(
@@ -654,7 +663,7 @@ describe('saved deck management page', () => {
       expect(button).toBeDisabled();
     }
     for (const button of screen.getAllByRole('button', {
-      name: 'Edit or rename',
+      name: 'Edit deck',
     })) {
       expect(button).toBeDisabled();
     }
@@ -693,7 +702,7 @@ describe('saved deck management page', () => {
     finalAdd.focus();
     await user.keyboard('{Enter}');
 
-    expect(screen.getByText('Ready to submit')).toBeVisible();
+    expect(screen.getByText('Complete lineup')).toBeVisible();
     expect(finalAdd).toHaveFocus();
     expect(
       screen.getByRole('heading', { name: 'Deck status' }),
@@ -729,9 +738,7 @@ describe('saved deck management page', () => {
         'Reduce rarity points to 10 or fewer.',
       ),
     ).toBeVisible();
-    expect(
-      screen.getByRole('button', { name: 'Create saved deck' }),
-    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Create deck' })).toBeDisabled();
   });
 
   it('focuses useful server validation feedback without accepting the draft', async () => {
@@ -769,7 +776,7 @@ describe('saved deck management page', () => {
         screen.getByRole('button', { name: `Add a copy of ${card.name}` }),
       );
     }
-    await user.click(screen.getByRole('button', { name: 'Create saved deck' }));
+    await user.click(screen.getByRole('button', { name: 'Create deck' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveFocus();
@@ -818,7 +825,7 @@ describe('saved deck management page', () => {
         screen.getByRole('button', { name: `Add a copy of ${card.name}` }),
       );
     }
-    await user.click(screen.getByRole('button', { name: 'Create saved deck' }));
+    await user.click(screen.getByRole('button', { name: 'Create deck' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveFocus();
@@ -883,7 +890,7 @@ describe('saved deck management page', () => {
     renderDecks();
     expect(
       await screen.findByRole('heading', {
-        name: 'Your saved decks could not load',
+        name: 'Saved decks could not load',
       }),
     ).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Try loading again' }));
