@@ -525,7 +525,7 @@ describe('card collection page', () => {
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('You need 1 more available copy');
     expect(
-      within(dialog).getByRole('button', { name: 'Review evolution' }),
+      within(dialog).getByRole('button', { name: 'Evolve' }),
     ).toBeDisabled();
     expect(section).toHaveTextContent(
       'Remove them from all saved decks to use them',
@@ -581,29 +581,33 @@ describe('card collection page', () => {
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
     const review = await screen.findByRole('button', {
-      name: 'Review evolution',
+      name: 'Evolve',
     });
     await user.click(review);
 
     const heading = screen.getByRole('heading', {
-      name: 'Combine 3 copies of Quillip into Quillume?',
+      name: 'Are you sure you want to evolve Quillip?',
     });
     expect(heading).toHaveFocus();
-    expect(screen.getByText('Consumes 3 available copies')).toBeVisible();
-    expect(screen.getByText('You receive 1 copy')).toBeVisible();
-    expect(screen.getByRole('article', { name: 'Quillume' })).toBeVisible();
+    expect(
+      screen.getByText(
+        'This will use 3 copies of Quillip to create 1 Quillume.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByText('1 Quillip copy will remain.')).toBeVisible();
+    expect(
+      screen.queryByRole('article', { name: 'Quillume' }),
+    ).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(
       screen.queryByRole('heading', {
-        name: 'Combine 3 copies of Quillip into Quillume?',
+        name: 'Are you sure you want to evolve Quillip?',
       }),
     ).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Review evolution' }),
-      ).toHaveFocus(),
+      expect(screen.getByRole('button', { name: 'Evolve' })).toHaveFocus(),
     );
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -633,10 +637,19 @@ describe('card collection page', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: 'Review evolution' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    const previewDialog = screen.getByRole('dialog');
+    expect(
+      within(previewDialog).getByRole('heading', { name: 'Evolve Quillip' }),
+    ).toBeVisible();
+    expect(within(previewDialog).queryByText('Owned')).not.toBeInTheDocument();
+    expect(
+      within(previewDialog).queryByText('Available'),
+    ).not.toBeInTheDocument();
+    expect(
+      within(previewDialog).getByText('Uses 3 copies · 0 remain'),
+    ).toBeVisible();
+    await user.click(await screen.findByRole('button', { name: 'Evolve' }));
+    await user.click(screen.getByRole('button', { name: 'Evolve' }));
 
     const resultHeading = await screen.findByRole('heading', {
       name: 'Evolution complete',
@@ -693,17 +706,13 @@ describe('card collection page', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: 'Review evolution' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    await user.click(await screen.findByRole('button', { name: 'Evolve' }));
+    await user.click(screen.getByRole('button', { name: 'Evolve' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('collection changed before confirmation');
     expect(alert).toHaveFocus();
-    expect(
-      screen.getByRole('button', { name: 'Review evolution' }),
-    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Evolve' })).toBeDisabled();
     const availability = screen
       .getByRole('heading', { name: 'Copy availability' })
       .closest<HTMLElement>('[role="dialog"]')!;
@@ -729,10 +738,8 @@ describe('card collection page', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: 'Review evolution' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    await user.click(await screen.findByRole('button', { name: 'Evolve' }));
+    await user.click(screen.getByRole('button', { name: 'Evolve' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('could not be completed');
@@ -740,7 +747,7 @@ describe('card collection page', () => {
     expect(
       screen.queryByRole('heading', { name: /Evolution complete/u }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Evolve card' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Evolve' })).toBeEnabled();
   });
 
   it('keeps the sheet open during submission and announces refresh only after it finishes', async () => {
@@ -775,10 +782,8 @@ describe('card collection page', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: 'Review evolution' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    await user.click(await screen.findByRole('button', { name: 'Evolve' }));
+    await user.click(screen.getByRole('button', { name: 'Evolve' }));
     expect(
       screen.queryByRole('button', { name: 'Lower card sheet' }),
     ).not.toBeInTheDocument();
@@ -838,10 +843,8 @@ describe('card collection page', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: 'Review evolution' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    await user.click(await screen.findByRole('button', { name: 'Evolve' }));
+    await user.click(screen.getByRole('button', { name: 'Evolve' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Card evolved. Could not refresh your collection. Try again.',
     );
@@ -879,7 +882,7 @@ describe('card collection page', () => {
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
     expect(
-      await screen.findByRole('button', { name: 'Review evolution' }),
+      await screen.findByRole('button', { name: 'Evolve' }),
     ).toBeDisabled();
     expect(screen.getByText(/Collect 1 more to evolve/u)).toBeVisible();
   });

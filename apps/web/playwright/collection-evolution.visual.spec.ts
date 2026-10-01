@@ -162,9 +162,7 @@ for (const reducedMotion of [false, true]) {
       await page
         .getByRole('button', { name: 'View Quillip details, 4 owned copies' })
         .click();
-      await expect(
-        page.getByRole('button', { name: 'Review evolution' }),
-      ).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Evolve' })).toHaveCount(0);
       await page.keyboard.press('Escape');
       holdPreview = true;
       await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
@@ -263,30 +261,65 @@ for (const reducedMotion of [false, true]) {
       await page.screenshot({
         path: testInfo.outputPath(`preview-${width}.png`),
       });
+      if (width === 1440) {
+        await page.setViewportSize({ width, height: 1410 });
+        const tallRecipe = await dialog.evaluate((element) => {
+          const sources = element
+            .querySelector('.evolution-preview__sources')!
+            .getBoundingClientRect();
+          const scroll = element
+            .querySelector('.card-detail-modal__scroll')!
+            .getBoundingClientRect();
+          const connector = element
+            .querySelector('.evolution-convergence')!
+            .getBoundingClientRect();
+          return {
+            spaceBelowSources: scroll.bottom - sources.bottom,
+            connectorHeight: connector.height,
+          };
+        });
+        expect(tallRecipe.spaceBelowSources).toBeGreaterThanOrEqual(0);
+        expect(tallRecipe.spaceBelowSources).toBeLessThan(96);
+        expect(tallRecipe.connectorHeight).toBeGreaterThan(48);
+        expect(tallRecipe.connectorHeight).toBeLessThan(192);
+        await page.screenshot({
+          path: testInfo.outputPath('preview-desktop-tall.png'),
+        });
+        await page.setViewportSize({ width, height: 960 });
+      }
       await page
-        .getByRole('button', { name: 'Review evolution' })
+        .getByRole('button', { name: 'Evolve' })
         .scrollIntoViewIfNeeded();
       await page.screenshot({
         path: testInfo.outputPath(`availability-${width}.png`),
       });
-      await page.getByRole('button', { name: 'Review evolution' }).click();
+      const previewBounds = await dialog.boundingBox();
+      await page.getByRole('button', { name: 'Evolve' }).click();
       await expect(
         page.getByRole('heading', {
-          name: 'Combine 3 copies of Quillip into Quillume?',
+          name: 'Are you sure you want to evolve Quillip?',
         }),
       ).toBeFocused();
       const confirm = page.getByRole('button', {
-        name: 'Evolve card',
+        name: 'Evolve',
         exact: true,
       });
       await expect(confirm).toBeInViewport();
       await expect(dialog.getByText('This cannot be undone.')).toBeInViewport();
-      await expect(dialog.getByLabel('Evolution recipe')).toBeInViewport({
-        ratio: 1,
-      });
       await expect(
-        dialog.locator('.evolution-quantity-summary'),
+        dialog.getByText(
+          'This will use 3 copies of Quillip to create 1 Quillume.',
+        ),
       ).toBeInViewport({ ratio: 1 });
+      const warning = page.getByRole('alertdialog');
+      await expect(warning.locator('.card-frame')).toHaveCount(0);
+      await expect(
+        dialog.locator('.evolution-preview .card-frame'),
+      ).toHaveCount(4);
+      expect(await dialog.boundingBox()).toEqual(previewBounds);
+      const popup = await warning.boundingBox();
+      expect(popup!.height).toBeLessThan(500);
+      expect(popup!.width).toBeLessThanOrEqual(513);
       const rect = await confirm.boundingBox();
       expect(rect!.height).toBeGreaterThanOrEqual(44);
       expect(
@@ -301,13 +334,15 @@ for (const reducedMotion of [false, true]) {
       await page.keyboard.press('Tab');
       await expect(
         page.getByRole('button', {
-          name: 'Close evolution',
+          name: 'Cancel',
         }),
       ).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(warning).not.toBeVisible();
+      await expect(page.getByRole('button', { name: 'Evolve' })).toBeFocused();
+      await page.getByRole('button', { name: 'Evolve' }).click();
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-      await expect(
-        page.getByRole('button', { name: 'Review evolution' }),
-      ).toBeFocused();
+      await expect(page.getByRole('button', { name: 'Evolve' })).toBeFocused();
       await page.keyboard.press('Escape');
       await expect(trigger).toBeFocused();
     }
@@ -318,10 +353,8 @@ for (const reducedMotion of [false, true]) {
       reducedMotion: reducedMotion ? 'reduce' : 'no-preference',
     });
     await trigger.click();
-    await page.getByRole('button', { name: 'Review evolution' }).click();
-    await page
-      .getByRole('button', { name: 'Evolve card', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'Evolve' }).click();
+    await page.getByRole('button', { name: 'Evolve', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText(
       'could not be completed',
     );
@@ -331,15 +364,11 @@ for (const reducedMotion of [false, true]) {
       path: testInfo.outputPath('confirmation-error-mobile.png'),
     });
     mutation = 'stale';
-    await page
-      .getByRole('button', { name: 'Evolve card', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'Evolve', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText(
       'preview is no longer valid',
     );
-    await expect(
-      page.getByRole('button', { name: 'Review evolution' }),
-    ).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Evolve' })).toBeDisabled();
     await page.screenshot({ path: testInfo.outputPath('stale-mobile.png') });
     await expect(page.getByTestId('evolution-reveal')).toHaveCount(0);
     await page.keyboard.press('Escape');
@@ -375,10 +404,8 @@ for (const reducedMotion of [false, true]) {
     mutation = 'success';
     await page.getByRole('button', { name: 'Retry availability' }).click();
     await trigger.click();
-    await page.getByRole('button', { name: 'Review evolution' }).click();
-    await page
-      .getByRole('button', { name: 'Evolve card', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'Evolve' }).click();
+    await page.getByRole('button', { name: 'Evolve', exact: true }).click();
     await expect(
       page.getByRole('button', { name: 'Evolving…' }),
     ).toBeDisabled();

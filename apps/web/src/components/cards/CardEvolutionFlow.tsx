@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactElement,
+} from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowsMerge, LockKey, Stack } from '@phosphor-icons/react';
+import { LockKey, Stack } from '@phosphor-icons/react';
 import { motion, useReducedMotion } from 'motion/react';
 
 import {
@@ -122,9 +128,9 @@ export function CardEvolutionFlow({
   }, [loadPreview]);
 
   useEffect(() => {
-    onBusyChange(isSubmitting);
+    onBusyChange(isSubmitting || stage === 'confirm');
     return () => onBusyChange(false);
-  }, [isSubmitting, onBusyChange]);
+  }, [isSubmitting, onBusyChange, stage]);
 
   useEffect(() => {
     if (stage === 'confirm') confirmationHeading.current?.focus();
@@ -240,6 +246,14 @@ export function CardEvolutionFlow({
     );
   }
 
+  function cancelConfirmation() {
+    if (submissionLocked.current) return;
+    setMutationError(null);
+    setStage('details');
+    window.requestAnimationFrame(() => reviewButton.current?.focus());
+  }
+
+  let confirmation: ReactElement | null = null;
   if (stage === 'confirm' && previewState.status === 'ready') {
     const { preview } = previewState;
     const remainingCopies = preview.ownedCopyCount - preview.copiesRequired;
@@ -247,88 +261,82 @@ export function CardEvolutionFlow({
       ? isNonRetryableEvolutionError(mutationError)
       : false;
 
-    return (
-      <section
-        aria-busy={isSubmitting}
-        aria-labelledby="evolution-confirmation-title"
-        className="evolution-confirmation"
+    confirmation = (
+      <div
+        className="evolution-confirmation-backdrop"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            cancelConfirmation();
+          }
+        }}
       >
-        <h2
-          id="evolution-confirmation-title"
-          ref={confirmationHeading}
-          tabIndex={-1}
+        <section
+          role="alertdialog"
+          aria-modal="true"
+          aria-describedby="evolution-confirmation-description"
+          aria-busy={isSubmitting}
+          aria-labelledby="evolution-confirmation-title"
+          className="evolution-confirmation"
         >
-          Combine {preview.copiesRequired} copies of {preview.source.name} into{' '}
-          {preview.target.name}?
-        </h2>
-        <p>This cannot be undone.</p>
+          <h2
+            id="evolution-confirmation-title"
+            ref={confirmationHeading}
+            tabIndex={-1}
+          >
+            Are you sure you want to evolve {preview.source.name}?
+          </h2>
+          <p
+            id="evolution-confirmation-description"
+            className="evolution-confirmation__summary"
+          >
+            This will use {preview.copiesRequired} copies of{' '}
+            {preview.source.name} to create 1 {preview.target.name}.
+          </p>
+          <p>
+            {remainingCopies} {preview.source.name}{' '}
+            {remainingCopies === 1 ? 'copy' : 'copies'} will remain.
+          </p>
+          <p>This cannot be undone.</p>
 
-        <EvolutionComposition preview={preview} confirming />
+          {mutationError ? (
+            <EvolutionError error={mutationError} noticeRef={errorNotice} />
+          ) : null}
 
-        {mutationError ? (
-          <EvolutionError error={mutationError} noticeRef={errorNotice} />
-        ) : null}
-
-        {actionContainer
-          ? createPortal(
-              <div className="evolution-action-bar">
-                <dl className="evolution-quantity-summary">
-                  <div>
-                    <dt>{preview.source.name} remaining</dt>
-                    <dd>
-                      {remainingCopies}{' '}
-                      {remainingCopies === 1 ? 'copy' : 'copies'}
-                    </dd>
-                  </div>
-                  {preview.deckLockedCopyCount > 0 ? (
-                    <div>
-                      <dt>Protected in decks</dt>
-                      <dd>{preview.deckLockedCopyCount}</dd>
-                    </div>
-                  ) : null}
-                  {preview.tradeReservedCopyCount > 0 ? (
-                    <div>
-                      <dt>Reserved for trade</dt>
-                      <dd>{preview.tradeReservedCopyCount}</dd>
-                    </div>
-                  ) : null}
-                </dl>
-                {isSubmitting ? <p role="status">Evolving your card…</p> : null}
-                <div className="evolution-confirmation__actions">
-                  <button
-                    className="button button--quiet"
-                    disabled={isSubmitting}
-                    onClick={() => {
-                      setMutationError(null);
-                      setStage('details');
-                      window.requestAnimationFrame(() =>
-                        reviewButton.current?.focus(),
-                      );
-                    }}
-                    type="button"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="button"
-                    disabled={isSubmitting || retryBlocked}
-                    onClick={() => void confirmEvolution()}
-                    type="button"
-                  >
-                    {isSubmitting ? 'Evolving…' : 'Evolve card'}
-                  </button>
-                </div>
-              </div>,
-              actionContainer,
-            )
-          : null}
-      </section>
+          <div className="evolution-action-bar">
+            {isSubmitting ? <p role="status">Evolving your card…</p> : null}
+            <div className="evolution-confirmation__actions">
+              <button
+                className="button button--quiet"
+                disabled={isSubmitting}
+                onClick={cancelConfirmation}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="button"
+                disabled={isSubmitting || retryBlocked}
+                onClick={() => void confirmEvolution()}
+                type="button"
+              >
+                {isSubmitting ? 'Evolving…' : 'Evolve'}
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
     );
   }
 
   return (
     <>
-      <div className="evolution-preview">
+      <div
+        className="evolution-preview"
+        inert={stage === 'confirm'}
+        aria-hidden={stage === 'confirm' ? true : undefined}
+      >
         {previewState.status === 'loading' ? (
           <LoadingState label="Checking evolution availability…" />
         ) : previewState.status === 'error' ? (
@@ -347,11 +355,14 @@ export function CardEvolutionFlow({
           </StatusMessage>
         ) : previewState.status === 'ready' ? (
           <>
-            <h2 className="evolution-title">Three become one</h2>
+            <h2 className="evolution-title">
+              Evolve {previewState.preview.source.name}
+            </h2>
             <EvolutionComposition preview={previewState.preview} />
             <EvolutionAvailability
+              confirming={stage === 'confirm'}
               actionContainer={actionContainer}
-              mutationError={mutationError}
+              mutationError={stage === 'confirm' ? null : mutationError}
               noticeRef={errorNotice}
               onReview={() => {
                 setMutationError(null);
@@ -382,49 +393,29 @@ export function CardEvolutionFlow({
           </StatusMessage>
         ) : null}
       </div>
+      {confirmation}
     </>
   );
 }
 
-function EvolutionComposition({
-  preview,
-  confirming = false,
-}: {
-  preview: CardEvolutionPreview;
-  confirming?: boolean;
-}) {
+function EvolutionComposition({ preview }: { preview: CardEvolutionPreview }) {
   return (
     <div
-      className={`evolution-preview__composition${confirming ? ' evolution-preview__composition--confirm' : ''}`}
-      aria-label={confirming ? 'Evolution recipe' : 'Evolution preview'}
+      className="evolution-preview__composition"
+      aria-label="Evolution preview"
     >
       <div className="evolution-preview__target">
-        <p className="evolution-preview__label">
-          <span>{confirming ? 'You receive 1 copy' : 'Preview'}</span>
-          {' · '}
-          <span className="evolution-preview__rarity">
-            {preview.target.rarity}
-          </span>
-        </p>
         <CollectibleCard
           card={preview.target}
           showOwnership={false}
           showDetails={false}
           headingLevel={3}
         />
-        {confirming ? (
-          <p className="evolution-preview__deck-cost">
-            {preview.target.deckPointCost} deck points
-          </p>
-        ) : null}
       </div>
       <EvolutionConvergence />
       <div className="evolution-preview__sources">
         <SourceCopies preview={preview} />
         <h3>{preview.source.name}</h3>
-        {confirming ? (
-          <p>Consumes {preview.copiesRequired} available copies</p>
-        ) : null}
       </div>
     </div>
   );
@@ -432,19 +423,18 @@ function EvolutionComposition({
 
 function EvolutionConvergence() {
   return (
-    <svg
-      className="evolution-convergence"
-      aria-hidden="true"
-      width="256"
-      height="32"
-      viewBox="0 0 256 32"
-      fill="none"
-    >
-      <path d="M32 28C32 16 128 24 128 4M128 28V4M224 28C224 16 128 24 128 4M123 9L128 4L133 9" />
-      <circle cx="32" cy="28" r="1.5" />
-      <circle cx="128" cy="28" r="1.5" />
-      <circle cx="224" cy="28" r="1.5" />
-    </svg>
+    <div className="evolution-convergence" aria-hidden="true">
+      <svg viewBox="0 0 256 128" preserveAspectRatio="none" fill="none">
+        <path
+          d="M32 124C32 78 128 80 128 4M128 124V4M224 124C224 78 128 80 128 4"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <span className="evolution-convergence__head" />
+      <span className="evolution-convergence__endpoint evolution-convergence__endpoint--left" />
+      <span className="evolution-convergence__endpoint evolution-convergence__endpoint--centre" />
+      <span className="evolution-convergence__endpoint evolution-convergence__endpoint--right" />
+    </div>
   );
 }
 
@@ -558,6 +548,7 @@ function EvolutionReveal({
 
 function EvolutionAvailability({
   actionContainer,
+  confirming,
   mutationError,
   noticeRef,
   onReview,
@@ -566,6 +557,7 @@ function EvolutionAvailability({
   reviewButton,
 }: {
   actionContainer: HTMLDivElement | null;
+  confirming: boolean;
   mutationError: CardApiError | null;
   noticeRef: React.RefObject<HTMLDivElement | null>;
   onReview: () => void;
@@ -610,38 +602,44 @@ function EvolutionAvailability({
 
       {actionContainer
         ? createPortal(
-            <div className="evolution-action-bar">
-              <dl className="evolution-quantity-summary">
-                <div>
-                  <dt>
-                    <Stack size={16} aria-hidden="true" /> Owned
-                  </dt>
-                  <dd>{preview.ownedCopyCount}</dd>
-                </div>
-                <div>
-                  <dt>Available</dt>
-                  <dd>{preview.eligibleCopyCount}</dd>
-                </div>
-                {preview.deckLockedCopyCount > 0 ? (
+            <div
+              className="evolution-action-bar"
+              inert={confirming}
+              aria-hidden={confirming ? true : undefined}
+            >
+              {preview.ownedCopyCount !== preview.eligibleCopyCount ||
+              !preview.canEvolve ? (
+                <dl className="evolution-quantity-summary">
                   <div>
                     <dt>
-                      <LockKey size={16} aria-hidden="true" /> In decks
+                      <Stack size={16} aria-hidden="true" /> Owned
                     </dt>
-                    <dd>{preview.deckLockedCopyCount}</dd>
+                    <dd>{preview.ownedCopyCount}</dd>
                   </div>
-                ) : null}
-                {preview.tradeReservedCopyCount > 0 ? (
                   <div>
-                    <dt>Reserved for trade</dt>
-                    <dd>{preview.tradeReservedCopyCount}</dd>
+                    <dt>Available</dt>
+                    <dd>{preview.eligibleCopyCount}</dd>
                   </div>
-                ) : null}
-              </dl>
+                  {preview.deckLockedCopyCount > 0 ? (
+                    <div>
+                      <dt>
+                        <LockKey size={16} aria-hidden="true" /> In decks
+                      </dt>
+                      <dd>{preview.deckLockedCopyCount}</dd>
+                    </div>
+                  ) : null}
+                  {preview.tradeReservedCopyCount > 0 ? (
+                    <div>
+                      <dt>Reserved for trade</dt>
+                      <dd>{preview.tradeReservedCopyCount}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              ) : null}
               <p className="evolution-availability__guidance">
-                {preview.canEvolve ? (
-                  <span>Uses {preview.copiesRequired} copies. </span>
-                ) : null}
-                {evolutionAvailabilityMessage(preview)}
+                {preview.canEvolve
+                  ? `Uses ${preview.copiesRequired} copies · ${preview.ownedCopyCount - preview.copiesRequired} remain`
+                  : evolutionAvailabilityMessage(preview)}
               </p>
               <button
                 className="button"
@@ -650,8 +648,21 @@ function EvolutionAvailability({
                 ref={reviewButton}
                 type="button"
               >
-                <ArrowsMerge size={20} aria-hidden="true" />
-                Review evolution
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="M4 21v-4c0-4 8-4 8-9M12 21V3M20 21v-4c0-4-8-4-8-9M8 7l4-4 4 4" />
+                </svg>
+                Evolve
               </button>
             </div>,
             actionContainer,
