@@ -243,6 +243,23 @@ for (const reducedMotion of [false, true]) {
       await expect(
         page.getByRole('button', { name: 'Close evolution' }),
       ).toBeFocused();
+      const composition = await dialog
+        .getByLabel('Evolution preview')
+        .evaluate((element) => {
+          const target = element
+            .querySelector('.evolution-preview__target')!
+            .getBoundingClientRect();
+          const sources = element
+            .querySelector('.evolution-source-copies')!
+            .getBoundingClientRect();
+          return {
+            centreDelta:
+              target.x + target.width / 2 - (sources.x + sources.width / 2),
+            sourcesBelowTarget: sources.top > target.bottom,
+          };
+        });
+      expect(Math.abs(composition.centreDelta)).toBeLessThan(2);
+      expect(composition.sourcesBelowTarget).toBe(true);
       await page.screenshot({
         path: testInfo.outputPath(`preview-${width}.png`),
       });
@@ -390,6 +407,21 @@ for (const reducedMotion of [false, true]) {
       });
     await page.waitForTimeout(reducedMotion ? 200 : 1500);
     await page.screenshot({ path: testInfo.outputPath('success-mobile.png') });
+    await page.evaluate(
+      (motion) => {
+        const key = 'wits-world.accessibility-preferences.v1';
+        const value = JSON.stringify({ motion });
+        localStorage.setItem(key, value);
+        window.dispatchEvent(
+          new StorageEvent('storage', { key, newValue: value }),
+        );
+      },
+      reducedMotion ? 'full' : 'reduce',
+    );
+    await expect(page.getByTestId('evolution-reveal')).toHaveAttribute(
+      'data-reduced-motion',
+      String(!reducedMotion),
+    );
     await page.getByRole('button', { name: 'Back to evolutions' }).click();
     await page.getByRole('link', { name: 'Cards', exact: true }).click();
     await expect(

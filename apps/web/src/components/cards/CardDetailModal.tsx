@@ -130,7 +130,7 @@ function EvolutionCardDetailModal({
 
   return createPortal(
     <div
-      className="card-detail-backdrop"
+      className="card-detail-backdrop card-detail-backdrop--evolution"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) requestClose();
       }}

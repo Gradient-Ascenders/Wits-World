@@ -512,7 +512,7 @@ describe('card collection page', () => {
     const availability = await screen.findByRole('heading', {
       name: 'Copy availability',
     });
-    const section = availability.closest('section');
+    const section = availability.closest<HTMLElement>('[role="dialog"]');
     expect(section).not.toBeNull();
     expect(within(section!).getByText('Owned')).toBeVisible();
     expect(
@@ -522,9 +522,10 @@ describe('card collection page', () => {
     expect(
       within(section!).getByText('In decks').parentElement,
     ).toHaveTextContent('2');
-    expect(section).toHaveTextContent('You need 1 more available copy');
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('You need 1 more available copy');
     expect(
-      within(section!).getByRole('button', { name: 'Review evolution' }),
+      within(dialog).getByRole('button', { name: 'Review evolution' }),
     ).toBeDisabled();
     expect(section).toHaveTextContent(
       'Remove them from all saved decks to use them',
@@ -588,8 +589,8 @@ describe('card collection page', () => {
       name: 'Combine 3 copies of Quillip into Quillume?',
     });
     expect(heading).toHaveFocus();
-    expect(screen.getByText('3 available copies')).toBeVisible();
-    expect(screen.getByText('1 copy')).toBeVisible();
+    expect(screen.getByText('Consumes 3 available copies')).toBeVisible();
+    expect(screen.getByText('You receive 1 copy')).toBeVisible();
     expect(screen.getByRole('article', { name: 'Quillume' })).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -705,7 +706,7 @@ describe('card collection page', () => {
     ).toBeDisabled();
     const availability = screen
       .getByRole('heading', { name: 'Copy availability' })
-      .closest('section')!;
+      .closest<HTMLElement>('[role="dialog"]')!;
     expect(
       within(availability).getByText('Available').parentElement,
     ).toHaveTextContent('2');

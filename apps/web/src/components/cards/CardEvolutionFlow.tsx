@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, ArrowsMerge, LockKey, Stack } from '@phosphor-icons/react';
+import { ArrowsMerge, LockKey, Stack } from '@phosphor-icons/react';
 import { motion, useReducedMotion } from 'motion/react';
 
 import {
@@ -12,6 +12,7 @@ import {
   type OwnedCard,
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
+import { useAccessibilityPreferences } from '../../accessibility/preferences';
 import { LoadingState } from '../LoadingState';
 import { CardArtwork, CollectibleCard } from './CollectibleCard';
 import { StateIcon, StatusMessage } from '../StatusMessage';
@@ -193,12 +194,12 @@ export function CardEvolutionFlow({
         <h2 id="evolution-result-title" ref={resultHeading} tabIndex={-1}>
           Evolution complete
         </h2>
-        <p>
+        <EvolutionReveal source={initialPreview.source} result={result} />
+        <p className="evolution-result__receipt">
           {result.consumedOwnedCardIds.length} × {card.name} consumed. 1 ×{' '}
           {result.newCard.name} created.
         </p>
-        <EvolutionReveal source={initialPreview.source} result={result} />
-        <p>
+        <p className="evolution-result__quantity">
           {
             collectionCards.filter(
               (copy) =>
@@ -262,52 +263,7 @@ export function CardEvolutionFlow({
         </h2>
         <p>This cannot be undone.</p>
 
-        <div className="evolution-recipe" aria-label="Evolution recipe">
-          <div className="evolution-recipe__source">
-            <SourceCopies preview={preview} />
-            <span className="evolution-recipe__quantity">
-              {preview.copiesRequired} available copies
-            </span>
-            <strong>{preview.source.name}</strong>
-            <span>Consumed</span>
-          </div>
-          <span aria-hidden="true" className="evolution-recipe__arrow">
-            <ArrowRight size={24} />
-          </span>
-          <div className="evolution-recipe__target">
-            <CollectibleCard
-              card={preview.target}
-              headingLevel={3}
-              compact
-              showOwnership={false}
-              showDetails={false}
-            />
-            <span className="evolution-recipe__quantity">×1</span>
-            <span>You receive</span>
-            <span>{preview.target.deckPointCost} deck points</span>
-          </div>
-        </div>
-
-        <dl className="evolution-quantity-summary">
-          <div>
-            <dt>{preview.source.name} remaining</dt>
-            <dd>
-              {remainingCopies} {remainingCopies === 1 ? 'copy' : 'copies'}
-            </dd>
-          </div>
-          {preview.deckLockedCopyCount > 0 ? (
-            <div>
-              <dt>Protected in decks</dt>
-              <dd>{preview.deckLockedCopyCount}</dd>
-            </div>
-          ) : null}
-          {preview.tradeReservedCopyCount > 0 ? (
-            <div>
-              <dt>Reserved for trade</dt>
-              <dd>{preview.tradeReservedCopyCount}</dd>
-            </div>
-          ) : null}
-        </dl>
+        <EvolutionComposition preview={preview} confirming />
 
         {mutationError ? (
           <EvolutionError error={mutationError} noticeRef={errorNotice} />
@@ -316,6 +272,27 @@ export function CardEvolutionFlow({
         {actionContainer
           ? createPortal(
               <div className="evolution-action-bar">
+                <dl className="evolution-quantity-summary">
+                  <div>
+                    <dt>{preview.source.name} remaining</dt>
+                    <dd>
+                      {remainingCopies}{' '}
+                      {remainingCopies === 1 ? 'copy' : 'copies'}
+                    </dd>
+                  </div>
+                  {preview.deckLockedCopyCount > 0 ? (
+                    <div>
+                      <dt>Protected in decks</dt>
+                      <dd>{preview.deckLockedCopyCount}</dd>
+                    </div>
+                  ) : null}
+                  {preview.tradeReservedCopyCount > 0 ? (
+                    <div>
+                      <dt>Reserved for trade</dt>
+                      <dd>{preview.tradeReservedCopyCount}</dd>
+                    </div>
+                  ) : null}
+                </dl>
                 {isSubmitting ? <p role="status">Evolving your card…</p> : null}
                 <div className="evolution-confirmation__actions">
                   <button
@@ -370,27 +347,10 @@ export function CardEvolutionFlow({
           </StatusMessage>
         ) : previewState.status === 'ready' ? (
           <>
-            <div className="evolution-preview__composition">
-              <div className="evolution-preview__sources">
-                <SourceCopies preview={previewState.preview} />
-                <h2>{previewState.preview.source.name}</h2>
-                <p>Uses {previewState.preview.copiesRequired} available copies</p>
-              </div>
-              <ArrowRight
-                className="evolution-preview__arrow"
-                size={28}
-                aria-hidden="true"
-              />
-              <div className="evolution-preview__target">
-                <CollectibleCard
-                  card={previewState.preview.target}
-                  showOwnership={false}
-                  showDetails={false}
-                  headingLevel={3}
-                />
-              </div>
-            </div>
+            <h2 className="evolution-title">Three become one</h2>
+            <EvolutionComposition preview={previewState.preview} />
             <EvolutionAvailability
+              actionContainer={actionContainer}
               mutationError={mutationError}
               noticeRef={errorNotice}
               onReview={() => {
@@ -426,6 +386,68 @@ export function CardEvolutionFlow({
   );
 }
 
+function EvolutionComposition({
+  preview,
+  confirming = false,
+}: {
+  preview: CardEvolutionPreview;
+  confirming?: boolean;
+}) {
+  return (
+    <div
+      className={`evolution-preview__composition${confirming ? ' evolution-preview__composition--confirm' : ''}`}
+      aria-label={confirming ? 'Evolution recipe' : 'Evolution preview'}
+    >
+      <div className="evolution-preview__target">
+        <p className="evolution-preview__label">
+          <span>{confirming ? 'You receive 1 copy' : 'Preview'}</span>
+          {' · '}
+          <span className="evolution-preview__rarity">
+            {preview.target.rarity}
+          </span>
+        </p>
+        <CollectibleCard
+          card={preview.target}
+          showOwnership={false}
+          showDetails={false}
+          headingLevel={3}
+        />
+        {confirming ? (
+          <p className="evolution-preview__deck-cost">
+            {preview.target.deckPointCost} deck points
+          </p>
+        ) : null}
+      </div>
+      <EvolutionConvergence />
+      <div className="evolution-preview__sources">
+        <SourceCopies preview={preview} />
+        <h3>{preview.source.name}</h3>
+        {confirming ? (
+          <p>Consumes {preview.copiesRequired} available copies</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function EvolutionConvergence() {
+  return (
+    <svg
+      className="evolution-convergence"
+      aria-hidden="true"
+      width="256"
+      height="32"
+      viewBox="0 0 256 32"
+      fill="none"
+    >
+      <path d="M32 28C32 16 128 24 128 4M128 28V4M224 28C224 16 128 24 128 4M123 9L128 4L133 9" />
+      <circle cx="32" cy="28" r="1.5" />
+      <circle cx="128" cy="28" r="1.5" />
+      <circle cx="224" cy="28" r="1.5" />
+    </svg>
+  );
+}
+
 function SourceCopies({ preview }: { preview: CardEvolutionPreview }) {
   return (
     <div
@@ -456,7 +478,11 @@ function EvolutionReveal({
   source: CardEvolutionPreview['source'];
   result: CardEvolutionResult;
 }) {
-  const reducedMotion = useReducedMotion();
+  const systemReducedMotion = useReducedMotion();
+  const { motion: motionPreference } = useAccessibilityPreferences();
+  const reducedMotion =
+    motionPreference === 'reduce' ||
+    (motionPreference === 'system' && Boolean(systemReducedMotion));
   return (
     <div
       className="evolution-reveal"
@@ -471,11 +497,13 @@ function EvolutionReveal({
               className="evolution-reveal__source"
               initial={{
                 x: (index - 1) * 76,
+                y: 180,
                 rotate: (index - 1) * 9,
                 opacity: 1,
               }}
               animate={{
                 x: [(index - 1) * 76, (index - 1) * 76, 0, 0],
+                y: [180, 180, 0, -24],
                 rotate: [(index - 1) * 9, 0, 0, 0],
                 scale: [1, 1, 0.8, 0.65],
                 opacity: [1, 1, 1, 0],
@@ -511,6 +539,12 @@ function EvolutionReveal({
           ease: 'easeOut',
         }}
       >
+        <p className="evolution-preview__label">
+          Added to your collection ·{' '}
+          <span className="evolution-preview__rarity">
+            {result.newCard.rarity}
+          </span>
+        </p>
         <CollectibleCard
           card={result.newCard}
           headingLevel={3}
@@ -523,6 +557,7 @@ function EvolutionReveal({
 }
 
 function EvolutionAvailability({
+  actionContainer,
   mutationError,
   noticeRef,
   onReview,
@@ -530,6 +565,7 @@ function EvolutionAvailability({
   preview,
   reviewButton,
 }: {
+  actionContainer: HTMLDivElement | null;
   mutationError: CardApiError | null;
   noticeRef: React.RefObject<HTMLDivElement | null>;
   onReview: () => void;
@@ -542,34 +578,9 @@ function EvolutionAvailability({
       aria-labelledby="evolution-availability-title"
       className="evolution-availability"
     >
-      <h3 id="evolution-availability-title">Copy availability</h3>
-
-      <dl className="evolution-quantity-summary">
-        <div>
-          <dt>
-            <Stack size={16} aria-hidden="true" /> Owned
-          </dt>
-          <dd>{preview.ownedCopyCount}</dd>
-        </div>
-        <div>
-          <dt>Available</dt>
-          <dd>{preview.eligibleCopyCount}</dd>
-        </div>
-        {preview.deckLockedCopyCount > 0 ? (
-          <div>
-            <dt>
-              <LockKey size={16} aria-hidden="true" /> In decks
-            </dt>
-            <dd>{preview.deckLockedCopyCount}</dd>
-          </div>
-        ) : null}
-        {preview.tradeReservedCopyCount > 0 ? (
-          <div>
-            <dt>Reserved for trade</dt>
-            <dd>{preview.tradeReservedCopyCount}</dd>
-          </div>
-        ) : null}
-      </dl>
+      <h3 id="evolution-availability-title" className="sr-only">
+        Copy availability
+      </h3>
 
       {preview.deckLockedCopyCount > 0 ? (
         <p className="evolution-lock-note">
@@ -597,19 +608,55 @@ function EvolutionAvailability({
         </>
       ) : null}
 
-      <p className="evolution-availability__guidance">
-        {evolutionAvailabilityMessage(preview)}
-      </p>
-      <button
-        className="button"
-        disabled={!preview.canEvolve}
-        onClick={onReview}
-        ref={reviewButton}
-        type="button"
-      >
-        <ArrowsMerge size={20} aria-hidden="true" />
-        Review evolution
-      </button>
+      {actionContainer
+        ? createPortal(
+            <div className="evolution-action-bar">
+              <dl className="evolution-quantity-summary">
+                <div>
+                  <dt>
+                    <Stack size={16} aria-hidden="true" /> Owned
+                  </dt>
+                  <dd>{preview.ownedCopyCount}</dd>
+                </div>
+                <div>
+                  <dt>Available</dt>
+                  <dd>{preview.eligibleCopyCount}</dd>
+                </div>
+                {preview.deckLockedCopyCount > 0 ? (
+                  <div>
+                    <dt>
+                      <LockKey size={16} aria-hidden="true" /> In decks
+                    </dt>
+                    <dd>{preview.deckLockedCopyCount}</dd>
+                  </div>
+                ) : null}
+                {preview.tradeReservedCopyCount > 0 ? (
+                  <div>
+                    <dt>Reserved for trade</dt>
+                    <dd>{preview.tradeReservedCopyCount}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              <p className="evolution-availability__guidance">
+                {preview.canEvolve ? (
+                  <span>Uses {preview.copiesRequired} copies. </span>
+                ) : null}
+                {evolutionAvailabilityMessage(preview)}
+              </p>
+              <button
+                className="button"
+                disabled={!preview.canEvolve}
+                onClick={onReview}
+                ref={reviewButton}
+                type="button"
+              >
+                <ArrowsMerge size={20} aria-hidden="true" />
+                Review evolution
+              </button>
+            </div>,
+            actionContainer,
+          )
+        : null}
     </section>
   );
 }
