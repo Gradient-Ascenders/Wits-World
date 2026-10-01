@@ -89,6 +89,36 @@ function stubInitialState(decks: SavedDeck[], cards: object[]) {
 }
 
 describe('saved deck management page', () => {
+  it('uses exact owned copies for saved artwork and keeps an unavailable copy honest', async () => {
+    const cards = buildStarterCards('wit');
+    const deck = buildSavedDeck();
+    stubInitialState(
+      [deck],
+      [
+        {
+          ...cards[0]!,
+          ownedCardId: '00000000-0000-4000-8000-000000000999',
+          imageUrl: '/cards/ciphra.webp',
+        },
+        { ...cards[1]!, imageUrl: '/cards/quillume.webp' },
+        ...cards.slice(2),
+      ],
+    );
+    renderDecks();
+    const roster = await screen.findByRole('list', {
+      name: `${deck.name} cards`,
+    });
+    expect(
+      within(roster).getByRole('img', {
+        name: `${cards[0]!.name} artwork unavailable`,
+      }),
+    ).toBeVisible();
+    expect(
+      within(roster).getByAltText(`${cards[1]!.name} card artwork`),
+    ).toHaveAttribute('src', '/cards/quillume.webp');
+    expect(roster.querySelector('img[src="/cards/ciphra.webp"]')).toBeNull();
+  });
+
   it('preserves selected copies through filters and confirms discarding edits', async () => {
     const user = userEvent.setup();
     const cards = buildStarterCards('wit');
@@ -372,7 +402,7 @@ describe('saved deck management page', () => {
     expect(
       screen.getAllByRole('button', { name: 'Edit or rename' }),
     ).toHaveLength(1);
-    expect(screen.getAllByText('Wit ×5')).toHaveLength(3);
+    expect(screen.getAllByText(/Wit ×5/u)).toHaveLength(3);
 
     const sparkSummary = screen.getByRole('button', {
       name: 'View details for Spark Five',
@@ -382,7 +412,7 @@ describe('saved deck management page', () => {
 
     expect(screen.getByRole('heading', { name: 'Spark Five' })).toHaveFocus();
     expect(screen.getByRole('article', { name: 'Spark Five' })).toBeVisible();
-    expect(screen.getAllByText('Spark ×5')).toHaveLength(2);
+    expect(screen.getAllByText(/Spark ×5/u)).toHaveLength(2);
     expect(
       screen.queryByRole('list', {
         name: 'The Exceptionally Long-Named Senate House Strategy Deck cards',
@@ -419,14 +449,14 @@ describe('saved deck management page', () => {
 
     await user.click(addDuplicate);
     expect(
-      within(duplicatePickerCard).getByText('Owned 2 · Selected 1'),
+      within(duplicatePickerCard).getByText('Owned 2 · Selected 1 · 1 point'),
     ).toBeVisible();
     expect(
       within(duplicatePickerCard).getByText('1 copy available'),
     ).toBeVisible();
     await user.click(addDuplicate);
     expect(
-      within(duplicatePickerCard).getByText('Owned 2 · Selected 2'),
+      within(duplicatePickerCard).getByText('Owned 2 · Selected 2 · 1 point'),
     ).toBeVisible();
     expect(
       within(duplicatePickerCard).queryByText('All copies selected'),
@@ -439,7 +469,7 @@ describe('saved deck management page', () => {
       }),
     );
     expect(
-      within(duplicatePickerCard).getByText('Owned 2 · Selected 1'),
+      within(duplicatePickerCard).getByText('Owned 2 · Selected 1 · 1 point'),
     ).toBeVisible();
     expect(addDuplicate).toBeEnabled();
     expect(

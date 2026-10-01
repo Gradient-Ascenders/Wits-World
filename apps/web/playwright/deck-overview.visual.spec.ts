@@ -104,11 +104,14 @@ test('keeps multiple deck summaries compact and reveals one detail surface', asy
   const desktopDetailBox = await selectedDetail.boundingBox();
   expect(desktopListBox).not.toBeNull();
   expect(desktopDetailBox).not.toBeNull();
-  expect(desktopDetailBox!.x).toBeGreaterThan(desktopListBox!.x);
-  expect(Math.abs(desktopDetailBox!.y - desktopListBox!.y)).toBeLessThan(80);
+  expect(desktopListBox!.y).toBeGreaterThan(
+    desktopDetailBox!.y + desktopDetailBox!.height,
+  );
 
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.getByLabel('Viewing deck').selectOption(buildUuid(900));
+  await page
+    .getByRole('button', { name: /^View details for Campus Five/ })
+    .click();
   await expect(
     page.getByRole('heading', { name: 'Campus Five' }),
   ).toBeFocused();
@@ -126,13 +129,17 @@ test('keeps multiple deck summaries compact and reveals one detail surface', asy
     page.getByRole('button', { name: 'Start CPU match' }),
   ).toBeVisible();
 
-  await page.getByLabel('Viewing deck').selectOption(buildUuid(902));
+  await page
+    .getByRole('button', { name: 'View details for Great Hall Guard' })
+    .click();
   await page.getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByRole('button', { name: 'Delete deck' })).toBeFocused();
   await page.getByRole('button', { name: 'Delete deck' }).click();
   await expect(savedDecks.locator(':scope > li')).toHaveCount(2);
 
-  await page.getByLabel('Viewing deck').selectOption(buildUuid(900));
+  await page
+    .getByRole('button', { name: /^View details for Campus Five/ })
+    .click();
   await page.getByRole('button', { name: 'Delete' }).click();
   await page.getByRole('button', { name: 'Delete deck' }).click();
   await expect(savedDecks.locator(':scope > li')).toHaveCount(1);
@@ -397,6 +404,18 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/decks');
   await page.getByRole('button', { name: 'Create a deck' }).click();
+  for (const viewport of [
+    { height: 800, width: 360 },
+    { height: 844, width: 390 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const tray = await page.locator('.deck-editor__actions').boundingBox();
+    const filters = await page.locator('.deck-filters__choices').boundingBox();
+    expect(tray).not.toBeNull();
+    expect(filters).not.toBeNull();
+    expect(filters!.y + filters!.height).toBeLessThanOrEqual(tray!.y);
+  }
   await page
     .getByRole('textbox', { name: 'Deck name' })
     .fill('Campus Compact Five');
@@ -458,6 +477,18 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
   await expect(page.locator('.deck-save-summary')).toContainText(
     'Ready to save',
   );
+  const review = page.getByRole('button', { name: 'Review your deck' });
+  await review.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByRole('heading', { name: 'Your lineup' }),
+  ).toBeFocused();
+  await expect(page.locator('.draft-cards ol > li')).toHaveCount(5);
+  await expect(page.locator('.deck-draft-tray__slot')).toHaveCount(5);
+  await page
+    .getByRole('group', { name: 'Editor view' })
+    .getByRole('button', { name: 'Add cards' })
+    .click();
   await picker.locator(':scope > li').last().scrollIntoViewIfNeeded();
   const mobileSave = page.getByRole('button', {
     name: /^(Save|Create saved deck)$/,
@@ -497,7 +528,7 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
   const pickerBox = await page.locator('.card-picker').boundingBox();
   expect(draftBox).not.toBeNull();
   expect(pickerBox).not.toBeNull();
-  expect(pickerBox!.x).toBeGreaterThan(draftBox!.x);
+  expect(draftBox!.x).toBeGreaterThan(pickerBox!.x);
   const selectedListMetrics = await page
     .locator('.draft-cards ol')
     .evaluate((list) => ({
@@ -581,8 +612,9 @@ test('keeps a filtered mobile draft through saving and a recoverable failure', a
   await page.goto('/decks');
   await expect(page.getByText('No saved decks yet')).toBeVisible();
   await page.getByRole('button', { name: 'Create a deck' }).click();
+  await expect(page.locator('.deck-save-summary')).toContainText('Incomplete');
   await expect(
-    page.getByText('Incomplete deck', { exact: true }),
+    page.getByRole('searchbox', { name: 'Search cards' }),
   ).toBeVisible();
   await page.getByRole('textbox', { name: 'Deck name' }).fill('Retry Five');
   await page
