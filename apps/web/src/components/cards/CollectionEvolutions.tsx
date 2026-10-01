@@ -124,17 +124,14 @@ export function CollectionEvolutions({
       className="collection-evolutions"
       aria-labelledby="collection-evolutions-title"
     >
-      <header className="collection-evolutions__intro">
-        <h2
-          className="sr-only"
-          id="collection-evolutions-title"
-          ref={heading}
-          tabIndex={-1}
-        >
-          Evolution candidates
-        </h2>
-        <p>Copies used in saved decks stay protected.</p>
-      </header>
+      <h2
+        className="sr-only"
+        id="collection-evolutions-title"
+        ref={heading}
+        tabIndex={-1}
+      >
+        Evolution candidates
+      </h2>
       {loading || loadedSnapshot.current?.cards !== cards ? (
         <LoadingState
           announce={!selected}
@@ -174,7 +171,7 @@ export function CollectionEvolutions({
                             ? 'Copies locked in decks'
                             : 'Not enough copies'
                       : unavailable
-                        ? 'Evolved card'
+                        ? 'No evolution available'
                         : 'Availability unknown'}
                   </p>
                   <h3>{card.name}</h3>
@@ -189,11 +186,7 @@ export function CollectionEvolutions({
                         <strong>
                           {preview.eligibleCopyCount} / {preview.copiesRequired}
                         </strong>{' '}
-                        eligible copies
-                      </p>
-                      <p className="evolution-candidate__counts">
-                        {preview.ownedCopyCount} owned ·{' '}
-                        {preview.eligibleCopyCount} available
+                        copies available
                       </p>
                       {preview.deckLockedCopyCount > 0 ? (
                         <p className="evolution-candidate__counts">
@@ -218,15 +211,9 @@ export function CollectionEvolutions({
                         Preview evolution
                       </button>
                     </>
-                  ) : (
-                    <p>
-                      {unavailable
-                        ? 'No further evolution is currently available.'
-                        : failed
-                          ? 'We could not check this card. Try again to see its evolution availability.'
-                          : ''}
-                    </p>
-                  )}
+                  ) : failed ? (
+                    <p>Could not check this card. Try again.</p>
+                  ) : null}
                 </div>
               </li>
             ))}

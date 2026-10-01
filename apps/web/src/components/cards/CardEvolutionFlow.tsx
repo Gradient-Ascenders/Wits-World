@@ -190,7 +190,6 @@ export function CardEvolutionFlow({
         aria-labelledby="evolution-result-title"
         className="evolution-result"
       >
-        <p className="eyebrow">Your evolved card</p>
         <h2 id="evolution-result-title" ref={resultHeading} tabIndex={-1}>
           Evolution complete
         </h2>
@@ -211,9 +210,9 @@ export function CardEvolutionFlow({
         <StatusMessage tone={refreshFailed ? 'error' : 'success'}>
           <p>
             {isRefreshing
-              ? 'Evolution complete. Refreshing your collection…'
+              ? 'Refreshing your collection…'
               : refreshFailed
-                ? 'Evolution is complete, but your collection could not be refreshed. Your confirmed result is shown above.'
+                ? 'Card evolved. Could not refresh your collection. Try again.'
                 : 'Your collection is up to date.'}
           </p>
           {refreshFailed ? (
@@ -253,7 +252,6 @@ export function CardEvolutionFlow({
         aria-labelledby="evolution-confirmation-title"
         className="evolution-confirmation"
       >
-        <p className="eyebrow">Confirm evolution</p>
         <h2
           id="evolution-confirmation-title"
           ref={confirmationHeading}
@@ -262,16 +260,13 @@ export function CardEvolutionFlow({
           Combine {preview.copiesRequired} copies of {preview.source.name} into{' '}
           {preview.target.name}?
         </h2>
-        <p>
-          Exchange {preview.copiesRequired} available copies for 1 evolved card.
-          This cannot be undone.
-        </p>
+        <p>This cannot be undone.</p>
 
         <div className="evolution-recipe" aria-label="Evolution recipe">
           <div className="evolution-recipe__source">
             <SourceCopies preview={preview} />
             <span className="evolution-recipe__quantity">
-              ×{preview.copiesRequired}
+              {preview.copiesRequired} available copies
             </span>
             <strong>{preview.source.name}</strong>
             <span>Consumed</span>
@@ -283,21 +278,17 @@ export function CardEvolutionFlow({
             <CollectibleCard
               card={preview.target}
               headingLevel={3}
+              compact
               showOwnership={false}
               showDetails={false}
             />
             <span className="evolution-recipe__quantity">×1</span>
-            <strong>{preview.target.name}</strong>
             <span>You receive</span>
             <span>{preview.target.deckPointCost} deck points</span>
           </div>
         </div>
 
         <dl className="evolution-quantity-summary">
-          <div>
-            <dt>Consumed</dt>
-            <dd>{preview.copiesRequired} available copies</dd>
-          </div>
           <div>
             <dt>{preview.source.name} remaining</dt>
             <dd>
@@ -317,12 +308,6 @@ export function CardEvolutionFlow({
             </div>
           ) : null}
         </dl>
-        <p className="evolution-lock-note">
-          <LockKey size={20} aria-hidden="true" />
-          {preview.eligibleCopyCount} available · {preview.deckLockedCopyCount}{' '}
-          in saved decks · {preview.tradeReservedCopyCount} reserved for trade.
-          Protected copies will not be consumed.
-        </p>
 
         {mutationError ? (
           <EvolutionError error={mutationError} noticeRef={errorNotice} />
@@ -331,12 +316,7 @@ export function CardEvolutionFlow({
         {actionContainer
           ? createPortal(
               <div className="evolution-action-bar">
-                <p>
-                  Uses {preview.copiesRequired} copies · creates 1 evolved card
-                </p>
-                {isSubmitting ? (
-                  <p role="status">Waiting for your evolution to complete…</p>
-                ) : null}
+                {isSubmitting ? <p role="status">Evolving your card…</p> : null}
                 <div className="evolution-confirmation__actions">
                   <button
                     className="button button--quiet"
@@ -372,7 +352,6 @@ export function CardEvolutionFlow({
   return (
     <>
       <div className="evolution-preview">
-        <p className="eyebrow">Three copies. One new form.</p>
         {previewState.status === 'loading' ? (
           <LoadingState label="Checking evolution availability…" />
         ) : previewState.status === 'error' ? (
@@ -395,10 +374,7 @@ export function CardEvolutionFlow({
               <div className="evolution-preview__sources">
                 <SourceCopies preview={previewState.preview} />
                 <h2>{previewState.preview.source.name}</h2>
-                <p>
-                  {previewState.preview.copiesRequired} eligible copies will be
-                  consumed
-                </p>
+                <p>Uses {previewState.preview.copiesRequired} available copies</p>
               </div>
               <ArrowRight
                 className="evolution-preview__arrow"
@@ -406,7 +382,6 @@ export function CardEvolutionFlow({
                 aria-hidden="true"
               />
               <div className="evolution-preview__target">
-                <p className="eyebrow">Evolved result</p>
                 <CollectibleCard
                   card={previewState.preview.target}
                   showOwnership={false}
@@ -567,17 +542,7 @@ function EvolutionAvailability({
       aria-labelledby="evolution-availability-title"
       className="evolution-availability"
     >
-      <div className="evolution-availability__heading">
-        <div>
-          <p className="eyebrow">Copy availability</p>
-          <h3 id="evolution-availability-title">
-            Evolve into {preview.target.name}
-          </h3>
-        </div>
-        <span className="evolution-availability__rarity">
-          {titleCase(preview.target.rarity)}
-        </span>
-      </div>
+      <h3 id="evolution-availability-title">Copy availability</h3>
 
       <dl className="evolution-quantity-summary">
         <div>
@@ -590,12 +555,14 @@ function EvolutionAvailability({
           <dt>Available</dt>
           <dd>{preview.eligibleCopyCount}</dd>
         </div>
-        <div>
-          <dt>
-            <LockKey size={16} aria-hidden="true" /> In decks
-          </dt>
-          <dd>{preview.deckLockedCopyCount}</dd>
-        </div>
+        {preview.deckLockedCopyCount > 0 ? (
+          <div>
+            <dt>
+              <LockKey size={16} aria-hidden="true" /> In decks
+            </dt>
+            <dd>{preview.deckLockedCopyCount}</dd>
+          </div>
+        ) : null}
         {preview.tradeReservedCopyCount > 0 ? (
           <div>
             <dt>Reserved for trade</dt>
@@ -607,14 +574,13 @@ function EvolutionAvailability({
       {preview.deckLockedCopyCount > 0 ? (
         <p className="evolution-lock-note">
           <LockKey size={20} aria-hidden="true" />
-          Copies in saved decks are protected. Remove them from every saved deck
-          to make them available.
+          Deck copies stay protected. Remove them from all saved decks to use
+          them.
         </p>
       ) : null}
       {preview.tradeReservedCopyCount > 0 ? (
         <p className="evolution-lock-note">
-          Copies reserved by active trade offers cannot be evolved. End the
-          offer to make them available.
+          Trade copies stay reserved. End the offer to use them.
         </p>
       ) : null}
 
@@ -681,15 +647,17 @@ function EvolutionError({
 
 function evolutionAvailabilityMessage(preview: CardEvolutionPreview) {
   if (preview.canEvolve) {
-    return `Use ${preview.copiesRequired} available copies to evolve. ${preview.ownedCopyCount - preview.copiesRequired} ${preview.source.name} ${preview.ownedCopyCount - preview.copiesRequired === 1 ? 'copy stays' : 'copies stay'} in your collection.`;
+    const remaining = preview.ownedCopyCount - preview.copiesRequired;
+    return `${remaining} ${preview.source.name} ${remaining === 1 ? 'copy will' : 'copies will'} remain.`;
   }
-  if (preview.unavailableReason === 'saved_deck_lock') {
-    return `${preview.copiesRequired} available copies are required. You need ${preview.copiesRequired - preview.eligibleCopyCount} more available ${preview.copiesRequired - preview.eligibleCopyCount === 1 ? 'copy' : 'copies'}. Remove ${preview.deckLockedCopyCount === 1 ? 'the locked copy' : 'locked copies'} from saved decks first.`;
+  const needed = preview.copiesRequired - preview.eligibleCopyCount;
+  if (
+    preview.unavailableReason === 'saved_deck_lock' ||
+    preview.unavailableReason === 'trade_reservation'
+  ) {
+    return `You need ${needed} more available ${needed === 1 ? 'copy' : 'copies'}.`;
   }
-  if (preview.unavailableReason === 'trade_reservation') {
-    return `${preview.copiesRequired} available copies are required. You need ${preview.copiesRequired - preview.eligibleCopyCount} more available ${preview.copiesRequired - preview.eligibleCopyCount === 1 ? 'copy' : 'copies'}. End the active trade offer before evolving reserved copies.`;
-  }
-  return `${preview.copiesRequired} available copies are required. You currently have ${preview.eligibleCopyCount}. Collect ${preview.copiesRequired - preview.eligibleCopyCount} more to evolve.`;
+  return `Collect ${needed} more to evolve.`;
 }
 
 function evolutionErrorMessage(error: CardApiError) {
@@ -734,8 +702,4 @@ function toCardApiError(error: unknown) {
   return error instanceof CardApiError
     ? error
     : new CardApiError('unavailable');
-}
-
-function titleCase(value: string) {
-  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }

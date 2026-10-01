@@ -1,16 +1,7 @@
-.collection-evolutions__intro {
-  max-width: 42rem;
-  margin-bottom: var(--space-6);
-}
-.collection-evolutions__intro h2 {
-  margin-block: var(--space-2);
-}
-.collection-evolutions__intro > p:last-child {
-  color: var(--colour-text-secondary);
-}
 .evolution-candidates {
   list-style: none;
   padding: 0;
+  margin: 0;
   display: grid;
   gap: var(--space-5);
 }
@@ -155,11 +146,41 @@
   border: 0;
   padding: 0;
 }
-.evolution-surface .evolution-recipe__target > strong {
-  display: none;
-}
 .evolution-surface .evolution-recipe__quantity {
-  font-size: var(--text-md);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+.evolution-surface .evolution-recipe {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.evolution-surface .evolution-recipe__arrow {
+  transform: none;
+}
+.evolution-surface .evolution-availability > h3 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+}
+.evolution-surface .evolution-quantity-summary {
+  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  gap: var(--space-3);
+  padding-block: var(--space-3);
+  background: none;
+  border: 0;
+  border-block: 1px solid var(--colour-border-subtle);
+  border-radius: 0;
+}
+.evolution-surface .evolution-quantity-summary > div {
+  padding: 0;
+  background: none;
+}
+.evolution-surface .evolution-quantity-summary dt {
+  color: var(--colour-text-secondary);
+}
+.evolution-surface .evolution-error {
+  border-left: 0;
 }
 .evolution-surface .evolution-action-bar > .button {
   width: 100%;
@@ -180,10 +201,20 @@
     padding-block: var(--space-2);
   }
   .evolution-surface .evolution-recipe__target .card-frame {
-    max-width: 10rem;
+    max-width: 8rem;
+  }
+  .evolution-surface .evolution-recipe__target .collectible-card__kind {
+    display: none;
+  }
+  .evolution-surface .evolution-recipe__target .collectible-card__heading {
+    justify-content: center;
+    text-align: center;
   }
   .evolution-surface .evolution-recipe__source > strong {
     order: -1;
+  }
+  .evolution-surface .evolution-confirmation .evolution-quantity-summary {
+    grid-template-columns: 1fr;
   }
 }
 .evolution-reveal {

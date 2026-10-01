@@ -187,9 +187,7 @@ for (const reducedMotion of [false, true]) {
       await expect(
         page.getByText('1 used in a deck', { exact: true }),
       ).toBeVisible();
-      await expect(
-        page.getByText('No further evolution is currently available.'),
-      ).toBeVisible();
+      await expect(page.getByText('No evolution available')).toBeVisible();
       const sourceDetailsTrigger = page.getByRole('button', {
         name: 'View Quillip details',
       });
@@ -253,6 +251,13 @@ for (const reducedMotion of [false, true]) {
         exact: true,
       });
       await expect(confirm).toBeInViewport();
+      await expect(dialog.getByText('This cannot be undone.')).toBeInViewport();
+      await expect(dialog.getByLabel('Evolution recipe')).toBeInViewport({
+        ratio: 1,
+      });
+      await expect(
+        dialog.locator('.evolution-quantity-summary'),
+      ).toBeInViewport({ ratio: 1 });
       const rect = await confirm.boundingBox();
       expect(rect!.height).toBeGreaterThanOrEqual(44);
       expect(
@@ -325,7 +330,7 @@ for (const reducedMotion of [false, true]) {
     ).toBeVisible();
     await trigger.click();
     await expect(
-      page.getByText(/Remove locked copies from saved decks first/),
+      page.getByText(/Remove them from all saved decks to use them/),
     ).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('locked-mobile.png') });
     await page.keyboard.press('Escape');

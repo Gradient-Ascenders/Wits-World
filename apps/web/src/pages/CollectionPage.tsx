@@ -364,7 +364,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
         <h1>{section === 'cards' ? 'Your cards' : 'Evolutions'}</h1>
         {section === 'evolutions' ? (
           <p className="lead">
-            Combine three eligible copies into one evolved card.
+            Combine three available copies into one evolved card.
           </p>
         ) : null}
         {collection.status === 'ready' && section === 'cards' ? (

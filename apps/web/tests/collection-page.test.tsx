@@ -510,7 +510,7 @@ describe('card collection page', () => {
     );
 
     const availability = await screen.findByRole('heading', {
-      name: 'Evolve into Quillume',
+      name: 'Copy availability',
     });
     const section = availability.closest('section');
     expect(section).not.toBeNull();
@@ -527,7 +527,7 @@ describe('card collection page', () => {
       within(section!).getByRole('button', { name: 'Review evolution' }),
     ).toBeDisabled();
     expect(section).toHaveTextContent(
-      'Remove locked copies from saved decks first',
+      'Remove them from all saved decks to use them',
     );
   });
 
@@ -561,11 +561,7 @@ describe('card collection page', () => {
       screen.getByRole('button', { name: 'Preview Quillip evolution' }),
     );
     expect(screen.getByText('Reserved for trade')).toBeVisible();
-    expect(
-      screen.getByText(
-        /End the active trade offer before evolving reserved copies/,
-      ),
-    ).toBeVisible();
+    expect(screen.getByText(/End the offer to use them/)).toBeVisible();
   });
 
   it('previews the fixed result before confirmation and supports cancellation', async () => {
@@ -707,7 +703,12 @@ describe('card collection page', () => {
     expect(
       screen.getByRole('button', { name: 'Review evolution' }),
     ).toBeDisabled();
-    expect(screen.getByText(/You currently have 2/u)).toBeVisible();
+    const availability = screen
+      .getByRole('heading', { name: 'Copy availability' })
+      .closest('section')!;
+    expect(
+      within(availability).getByText('Available').parentElement,
+    ).toHaveTextContent('2');
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
@@ -841,7 +842,7 @@ describe('card collection page', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Evolve card' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Evolution is complete, but your collection could not be refreshed',
+      'Card evolved. Could not refresh your collection. Try again.',
     );
     await user.click(
       screen.getByRole('button', { name: 'Refresh collection' }),
