@@ -125,6 +125,28 @@
   margin-inline: auto;
   filter: drop-shadow(0 0.5rem 1rem rgb(0 0 0 / 35%));
 }
+.evolution-preview__target .collectible-card__art-perspective {
+  width: min(100%, var(--evolution-card-width));
+  margin-inline: auto;
+  padding-block: var(--space-3);
+}
+.evolution-preview__target .collectible-card {
+  overflow: visible;
+}
+.evolution-card-inspection__button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.evolution-card-inspection__button:focus-visible {
+  outline: 3px solid var(--colour-focus);
+  outline-offset: 4px;
+}
 .evolution-surface .collectible-card__artwork {
   border: 0;
   border-radius: 0;

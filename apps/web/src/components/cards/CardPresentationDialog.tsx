@@ -46,6 +46,7 @@ export function CardPresentationDialog({
   const hasRules = Array.isArray(card.moves) && Array.isArray(card.effects);
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    event.stopPropagation();
     if (event.key === 'Escape') {
       event.preventDefault();
       onClose();

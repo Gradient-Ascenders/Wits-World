@@ -15,12 +15,15 @@ import {
   previewCardEvolution,
   type CardEvolutionPreview,
   type CardEvolutionResult,
+  type CardPresentation,
   type OwnedCard,
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import { useAccessibilityPreferences } from '../../accessibility/preferences';
 import { LoadingState } from '../LoadingState';
 import { CardArtwork, CollectibleCard } from './CollectibleCard';
+import { CardPresentationDialog } from './CardPresentationDialog';
+import { useCardTilt } from './useCardTilt';
 import { StateIcon, StatusMessage } from '../StatusMessage';
 
 type PreviewState =
@@ -407,6 +410,8 @@ function EvolutionComposition({ preview }: { preview: CardEvolutionPreview }) {
       <div className="evolution-preview__target">
         <CollectibleCard
           card={preview.target}
+          artwork={<EvolutionCardInspection card={preview.target} />}
+          showStats={false}
           showOwnership={false}
           showDetails={false}
           headingLevel={3}
@@ -418,6 +423,39 @@ function EvolutionComposition({ preview }: { preview: CardEvolutionPreview }) {
         <h3>{preview.source.name}</h3>
       </div>
     </div>
+  );
+}
+
+function EvolutionCardInspection({ card }: { card: CardPresentation }) {
+  const tilt = useCardTilt<HTMLButtonElement>();
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  function inspect() {
+    tilt.ref.current?.focus();
+    setDetailsOpen(true);
+  }
+
+  return (
+    <>
+      <div className="collectible-card__art-perspective">
+        <button
+          {...tilt}
+          aria-label={`View ${card.name} details`}
+          aria-haspopup="dialog"
+          className="collectible-card__tilting-art evolution-card-inspection__button"
+          onClick={inspect}
+          type="button"
+        >
+          <CardArtwork card={card} showRarity />
+        </button>
+      </div>
+      {detailsOpen ? (
+        <CardPresentationDialog
+          card={card}
+          onClose={() => setDetailsOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }
 

@@ -241,6 +241,64 @@ for (const reducedMotion of [false, true]) {
       await expect(
         page.getByRole('button', { name: 'Close evolution' }),
       ).toBeFocused();
+      const targetDetailsTrigger = dialog.getByRole('button', {
+        name: 'View Quillume details',
+      });
+      await expect(dialog.getByLabel('Creature attributes')).toHaveCount(0);
+      if (width >= 768) {
+        await targetDetailsTrigger.hover({ position: { x: 35, y: 45 } });
+        await expect(targetDetailsTrigger).toHaveAttribute('data-hovered', '');
+        await expect(dialog.getByRole('complementary')).toHaveCount(0);
+        await targetDetailsTrigger.focus();
+        await page.keyboard.press('Enter');
+      } else {
+        await targetDetailsTrigger.click();
+      }
+      const targetDetailsDialog = page.getByRole('dialog', {
+        name: 'Quillume',
+        exact: true,
+      });
+      await expect(targetDetailsDialog).toBeVisible();
+      await expect(
+        targetDetailsDialog.getByRole('heading', { name: 'Base stats' }),
+      ).toBeVisible();
+      await expect(
+        targetDetailsDialog.getByText('HP', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        targetDetailsDialog.getByText('Power', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        targetDetailsDialog.getByText('Knowledge Surge'),
+      ).toBeVisible();
+      await expect(
+        targetDetailsDialog.getByRole('button', {
+          name: 'Close Quillume details',
+        }),
+      ).toBeFocused();
+      await targetDetailsDialog.evaluate((element) =>
+        Promise.all(
+          element.getAnimations().map((animation) => animation.finished),
+        ),
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(`target-full-details-${width}.png`),
+      });
+      await page.keyboard.press('Tab');
+      await expect(
+        targetDetailsDialog.locator('.trade-card-detail__body'),
+      ).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(
+        targetDetailsDialog.getByRole('button', {
+          name: width >= 768 ? 'Close Quillume details' : 'Close card sheet',
+        }),
+      ).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(targetDetailsDialog).not.toBeVisible();
+      await expect(dialog).toBeVisible();
+      await expect(targetDetailsTrigger).toBeFocused();
+      await page.getByRole('button', { name: 'Close evolution' }).focus();
       const composition = await dialog
         .getByLabel('Evolution preview')
         .evaluate((element) => {

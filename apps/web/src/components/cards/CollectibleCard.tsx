@@ -14,6 +14,7 @@ import { useCardTilt } from './useCardTilt';
 
 interface CollectibleCardProps {
   actions?: ReactNode;
+  artwork?: ReactNode;
   card: CardPresentation | OwnedCard;
   compact?: boolean;
   copyNumber?: number;
@@ -22,6 +23,7 @@ interface CollectibleCardProps {
   ownedCopies?: readonly OwnedCard[];
   showOwnership?: boolean;
   showDetails?: boolean;
+  showStats?: boolean;
 }
 
 interface CardThumbnailProps {
@@ -77,6 +79,7 @@ export function CardThumbnail({
 
 export function CollectibleCard({
   actions,
+  artwork,
   card,
   compact = false,
   copyNumber = 1,
@@ -85,6 +88,7 @@ export function CollectibleCard({
   ownedCopies,
   showOwnership = true,
   showDetails = true,
+  showStats = true,
 }: CollectibleCardProps) {
   const titleId = `card-${'ownedCardId' in card ? card.ownedCardId : card.cardDefinitionId}-title`;
   const Heading: 'h2' | 'h3' | 'h4' =
@@ -97,7 +101,7 @@ export function CollectibleCard({
       aria-labelledby={titleId}
       className={`collectible-card collectible-card--${card.rarity}${compact ? ' collectible-card--compact' : ''}`}
     >
-      <CardArtwork card={card} showRarity />
+      {artwork ?? <CardArtwork card={card} showRarity />}
 
       <div className="collectible-card__body">
         <div className="collectible-card__heading">
@@ -122,6 +126,7 @@ export function CollectibleCard({
         ) : null}
 
         {!compact &&
+        showStats &&
         card.category === 'creature' &&
         (card.hp !== null || card.power !== null) ? (
           <dl
