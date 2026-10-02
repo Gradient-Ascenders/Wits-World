@@ -57,7 +57,7 @@ test('centres Player Battles in the shared page loading layout', async ({
     page.getByRole('heading', { name: 'Loading Player Battles' }),
   ).toBeVisible();
   await expect(page.locator('.page-loading-state')).toContainText(
-    'Checking whose turn it is and which challenges need a response…',
+    'Checking battles and challenges…',
   );
   await expect(
     page.getByRole('navigation', { name: 'Player battle sections' }),
@@ -75,8 +75,17 @@ test('centres Player Battles in the shared page loading layout', async ({
 
   releaseLoad();
   await expect(
-    page.getByRole('button', { name: 'Challenge a player' }),
+    page.getByRole('button', { name: 'Close challenge' }),
   ).toBeVisible();
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1024 });
+    await expect(page.getByLabel('Player name')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      fullPage: true,
+      path: path.join(screenshotsDirectory, `${width}-pvp-empty-full.png`),
+    });
+  }
 });
 
 async function expectPageLoaderCentred(page: Page) {
@@ -306,8 +315,10 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
 
   for (const viewport of [
     { height: 844, label: '390', width: 390 },
+    { height: 1024, label: '768', width: 768 },
     { height: 800, label: '1440', width: 1440 },
   ]) {
+    const previousCancellationRequests = cancellationRequests;
     sentInvitation = pvpInvitation({
       direction: 'outgoing',
       invitationId: uuid(2102),
@@ -332,13 +343,30 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     await expect(
       page.getByRole('heading', { name: 'Active Player Battles' }),
     ).toBeVisible();
+    for (const tab of await page.getByRole('tab').all()) {
+      await expect(tab.locator('svg')).toBeVisible();
+    }
     await expectNoHorizontalOverflow(page);
     await page.locator('.pvp-hub').screenshot({
       path: path.join(screenshotsDirectory, `${viewport.label}-pvp-hub.png`),
       style: '.skip-link, .primary-navigation { display: none !important; }',
     });
+    await page.screenshot({
+      fullPage: true,
+      path: path.join(
+        screenshotsDirectory,
+        `${viewport.label}-pvp-active-full.png`,
+      ),
+    });
 
     await page.getByRole('tab', { name: 'Invitations 1' }).click();
+    await page.screenshot({
+      fullPage: true,
+      path: path.join(
+        screenshotsDirectory,
+        `${viewport.label}-pvp-invitations-full.png`,
+      ),
+    });
     await page
       .getByRole('button', { name: 'Cancel challenge to wits_wanderer' })
       .click();
@@ -350,15 +378,13 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
       });
     }
     await page.getByRole('button', { name: 'Confirm cancellation' }).dblclick();
-    await expect(
-      page.getByText('You cancelled this invitation.'),
-    ).toBeVisible();
+    await expect(page.getByText('You cancelled this challenge.')).toBeVisible();
     await expect(
       page.getByRole('button', {
         name: 'Cancel challenge to wits_wanderer',
       }),
     ).toHaveCount(0);
-    expect(cancellationRequests).toBe(viewport.label === '390' ? 1 : 2);
+    expect(cancellationRequests).toBe(previousCancellationRequests + 1);
     await expectNoHorizontalOverflow(page);
     if (viewport.label === '390') {
       await page.locator('.pvp-hub').screenshot({
@@ -367,19 +393,35 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
       });
     }
 
-    if (viewport.label === '390') {
+    if (viewport.label !== '768') {
       await page.getByRole('button', { name: 'Challenge a player' }).click();
       await expect(
-        page.getByRole('heading', { name: 'Challenge a player' }),
+        page.getByRole('heading', { name: 'New challenge' }),
       ).toBeVisible();
       await expect(
-        page.getByText(
-          /account details, location, decks, and activity stay private/i,
-        ),
+        page.getByText(/Account details stay private/i),
       ).toBeVisible();
       await expectNoHorizontalOverflow(page);
+      await page.getByLabel('Player name').fill('wits_wanderer');
+      await page.getByRole('button', { name: 'Find player' }).click();
+      await page.getByLabel('Deck').selectOption(deck.deckId);
+      await page.getByLabel(new RegExp(deck.cards[0]!.name)).check();
+      await expect(
+        page.getByRole('button', { name: 'Send challenge' }),
+      ).toBeEnabled();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        fullPage: true,
+        path: path.join(
+          screenshotsDirectory,
+          `${viewport.label}-pvp-challenge-full.png`,
+        ),
+      });
       await page.locator('.pvp-hub').screenshot({
-        path: path.join(screenshotsDirectory, '390-pvp-challenge.png'),
+        path: path.join(
+          screenshotsDirectory,
+          `${viewport.label}-pvp-challenge.png`,
+        ),
         style: '.skip-link, .primary-navigation { display: none !important; }',
       });
       await page.getByRole('button', { name: 'Close challenge' }).click();

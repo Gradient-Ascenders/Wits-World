@@ -150,7 +150,7 @@ The interface feels adventurous and scholarly. Deep Night Sky surfaces establish
 
 The system uses clear controls and crafted rewards. Common panels, forms, and navigation share restrained geometry and readable spacing. Collectible card frames carry the dense celestial academic metalwork, with material and engraving changes for rarity. The approved Campus Seal and W/star marks anchor the identity. This record describes the existing React interface in `src/styles/`, page styles, and assets; it does not prescribe a new visual direction.
 
-Live Ranked is an approved scoped extension of this identity. Its competitive entry uses a compact Live Ranked label beside the tabs, a plain Night Sky stage with a thin gold border, and the active deck’s actual card faces. This treatment belongs to `/matches/live`; the shared campus chrome and other surfaces retain their established rules. The surface contract and approved `duel-table-v3.png` carry the page composition; final pixel-fidelity review remains pending.
+Live Ranked is an approved scoped extension of this identity. Its competitive entry uses a compact Live Ranked label beside the tabs, a plain Night Sky stage with a thin gold border, and the active deck’s actual card faces. Both battle lobbies use Collection-style icon-and-label tabs with ivory selected text and a short gold underline. `/matches/pvp` has its own open inbox composition: a full serif page title, challenge action, separate tab row, and divided battle lists. The shared campus chrome and other surfaces retain their established rules. The Live Ranked surface contract and approved `duel-table-v3.png` carry that page's composition; final pixel-fidelity review remains pending.
 
 **Key Characteristics:**
 
@@ -158,7 +158,7 @@ Live Ranked is an approved scoped extension of this identity. Its competitive en
 - Serif display headings paired with compact sans-serif controls and comfortable body copy.
 - Mobile navigation and task panels built around touch, safe areas, and visible state.
 - Ambient panel depth; ornate finish reserved for collectible rewards.
-- A plain competitive stage, compact mode label, and interactive active-deck preview scoped to Live Ranked.
+- Collection-style tabs connect the battle lobbies; Live Ranked's competitive stage and deck preview remain distinct from the open Player Battles inbox.
 
 ## Colors
 
@@ -271,6 +271,14 @@ Player navigation uses icon and text labels. The current item receives gold text
 
 Small pill badges use colored text and faint matching fill for active, upcoming, ended, and informational states. They remain readable as text without depending on color.
 
+### Player Battles lobby
+
+`/matches/pvp` uses an open `64rem` inbox with a full serif page title, a compact turn-window hint, and the challenge action in its header. Active, Invitations, and History sit on a separate tab row beneath that header. Their icons, label weight, ivory active text, and inset gold underline match Collection; zero counts remain accessible without visual clutter. Section headings, controls, player names, and status use the shared body face. Battle and invitation records use divided rows with textual status, without an enclosing stage or decorative side borders. Received and sent invitations form two columns on wide screens and stack on mobile. Confirmed challenge setup places lookup beside deck and starting-creature selection on wide screens, keeping the original linear order on mobile.
+
+When there are no active battles or pending invitations in either direction, challenge setup opens on arrival. Otherwise the existing priority remains: your turn, received challenges, then waiting battles. Exact Player Name lookup precedes deck and starting-creature selection, ending in a full-width Send challenge control. A confirmed send closes setup and selects Invitations. Tab selection closes setup without clearing draft choices. Polling does not override the player's chosen view. Server validation, exact owned-card identity, safe retry IDs, pagination, cancellation confirmation, and recovery remain authoritative.
+
+Tab headings remain available to screen readers without repeating the selected tab visually. Challenge setup uses short labels and one exact-name privacy hint. Invitation rows omit repeated direction labels and creation times, keeping the expiry or latest update. Errors state the problem and recovery action once; safe retries and irreversible cancellation remain explicit.
+
 ### Live Ranked stage and deck fan
 
 The stage groups the current season, real season record and rating, selected deck, and ranked search action. Play, Standings, and Watch remain semantic tabs. The card fan resolves the selected deck’s exact owned-card IDs through the owned-card collection, ordered by deck position. It uses shared `CardThumbnail` artwork and rarity frames without visible nameplates. Card names remain in accessible button labels and the details dialog. Hover lifts and tilts a card; keyboard focus raises it above overlapping neighbors. Click, tap, or Enter opens the shared `CardPresentationDialog` with authoritative stats and rules, Escape closes it, and focus returns to the card. Collection loading and failure do not block matchmaking or packaged artwork: the deck summary’s exact card definition IDs resolve approved manifest images immediately, using eager, high-priority responsive sources sized for the fan. Unknown definitions retain named fallback frames. Collection responses supply the authoritative image URLs and full details when ready, and failed details can be retried.
@@ -289,7 +297,7 @@ Only a current, matching, loaded server profile supplies season wins, losses, ra
 - **Do** retain the Campus Seal and the current icon-and-label navigation language.
 - **Do** pair state colors with words or icons and maintain the bright visible focus treatment.
 - **Do** use the shared spacing and radius steps before adding local values.
-- **Do** keep the Live Ranked display face, plain stage, and responsive tall variants scoped to that surface.
+- **Do** share the Collection-style icon tabs across the battle lobbies while keeping their compositions distinct; keep Live Ranked's stage, deck fan, and responsive tall variants scoped to that surface.
 - **Do** preserve authoritative records, recovery controls, and reduced-motion behavior in ranked presentation.
 
 ### Don't:

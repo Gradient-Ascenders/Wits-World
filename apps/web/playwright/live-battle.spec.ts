@@ -492,6 +492,10 @@ test('presents the active season, personal record, standings, and territory opti
   for (const width of [1440, 768, 390, 825]) {
     await page.setViewportSize({ height: width === 825 ? 1905 : 900, width });
     await page.goto('/matches/live');
+    await expect(page.getByRole('tab')).toHaveCount(3);
+    for (const tab of await page.getByRole('tab').all()) {
+      await expect(tab.locator('svg')).toBeVisible();
+    }
     await expect(
       page.getByRole('heading', { name: 'Braamfontein Test Season' }),
     ).toBeVisible();

@@ -3,9 +3,12 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChartBar,
   ClockCountdown,
+  Eye,
   Lightning,
   MapPin,
+  Sword,
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
@@ -59,6 +62,7 @@ import {
 import '../components/cards/cards.css';
 
 import './matches.css';
+import '../components/SectionTabs.css';
 
 type LobbyState =
   | { status: 'loading' }
@@ -707,16 +711,19 @@ export default function LiveLobbyPage({
         </h1>
         <div
           aria-label="Live Ranked views"
-          className="live-lobby__tabs"
+          className="live-lobby__tabs section-tabs"
           role="tablist"
         >
           {lobbyTabs.map((tab, index) => {
             const selected = activeTab === tab.id;
+            const Icon = { play: Sword, standings: ChartBar, watch: Eye }[
+              tab.id
+            ];
             return (
               <button
                 aria-controls={`live-panel-${tab.id}`}
                 aria-selected={selected}
-                className="live-lobby__tab"
+                className="live-lobby__tab section-tabs__tab"
                 id={`live-tab-${tab.id}`}
                 key={tab.id}
                 onClick={() => selectTab(tab.id)}
@@ -728,6 +735,7 @@ export default function LiveLobbyPage({
                 tabIndex={selected ? 0 : -1}
                 type="button"
               >
+                <Icon aria-hidden="true" size={18} />
                 {tab.label}
               </button>
             );

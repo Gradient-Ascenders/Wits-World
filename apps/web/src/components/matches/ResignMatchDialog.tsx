@@ -55,16 +55,16 @@ export function ResignMatchDialog({
         role="alertdialog"
         tabIndex={-1}
       >
-        <p className="eyebrow">
-          {cancellation ? 'Cancel invitation' : 'Permanent battle result'}
-        </p>
+        {cancellation ? null : (
+          <p className="eyebrow">Permanent battle result</p>
+        )}
         <h2 id={titleId}>
           {cancellation ? 'Cancel this challenge?' : 'Forfeit this battle?'}
         </h2>
         <div id={descriptionId}>
           <p>
             {cancellation
-              ? `Cancel your pending challenge to ${opponentLabel}? This cannot be undone. No match result will be recorded.`
+              ? `Cancels your challenge to ${opponentLabel}. This can’t be undone. No battle result is recorded.`
               : `Forfeiting immediately records a loss for you and a win for ${opponentLabel}. This result cannot be undone.`}
           </p>
         </div>

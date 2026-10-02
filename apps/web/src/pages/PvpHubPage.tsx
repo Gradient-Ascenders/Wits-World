@@ -1,7 +1,13 @@
 import { createAppDateTimeFormatter } from '../date-time';
 import { StateIcon } from '../components/StatusMessage';
 import { PageLoadingState } from '../components/LoadingState';
-import { ArrowLeft } from '@phosphor-icons/react';
+import {
+  ArrowLeft,
+  Clock,
+  ClockCounterClockwise,
+  EnvelopeSimple,
+  Sword,
+} from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   useCallback,
@@ -33,6 +39,7 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
 import './matches.css';
+import '../components/SectionTabs.css';
 
 interface HubCollections {
   active: PvpMatchSummary[];
@@ -165,6 +172,11 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           setState({ data, status: 'ready' });
           if (!hasChosenInitialSection.current) {
             setSelectedSection(priorityPlayerBattleSection(data));
+            setChallengeOpen(
+              data.active.length === 0 &&
+                !data.incoming.some(isPending) &&
+                !data.outgoing.some(isPending),
+            );
             hasChosenInitialSection.current = true;
           }
         }
@@ -329,7 +341,6 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       });
       if (!controller.signal.aborted) {
         setFoundPlayer(result);
-        setNotice(`Player Name ${result} is available to challenge.`);
       }
     } catch (error) {
       if (!controller.signal.aborted) setActionError(toPvpError(error));
@@ -376,6 +387,8 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         setPlayerName('');
         setChallengeChoice({ deckId: '', initialCreatureId: '' });
         setNotice(`Challenge sent to ${invitation.opponent.playerName}.`);
+        setChallengeOpen(false);
+        setSelectedSection('invitations');
         await pollHub();
       }
     } catch (error) {
@@ -564,7 +577,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         >
           <StateIcon tone="error" />
           <h1 ref={resultHeading} tabIndex={-1}>
-            Player Battles could not load
+            Couldn’t load Player Battles
           </h1>
           <p>{errorMessage(state.error.failure)}</p>
           <div className="match-state-actions">
@@ -590,7 +603,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             </Link>
           </div>
           {reauthFailed ? (
-            <p role="alert">Sign-in could not start. Please try again.</p>
+            <p role="alert">Couldn’t start sign-in. Try again.</p>
           ) : null}
         </section>
       </div>
@@ -598,7 +611,6 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   }
 
   const { data } = state;
-  const priorityMatch = prioritizeActiveMatches(data.active)[0] ?? null;
   return (
     <div className="matches-page pvp-hub">
       {cancellationTarget ? (
@@ -611,296 +623,282 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           onConfirm={() => void cancelInvitation(cancellationTarget)}
         />
       ) : null}
-      <header className="matches-page__header pvp-lobby-header">
-        <Link
-          aria-label="Back to Battles"
-          className="text-link pvp-lobby-header__back"
-          href="/matches"
-        >
-          <ArrowLeft size={20} aria-hidden="true" /> Battles
-        </Link>
-        <div className="pvp-lobby-header__main">
-          <div>
-            <h1 ref={resultHeading} tabIndex={-1}>
-              Player Battles
-            </h1>
-            <p className="lead">
-              Take your turn, respond to a challenge, or start a battle. Each
-              turn stays open for up to 24 hours.
-            </p>
-          </div>
-          <div className="pvp-lobby-header__actions">
-            {priorityMatch?.currentActor === 'self' ? (
-              <Link
-                className="button"
-                href={`/matches/pvp/${priorityMatch.matchId}`}
-              >
-                Continue your turn
-              </Link>
-            ) : null}
-            <button
-              aria-controls="challenge-player-panel"
-              aria-expanded={challengeOpen}
-              className={`button${priorityMatch?.currentActor === 'self' ? ' button--quiet' : ''}`}
-              onClick={() => setChallengeOpen((open) => !open)}
-              type="button"
-            >
-              {challengeOpen ? 'Close challenge' : 'Challenge a player'}
-            </button>
-          </div>
+      <Link
+        aria-label="Back to Battles"
+        className="battle-back-link"
+        href="/matches"
+      >
+        <ArrowLeft size={20} aria-hidden="true" /> Battles
+      </Link>
+      <header className="pvp-lobby-header">
+        <div>
+          <h1 ref={resultHeading} tabIndex={-1}>
+            Player Battles
+          </h1>
+          <p>
+            <Clock size={18} aria-hidden="true" /> Up to 24 hours per turn
+          </p>
         </div>
+        <button
+          aria-controls="challenge-player-panel"
+          aria-expanded={challengeOpen}
+          className={`button${challengeOpen || data.active.some((match) => match.currentActor === 'self') ? ' button--quiet' : ''}`}
+          onClick={() => setChallengeOpen((open) => !open)}
+          type="button"
+        >
+          {challengeOpen ? 'Close challenge' : 'Challenge a player'}
+        </button>
       </header>
-
       <PlayerBattleTabs
         counts={{
           active: data.active.length,
           history: data.history.length,
           invitations: data.incoming.filter(isPending).length,
         }}
-        onSelect={setSelectedSection}
+        onSelect={(section) => {
+          setSelectedSection(section);
+          setChallengeOpen(false);
+        }}
         selected={selectedSection}
       />
 
-      {pollWarning ? (
-        <div className="pvp-poll-warning" role="status">
-          <span>
-            Automatic refresh paused after a connection problem. Your last
-            confirmed invitations and battles are still shown.
-          </span>
-          <button
-            className="button button--quiet"
-            disabled={refreshing}
-            aria-busy={refreshing}
-            onClick={() => void pollHub()}
-            type="button"
-          >
-            {refreshing ? 'Refreshing…' : 'Retry refresh'}
-          </button>
-        </div>
-      ) : null}
-
-      {notice ? (
-        <p aria-live="polite" className="pvp-notice" role="status">
-          {notice}
-        </p>
-      ) : null}
-      {actionError ? (
-        <div
-          className="match-inline-alert state-message state-message--error"
-          ref={actionAlert}
-          role="alert"
-          tabIndex={-1}
-        >
-          <StateIcon tone="error" />
-          <strong>
-            {actionErrorContext === 'cancellation'
-              ? 'Cancellation not confirmed.'
-              : 'That request was not completed.'}
-          </strong>{' '}
-          {errorMessage(actionError.failure, actionErrorContext)}
-          {actionError.options.ambiguous
-            ? actionErrorContext === 'cancellation'
-              ? ' If the challenge is still pending, retrying uses the same request so it cannot be cancelled twice.'
-              : ' Retrying uses the same request so the server cannot apply it twice.'
-            : ''}
-        </div>
-      ) : null}
-
-      <section
-        aria-labelledby="challenge-player-title"
-        className="pvp-challenge-panel"
-        hidden={!challengeOpen}
-        id="challenge-player-panel"
-      >
-        <div className="pvp-section-heading">
-          <h2 id="challenge-player-title">Challenge a player</h2>
-        </div>
-        <form
-          className="pvp-search-form"
-          onSubmit={(event) => void searchPlayer(event)}
-        >
-          <label htmlFor="pvp-player-name">Exact Player Name</label>
-          <div>
-            <input
-              autoComplete="off"
-              id="pvp-player-name"
-              maxLength={20}
-              minLength={3}
-              onChange={(event) => {
-                setPlayerName(event.target.value);
-                setFoundPlayer(null);
-                challengeAttempt.current = null;
-              }}
-              required
-              value={playerName}
-            />
+      <div className="pvp-lobby-content">
+        {pollWarning ? (
+          <div className="pvp-poll-warning" role="status">
+            <span>Refresh paused. Showing the last confirmed updates.</span>
             <button
-              className="button"
-              disabled={searching || pendingOperation !== null}
-              type="submit"
+              className="button button--quiet"
+              disabled={refreshing}
+              aria-busy={refreshing}
+              onClick={() => void pollHub()}
+              type="button"
             >
-              {searching ? 'Searching…' : 'Find player'}
+              {refreshing ? 'Refreshing…' : 'Retry refresh'}
             </button>
           </div>
-          <small>
-            Search by exact Player Name. Email, account details, location,
-            decks, and activity stay private.
-          </small>
-        </form>
+        ) : null}
 
-        {foundPlayer ? (
-          <form
-            className="pvp-challenge-form"
-            onSubmit={(event) => void sendChallenge(event)}
+        {notice ? (
+          <p aria-live="polite" className="pvp-notice" role="status">
+            {notice}
+          </p>
+        ) : null}
+        {actionError ? (
+          <div
+            className="match-inline-alert state-message state-message--error"
+            ref={actionAlert}
+            role="alert"
+            tabIndex={-1}
           >
-            <p>
-              <strong>{foundPlayer}</strong> is available to challenge.
-            </p>
-            <DeckCreaturePicker
-              choice={challengeChoice}
-              decks={data.decks}
-              disabled={pendingOperation !== null}
-              idPrefix="challenge"
-              onChange={(choice) => {
-                setChallengeChoice(choice);
-                challengeAttempt.current = null;
-              }}
-            />
-            <button
-              className="button"
-              disabled={
-                !isChoiceComplete(challengeChoice) || pendingOperation !== null
-              }
-              type="submit"
-            >
-              {pendingOperation === 'challenge'
-                ? 'Sending challenge…'
-                : actionError?.options.ambiguous
-                  ? 'Retry challenge safely'
-                  : 'Send challenge'}
-            </button>
+            <StateIcon tone="error" />
+            {actionErrorContext === 'cancellation' ? (
+              <strong>Cancellation not confirmed. </strong>
+            ) : null}
+            {errorMessage(actionError.failure, actionErrorContext)}
+            {actionError.options.ambiguous ? ' You can retry safely.' : ''}
+          </div>
+        ) : null}
+
+        <section
+          aria-labelledby="challenge-player-title"
+          className="pvp-challenge-panel"
+          hidden={!challengeOpen}
+          id="challenge-player-panel"
+        >
+          <div className="pvp-section-heading">
+            <h2 id="challenge-player-title">New challenge</h2>
+          </div>
+          <form
+            className="pvp-search-form"
+            onSubmit={(event) => void searchPlayer(event)}
+          >
+            <label htmlFor="pvp-player-name">Player name</label>
+            <div>
+              <input
+                autoComplete="off"
+                aria-describedby="pvp-player-name-hint"
+                id="pvp-player-name"
+                maxLength={20}
+                minLength={3}
+                onChange={(event) => {
+                  setPlayerName(event.target.value);
+                  setFoundPlayer(null);
+                  challengeAttempt.current = null;
+                }}
+                required
+                value={playerName}
+              />
+              <button
+                className="button"
+                disabled={searching || pendingOperation !== null}
+                type="submit"
+              >
+                {searching ? 'Searching…' : 'Find player'}
+              </button>
+            </div>
+            <small id="pvp-player-name-hint">
+              Use the exact name. Account details stay private.
+            </small>
           </form>
-        ) : null}
-      </section>
 
-      <section
-        aria-labelledby="invitations-tab"
-        className="pvp-tab-panel"
-        hidden={selectedSection !== 'invitations'}
-        id="invitations-panel"
-        role="tabpanel"
-        tabIndex={selectedSection === 'invitations' ? 0 : -1}
-      >
-        <h2>Invitations</h2>
-        <div className="pvp-invitation-columns">
-          <InvitationList
-            acceptChoices={acceptChoices}
-            decks={data.decks}
-            direction="incoming"
-            invitations={withoutCompletedMatches(data.incoming, data.history)}
-            hasMore={data.incomingNextCursor !== null}
-            loadingMore={loadingMore === 'incoming'}
-            onAccept={(invitation) => void acceptInvitation(invitation)}
-            onChoice={(invitationId, choice) => {
-              setAcceptChoices((current) => ({
-                ...current,
-                [invitationId]: choice,
-              }));
-              delete acceptAttempts.current[invitationId];
-            }}
-            onDecline={(invitation) => void declineInvitation(invitation)}
-            onCancel={() => undefined}
-            hasCancelAttempt={() => false}
-            onLoadMore={() => void loadMore('incoming')}
-            pendingOperation={pendingOperation}
-          />
-          <InvitationList
-            acceptChoices={acceptChoices}
-            decks={data.decks}
-            direction="outgoing"
-            invitations={withoutCompletedMatches(data.outgoing, data.history)}
-            hasMore={data.outgoingNextCursor !== null}
-            loadingMore={loadingMore === 'outgoing'}
-            onAccept={() => undefined}
-            onChoice={() => undefined}
-            onDecline={() => undefined}
-            onCancel={(invitation) => {
-              cancellationTrigger.current =
-                document.activeElement instanceof HTMLButtonElement
-                  ? document.activeElement
-                  : null;
-              setCancellationTarget(invitation);
-            }}
-            hasCancelAttempt={(invitationId) =>
-              cancelAttempts.current[invitationId] !== undefined
-            }
-            onLoadMore={() => void loadMore('outgoing')}
-            pendingOperation={pendingOperation}
-          />
-        </div>
-      </section>
+          {foundPlayer ? (
+            <form
+              className="pvp-challenge-form"
+              onSubmit={(event) => void sendChallenge(event)}
+            >
+              <p aria-live="polite" role="status">
+                <strong>{foundPlayer}</strong> is ready to challenge.
+              </p>
+              <DeckCreaturePicker
+                choice={challengeChoice}
+                decks={data.decks}
+                disabled={pendingOperation !== null}
+                idPrefix="challenge"
+                onChange={(choice) => {
+                  setChallengeChoice(choice);
+                  challengeAttempt.current = null;
+                }}
+              />
+              <button
+                className="button"
+                disabled={
+                  !isChoiceComplete(challengeChoice) ||
+                  pendingOperation !== null
+                }
+                type="submit"
+              >
+                {pendingOperation === 'challenge'
+                  ? 'Sending challenge…'
+                  : actionError?.options.ambiguous
+                    ? 'Retry challenge'
+                    : 'Send challenge'}
+              </button>
+            </form>
+          ) : null}
+        </section>
 
-      <section
-        aria-labelledby="active-tab"
-        className="pvp-tab-panel"
-        hidden={selectedSection !== 'active'}
-        id="active-panel"
-        role="tabpanel"
-        tabIndex={selectedSection === 'active' ? 0 : -1}
-      >
-        <h2>Active Player Battles</h2>
-        {data.active.length === 0 ? (
-          <EmptyState title="No active player battles">
-            Accept an invitation to begin a match.
-          </EmptyState>
-        ) : (
-          <ol aria-label="Active player battles" className="pvp-match-list">
-            {prioritizeActiveMatches(data.active).map((match) => (
-              <li key={match.matchId}>
-                <ActivePvpSummary match={match} />
-              </li>
-            ))}
-          </ol>
-        )}
-        {data.activeNextCursor ? (
-          <LoadMoreButton
-            label="active matches"
-            loading={loadingMore === 'active'}
-            onClick={() => void loadMore('active')}
-          />
-        ) : null}
-      </section>
+        <section
+          aria-labelledby="invitations-tab"
+          className="pvp-tab-panel"
+          hidden={selectedSection !== 'invitations'}
+          id="invitations-panel"
+          role="tabpanel"
+          tabIndex={selectedSection === 'invitations' ? 0 : -1}
+        >
+          <h2 className="sr-only">Invitations</h2>
+          <div className="pvp-invitation-columns">
+            <InvitationList
+              acceptChoices={acceptChoices}
+              decks={data.decks}
+              direction="incoming"
+              invitations={withoutCompletedMatches(data.incoming, data.history)}
+              hasMore={data.incomingNextCursor !== null}
+              loadingMore={loadingMore === 'incoming'}
+              onAccept={(invitation) => void acceptInvitation(invitation)}
+              onChoice={(invitationId, choice) => {
+                setAcceptChoices((current) => ({
+                  ...current,
+                  [invitationId]: choice,
+                }));
+                delete acceptAttempts.current[invitationId];
+              }}
+              onDecline={(invitation) => void declineInvitation(invitation)}
+              onCancel={() => undefined}
+              hasCancelAttempt={() => false}
+              onLoadMore={() => void loadMore('incoming')}
+              pendingOperation={pendingOperation}
+            />
+            <InvitationList
+              acceptChoices={acceptChoices}
+              decks={data.decks}
+              direction="outgoing"
+              invitations={withoutCompletedMatches(data.outgoing, data.history)}
+              hasMore={data.outgoingNextCursor !== null}
+              loadingMore={loadingMore === 'outgoing'}
+              onAccept={() => undefined}
+              onChoice={() => undefined}
+              onDecline={() => undefined}
+              onCancel={(invitation) => {
+                cancellationTrigger.current =
+                  document.activeElement instanceof HTMLButtonElement
+                    ? document.activeElement
+                    : null;
+                setCancellationTarget(invitation);
+              }}
+              hasCancelAttempt={(invitationId) =>
+                cancelAttempts.current[invitationId] !== undefined
+              }
+              onLoadMore={() => void loadMore('outgoing')}
+              pendingOperation={pendingOperation}
+            />
+          </div>
+        </section>
 
-      <section
-        aria-labelledby="history-tab"
-        className="pvp-tab-panel"
-        hidden={selectedSection !== 'history'}
-        id="history-panel"
-        role="tabpanel"
-        tabIndex={selectedSection === 'history' ? 0 : -1}
-      >
-        <h2>Recent player battles</h2>
-        {data.history.length === 0 ? (
-          <EmptyState title="No completed player battles">
-            Completed wins, losses, and forfeits will appear here.
-          </EmptyState>
-        ) : (
-          <ol aria-label="Completed player battles" className="pvp-match-list">
-            {data.history.map((match) => (
-              <li key={match.matchId}>
-                <HistoryPvpSummary match={match} />
-              </li>
-            ))}
-          </ol>
-        )}
-        {data.historyNextCursor ? (
-          <LoadMoreButton
-            label="match history"
-            loading={loadingMore === 'history'}
-            onClick={() => void loadMore('history')}
-          />
-        ) : null}
-      </section>
+        <section
+          aria-labelledby="active-tab"
+          className="pvp-tab-panel"
+          hidden={selectedSection !== 'active'}
+          id="active-panel"
+          role="tabpanel"
+          tabIndex={selectedSection === 'active' ? 0 : -1}
+        >
+          <h2 className="sr-only">Active Player Battles</h2>
+          {data.active.length === 0 ? (
+            <EmptyState title="No active battles">
+              Send or accept a challenge to start.
+            </EmptyState>
+          ) : (
+            <ol aria-label="Active player battles" className="pvp-match-list">
+              {prioritizeActiveMatches(data.active).map((match) => (
+                <li key={match.matchId}>
+                  <ActivePvpSummary match={match} />
+                </li>
+              ))}
+            </ol>
+          )}
+          {data.activeNextCursor ? (
+            <LoadMoreButton
+              label="active matches"
+              loading={loadingMore === 'active'}
+              onClick={() => void loadMore('active')}
+            />
+          ) : null}
+        </section>
+
+        <section
+          aria-labelledby="history-tab"
+          className="pvp-tab-panel"
+          hidden={selectedSection !== 'history'}
+          id="history-panel"
+          role="tabpanel"
+          tabIndex={selectedSection === 'history' ? 0 : -1}
+        >
+          <h2 className="sr-only">Recent player battles</h2>
+          {data.history.length === 0 ? (
+            <EmptyState title="No completed battles">
+              Your results will appear here.
+            </EmptyState>
+          ) : (
+            <ol
+              aria-label="Completed player battles"
+              className="pvp-match-list"
+            >
+              {data.history.map((match) => (
+                <li key={match.matchId}>
+                  <HistoryPvpSummary match={match} />
+                </li>
+              ))}
+            </ol>
+          )}
+          {data.historyNextCursor ? (
+            <LoadMoreButton
+              label="match history"
+              loading={loadingMore === 'history'}
+              onClick={() => void loadMore('history')}
+            />
+          ) : null}
+        </section>
+      </div>
     </div>
   );
 }
@@ -909,7 +907,7 @@ function PlayerBattlesLoading() {
   return (
     <PageLoadingState
       title="Loading Player Battles"
-      description="Checking whose turn it is and which challenges need a response…"
+      description="Checking battles and challenges…"
     />
   );
 }
@@ -951,17 +949,22 @@ function PlayerBattleTabs({
   return (
     <div
       aria-label="Player battle sections"
-      className="pvp-section-tabs"
+      className="pvp-section-tabs section-tabs"
       role="tablist"
     >
       {playerBattleSections.map((section, index) => {
         const label = titleCase(section);
+        const Icon = {
+          active: Sword,
+          invitations: EnvelopeSimple,
+          history: ClockCounterClockwise,
+        }[section];
         const isSelected = selected === section;
         return (
           <button
             aria-controls={`${section}-panel`}
             aria-selected={isSelected}
-            className="pvp-section-tabs__tab"
+            className="pvp-section-tabs__tab section-tabs__tab"
             id={`${section}-tab`}
             key={section}
             onClick={() => onSelect(section)}
@@ -973,7 +976,15 @@ function PlayerBattleTabs({
             tabIndex={isSelected ? 0 : -1}
             type="button"
           >
-            {label} <span>{counts[section]}</span>
+            <Icon aria-hidden="true" size={18} />
+            {label}{' '}
+            <span
+              className={
+                counts[section] === 0 ? 'sr-only' : 'section-tabs__count'
+              }
+            >
+              {counts[section]}
+            </span>
           </button>
         );
       })}
@@ -1011,8 +1022,7 @@ function InvitationList({
   pendingOperation: string | null;
 }) {
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
-  const title =
-    direction === 'incoming' ? 'Received challenges' : 'Sent challenges';
+  const title = direction === 'incoming' ? 'Received' : 'Sent';
   return (
     <section
       aria-labelledby={`${direction}-invitations-title`}
@@ -1020,10 +1030,10 @@ function InvitationList({
     >
       <h3 id={`${direction}-invitations-title`}>{title}</h3>
       {invitations.length === 0 ? (
-        <p className="pvp-empty-state state-message state-message--empty">
+        <p className="pvp-empty-state">
           {direction === 'incoming'
-            ? 'No received challenges.'
-            : 'No sent challenges.'}
+            ? 'No challenges received.'
+            : 'No challenges sent.'}
         </p>
       ) : (
         <ol
@@ -1049,16 +1059,11 @@ function InvitationList({
                 <div className="pvp-invitation__heading">
                   <div className="pvp-invitation__player">
                     <strong>{invitation.opponent.playerName}</strong>
-                    <span>
-                      {direction === 'incoming'
-                        ? 'challenged you'
-                        : 'was challenged'}
-                    </span>
                   </div>
                   {direction === 'incoming' &&
                   invitation.status === 'pending' ? (
                     <div className="pvp-invitation__actions">
-                      <span className="pvp-status-label">Pending</span>
+                      <span className="sr-only">Pending</span>
                       <button
                         aria-controls={`response-${invitation.invitationId}`}
                         aria-expanded={respondingTo === invitation.invitationId}
@@ -1089,7 +1094,7 @@ function InvitationList({
                     invitation.status === 'pending' &&
                     invitation.canCancel ? (
                     <div className="pvp-invitation__actions">
-                      <span className="pvp-status-label">Pending response</span>
+                      <span className="pvp-status-label">Awaiting reply</span>
                       <button
                         aria-label={`Cancel challenge to ${invitation.opponent.playerName}`}
                         className="button button--danger button--quiet"
@@ -1100,7 +1105,7 @@ function InvitationList({
                         {cancelling
                           ? 'Cancelling…'
                           : hasCancelAttempt(invitation.invitationId)
-                            ? 'Retry cancellation safely'
+                            ? 'Retry cancellation'
                             : 'Cancel challenge'}
                       </button>
                     </div>
@@ -1108,16 +1113,12 @@ function InvitationList({
                     <span className="pvp-status-label">
                       {direction === 'outgoing' &&
                       invitation.status === 'pending'
-                        ? 'Pending response'
+                        ? 'Awaiting reply'
                         : invitationStatusLabel(invitation.status)}
                     </span>
                   )}
                 </div>
                 <dl className="pvp-summary-meta">
-                  <div>
-                    <dt>Sent</dt>
-                    <dd>{formatDate(invitation.createdAt)}</dd>
-                  </div>
                   <div>
                     <dt>
                       {invitation.status === 'pending' ? 'Expires' : 'Updated'}
@@ -1214,14 +1215,13 @@ function DeckCreaturePicker({
   if (decks.length === 0) {
     return (
       <p className="pvp-deck-empty">
-        A saved battle deck is required.{' '}
-        <Link href="/collection/decks">Create a deck</Link>.
+        <Link href="/collection/decks">Create a deck</Link> to play.
       </p>
     );
   }
   return (
     <div className="pvp-deck-picker">
-      <label htmlFor={`${idPrefix}-deck`}>Battle deck</label>
+      <label htmlFor={`${idPrefix}-deck`}>Deck</label>
       <select
         disabled={disabled}
         id={`${idPrefix}-deck`}
@@ -1230,7 +1230,7 @@ function DeckCreaturePicker({
         }
         value={choice.deckId}
       >
-        <option value="">Choose a saved deck</option>
+        <option value="">Select a deck</option>
         {decks.map((deck) => (
           <option key={deck.deckId} value={deck.deckId}>
             {deck.name} · {deck.totalPoints} points
@@ -1239,7 +1239,7 @@ function DeckCreaturePicker({
       </select>
       {selectedDeck ? (
         <fieldset>
-          <legend>Opening Creature</legend>
+          <legend>Starting creature</legend>
           <div className="pvp-creature-options">
             {creatures.map((card) => (
               <label key={card.ownedCardId}>
@@ -1264,10 +1264,6 @@ function DeckCreaturePicker({
               </label>
             ))}
           </div>
-          <small>
-            The API validates the saved deck and opening Creature again when you
-            submit.
-          </small>
         </fieldset>
       ) : null}
     </div>
@@ -1290,7 +1286,7 @@ function ActivePvpSummary({ match }: { match: PvpMatchSummary }) {
           </p>
         </div>
         <span className="pvp-status-label">
-          {match.currentActor === 'self' ? 'Your turn' : 'Waiting for opponent'}
+          {match.currentActor === 'self' ? 'Your turn' : 'Opponent’s turn'}
         </span>
       </div>
       <Link className="button" href={`/matches/pvp/${match.matchId}`}>
@@ -1327,8 +1323,7 @@ function HistoryPvpSummary({ match }: { match: PvpHistorySummary }) {
 
 function EmptyState({ children, title }: { children: string; title: string }) {
   return (
-    <div className="pvp-empty-state state-message state-message--empty">
-      <StateIcon tone="empty" />
+    <div className="pvp-empty-state">
       <h3>{title}</h3>
       <p>{children}</p>
     </div>
@@ -1347,11 +1342,12 @@ function LoadMoreButton({
   return (
     <button
       className="button button--quiet pvp-load-more"
+      aria-label={loading ? `Loading more ${label}` : `Load more ${label}`}
       disabled={loading}
       onClick={onClick}
       type="button"
     >
-      {loading ? `Loading more ${label}…` : `Load more ${label}`}
+      {loading ? 'Loading…' : 'Load more'}
     </button>
   );
 }
@@ -1469,24 +1465,23 @@ function invitationStatusExplanation(
 ) {
   if (invitation.status === 'accepted')
     return direction === 'incoming'
-      ? 'You accepted this challenge. The battle is ready.'
-      : `${invitation.opponent.playerName} accepted your challenge. The battle is ready.`;
+      ? 'You accepted this challenge.'
+      : `${invitation.opponent.playerName} accepted your challenge.`;
   if (invitation.status === 'declined')
     return direction === 'incoming'
       ? 'You declined this challenge.'
       : `${invitation.opponent.playerName} declined your challenge.`;
-  if (invitation.status === 'expired')
-    return 'This invitation expired before it was accepted.';
+  if (invitation.status === 'expired') return 'This invitation expired.';
   if (invitation.status === 'cancelled')
     return direction === 'outgoing'
-      ? 'You cancelled this invitation.'
-      : `This invitation was cancelled by ${invitation.opponent.playerName}.`;
-  return 'This invitation became unavailable after an account lifecycle change.';
+      ? 'You cancelled this challenge.'
+      : `${invitation.opponent.playerName} cancelled this challenge.`;
+  return 'This challenge is unavailable.';
 }
 
 function cancellationReconciliationMessage(invitation: PvpInvitation) {
   if (invitation.status === 'accepted')
-    return `Your challenge to ${invitation.opponent.playerName} was accepted before cancellation completed. Open the battle to continue.`;
+    return 'Your challenge was accepted before cancellation completed. Open the battle.';
   if (invitation.status === 'declined')
     return `${invitation.opponent.playerName} declined the challenge before cancellation completed.`;
   if (invitation.status === 'expired')
@@ -1495,7 +1490,7 @@ function cancellationReconciliationMessage(invitation: PvpInvitation) {
     return `Challenge to ${invitation.opponent.playerName} cancelled.`;
   if (invitation.status === 'invalidated')
     return 'The challenge became unavailable before cancellation completed.';
-  return 'The latest challenge status has been restored.';
+  return 'Challenge status updated.';
 }
 
 function completionReasonLabel(
@@ -1520,42 +1515,35 @@ function errorMessage(
   context: 'cancellation' | null = null,
 ) {
   if (context === 'cancellation') {
-    if (failure === 'authorization')
-      return 'Your session expired. Sign in again before trying to cancel.';
+    if (failure === 'authorization') return 'Session expired. Sign in again.';
     if (failure === 'stale')
-      return 'The invitation changed before cancellation completed. Its latest status was refreshed.';
+      return 'Challenge changed. Check its latest status.';
     if (failure === 'cancelled')
-      return 'The invitation was already cancelled. Its latest status was refreshed.';
+      return 'Already cancelled. Refresh to check its status.';
     if (failure === 'expired')
-      return 'The invitation expired before cancellation completed. Its latest status was refreshed.';
+      return 'Challenge expired. Refresh to check its status.';
     if (failure === 'invalidated')
-      return 'The invitation became unavailable before cancellation completed. Its latest status was refreshed.';
+      return 'Challenge unavailable. Refresh to check its status.';
     if (failure === 'not-found')
-      return 'This invitation is no longer available. Refresh Player Battles to check its latest status.';
-    return 'Check your connection. Your challenge is still available to retry.';
+      return 'Challenge unavailable. Refresh to check its status.';
+    return 'Check your connection and retry cancellation.';
   }
   const messages: Record<PvpApiFailure, string> = {
-    'already-pending':
-      'A pending invitation already exists between these players.',
-    authorization: 'Your session expired. Sign in again before continuing.',
-    completed: 'The battle is already complete. Open its saved result.',
-    cancelled: 'The invitation was cancelled before this response was applied.',
-    conflict:
-      'That choice no longer matches the action already sent. Refresh before trying again.',
-    'deck-invalid':
-      'That saved deck or opening Creature cannot enter this battle. Review the deck and choose again.',
-    expired: 'The invitation expired before it could be accepted.',
-    'illegal-action':
-      'That action is no longer available. Review the battle before choosing again.',
-    invalidated: 'The invitation is no longer available.',
-    'not-found': 'This player battle is not available to the signed-in player.',
+    'already-pending': 'You already have a pending challenge with this player.',
+    authorization: 'Session expired. Sign in again.',
+    completed: 'Battle complete. Open the result.',
+    cancelled: 'This challenge was cancelled.',
+    conflict: 'Your choices changed. Refresh and try again.',
+    'deck-invalid': 'Choose a valid deck and starting creature, then retry.',
+    expired: 'This invitation expired. Try another challenge.',
+    'illegal-action': 'Action unavailable. Check the battle and choose again.',
+    invalidated: 'This challenge is unavailable.',
+    'not-found': 'This battle or challenge is unavailable.',
     'player-unavailable':
-      'That Player Name is unavailable. Private account details remain hidden.',
-    stale:
-      'The battle changed before your choice arrived. Check the latest battle and try again.',
-    unavailable:
-      'Check your connection and retry. Your battle has not changed.',
-    validation: 'Check the submitted Player Name and choices, then try again.',
+      'Player unavailable. Check the exact name or try someone else.',
+    stale: 'Battle updated. Check it and try again.',
+    unavailable: 'Couldn’t connect. Check your connection and retry.',
+    validation: 'Check the player name, deck, and starting creature.',
   };
   return messages[failure];
 }

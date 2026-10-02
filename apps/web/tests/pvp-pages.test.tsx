@@ -121,9 +121,7 @@ describe('asynchronous player battle lobby', () => {
         name: 'Loading Player Battles',
       }),
     ).toBeVisible();
-    expect(loadingState).toHaveTextContent(
-      'Checking whose turn it is and which challenges need a response…',
-    );
+    expect(loadingState).toHaveTextContent('Checking battles and challenges…');
     expect(
       screen.queryByRole('navigation', { name: 'Player battle sections' }),
     ).toBeNull();
@@ -142,13 +140,13 @@ describe('asynchronous player battle lobby', () => {
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
 
     const challengeButton = await screen.findByRole('button', {
-      name: 'Challenge a player',
+      name: 'Close challenge',
     });
     const challengePanelId = challengeButton.getAttribute('aria-controls')!;
     const challengePanel = document.getElementById(challengePanelId)!;
     expect(challengePanel).not.toBeNull();
-    expect(challengeButton).toHaveAttribute('aria-expanded', 'false');
-    expect(challengePanel.hidden).toBe(true);
+    expect(challengeButton).toHaveAttribute('aria-expanded', 'true');
+    expect(challengePanel.hidden).toBe(false);
 
     const tabs = screen.getAllByRole('tab');
     expect(tabs).toHaveLength(3);
@@ -250,8 +248,8 @@ describe('asynchronous player battle lobby', () => {
       screen.getByRole('heading', { name: 'Active Player Battles' }),
     ).toBeVisible();
     expect(
-      screen.getByRole('link', { name: 'Continue your turn' }),
-    ).toHaveAttribute('href', `/matches/pvp/${PVP_MATCH_ID}`);
+      screen.queryByRole('link', { name: 'Continue your turn' }),
+    ).toBeNull();
     expect(
       screen.getByRole('link', { name: 'Take your turn' }),
     ).toHaveAttribute('href', `/matches/pvp/${PVP_MATCH_ID}`);
@@ -275,9 +273,9 @@ describe('asynchronous player battle lobby', () => {
     expect(within(sentList).getByText('Unavailable')).toBeVisible();
     expect(within(sentList).getByText('Accepted')).toBeVisible();
     expect(within(sentList).getByText('Cancelled')).toBeVisible();
-    expect(within(sentList).getAllByText('Pending response')).toHaveLength(2);
+    expect(within(sentList).getAllByText('Awaiting reply')).toHaveLength(2);
     expect(
-      within(sentList).getByText('You cancelled this invitation.'),
+      within(sentList).getByText('You cancelled this challenge.'),
     ).toBeVisible();
     expect(
       within(sentList).getByText(/accepted your challenge/i),
@@ -286,9 +284,7 @@ describe('asynchronous player battle lobby', () => {
       within(incomingList).getByText('You declined this challenge.'),
     ).toBeVisible();
     expect(
-      within(incomingList).getByText(
-        'This invitation expired before it was accepted.',
-      ),
+      within(incomingList).getByText('This invitation expired.'),
     ).toBeVisible();
     expect(
       within(sentList).queryByRole('button', {
@@ -354,8 +350,8 @@ describe('asynchronous player battle lobby', () => {
     await waitFor(() =>
       expect(screen.queryByRole('link', { name: 'Open match' })).toBeNull(),
     );
-    expect(screen.getByText('No received challenges.')).toBeVisible();
-    expect(screen.getByText('No sent challenges.')).toBeVisible();
+    expect(screen.getByText('No challenges received.')).toBeVisible();
+    expect(screen.getByText('No challenges sent.')).toBeVisible();
 
     await user.click(screen.getByRole('tab', { name: 'History 1' }));
     expect(screen.getByText('Your turn deadline expired')).toBeVisible();
@@ -430,19 +426,14 @@ describe('asynchronous player battle lobby', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
-    await user.click(
-      await screen.findByRole('button', { name: 'Challenge a player' }),
-    );
-    await screen.findByRole('heading', { name: 'Challenge a player' });
-    await user.type(
-      screen.getByLabelText('Exact Player Name'),
-      'wits_wanderer',
-    );
+    await screen.findByRole('heading', { name: 'New challenge' });
+    await user.type(screen.getByLabelText('Player name'), 'wits_wanderer');
     await user.click(screen.getByRole('button', { name: 'Find player' }));
-    expect(
-      await screen.findAllByText(/is available to challenge/),
-    ).toHaveLength(2);
-    await user.selectOptions(screen.getByLabelText('Battle deck'), deck.deckId);
+    expect(await screen.findAllByText(/is ready to challenge/)).toHaveLength(1);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'wits_wanderer is ready to challenge.',
+    );
+    await user.selectOptions(screen.getByLabelText('Deck'), deck.deckId);
     await user.click(screen.getByLabelText(new RegExp(deck.cards[0]!.name)));
     await user.click(screen.getByRole('button', { name: 'Send challenge' }));
 
@@ -456,6 +447,14 @@ describe('asynchronous player battle lobby', () => {
     });
     expect(body).not.toHaveProperty('email');
     expect(body).not.toHaveProperty('winner');
+    expect(screen.getByRole('tab', { name: 'Invitations 0' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Challenge a player' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('Awaiting reply')).toBeVisible();
   });
 
   it('loads later invitation pages only after explicit cursor navigation', async () => {
@@ -509,9 +508,9 @@ describe('asynchronous player battle lobby', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
-    await screen.findByRole('heading', { name: 'Received challenges' });
+    await screen.findByRole('heading', { name: 'Received' });
     await user.click(screen.getByRole('button', { name: 'Accept' }));
-    await user.selectOptions(screen.getByLabelText('Battle deck'), deck.deckId);
+    await user.selectOptions(screen.getByLabelText('Deck'), deck.deckId);
     await user.click(screen.getByLabelText(new RegExp(deck.cards[0]!.name)));
     const accept = screen.getByRole('button', { name: 'Accept challenge' });
     await user.dblClick(accept);
@@ -627,7 +626,7 @@ describe('asynchronous player battle lobby', () => {
     expect(
       await screen.findByText('Challenge to wits_wanderer cancelled.'),
     ).toBeVisible();
-    expect(screen.getByText('You cancelled this invitation.')).toBeVisible();
+    expect(screen.getByText('You cancelled this challenge.')).toBeVisible();
     expect(
       screen.queryByRole('button', {
         name: 'Cancel challenge to wits_wanderer',
@@ -675,7 +674,7 @@ describe('asynchronous player battle lobby', () => {
     const retry = await screen.findByRole('button', {
       name: 'Cancel challenge to wits_wanderer',
     });
-    expect(retry).toHaveTextContent('Retry cancellation safely');
+    expect(retry).toHaveTextContent('Retry cancellation');
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(10));
 
     const firstBody = JSON.parse(String(fetchMock.mock.calls[5]![1]!.body));
@@ -683,7 +682,7 @@ describe('asynchronous player battle lobby', () => {
     await user.click(
       screen.getByRole('button', { name: 'Confirm cancellation' }),
     );
-    await screen.findByText('You cancelled this invitation.');
+    await screen.findByText('You cancelled this challenge.');
     const retryBody = JSON.parse(String(fetchMock.mock.calls[10]![1]!.body));
     expect(retryBody).toEqual(firstBody);
   });
