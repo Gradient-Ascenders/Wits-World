@@ -43,6 +43,14 @@ test('trading journey is focused, responsive, and server-owned', async ({
   const consoleErrors: string[] = [];
   const runtimeErrors: string[] = [];
   let inboxState: 'populated' | 'empty' | 'paged' | 'error' = 'populated';
+  let catalogueArtwork: 'ready' | 'missing' | 'empty' = 'ready';
+  let currentTrade = tradeView();
+  const revisions: Array<{
+    expectedVersion: number;
+    offeredOwnedCardIds: string[];
+    requestedDefinitions: { cardDefinitionId: string; quantity: number }[];
+    submissionId: string;
+  }> = [];
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
@@ -67,11 +75,21 @@ test('trading journey is focused, responsive, and server-owned', async ({
     }
     if (pathname.endsWith('/cards/trading-catalogue')) {
       return json(route, {
-        definitions: CARD_FIXTURES.map((_, index) =>
-          catalogueDefinition(index),
-        ),
+        definitions:
+          catalogueArtwork === 'empty'
+            ? []
+            : CARD_FIXTURES.map((_, index) => ({
+                ...catalogueDefinition(index),
+                ...(catalogueArtwork === 'missing' ? { imageUrl: null } : {}),
+              })),
         requestId: 'fixture-catalogue',
       });
+    }
+    if (pathname.endsWith('/trades/recipient')) {
+      const name = new URL(request.url()).searchParams.get('playerName');
+      return name === 'other_player'
+        ? json(route, { playerName: name, requestId: 'fixture-recipient' })
+        : json(route, { code: 'TRADE_PLAYER_UNAVAILABLE' }, 404);
     }
     if (pathname.endsWith('/trades/selection-preview')) {
       const body = request.postDataJSON() as {
@@ -81,7 +99,37 @@ test('trading journey is focused, responsive, and server-owned', async ({
       return json(route, preview(body));
     }
     if (pathname.endsWith(`/trades/${TRADE_ID}`)) {
-      return json(route, { requestId: 'fixture-detail', trade: tradeView() });
+      if (request.method() === 'PUT') {
+        const body = request.postDataJSON() as (typeof revisions)[number];
+        revisions.push(body);
+        currentTrade = {
+          ...currentTrade,
+          version: currentTrade.version + 1,
+          complete: false,
+          self: {
+            ...currentTrade.self,
+            accepted: false,
+            imbalanceAcknowledged: false,
+            offeredCopies: body.offeredOwnedCardIds.map((ownedCardId) => ({
+              ...definition(),
+              ownedCardId,
+            })),
+            requestedDefinitions: body.requestedDefinitions.map(
+              (requested) => ({
+                ...definition(),
+                quantity: requested.quantity,
+              }),
+            ),
+            rarityPoints: body.offeredOwnedCardIds.length * 2,
+          },
+          counterparty: {
+            ...currentTrade.counterparty,
+            accepted: false,
+            imbalanceAcknowledged: false,
+          },
+        };
+      }
+      return json(route, { requestId: 'fixture-detail', trade: currentTrade });
     }
     if (pathname.endsWith('/trades') && request.method() === 'GET') {
       if (inboxState === 'error') {
@@ -255,17 +303,91 @@ test('trading journey is focused, responsive, and server-owned', async ({
 
   await page.getByRole('link', { name: 'Start a trade' }).click();
   await expect(
-    page.getByRole('heading', { name: 'Who do you want to trade with?' }),
+    page.getByRole('heading', { name: 'Start a trade' }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
     path: testInfo.outputPath('trade-recipient-mobile.png'),
   });
-  await page.getByRole('textbox', { name: 'Player Name' }).fill('other_player');
-  await page.getByRole('button', { name: 'Build trade' }).click();
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ height: 844, width });
+    await expectNoHorizontalOverflow(page);
+    const buttonBox = await page
+      .getByRole('button', { name: 'Choose cards' })
+      .boundingBox();
+    expect(buttonBox).not.toBeNull();
+    expect(buttonBox!.y + buttonBox!.height).toBeLessThan(844 - 72);
+    await expect(page.locator('.trade-entry-card')).toHaveCount(2);
+    await expect(
+      page.locator('.trade-recipient-entry__artwork button'),
+    ).toHaveCount(0);
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`trade-entry-${width}.png`),
+    });
+  }
+
+  const entranceCard = page.locator('.trade-entry-card__surface').first();
+  await entranceCard.hover();
+  await expect(entranceCard).toHaveAttribute('data-hovered', '');
+  await page.mouse.move(0, 0);
+  await expect(entranceCard).not.toHaveAttribute('data-hovered');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await entranceCard.hover();
+  await expect(entranceCard).not.toHaveAttribute('data-hovered');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.mouse.move(0, 0);
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  for (const artwork of ['missing', 'empty'] as const) {
+    catalogueArtwork = artwork;
+    await page.reload();
+    await expect(
+      page.getByRole('heading', { name: 'Start a trade' }),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    if (artwork === 'missing') {
+      await expect(
+        page.locator(
+          '.trade-recipient-entry__artwork .collectible-card__artwork-fallback',
+        ),
+      ).toHaveCount(2);
+    } else {
+      await expect(page.locator('.trade-entry-card')).toHaveCount(0);
+    }
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`trade-entry-${artwork}.png`),
+    });
+  }
+  catalogueArtwork = 'ready';
+  await page.reload();
   await expect(
-    page.getByRole('heading', { name: 'Build your offer' }),
+    page.getByRole('heading', { name: 'Start a trade' }),
+  ).toBeVisible();
+  const recipientInput = page.getByRole('textbox', { name: 'Player Name' });
+  await recipientInput.fill('fdfds');
+  await recipientInput.press('Enter');
+  await expect(page.getByRole('alert')).toContainText(
+    'That player is unavailable.',
+  );
+  await expect(
+    page.getByRole('heading', { name: 'Start a trade' }),
+  ).toBeVisible();
+  await expect(recipientInput).toHaveAttribute('aria-invalid', 'true');
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('trade-recipient-unavailable.png'),
+  });
+  expect(consoleErrors.filter((message) => !message.includes('404'))).toEqual(
+    [],
+  );
+  consoleErrors.length = 0;
+  await recipientInput.fill('other_player');
+  await page.getByRole('textbox', { name: 'Player Name' }).press('Enter');
+  await expect(
+    page.getByRole('heading', { name: 'Trade with other_player' }),
   ).toBeVisible();
   await expect(
     page.getByText(
@@ -279,7 +401,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
     name: 'Card types in your collection',
   });
   await expect(collection.getByRole('listitem')).toHaveCount(1);
-  await expect(collection).toContainText('10 owned · 10 tradable');
+  await expect(collection).toContainText('10 available');
   const mobileDetailsTrigger = collection.getByRole('button', {
     name: 'View Courier Ibis details',
   });
@@ -312,14 +434,14 @@ test('trading journey is focused, responsive, and server-owned', async ({
   await expect(addCopy).toBeVisible();
   await expectNoHorizontalOverflow(page);
   for (let index = 0; index < 5; index += 1) await addCopy.click();
-  await expect(collection).toContainText('5 selected');
+  await expect(collection.locator('output')).toHaveText('5');
   await clearFocus(page);
   await page.screenshot({
     fullPage: true,
     path: testInfo.outputPath('trade-copy-picker-mobile.png'),
   });
 
-  await page.getByRole('button', { name: /Active cards/ }).click();
+  await page.getByRole('button', { name: 'You request', exact: true }).click();
   const increment = page.getByRole('button', {
     name: 'Request one more Courier Ibis',
   });
@@ -335,7 +457,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
   await expect(page.getByText('Ready')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'You give' })).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'You receive' }),
+    page.getByRole('heading', { name: 'You request' }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await clearFocus(page);
@@ -346,28 +468,21 @@ test('trading journey is focused, responsive, and server-owned', async ({
 
   await page.setViewportSize({ height: 960, width: 1440 });
   await expect(
-    page.getByRole('heading', { name: 'kevin-tester9' }),
+    page.getByRole('heading', { name: 'Your collection' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'other_player' }),
+    page.getByRole('heading', { name: 'Card catalogue' }),
   ).toBeVisible();
-  const receiveLaneBox = await page
-    .locator('.trade-builder-lane--receive')
-    .boundingBox();
-  const exchangeMarkBox = await page
-    .locator('.trade-builder__exchange-mark')
-    .boundingBox();
   const giveLaneBox = await page
     .locator('.trade-builder-lane--give')
     .boundingBox();
-  expect(receiveLaneBox).not.toBeNull();
-  expect(exchangeMarkBox).not.toBeNull();
+  const requestLaneBox = await page
+    .locator('.trade-builder-lane--receive')
+    .boundingBox();
   expect(giveLaneBox).not.toBeNull();
-  expect(exchangeMarkBox!.y).toBeGreaterThanOrEqual(
-    receiveLaneBox!.y + receiveLaneBox!.height,
-  );
-  expect(exchangeMarkBox!.y + exchangeMarkBox!.height).toBeLessThanOrEqual(
-    giveLaneBox!.y,
+  expect(requestLaneBox).not.toBeNull();
+  expect(requestLaneBox!.y).toBeGreaterThanOrEqual(
+    giveLaneBox!.y + giveLaneBox!.height,
   );
   const desktopCardFrame = page
     .locator(
@@ -465,11 +580,6 @@ test('trading journey is focused, responsive, and server-owned', async ({
   const tradePanel = page.locator('.trade-builder__table');
   await expect(tradePanel).toHaveCSS('overflow-y', 'auto');
   await expect(tradePanel).toHaveCSS('scrollbar-gutter', 'stable');
-  expect(
-    await tradePanel.evaluate(
-      (element) => element.scrollHeight > element.clientHeight,
-    ),
-  ).toBe(true);
   const recipientScroll = page.locator(
     '.trade-builder__catalogue-panel--recipient .trade-builder__catalogue-scroll',
   );
@@ -480,6 +590,93 @@ test('trading journey is focused, responsive, and server-owned', async ({
   ).toBe(true);
   await expectNoHorizontalOverflow(page);
   await clearFocus(page);
+
+  for (const width of [320, 390, 490, 768, 1120, 1440]) {
+    const height = width === 490 ? 994 : width < 1120 ? 844 : 960;
+    await page.setViewportSize({ height, width });
+    await expectNoHorizontalOverflow(page);
+    if (width < 1120) {
+      const tray = page.locator('.trade-builder__center');
+      const trayBox = await tray.boundingBox();
+      expect(trayBox).not.toBeNull();
+      expect(trayBox!.y + trayBox!.height).toBeLessThanOrEqual(height - 72);
+      expect(trayBox!.height).toBeLessThanOrEqual(height * 0.36);
+      const giveHeading = tray.getByRole('heading', {
+        name: 'You give',
+        exact: true,
+      });
+      const requestHeading = tray.getByRole('heading', {
+        name: 'You request',
+        exact: true,
+      });
+      await expect(giveHeading).toBeInViewport();
+      await expect(requestHeading).toBeInViewport();
+      const giveBox = await giveHeading.boundingBox();
+      const requestBox = await requestHeading.boundingBox();
+      expect(Math.abs(giveBox!.y - requestBox!.y)).toBeLessThanOrEqual(2);
+      for (const strip of await tray
+        .locator('.trade-builder-selection-strip')
+        .all()) {
+        const thumbnails = await strip.locator('.trade-card-thumbnail').all();
+        for (const thumbnail of thumbnails) {
+          // Every selection stays readable; dense lanes scroll rather than shrink.
+          await thumbnail.scrollIntoViewIfNeeded();
+          await expect(thumbnail).toBeInViewport();
+          const cardBox = await thumbnail.boundingBox();
+          expect(cardBox!.width).toBeGreaterThanOrEqual(94);
+          const artBox = await thumbnail
+            .locator('.card-frame__window')
+            .boundingBox();
+          expect(artBox!.width).toBeGreaterThanOrEqual(78);
+          expect(artBox!.height).toBeGreaterThanOrEqual(78);
+          await expect(thumbnail.locator('.card-frame__rail')).toBeVisible();
+        }
+        await expect(
+          strip.locator('.trade-builder-selection-strip__name').first(),
+        ).toBeVisible();
+        await strip.evaluate((el) => {
+          el.scrollLeft = 0;
+        });
+      }
+      const requestedStrip = tray.getByRole('list', {
+        name: 'You request selected cards',
+      });
+      const scrollable = await requestedStrip.evaluate(
+        (el) => el.scrollWidth > el.clientWidth,
+      );
+      if (width <= 490) expect(scrollable).toBe(true);
+      // A selected card at the end of a dense lane remains inspectable.
+      const lastCard = requestedStrip.getByRole('button', {
+        name: 'View Axiomar details',
+      });
+      await lastCard.click();
+      const selectedDetails = page.getByRole('dialog', { name: 'Axiomar' });
+      await expect(selectedDetails).toBeVisible();
+      await selectedDetails
+        .getByRole('button', { name: 'Close Axiomar details' })
+        .click();
+      await expect(lastCard).toBeFocused();
+      await requestedStrip.evaluate((el) => {
+        el.scrollLeft = 0;
+      });
+      await expect(
+        tray.getByRole('button', { name: 'Review offer' }),
+      ).toBeInViewport();
+    }
+    await page.mouse.move(0, 0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    await clearFocus(page);
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`trade-new-${width}.png`),
+    });
+  }
 
   await page.getByRole('button', { name: 'Review offer' }).click();
   const confirmation = page.getByRole('dialog', {
@@ -519,11 +716,9 @@ test('trading journey is focused, responsive, and server-owned', async ({
     page.getByRole('heading', { name: 'Trade with other_player' }),
   ).toBeVisible();
   await expect(page.getByLabel('Trade version 3')).toBeVisible();
+  await expect(page.getByText('Rarity warning')).toBeVisible();
   await expect(
-    page.getByText('Review the rarity-point difference'),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: 'Verify and accept' }),
+    page.getByRole('button', { name: 'Accept offer' }),
   ).toBeDisabled();
   await expectNoHorizontalOverflow(page);
   await clearFocus(page);
@@ -531,6 +726,139 @@ test('trading journey is focused, responsive, and server-owned', async ({
     fullPage: true,
     path: testInfo.outputPath('trade-detail-desktop.png'),
   });
+
+  const detailCard = page
+    .locator('.trade-side')
+    .first()
+    .getByRole('button', { name: 'View Courier Ibis details' })
+    .first();
+  const detailBox = await detailCard.boundingBox();
+  expect(detailBox!.width).toBeGreaterThanOrEqual(140);
+  await detailCard.hover();
+  await expect(detailCard).toHaveAttribute('data-hovered', '');
+  await detailCard.click();
+  const detailDialog = page.getByRole('dialog', { name: 'Courier Ibis' });
+  await expect(detailDialog.getByText('Campus Charge')).toBeVisible();
+  await detailDialog
+    .getByRole('button', { name: 'Close Courier Ibis details' })
+    .click();
+  await expect(detailCard).toBeFocused();
+  const backLink = page.getByRole('link', { name: 'All trades' });
+  expect(
+    await backLink.evaluate((el) => getComputedStyle(el).textDecorationLine),
+  ).toBe('none');
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expectNoHorizontalOverflow(page);
+    // Visit the GPU-backed card layers before a full-document capture.
+    for (const card of await page
+      .locator('.trade-detail-page .trade-card-thumbnail')
+      .all()) {
+      await card.scrollIntoViewIfNeeded();
+      await expect(card).toBeInViewport();
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+    }
+    await page.mouse.move(0, 0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    await clearFocus(page);
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`trade-detail-${width}.png`),
+    });
+  }
+
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.getByRole('link', { name: 'Edit your side' }).click();
+  await expect(page).toHaveURL(`/collection/trades/${TRADE_ID}/edit`);
+  await expect(page.getByText('Editing version 3')).toBeVisible();
+  await expect(page.locator('.trade-builder')).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: 'Trade setup progress' }),
+  ).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Change player' })).toHaveCount(
+    0,
+  );
+  const editingCollection = page.getByRole('list', {
+    name: 'Card types in your collection',
+  });
+  await expect(editingCollection.locator('output')).toHaveText('1');
+  await expect(
+    page.getByRole('heading', { name: 'You request', exact: true }),
+  ).toBeVisible();
+  await editingCollection
+    .getByRole('button', { name: 'Offer one more Courier Ibis' })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Review offer' }),
+  ).toBeEnabled();
+  for (const width of [320, 390, 490, 768, 1440]) {
+    await page.setViewportSize({
+      width,
+      height: width === 490 ? 994 : width < 1120 ? 844 : 960,
+    });
+    await expectNoHorizontalOverflow(page);
+    await page.mouse.move(0, 0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await clearFocus(page);
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`trade-edit-${width}.png`),
+    });
+  }
+  await page.getByRole('button', { name: 'Review offer' }).click();
+  const revisionDialog = page.getByRole('dialog', {
+    name: 'Update this offer?',
+  });
+  await expect(revisionDialog).toContainText(
+    'Publish version 4? Both players will need to accept again',
+  );
+  await expect(
+    revisionDialog.getByRole('heading', { name: 'other_player gives' }),
+  ).toBeVisible();
+  await expect(
+    revisionDialog.getByRole('heading', { name: 'other_player requested' }),
+  ).toBeVisible();
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 960 });
+    await expect(
+      revisionDialog.getByRole('button', { name: 'Publish new version' }),
+    ).toBeInViewport();
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`trade-revision-${width}.png`),
+    });
+  }
+  await revisionDialog.getByRole('button', { name: 'Keep reviewing' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Review offer' }),
+  ).toBeFocused();
+  expect(revisions).toHaveLength(0);
+  await page.getByRole('button', { name: 'Review offer' }).click();
+  await page
+    .getByRole('dialog', { name: 'Update this offer?' })
+    .getByRole('button', { name: 'Publish new version' })
+    .click();
+  await expect(page).toHaveURL(`/collection/trades/${TRADE_ID}`);
+  await expect(page.getByLabel('Trade version 4')).toBeVisible();
+  expect(revisions).toEqual([
+    {
+      expectedVersion: 3,
+      offeredOwnedCardIds: [buildUuid(20), buildUuid(21)],
+      requestedDefinitions: [{ cardDefinitionId: buildUuid(10), quantity: 1 }],
+      submissionId: expect.any(String),
+    },
+  ]);
 
   expect(runtimeErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);

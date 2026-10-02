@@ -19,24 +19,31 @@ trade targets one exact normalized Player Name. Missing, self, deleted,
 deleting, or otherwise unavailable targets share the same safe unavailable
 response.
 
+The entry form checks one exact name on submission through an authenticated,
+rate-limited recipient lookup. The response includes only the normalized Player
+Name and request ID. It does not reserve cards or promise trading eligibility;
+creating the offer rechecks the recipient and all trading rules. The lookup
+uses the existing partial unique `lower(player_name)` index.
+
 ## Authenticated operations
 
 All routes are beneath `/api/v1`, require bearer authentication, resolve the
 active local player on the server, and use the ordinary authenticated-player
 rate limit.
 
-| Method | Route                                        | Purpose                                               |
-| ------ | -------------------------------------------- | ----------------------------------------------------- |
-| `GET`  | `/cards/trading-catalogue`                   | List active requestable definitions without ownership |
-| `POST` | `/trades`                                    | Create a directed offer using a Player Name           |
-| `GET`  | `/trades`                                    | List only trades involving the current player         |
-| `POST` | `/trades/selection-preview`                  | Preview the current player's exact-copy eligibility   |
-| `GET`  | `/trades/:tradeId`                           | Read one participant-only trade                       |
-| `PUT`  | `/trades/:tradeId`                           | Create the next immutable offer version               |
-| `POST` | `/trades/:tradeId/imbalance-acknowledgement` | Acknowledge the current version's rarity warning      |
-| `POST` | `/trades/:tradeId/accept`                    | Accept one exact version after recent authentication  |
-| `POST` | `/trades/:tradeId/decline`                   | Recipient-only terminal decline                       |
-| `POST` | `/trades/:tradeId/cancel`                    | Sender-only terminal cancellation                     |
+| Method | Route                                        | Purpose                                                          |
+| ------ | -------------------------------------------- | ---------------------------------------------------------------- |
+| `GET`  | `/cards/trading-catalogue`                   | List active requestable definitions without ownership            |
+| `GET`  | `/trades/recipient?playerName=…`             | Check one exact active recipient name without exposing inventory |
+| `POST` | `/trades`                                    | Create a directed offer using a Player Name                      |
+| `GET`  | `/trades`                                    | List only trades involving the current player                    |
+| `POST` | `/trades/selection-preview`                  | Preview the current player's exact-copy eligibility              |
+| `GET`  | `/trades/:tradeId`                           | Read one participant-only trade                                  |
+| `PUT`  | `/trades/:tradeId`                           | Create the next immutable offer version                          |
+| `POST` | `/trades/:tradeId/imbalance-acknowledgement` | Acknowledge the current version's rarity warning                 |
+| `POST` | `/trades/:tradeId/accept`                    | Accept one exact version after recent authentication             |
+| `POST` | `/trades/:tradeId/decline`                   | Recipient-only terminal decline                                  |
+| `POST` | `/trades/:tradeId/cancel`                    | Sender-only terminal cancellation                                |
 
 Create and revision bodies contain only the current player's exact owned-copy
 identifiers plus requested card definitions and quantities. Acceptance and

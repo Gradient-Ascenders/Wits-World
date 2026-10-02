@@ -4,6 +4,7 @@ import {
   acceptTrade,
   createTrade,
   getTrade,
+  findTradeRecipient,
   listTrades,
   listTradingCatalogue,
   previewTradeSelection,
@@ -19,6 +20,47 @@ afterEach(() => {
 });
 
 describe('card trade API client', () => {
+  it('checks the exact normalized recipient and rejects private or mismatched responses', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        playerName: 'other_player',
+        requestId: 'recipient-request',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const options = { ...baseOptions(), playerName: 'Other_Player' };
+    await expect(findTradeRecipient(options)).resolves.toBe('other_player');
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/trades/recipient?playerName=Other_Player`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+    fetchMock.mockResolvedValue(
+      jsonResponse({ playerName: 'someone_else', requestId: 'request' }),
+    );
+    await expect(findTradeRecipient(options)).rejects.toMatchObject({
+      failure: 'unavailable',
+    });
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        playerName: 'other_player',
+        requestId: 'request',
+        playerId: buildUuid(99),
+      }),
+    );
+    await expect(findTradeRecipient(options)).rejects.toMatchObject({
+      failure: 'unavailable',
+    });
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        { code: 'TRADE_PLAYER_UNAVAILABLE', requestId: 'request' },
+        404,
+      ),
+    );
+    await expect(findTradeRecipient(options)).rejects.toMatchObject({
+      failure: 'player-unavailable',
+    });
+  });
+
   it('loads only strict player-safe catalogue definitions', async () => {
     const definition = buildCatalogueDefinition();
     const fetchMock = vi.fn().mockResolvedValue(
