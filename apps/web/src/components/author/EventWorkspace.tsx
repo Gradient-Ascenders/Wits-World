@@ -278,11 +278,10 @@ export function EventWorkspace({
   return (
     <section
       aria-labelledby="events-workspace-title"
-      className="author-workspace"
+      className="author-workspace author-workspace--events"
     >
       <header className="author-workspace__heading">
         <div>
-          <p className="eyebrow">Playable content</p>
           <h2 id="events-workspace-title">Events</h2>
         </div>
         {state === 'ready' ? (
@@ -333,7 +332,7 @@ export function EventWorkspace({
 
       {state === 'ready' ? (
         <div
-          className={`author-management-view${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}${route.mode === 'questions' || route.mode === 'challenge' ? ' author-management-view--questions' : ''}`}
+          className={`author-management-view author-management-view--events${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}${route.mode === 'questions' || route.mode === 'challenge' ? ' author-management-view--questions' : ''}`}
         >
           <aside
             aria-label="Authored events"
@@ -352,14 +351,16 @@ export function EventWorkspace({
               sort={sortOrder}
             />
             <p aria-live="polite" className="author-catalogue__results">
-              {visibleEvents.length} of {events.length}{' '}
+              {visibleEvents.length === events.length
+                ? events.length
+                : `${visibleEvents.length} of ${events.length}`}{' '}
               {events.length === 1 ? 'event' : 'events'}
             </p>
             {events.length === 0 ? (
               <div className="author-empty author-empty--compact state-message state-message--empty">
                 <StateIcon tone="empty" />
                 <strong>No authored events yet</strong>
-                <p>Create a draft to begin the publication workflow.</p>
+                <p>Select New event to create a draft.</p>
               </div>
             ) : null}
             {events.length > 0 && visibleEvents.length === 0 ? (
@@ -404,9 +405,7 @@ export function EventWorkspace({
             role="region"
             tabIndex={-1}
           >
-            {route.mode === 'list' ? (
-              <EventCatalogueWelcome count={events.length} />
-            ) : route.mode === 'new' ? (
+            {route.mode === 'list' ? null : route.mode === 'new' ? (
               <EventForm
                 apiBaseUrl={apiBaseUrl}
                 getAccessToken={getAccessToken}
@@ -505,49 +504,42 @@ function EventCatalogueControls({
           <option value="retired">Retired</option>
         </select>
       </label>
-      <label className="author-filter">
-        <span>Schedule</span>
-        <select
-          onChange={(event) => onScheduleChange(event.target.value)}
-          value={schedule}
-        >
-          <option value="all">All</option>
-          <option value="current">In window</option>
-          <option value="upcoming">Upcoming</option>
-          <option value="ended">Ended</option>
-        </select>
-      </label>
-      <label className="author-filter author-filter--wide">
-        <span>Sort</span>
-        <select
-          onChange={(event) =>
-            onSortChange(event.target.value as 'name' | 'schedule' | 'updated')
-          }
-          value={sort}
-        >
-          <option value="schedule">Start time</option>
-          <option value="name">A–Z</option>
-          <option value="updated">Recently updated</option>
-        </select>
-      </label>
+      <details className="author-event-filters">
+        <summary>
+          More filters
+          {schedule !== 'all' || sort !== 'schedule' ? ' (active)' : ''}
+        </summary>
+        <div className="author-filters">
+          <label className="author-filter">
+            <span>Schedule</span>
+            <select
+              onChange={(event) => onScheduleChange(event.target.value)}
+              value={schedule}
+            >
+              <option value="all">All</option>
+              <option value="current">In window</option>
+              <option value="upcoming">Upcoming</option>
+              <option value="ended">Ended</option>
+            </select>
+          </label>
+          <label className="author-filter">
+            <span>Sort</span>
+            <select
+              onChange={(event) =>
+                onSortChange(
+                  event.target.value as 'name' | 'schedule' | 'updated',
+                )
+              }
+              value={sort}
+            >
+              <option value="schedule">Start time</option>
+              <option value="name">A–Z</option>
+              <option value="updated">Recently updated</option>
+            </select>
+          </label>
+        </div>
+      </details>
     </div>
-  );
-}
-
-function EventCatalogueWelcome({ count }: { count: number }) {
-  return (
-    <section className="author-welcome">
-      <p className="eyebrow">Event management</p>
-      <h3>{count > 0 ? 'Select an event' : 'Create the first event'}</h3>
-      <p>
-        {count > 0
-          ? 'Choose an event to review its schedule, challenge, questions, and publication readiness.'
-          : 'New events begin as editable drafts.'}
-      </p>
-      <Link className="button" href={authorPaths.newEvent}>
-        New event
-      </Link>
-    </section>
   );
 }
 
@@ -575,7 +567,6 @@ function EventContextHeader({ event }: { event: AuthorEvent }) {
       </Link>
       <header className="author-detail__heading">
         <div>
-          <p className="eyebrow">Selected event</p>
           <h3>{event.title}</h3>
         </div>
         <StatusBadge status={event.authoringStatus} />
@@ -764,7 +755,6 @@ function EventForm({
       </Link>
       <header className="author-panel__heading">
         <div>
-          <p className="eyebrow">Event definition</p>
           <h3 id="event-editor-title">{event ? event.title : 'New event'}</h3>
         </div>
         {event ? <StatusBadge status={event.authoringStatus} /> : null}
@@ -815,31 +805,20 @@ function EventForm({
           <span>
             <strong>Automatic placement</strong>
             <small>
-              When published, this event joins the automatic rotation and is
-              assigned to a campus site. No separate placement approval is
-              needed.
+              Assign a campus site at publication and include this event in
+              future rotations.
             </small>
           </span>
         </label>
 
-        {draft.automaticPlacement ? (
-          <div className="author-auto-placement-note" role="note">
-            <strong>Location will be assigned automatically</strong>
-            <span>
-              The placement service will choose a valid campus site when the
-              event is published and keep it in future rotations.
-            </span>
-          </div>
-        ) : (
+        {!draft.automaticPlacement ? (
           <fieldset
             className="author-fieldset author-location-editor"
             disabled={busy}
           >
             <legend>Event location</legend>
             <p className="author-location-editor__intro">
-              Select the event point on the campus map. The marker and radius
-              are an authoring aid; the saved coordinates and distance remain
-              exact.
+              Select a point on the map or enter coordinates below.
             </p>
             <AuthorLocationMap
               coordinate={coordinate}
@@ -855,13 +834,8 @@ function EventForm({
               className="author-location-advanced"
             >
               <div className="author-location-advanced__heading">
-                <strong id="event-coordinates-heading">
-                  Advanced coordinates
-                </strong>
-                <span>
-                  Keyboard and map-fallback controls. Values stay synchronized
-                  with the marker.
-                </span>
+                <strong id="event-coordinates-heading">Coordinates</strong>
+                <span>Synchronized with the map marker.</span>
               </div>
               <div className="author-form__grid">
                 <FormField
@@ -913,7 +887,7 @@ function EventForm({
               </div>
             </section>
           </fieldset>
-        )}
+        ) : null}
 
         <section
           aria-labelledby="event-radius-heading"

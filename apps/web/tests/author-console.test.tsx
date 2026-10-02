@@ -533,7 +533,7 @@ describe('Basic author console', () => {
 
     expect(screen.queryByText('Event location')).not.toBeInTheDocument();
     expect(
-      screen.getByText('Location will be assigned automatically'),
+      screen.getByText(/Assign a campus site at publication/u),
     ).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: '75 m' }));

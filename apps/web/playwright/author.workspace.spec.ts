@@ -43,8 +43,8 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
     page.getByRole('complementary', { name: 'Authored events' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'Select an event' }),
-  ).toBeVisible();
+    page.getByRole('region', { name: 'Event workspace detail' }),
+  ).toBeHidden();
   await expectNoHorizontalOverflow(page);
 
   const eventSearch = page.getByRole('searchbox', { name: 'Search' });
@@ -62,6 +62,29 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
     0,
   );
   await page.getByLabel('Lifecycle').selectOption('all');
+  await expect(page.getByRole('link', { name: 'New event' })).toHaveCount(1);
+  await expect(
+    page.getByRole('combobox', { name: 'Schedule', exact: true }),
+  ).toBeHidden();
+  await page.getByText('More filters', { exact: true }).click();
+  await page
+    .getByRole('combobox', { name: 'Schedule', exact: true })
+    .selectOption('upcoming');
+  await expect(
+    page.getByText('No events match', { exact: true }),
+  ).toBeVisible();
+  await page.getByText('More filters (active)', { exact: true }).click();
+  await expect(
+    page.getByRole('combobox', { name: 'Schedule', exact: true }),
+  ).toBeHidden();
+  await expect(
+    page.getByText('No events match', { exact: true }),
+  ).toBeVisible();
+  await page.getByText('More filters (active)', { exact: true }).click();
+  await page
+    .getByRole('combobox', { name: 'Schedule', exact: true })
+    .selectOption('all');
+  await page.getByText('More filters', { exact: true }).click();
 
   await page.getByRole('link', { name: /Great Hall Discovery/u }).click();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
@@ -296,7 +319,7 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
   });
   await automaticPlacement.check();
   await expect(
-    page.getByText('Location will be assigned automatically'),
+    page.getByText(/Assign a campus site at publication/u),
   ).toBeVisible();
   await expect(page.getByText('Event location')).toHaveCount(0);
   await automaticPlacement.uncheck();
