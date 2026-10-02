@@ -1,3 +1,4 @@
+import { selectOption } from './select-option';
 import { mkdir } from 'node:fs/promises';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
@@ -55,27 +56,21 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
     page.getByRole('link', { name: /Great Hall Discovery/u }),
   ).toHaveCount(0);
   await eventSearch.fill('');
-  await page.getByLabel('Lifecycle').selectOption('draft');
+  await selectOption(page.getByLabel('Lifecycle', { exact: true }), 'draft');
   await expect(
     page.getByRole('link', { name: /Great Hall Discovery/u }),
   ).toBeVisible();
   await expect(page.getByRole('link', { name: /MSL Open Day/u })).toHaveCount(
     0,
   );
-  await page.getByLabel('Lifecycle').selectOption('all');
+  await selectOption(page.getByLabel('Lifecycle', { exact: true }), 'all');
   await expect(page.getByRole('link', { name: 'New event' })).toHaveCount(1);
-  await expect(
-    page.getByRole('combobox', { name: 'Schedule', exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole('combobox', { name: 'Schedule', exact: true })
-    .selectOption('upcoming');
+  await expect(page.getByLabel('Schedule', { exact: true })).toBeVisible();
+  await selectOption(page.getByLabel('Schedule', { exact: true }), 'upcoming');
   await expect(
     page.getByText('No events match', { exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole('combobox', { name: 'Schedule', exact: true })
-    .selectOption('all');
+  await selectOption(page.getByLabel('Schedule', { exact: true }), 'all');
 
   await eventSearch.fill('Great Hall');
   await page.getByRole('link', { name: /Great Hall Discovery/u }).click();
@@ -370,7 +365,7 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   state.challenges = [];
   state.questions = [];
   await page.goto(`/author/events/${EVENT_A}`);
-  await page.getByLabel('Format').selectOption('ordering');
+  await selectOption(page.getByLabel('Format', { exact: true }), 'ordering');
   await page.getByRole('button', { name: 'Create challenge' }).click();
   await expect(
     page.getByText('Draft ordering challenge associated with this event.'),
@@ -965,7 +960,7 @@ test('Player review uses a responsive, privacy-safe master-detail workflow', asy
   ).toBeVisible();
   await page.getByLabel('Apply temporary restriction').check();
   await page.getByLabel('Require online verification').check();
-  await page.getByLabel('Duration').selectOption('72');
+  await selectOption(page.getByLabel('Duration', { exact: true }), '72');
   await page
     .getByRole('textbox', { name: /Reason and context/u })
     .fill('Temporarily pause new matches while this case is reviewed.');
@@ -1048,7 +1043,7 @@ test('Card editor previews unsaved artwork and metadata beside the form on deskt
     page.getByRole('complementary', { name: 'Card definitions' }),
   ).toBeHidden();
   await page.getByLabel('Card name').fill('Library Fox');
-  await page.locator('#card-rarity').selectOption('legendary');
+  await selectOption(page.locator('#card-rarity'), 'legendary');
   await page.getByLabel('Hit points (HP)').fill('120');
   await page.getByLabel('Starting Power').fill('25');
   await page.getByLabel('Artwork URL (optional)').fill('/cards/quillip.webp');
@@ -1093,7 +1088,7 @@ test('Card editor previews unsaved artwork and metadata beside the form on deskt
   await expect(page.locator('#move-1-name')).toBeFocused();
   await expect(page.locator('#move-1-name')).toBeVisible();
   await expect(page.locator('#move-0-name')).toBeHidden();
-  await page.locator('#card-category').selectOption('power');
+  await selectOption(page.locator('#card-category'), 'power');
   await expect(preview.getByText('Power · Typeless')).toBeVisible();
   await expect(preview.getByLabel('Preview creature attributes')).toHaveCount(
     0,
@@ -1201,10 +1196,13 @@ test('Card catalogue and dedicated detail pages preserve filtering, review and l
   );
   await search.fill('');
   await page.locator('.author-filter-menu > summary').click();
-  await page.getByLabel('Lifecycle').selectOption('published');
-  await page.getByLabel('Category').selectOption('creature');
-  await page.getByLabel('Affinity').selectOption('grit');
-  await page.getByLabel('Rarity').selectOption('rare');
+  await selectOption(
+    page.getByLabel('Lifecycle', { exact: true }),
+    'published',
+  );
+  await selectOption(page.getByLabel('Category', { exact: true }), 'creature');
+  await selectOption(page.getByLabel('Affinity', { exact: true }), 'grit');
+  await selectOption(page.getByLabel('Rarity', { exact: true }), 'rare');
   await page.locator('.author-filter-menu > summary').click();
   await expect(
     page.getByRole('link', { name: /Four Move Ibex/u }),
@@ -1234,9 +1232,9 @@ test('Card catalogue and dedicated detail pages preserve filtering, review and l
 
   await page.getByRole('link', { name: 'Card catalogue' }).click();
   await page.locator('.author-filter-menu > summary').click();
-  await page.getByLabel('Category').selectOption('power');
-  await page.getByLabel('Affinity').selectOption('wit');
-  await page.getByLabel('Rarity').selectOption('common');
+  await selectOption(page.getByLabel('Category', { exact: true }), 'power');
+  await selectOption(page.getByLabel('Affinity', { exact: true }), 'wit');
+  await selectOption(page.getByLabel('Rarity', { exact: true }), 'common');
   await page.locator('.author-filter-menu > summary').click();
   await page.getByRole('link', { name: /Archive Insight/u }).click();
   await expect(page).toHaveURL(`/author/cards/${CARD_POWER}`);
@@ -1247,11 +1245,11 @@ test('Card catalogue and dedicated detail pages preserve filtering, review and l
   await expect(page.getByLabel('Effect type')).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Card catalogue' }).click();
-  await page.getByLabel('Lifecycle').selectOption('draft');
+  await selectOption(page.getByLabel('Lifecycle', { exact: true }), 'draft');
   await page.locator('.author-filter-menu > summary').click();
-  await page.getByLabel('Category').selectOption('creature');
-  await page.getByLabel('Affinity').selectOption('wit');
-  await page.getByLabel('Rarity').selectOption('common');
+  await selectOption(page.getByLabel('Category', { exact: true }), 'creature');
+  await selectOption(page.getByLabel('Affinity', { exact: true }), 'wit');
+  await selectOption(page.getByLabel('Rarity', { exact: true }), 'common');
   await page.locator('.author-filter-menu > summary').click();
   await page.getByRole('link', { name: /Campus Owl/u }).click();
   await page.getByRole('link', { name: 'Edit card' }).click();
@@ -1268,11 +1266,23 @@ test('Card catalogue and dedicated detail pages preserve filtering, review and l
   const cardCatalogue = page.getByRole('complementary', {
     name: 'Card definitions',
   });
-  await cardCatalogue.getByLabel('Lifecycle').selectOption('all');
+  await selectOption(
+    cardCatalogue.getByLabel('Lifecycle', { exact: true }),
+    'all',
+  );
   await cardCatalogue.locator('.author-filter-menu > summary').click();
-  await cardCatalogue.getByLabel('Category').selectOption('all');
-  await cardCatalogue.getByLabel('Affinity').selectOption('all');
-  await cardCatalogue.getByLabel('Rarity').selectOption('all');
+  await selectOption(
+    cardCatalogue.getByLabel('Category', { exact: true }),
+    'all',
+  );
+  await selectOption(
+    cardCatalogue.getByLabel('Affinity', { exact: true }),
+    'all',
+  );
+  await selectOption(
+    cardCatalogue.getByLabel('Rarity', { exact: true }),
+    'all',
+  );
   await cardCatalogue.locator('.author-filter-menu > summary').click();
   await page.getByRole('link', { name: /^Four Move Ibex/u }).click();
   await expect(page.getByLabel('Card name')).toHaveCount(0);
@@ -1280,10 +1290,10 @@ test('Card catalogue and dedicated detail pages preserve filtering, review and l
 
   await page.getByRole('link', { name: 'Card catalogue' }).click();
   await page.getByRole('link', { name: 'New card' }).first().click();
-  await page
-    .locator('.author-form')
-    .getByLabel('Category', { exact: true })
-    .selectOption('power');
+  await selectOption(
+    page.locator('.author-form').getByLabel('Category', { exact: true }),
+    'power',
+  );
   await expect(page.getByLabel('Move name')).toHaveCount(0);
   await expect(page.getByLabel('Effect type')).toBeVisible();
   await page.getByLabel('Card name').fill('New Insight');
@@ -3106,3 +3116,106 @@ async function enterEventDateTime(page: Page, label: string, value: string) {
     await segment.pressSequentially(digits);
   }
 }
+
+test('shared catalogue fields support search clearing, keyboard selection, and bounded menus', async ({
+  page,
+}, info) => {
+  await installAuthorApi(page);
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const section of ['cards', 'events']) {
+      await page.goto(`/author/${section}`);
+      const lifecycle = page.getByLabel('Lifecycle', { exact: true });
+      await expect(lifecycle).toBeVisible();
+      await lifecycle.focus();
+      await page.keyboard.press('ArrowDown');
+      const menu = page.getByRole('listbox');
+      await expect(menu).toBeVisible();
+      const bounds = await menu.boundingBox();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+      await expect(
+        page.getByRole('option', { name: 'All', exact: true }),
+      ).toHaveAttribute('aria-selected', 'true');
+      await page.screenshot({
+        path: info.outputPath(`${section}-filters-${width}.png`),
+      });
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      await expect(lifecycle).toBeFocused();
+      await lifecycle.click();
+      await page.getByRole('option', { name: 'Draft', exact: true }).click();
+      await expect(lifecycle).toContainText('Draft');
+      await expect(
+        page.locator(
+          `.${section === 'cards' ? 'card' : 'event'}-table tbody tr`,
+        ),
+      ).toHaveCount(1);
+      const search = page.getByRole('searchbox', {
+        name: 'Search',
+        exact: true,
+      });
+      await search.fill('no-such-content');
+      await expect(
+        page.getByText(`No ${section} match`, { exact: true }),
+      ).toBeVisible();
+      await page
+        .getByRole('button', { name: 'Clear search', exact: true })
+        .click();
+      await expect(search).toBeFocused();
+      await expect(search).toHaveValue('');
+      await expectNoHorizontalOverflow(page);
+    }
+  }
+});
+
+test('author creation fields keep keyboard menus and validation usable at responsive widths', async ({
+  page,
+}, info) => {
+  await installAuthorApi(page);
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/author/cards/new');
+    await page.getByLabel('Card name').fill('Library Fox');
+    const rarity = page.locator('#card-rarity');
+    await rarity.focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('listbox')).toBeVisible();
+    const menuBox = await page.getByRole('listbox').boundingBox();
+    expect(menuBox!.x).toBeGreaterThanOrEqual(0);
+    expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(width);
+    await page.screenshot({
+      path: info.outputPath(`new-card-fields-${width}.png`),
+    });
+    await page.keyboard.press('Escape');
+    await expect(rarity).toBeFocused();
+    await page.getByLabel('Move name').fill('Quiet Step');
+    await selectOption(page.locator('#move-0-effect-type'), 'buff');
+    await page.getByRole('button', { name: 'Create draft card' }).click();
+    const modifier = page.locator('#move-0-modifier-stat');
+    await expect(modifier).toBeFocused();
+    await expect(modifier).toHaveAttribute('aria-invalid', 'true');
+    await expect(modifier).toHaveAccessibleDescription(
+      'Buff and debuff effects require modifier metadata.',
+    );
+    await selectOption(modifier, 'power');
+    await expect(modifier).toContainText('Power');
+    await expectNoHorizontalOverflow(page);
+    // Complete the valid draft before leaving so the next route has no unsaved guard.
+    await page.getByRole('button', { name: 'Create draft card' }).click();
+    await expect(
+      page.getByText('Draft card created.', { exact: true }),
+    ).toBeVisible();
+    await page.goto('/author/events/new');
+    const title = page.getByLabel('Event title');
+    await expect(title).toBeVisible();
+    await title.focus();
+    await page.screenshot({
+      path: info.outputPath(`new-event-fields-${width}.png`),
+    });
+    await page.getByRole('button', { name: 'Create draft event' }).click();
+    await expect(title).toBeFocused();
+    await expect(title).toHaveAttribute('aria-invalid', 'true');
+    await expectNoHorizontalOverflow(page);
+  }
+});

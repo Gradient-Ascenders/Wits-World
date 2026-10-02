@@ -1,3 +1,4 @@
+import { selectOption } from './fixtures/select-option';
 import {
   fireEvent,
   render,
@@ -220,14 +221,14 @@ describe('advanced analytics workspace', () => {
     );
     await screen.findByText('Where is the Great Hall?');
 
-    await user.selectOptions(screen.getByLabelText('Event'), eventId);
-    await screen.findByRole('option', { name: 'MCQ challenge 1' });
-    await user.selectOptions(screen.getByLabelText('Challenge'), challengeId);
-    await user.selectOptions(
+    await selectOption(user, screen.getByLabelText('Event'), eventId);
+    await selectOption(user, screen.getByLabelText('Challenge'), challengeId);
+    await selectOption(
+      user,
       screen.getByLabelText('Format'),
       'multiple_choice',
     );
-    await user.selectOptions(screen.getByLabelText('Difficulty'), '2');
+    await selectOption(user, screen.getByLabelText('Difficulty'), '2');
     await user.click(
       screen.getByRole('button', { name: 'Apply question filters' }),
     );
@@ -282,7 +283,7 @@ describe('advanced analytics workspace', () => {
     );
     await screen.findByText('Campus Owl');
 
-    await user.selectOptions(screen.getByLabelText('Location view'), 'popular');
+    await selectOption(user, screen.getByLabelText('Location view'), 'popular');
     expect(
       await screen.findByText(
         'The service could not complete this request. Check your connection and try again. No content change was confirmed.',
@@ -340,7 +341,8 @@ describe('advanced analytics workspace', () => {
     );
     await screen.findByText('Where is the Great Hall?');
 
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Format'),
       'multiple_choice',
     );

@@ -1,3 +1,4 @@
+import { selectOption } from './select-option';
 import {
   expect,
   test,
@@ -118,7 +119,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   expect(await columnsOnFirstRow(gallery)).toBe(2);
-  await expect(page.getByRole('combobox', { name: 'Category' })).toBeHidden();
+  await expect(page.getByLabel('Category', { exact: true })).toBeHidden();
   await expectSquareArtwork(gallery);
   const artworkImage = gallery.locator('img').first();
   await expect(artworkImage).toHaveCSS('object-fit', 'contain');
@@ -238,14 +239,14 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   await expect(
     gallery.getByText('The Exceptionally Long-Named Guardian of Senate House'),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
   await page.getByRole('button', { name: 'Filters & sort' }).click();
   await page.screenshot({ path: testInfo.outputPath('filters-mobile.png') });
-  await page.getByRole('combobox', { name: 'Category' }).selectOption('power');
+  await selectOption(page.getByLabel('Category', { exact: true }), 'power');
   await expect(gallery.locator(':scope > li')).toHaveCount(8);
-  await page.getByRole('combobox', { name: 'Rarity' }).selectOption('epic');
+  await selectOption(page.getByLabel('Rarity', { exact: true }), 'epic');
   await page.getByRole('button', { name: 'Filters & sort · Active' }).click();
-  await expect(page.getByRole('combobox', { name: 'Rarity' })).toBeHidden();
+  await expect(page.getByLabel('Rarity', { exact: true })).toBeHidden();
   await expect(page.getByText(/Power cards · Epic/u)).toBeVisible();
   await page
     .getByRole('searchbox', { name: 'Search' })
@@ -315,7 +316,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   });
   await page.mouse.move(0, 0);
   await expect(firstCard).not.toHaveAttribute('data-hovered', '');
-  await page.getByRole('combobox', { name: 'Sort' }).selectOption('rarity');
+  await selectOption(page.getByLabel('Sort', { exact: true }), 'rarity');
   await expect(gallery.locator('.card-thumbnail__title').first()).toHaveText(
     /Campus Guardian/u,
   );

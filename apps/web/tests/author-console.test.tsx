@@ -36,6 +36,8 @@ import type {
   MapFactory,
 } from '../src/components/exploration/map-provider';
 
+import { selectOption } from './fixtures/select-option';
+
 const apiBaseUrl = 'https://api.example.test/api/v1';
 const mapboxAccessToken = 'pk.test-token';
 const eventId = '10000000-0000-4000-8000-000000000001';
@@ -447,8 +449,8 @@ describe('Basic author console', () => {
     );
     await user.click(reviewLink);
 
-    expect(await screen.findByLabelText('Challenge')).toHaveValue(
-      queuedChallengeId,
+    expect(await screen.findByLabelText('Challenge')).toHaveTextContent(
+      'Challenge 2 · Multiple choice · in_review',
     );
     expect(
       await screen.findByRole('button', { name: 'Approve challenge' }),
@@ -633,7 +635,9 @@ describe('Basic author console', () => {
       screen.queryByRole('link', { name: 'New question' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText('This challenge is retired. Questions are read-only.'),
+      await screen.findByText(
+        'This challenge is retired. Questions are read-only.',
+      ),
     ).toBeVisible();
   });
 
@@ -642,7 +646,8 @@ describe('Basic author console', () => {
     const fetchMock = installAuthorApi({ challenges: [] });
     renderAuthorRoute();
 
-    await user.selectOptions(
+    await selectOption(
+      user,
       await screen.findByLabelText('Format'),
       'ordering',
     );
@@ -672,6 +677,7 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.newQuestion(eventId, challengeId));
 
     await screen.findByLabelText('Question prompt');
+    await selectOption(user, screen.getByLabelText('Difficulty'), '3');
     for (let index = 1; index <= 4; index += 1) {
       await user.type(
         await screen.findByLabelText(`Choice ${index}`),
@@ -700,7 +706,7 @@ describe('Basic author console', () => {
     expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
       acceptedChoicePosition: 2,
       choices: ['Answer 1', 'Answer 2', 'Answer 3', 'Answer 4'],
-      difficulty: 1,
+      difficulty: 3,
       explanation: 'The Great Hall is on East Campus.',
       format: 'multiple_choice',
       prompt: 'Where is the Great Hall?',
@@ -981,7 +987,8 @@ describe('Basic author console', () => {
     });
     expect(within(preview).getByText('Unsaved preview')).toBeVisible();
     await user.type(screen.getByLabelText('Card name'), 'Library Fox');
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Rarity', { selector: '#card-rarity' }),
       'legendary',
     );
@@ -1032,7 +1039,8 @@ describe('Basic author console', () => {
       'src',
       'https://example.test/cards/working.png',
     );
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Category', { selector: '#card-category' }),
       'power',
     );
@@ -1468,7 +1476,8 @@ describe('Basic author console', () => {
     expect(
       await screen.findByRole('link', { name: /Question 1/ }),
     ).toBeVisible();
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Challenge'),
       challengeB.challengeId,
     );
@@ -1479,7 +1488,7 @@ describe('Basic author console', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Question prompt')).not.toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Challenge'), challengeId);
+    await selectOption(user, screen.getByLabelText('Challenge'), challengeId);
     expect(
       await screen.findByRole('link', { name: /Question 1/ }),
     ).toBeVisible();
@@ -1516,7 +1525,8 @@ describe('Basic author console', () => {
     expect(
       await screen.findByRole('link', { name: /Question 1/ }),
     ).toBeVisible();
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Challenge'),
       challengeB.challengeId,
     );
@@ -2181,8 +2191,8 @@ describe('Basic author console', () => {
     await user.click(
       screen.getByRole('button', { name: 'Publish event package' }),
     );
-    await user.selectOptions(selector, challengeB.challengeId);
-    expect(selector).toHaveFocus();
+    await selectOption(user, selector, challengeB.challengeId);
+    await waitFor(() => expect(selector).toHaveFocus());
 
     await act(async () => {
       pending.resolve(
@@ -2197,8 +2207,8 @@ describe('Basic author console', () => {
       await pending.promise;
     });
 
-    expect(selector).toHaveValue(challengeB.challengeId);
-    expect(selector).toHaveFocus();
+    expect(selector).toHaveTextContent('Challenge 2 · Multiple choice');
+    await waitFor(() => expect(selector).toHaveFocus());
     expect(
       screen.queryByText(
         'Event published and available to the player API according to its active times.',
@@ -2310,8 +2320,8 @@ describe('Basic author console', () => {
 
     const selector = await screen.findByLabelText('Challenge');
     await user.click(screen.getByRole('button', { name: 'Publish challenge' }));
-    await user.selectOptions(selector, challengeB.challengeId);
-    expect(selector).toHaveFocus();
+    await selectOption(user, selector, challengeB.challengeId);
+    await waitFor(() => expect(selector).toHaveFocus());
 
     await act(async () => {
       pending.resolve(
@@ -2323,12 +2333,12 @@ describe('Basic author console', () => {
       await pending.promise;
     });
 
-    expect(selector).toHaveValue(challengeB.challengeId);
-    expect(selector).toHaveFocus();
+    expect(selector).toHaveTextContent('Challenge 2 · Multiple choice');
+    await waitFor(() => expect(selector).toHaveFocus());
     expect(screen.queryByText('Challenge published.')).not.toBeInTheDocument();
 
-    await user.selectOptions(selector, challengeId);
-    expect(selector).toHaveValue(challengeId);
+    await selectOption(user, selector, challengeId);
+    expect(selector).toHaveTextContent('Challenge 1 · Multiple choice');
     expect(
       screen.queryByRole('button', { name: 'Publish challenge' }),
     ).not.toBeInTheDocument();
@@ -2386,11 +2396,11 @@ describe('Basic author console', () => {
     expect(
       screen.queryByRole('button', { name: 'Create challenge' }),
     ).not.toBeInTheDocument();
-    await user.selectOptions(selector, challengeB.challengeId);
-    expect(selector).toHaveValue(challengeB.challengeId);
-    expect(selector).toHaveFocus();
-    await user.selectOptions(selector, challengeId);
-    expect(selector).toHaveValue(challengeId);
+    await selectOption(user, selector, challengeB.challengeId);
+    expect(selector).toHaveTextContent('Challenge 2 · Multiple choice');
+    await waitFor(() => expect(selector).toHaveFocus());
+    await selectOption(user, selector, challengeId);
+    expect(selector).toHaveTextContent('Challenge 1 · Multiple choice');
   });
 
   it('focuses challenge-create feedback when the request fails in the same context', async () => {
@@ -2494,13 +2504,14 @@ describe('Basic author console', () => {
     await user.type(screen.getByLabelText('Power cost'), '0');
     await user.clear(screen.getByLabelText('Effect value (optional)'));
     await user.type(screen.getByLabelText('Effect value (optional)'), '0');
-    await user.selectOptions(screen.getByLabelText('Effect type'), 'buff');
+    await selectOption(user, screen.getByLabelText('Effect type'), 'buff');
     await user.click(screen.getByRole('button', { name: 'Create draft card' }));
     expect(screen.getByLabelText('Modifier stat')).toHaveAccessibleDescription(
       'Buff and debuff effects require modifier metadata.',
     );
 
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Modifier stat'),
       'damage_multiplier',
     );

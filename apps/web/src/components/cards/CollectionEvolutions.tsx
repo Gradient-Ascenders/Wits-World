@@ -1,10 +1,11 @@
+import { SelectField } from '../fields/SelectField';
+import { SearchField } from '../fields/SearchField';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   CaretLeft,
   CaretRight,
   LockKey,
-  MagnifyingGlass,
 } from '@phosphor-icons/react';
 import {
   CardApiError,
@@ -222,56 +223,50 @@ export function CollectionEvolutions({
                   role="search"
                   aria-label="Find an evolution"
                 >
-                  <label className="collection-control evolution-browse-controls__search">
-                    <span className="sr-only">Search evolutions</span>
-                    <span className="collection-search-field">
-                      <MagnifyingGlass size={20} aria-hidden="true" />
-                      <input
-                        ref={searchInput}
-                        type="search"
-                        placeholder="Search card names"
-                        value={search}
-                        onChange={(event) => {
-                          setSearch(event.target.value);
-                          setPage(1);
-                        }}
-                      />
-                    </span>
-                  </label>
-                  <label className="collection-control">
-                    <span>Availability</span>
-                    <select
-                      value={availability}
-                      onChange={(event) => {
-                        setAvailability(
-                          event.target.value as AvailabilityFilter,
-                        );
-                        setPage(1);
-                      }}
-                    >
-                      <option value="all">All cards</option>
-                      <option value="ready">Ready</option>
-                      <option value="not-ready">Not ready</option>
-                      <option value="unavailable">No evolution</option>
-                      <option value="failed">Check failed</option>
-                    </select>
-                  </label>
-                  <label className="collection-control">
-                    <span>Rarity</span>
-                    <select
-                      value={rarity}
-                      onChange={(event) => {
-                        setRarity(event.target.value as CardRarity | 'all');
-                        setPage(1);
-                      }}
-                    >
-                      <option value="all">All rarities</option>
-                      <option value="common">Common</option>
-                      <option value="rare">Rare</option>
-                      <option value="epic">Epic</option>
-                      <option value="legendary">Legendary</option>
-                    </select>
-                  </label>
+                  <SearchField
+                    label="Search evolutions"
+                    hideLabel
+                    className="collection-control evolution-browse-controls__search"
+                    inputRef={searchInput}
+                    placeholder="Search card names"
+                    value={search}
+                    onChange={(value) => {
+                      setSearch(value);
+                      setPage(1);
+                    }}
+                  />
+                  <SelectField
+                    label="Availability"
+                    className="collection-control"
+                    value={availability}
+                    onChange={(value) => {
+                      setAvailability(value as AvailabilityFilter);
+                      setPage(1);
+                    }}
+                    options={[
+                      { value: 'all', label: 'All cards' },
+                      { value: 'ready', label: 'Ready' },
+                      { value: 'not-ready', label: 'Not ready' },
+                      { value: 'unavailable', label: 'No evolution' },
+                      { value: 'failed', label: 'Check failed' },
+                    ]}
+                  />
+                  <SelectField
+                    label="Rarity"
+                    className="collection-control"
+                    value={rarity}
+                    onChange={(value) => {
+                      setRarity(value as CardRarity | 'all');
+                      setPage(1);
+                    }}
+                    options={[
+                      { value: 'all', label: 'All rarities' },
+                      { value: 'common', label: 'Common' },
+                      { value: 'rare', label: 'Rare' },
+                      { value: 'epic', label: 'Epic' },
+                      { value: 'legendary', label: 'Legendary' },
+                    ]}
+                  />
                 </div>
                 <div className="evolution-browse-navigation">
                   <p aria-live="polite" ref={resultsHeading} tabIndex={-1}>

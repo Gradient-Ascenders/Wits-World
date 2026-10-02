@@ -1,3 +1,4 @@
+import { SelectField } from '../fields/SelectField';
 import { createAppDateTimeFormatter } from '../../date-time';
 import { authorErrorDetail } from './author-error-copy';
 import { StateIcon } from '../StatusMessage';
@@ -77,26 +78,25 @@ export function ReviewWorkspace({
             choosing an action.
           </p>
         </div>
-        <label className="author-filter" htmlFor="review-type-filter">
-          <span>Content type</span>
-          <select
-            id="review-type-filter"
-            onChange={(event) => {
-              setFilter(event.target.value as QueueFilter);
-              setPage(1);
-            }}
-            value={filter}
-          >
-            <option value="all">All content</option>
-            {['event', 'challenge', 'question', 'card', 'campaign'].map(
-              (type) => (
-                <option key={type} value={type}>
-                  {titleCase(type)}s
-                </option>
-              ),
-            )}
-          </select>
-        </label>
+        <SelectField
+          label="Content type"
+          className="author-filter"
+          id="review-type-filter"
+          onChange={(value) => {
+            setFilter(value as QueueFilter);
+            setPage(1);
+          }}
+          value={filter}
+          options={[
+            { value: 'all', label: 'All content' },
+            ...['event', 'challenge', 'question', 'card', 'campaign'].map(
+              (type) => ({
+                value: type,
+                label: `${titleCase(type)}s`,
+              }),
+            ),
+          ]}
+        />
       </header>
 
       {state === 'loading' ? (

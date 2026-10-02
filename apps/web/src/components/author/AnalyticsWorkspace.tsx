@@ -1,3 +1,4 @@
+import { SelectField } from '../fields/SelectField';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Link } from 'wouter';
 
@@ -242,20 +243,20 @@ function LocationAnalyticsSection({
             reporting window.
           </p>
         </div>
-        <label className="author-filter analytics-section__mode">
-          <span>Location view</span>
-          <select
-            value={mode}
-            onChange={(event) => {
-              setMode(event.target.value as AuthorAnalyticsLocationMode);
-              setPage(1);
-            }}
-          >
-            <option value="all">All locations</option>
-            <option value="popular">Popular locations</option>
-            <option value="ignored">Ignored locations</option>
-          </select>
-        </label>
+        <SelectField
+          label="Location view"
+          className="author-filter analytics-section__mode"
+          value={mode}
+          onChange={(value) => {
+            setMode(value as AuthorAnalyticsLocationMode);
+            setPage(1);
+          }}
+          options={[
+            { value: 'all', label: 'All locations' },
+            { value: 'popular', label: 'Popular locations' },
+            { value: 'ignored', label: 'Ignored locations' },
+          ]}
+        />
       </div>
       <p className="analytics-policy">{locationModeDescription(mode)}</p>
 
@@ -533,77 +534,72 @@ function QuestionAnalyticsSection({
         className="author-filters analytics-filters analytics-question-filters"
         onSubmit={applyFilters}
       >
-        <label className="author-filter">
-          <span>Event</span>
-          <select
-            value={draft.eventId}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                eventId: event.target.value,
-                challengeId: '',
-              })
-            }
-          >
-            <option value="">All events</option>
-            {events.map((event) => (
-              <option key={event.eventId} value={event.eventId}>
-                {event.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="author-filter">
-          <span>Challenge</span>
-          <select
-            disabled={!draft.eventId || Boolean(challengeOptionsError)}
-            value={draft.challengeId}
-            onChange={(event) =>
-              setDraft({ ...draft, challengeId: event.target.value })
-            }
-          >
-            <option value="">All challenges</option>
-            {challenges.map((challenge, index) => (
-              <option key={challenge.challengeId} value={challenge.challengeId}>
-                {challenge.format === 'ordering' ? 'Ordering' : 'MCQ'} challenge{' '}
-                {index + 1}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="author-filter">
-          <span>Format</span>
-          <select
-            value={draft.format}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                format: event.target.value as QuestionFilters['format'],
-              })
-            }
-          >
-            <option value="">All formats</option>
-            <option value="multiple_choice">Multiple choice</option>
-            <option value="ordering">Ordering</option>
-          </select>
-        </label>
-        <label className="author-filter">
-          <span>Difficulty</span>
-          <select
-            value={draft.difficulty}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                difficulty: event.target.value as QuestionFilters['difficulty'],
-              })
-            }
-          >
-            <option value="">All difficulties</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-          </select>
-        </label>
+        <SelectField
+          label="Event"
+          className="author-filter"
+          value={draft.eventId}
+          onChange={(value) =>
+            setDraft({
+              ...draft,
+              eventId: value,
+              challengeId: '',
+            })
+          }
+          options={[
+            { value: '', label: 'All events' },
+            ...events.map((event) => ({
+              value: event.eventId,
+              label: event.title,
+            })),
+          ]}
+        />
+        <SelectField
+          label="Challenge"
+          className="author-filter"
+          disabled={!draft.eventId || Boolean(challengeOptionsError)}
+          value={draft.challengeId}
+          onChange={(value) => setDraft({ ...draft, challengeId: value })}
+          options={[
+            { value: '', label: 'All challenges' },
+            ...challenges.map((challenge, index) => ({
+              value: challenge.challengeId,
+              label: `${challenge.format === 'ordering' ? 'Ordering' : 'MCQ'} challenge ${index + 1}`,
+            })),
+          ]}
+        />
+        <SelectField
+          label="Format"
+          className="author-filter"
+          value={draft.format}
+          onChange={(value) =>
+            setDraft({
+              ...draft,
+              format: value as QuestionFilters['format'],
+            })
+          }
+          options={[
+            { value: '', label: 'All formats' },
+            { value: 'multiple_choice', label: 'Multiple choice' },
+            { value: 'ordering', label: 'Ordering' },
+          ]}
+        />
+        <SelectField
+          label="Difficulty"
+          className="author-filter"
+          value={draft.difficulty}
+          onChange={(value) =>
+            setDraft({
+              ...draft,
+              difficulty: value as QuestionFilters['difficulty'],
+            })
+          }
+          options={[
+            { value: '', label: 'All difficulties' },
+            { value: '1', label: '1' },
+            { value: '2', label: '2' },
+            { value: '3', label: '3' },
+          ]}
+        />
         <div className="author-actions analytics-filters__actions">
           <button className="button button--primary" type="submit">
             Apply question filters

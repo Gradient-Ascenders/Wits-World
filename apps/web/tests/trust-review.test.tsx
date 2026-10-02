@@ -1,3 +1,4 @@
+import { selectOption } from './fixtures/select-option';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -41,17 +42,20 @@ describe('TrustReviewWorkspace', () => {
 
     expect(await screen.findByText('Casey Reviewer')).toBeVisible();
     await user.type(screen.getByLabelText('Search cases'), 'casey');
-    await user.selectOptions(screen.getByLabelText('Case status'), 'resolved');
-    await user.selectOptions(
+    await selectOption(user, screen.getByLabelText('Case status'), 'resolved');
+    await selectOption(
+      user,
       screen.getByLabelText('Review priority'),
       'urgent_review',
     );
     await user.click(screen.getByText('More filters'));
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Signal type'),
       'opponent_concentration',
     );
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Restriction state'),
       'active',
     );
@@ -357,7 +361,7 @@ describe('TrustReviewWorkspace', () => {
     await screen.findByRole('heading', { name: 'Casey Reviewer' });
     await user.click(screen.getByLabelText('Apply temporary restriction'));
     await user.click(screen.getByLabelText('Pause new competitive matches'));
-    await user.selectOptions(screen.getByLabelText('Duration'), '72');
+    await selectOption(user, screen.getByLabelText('Duration'), '72');
     await user.type(
       screen.getByRole('textbox', { name: /Reason and context/ }),
       'Repeated evidence warrants a bounded competitive pause.',

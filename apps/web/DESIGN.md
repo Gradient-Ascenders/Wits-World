@@ -90,6 +90,11 @@ components:
     rounded: '{rounded.md}'
   interactive-highlight:
     rounded: '{rounded.sm}'
+  filter-control:
+    backgroundColor: '{colors.night-sky-panel}'
+    textColor: '{colors.ivory}'
+    rounded: '{rounded.sm}'
+    height: '2.75rem'
   status-active:
     backgroundColor: 'rgb(57 184 121 / 8%)'
     textColor: '{colors.success-green}'
@@ -208,6 +213,8 @@ Resolve motion through the application's shared preference: `reduce` disables ca
 
 Fields sit on the darkest navy with ivory text, a thin border, small radius, and touch-target height. Focus uses the global blue outline. Invalid fields use the danger color in the border and an accompanying text error.
 
+**The Shared Filter Control Rule.** Search and filter controls across Author, Explore, and Collection use the shared search and select components. Author creation and editing forms use the same select component, including nested move, effect, challenge, and question fields. Text inputs, textareas, and date controls share its surface, border, corner radius, and focus treatment. Their slightly raised navy surface, small corners, quiet border, and consistent target height make browsing controls recognizable across pages. Searches include a leading search icon and a clear action that returns focus to the input. Custom select menus use the same navy surface, gently rounded options, and a checkmark beside the selected value. Keep visible labels or equivalent accessible names, keyboard navigation, Escape dismissal, focus restoration, disabled states, and viewport-bounded scrolling. Preserve the page's existing filtering and submission behavior.
+
 ### Navigation
 
 Player navigation uses icon and text labels. The current item receives gold text, a faint gold fill, and a short underline, with `aria-current="page"` providing semantic state. Mobile navigation sits at the bottom; the same destinations appear horizontally in the header at wide widths. Explore may collapse its mobile header to make room for the map and sheet.
@@ -232,4 +239,4 @@ Small pill badges use colored text and faint matching fill for active, upcoming,
 - **Don't** make gold compete with Trail Blue as the default control fill.
 - **Don't** hide task status inside map styling or color alone.
 
-Shared collectible-card interaction and gentle-highlight guidance was edited with assistance from Codex[GPT-6].
+Shared collectible-card interaction, gentle-highlight, and filter-control guidance was edited with assistance from Codex[GPT-6].

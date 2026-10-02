@@ -1,3 +1,5 @@
+import { SelectField } from '../components/fields/SelectField';
+import { SearchField } from '../components/fields/SearchField';
 import { StateIcon } from '../components/StatusMessage';
 import { confirmAction } from '../components/AppToaster';
 import { PageLoadingState } from '../components/LoadingState';
@@ -1388,52 +1390,43 @@ function DeckEditor({
             </div>
 
             <div className="deck-filters">
-              <label>
-                Search cards
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value);
+              <SearchField
+                label="Search cards"
+                value={search}
+                onChange={(value) => {
+                  setSearch(value);
+                  setPage(1);
+                }}
+                placeholder="Card name"
+              />
+              <div className="deck-filters__choices">
+                <SelectField
+                  label="Type"
+                  value={category}
+                  onChange={(value) => {
+                    setCategory(value);
                     setPage(1);
                   }}
-                  placeholder="Card name"
+                  options={[
+                    { value: 'all', label: 'All types' },
+                    { value: 'creature', label: 'Creature' },
+                    { value: 'power', label: 'Power' },
+                  ]}
                 />
-              </label>
-              <div className="deck-filters__choices">
-                <label>
-                  Type
-                  <select
-                    value={category}
-                    onChange={(event) => {
-                      setCategory(event.target.value);
-                      setPage(1);
-                    }}
-                  >
-                    <option value="all">All types</option>
-                    <option value="creature">Creature</option>
-                    <option value="power">Power</option>
-                  </select>
-                </label>
-                <label>
-                  Rarity
-                  <select
-                    value={rarity}
-                    onChange={(event) => {
-                      setRarity(event.target.value);
-                      setPage(1);
-                    }}
-                  >
-                    <option value="all">All rarities</option>
-                    {(['common', 'rare', 'epic', 'legendary'] as const).map(
-                      (value) => (
-                        <option key={value} value={value}>
-                          {titleCase(value)}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </label>
+                <SelectField
+                  label="Rarity"
+                  value={rarity}
+                  onChange={(value) => {
+                    setRarity(value);
+                    setPage(1);
+                  }}
+                  options={[
+                    { value: 'all', label: 'All rarities' },
+                    ...(['common', 'rare', 'epic', 'legendary'] as const).map(
+                      (value) => ({ value, label: titleCase(value) }),
+                    ),
+                  ]}
+                />
               </div>
             </div>
 

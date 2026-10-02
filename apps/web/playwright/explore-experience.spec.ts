@@ -1,3 +1,4 @@
+import { selectOption } from './select-option';
 import { expect, test, type Page } from '@playwright/test';
 
 const eventIds = [
@@ -512,9 +513,10 @@ test('mobile sheet stays above navigation, supports selection, disclosure, gestu
     .fill('no matching event');
   await expect(page.getByText('No events match these filters.')).toBeVisible();
   await page.getByRole('button', { name: 'Clear filters' }).click();
-  await page
-    .getByRole('combobox', { name: 'Filter events by status' })
-    .selectOption('ended');
+  await selectOption(
+    page.getByLabel('Filter events by status', { exact: true }),
+    'ended',
+  );
   await page
     .getByRole('button', { name: /View on map.*Origins Centre/ })
     .click();

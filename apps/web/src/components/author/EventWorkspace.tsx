@@ -1,3 +1,5 @@
+import { SelectField } from '../fields/SelectField';
+import { SearchField } from '../fields/SearchField';
 import {
   createAppDateTimeFormatter,
   parseAppDateTimeLocal,
@@ -527,54 +529,52 @@ function EventCatalogueControls({
       aria-label="Filter and sort events"
       className="author-filters author-filters--events"
     >
-      <label className="author-filter author-filter--search">
-        <span>Search</span>
-        <input
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Title or description"
-          type="search"
-          value={search}
-        />
-      </label>
-      <label className="author-filter">
-        <span>Lifecycle</span>
-        <select
-          onChange={(event) => onLifecycleChange(event.target.value)}
-          value={lifecycle}
-        >
-          <option value="all">All</option>
-          <option value="draft">Draft</option>
-          <option value="in_review">In review</option>
-          <option value="approved">Approved</option>
-          <option value="published">Published</option>
-          <option value="retired">Retired</option>
-        </select>
-      </label>
-      <label className="author-filter">
-        <span>Schedule</span>
-        <select
-          onChange={(event) => onScheduleChange(event.target.value)}
-          value={schedule}
-        >
-          <option value="all">All schedules</option>
-          <option value="current">In window</option>
-          <option value="upcoming">Upcoming</option>
-          <option value="ended">Ended</option>
-        </select>
-      </label>
-      <label className="author-filter">
-        <span>Sort</span>
-        <select
-          onChange={(event) =>
-            onSortChange(event.target.value as 'name' | 'schedule' | 'updated')
-          }
-          value={sort}
-        >
-          <option value="schedule">Start time</option>
-          <option value="name">A–Z</option>
-          <option value="updated">Recently updated</option>
-        </select>
-      </label>
+      <SearchField
+        label="Search"
+        className="author-filter author-filter--search"
+        onChange={(value) => onSearchChange(value)}
+        placeholder="Title or description"
+        value={search}
+      />
+      <SelectField
+        label="Lifecycle"
+        className="author-filter"
+        onChange={(value) => onLifecycleChange(value)}
+        value={lifecycle}
+        options={[
+          { value: 'all', label: 'All' },
+          { value: 'draft', label: 'Draft' },
+          { value: 'in_review', label: 'In review' },
+          { value: 'approved', label: 'Approved' },
+          { value: 'published', label: 'Published' },
+          { value: 'retired', label: 'Retired' },
+        ]}
+      />
+      <SelectField
+        label="Schedule"
+        className="author-filter"
+        onChange={(value) => onScheduleChange(value)}
+        value={schedule}
+        options={[
+          { value: 'all', label: 'All schedules' },
+          { value: 'current', label: 'In window' },
+          { value: 'upcoming', label: 'Upcoming' },
+          { value: 'ended', label: 'Ended' },
+        ]}
+      />
+      <SelectField
+        label="Sort"
+        className="author-filter"
+        onChange={(value) =>
+          onSortChange(value as 'name' | 'schedule' | 'updated')
+        }
+        value={sort}
+        options={[
+          { value: 'schedule', label: 'Start time' },
+          { value: 'name', label: 'A–Z' },
+          { value: 'updated', label: 'Recently updated' },
+        ]}
+      />
     </div>
   );
 }
@@ -1756,18 +1756,19 @@ function ChallengeWorkspace({
           <h4>Challenge</h4>
           {state === 'ready' && activeChallenges.length === 0 ? (
             <div className="challenge-create-controls">
-              <label htmlFor="new-challenge-format">Format</label>
-              <select
+              <SelectField
+                label="Format"
                 disabled={busy}
                 id="new-challenge-format"
-                onChange={(change) =>
-                  setNewChallengeFormat(change.target.value as ChallengeFormat)
+                onChange={(value) =>
+                  setNewChallengeFormat(value as ChallengeFormat)
                 }
                 value={newChallengeFormat}
-              >
-                <option value="multiple_choice">Multiple choice</option>
-                <option value="ordering">Ordering</option>
-              </select>
+                options={[
+                  { value: 'multiple_choice', label: 'Multiple choice' },
+                  { value: 'ordering', label: 'Ordering' },
+                ]}
+              />
               <button
                 className="button button--quiet"
                 disabled={busy}
@@ -1795,25 +1796,18 @@ function ChallengeWorkspace({
           </div>
         ) : null}
         {challenges.length > 1 ? (
-          <div className="challenge-selector">
-            <label htmlFor="event-challenge">Challenge</label>
-            <select
-              data-route-focus="preserve"
-              id="event-challenge"
-              onChange={(change) => selectChallenge(change.target.value)}
-              value={selectedChallengeId ?? ''}
-            >
-              {challenges.map((challenge, index) => (
-                <option
-                  key={challenge.challengeId}
-                  value={challenge.challengeId}
-                >
-                  Challenge {index + 1} ·{' '}
-                  {challengeFormatLabel(challenge.format)} · {challenge.status}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SelectField
+            className="challenge-selector"
+            label="Challenge"
+            preserveRouteFocus
+            id="event-challenge"
+            onChange={selectChallenge}
+            value={selectedChallengeId ?? ''}
+            options={challenges.map((challenge, index) => ({
+              value: challenge.challengeId,
+              label: `Challenge ${index + 1} · ${challengeFormatLabel(challenge.format)} · ${challenge.status}`,
+            }))}
+          />
         ) : null}
         {selected ? (
           <div className="author-section-heading event-challenge-summary">
@@ -2680,31 +2674,25 @@ function QuestionForm({
           value={draft.prompt}
         />
       </FormField>
-      <FormField
+      <SelectField
+        className="form-field"
         error={errors.difficulty}
         label="Difficulty"
-        name="question-difficulty"
-      >
-        <select
-          aria-describedby={
-            errors.difficulty ? 'question-difficulty-error' : undefined
-          }
-          aria-invalid={Boolean(errors.difficulty)}
-          disabled={busy}
-          id="question-difficulty"
-          onChange={(change) =>
-            setDraft((current) => ({
-              ...current,
-              difficulty: Number(change.target.value) as 1 | 2 | 3,
-            }))
-          }
-          value={draft.difficulty}
-        >
-          <option value="1">1 — introductory</option>
-          <option value="2">2 — intermediate</option>
-          <option value="3">3 — demanding</option>
-        </select>
-      </FormField>
+        disabled={busy}
+        id="question-difficulty"
+        onChange={(value) =>
+          setDraft((current) => ({
+            ...current,
+            difficulty: Number(value) as 1 | 2 | 3,
+          }))
+        }
+        value={String(draft.difficulty)}
+        options={[
+          { value: '1', label: '1 — introductory' },
+          { value: '2', label: '2 — intermediate' },
+          { value: '3', label: '3 — demanding' },
+        ]}
+      />
       {draft.format === 'ordering' ? (
         <fieldset className="author-fieldset" disabled={busy}>
           <legend>Correct sequence</legend>

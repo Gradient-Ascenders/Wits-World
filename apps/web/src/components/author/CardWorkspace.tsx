@@ -1,3 +1,5 @@
+import { SelectField } from '../fields/SelectField';
+import { SearchField } from '../fields/SearchField';
 import { createAppDateTimeFormatter } from '../../date-time';
 import { StateIcon } from '../StatusMessage';
 import { LoadingState } from '../LoadingState';
@@ -446,42 +448,39 @@ function CardCatalogueControls({
       className="author-catalogue-toolbar"
       role="group"
     >
-      <label className="author-catalogue-toolbar__search">
-        <span className="sr-only">Search</span>
-        <input
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search cards"
-          type="search"
-          value={search}
-        />
-      </label>
+      <SearchField
+        label="Search"
+        hideLabel
+        className="author-catalogue-toolbar__search"
+        onChange={(value) => onSearchChange(value)}
+        placeholder="Search cards"
+        value={search}
+      />
       <div className="author-catalogue-toolbar__controls">
-        <label className="author-catalogue-toolbar__select">
-          <span>Lifecycle</span>
-          <select
-            onChange={(event) => onLifecycleChange(event.target.value)}
-            value={lifecycle}
-          >
-            <option value="all">All</option>
-            <option value="draft">Draft</option>
-            <option value="in_review">In review</option>
-            <option value="approved">Approved</option>
-            <option value="published">Published</option>
-            <option value="retired">Retired</option>
-          </select>
-        </label>
-        <label className="author-catalogue-toolbar__select">
-          <span>Sort</span>
-          <select
-            onChange={(event) =>
-              onSortChange(event.target.value as 'name' | 'updated')
-            }
-            value={sort}
-          >
-            <option value="name">A–Z</option>
-            <option value="updated">Updated</option>
-          </select>
-        </label>
+        <SelectField
+          label="Lifecycle"
+          className="author-catalogue-toolbar__select"
+          onChange={(value) => onLifecycleChange(value)}
+          value={lifecycle}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'draft', label: 'Draft' },
+            { value: 'in_review', label: 'In review' },
+            { value: 'approved', label: 'Approved' },
+            { value: 'published', label: 'Published' },
+            { value: 'retired', label: 'Retired' },
+          ]}
+        />
+        <SelectField
+          label="Sort"
+          className="author-catalogue-toolbar__select"
+          onChange={(value) => onSortChange(value as 'name' | 'updated')}
+          value={sort}
+          options={[
+            { value: 'name', label: 'A–Z' },
+            { value: 'updated', label: 'Updated' },
+          ]}
+        />
         <details className="author-filter-menu">
           <summary>
             <CaretDownIcon size={16} aria-hidden="true" />
@@ -493,45 +492,42 @@ function CardCatalogueControls({
             ) : null}
           </summary>
           <div className="author-filter-menu__panel">
-            <label className="author-filter">
-              <span>Category</span>
-              <select
-                onChange={(event) => onCategoryChange(event.target.value)}
-                value={category}
-              >
-                <option value="all">All</option>
-                <option value="creature">Creature</option>
-                <option value="power">Power</option>
-              </select>
-            </label>
-            <label className="author-filter">
-              <span>Affinity</span>
-              <select
-                onChange={(event) => onAffinityChange(event.target.value)}
-                value={affinity}
-              >
-                <option value="all">All</option>
-                {['wit', 'grit', 'spark', 'spirit', 'mystic'].map((value) => (
-                  <option key={value} value={value}>
-                    {titleCase(value)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="author-filter">
-              <span>Rarity</span>
-              <select
-                onChange={(event) => onRarityChange(event.target.value)}
-                value={rarity}
-              >
-                <option value="all">All</option>
-                {['common', 'rare', 'epic', 'legendary'].map((value) => (
-                  <option key={value} value={value}>
-                    {titleCase(value)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectField
+              label="Category"
+              className="author-filter"
+              onChange={(value) => onCategoryChange(value)}
+              value={category}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'creature', label: 'Creature' },
+                { value: 'power', label: 'Power' },
+              ]}
+            />
+            <SelectField
+              label="Affinity"
+              className="author-filter"
+              onChange={(value) => onAffinityChange(value)}
+              value={affinity}
+              options={[
+                { value: 'all', label: 'All' },
+                ...['wit', 'grit', 'spark', 'spirit', 'mystic'].map(
+                  (value) => ({ value, label: titleCase(value) }),
+                ),
+              ]}
+            />
+            <SelectField
+              label="Rarity"
+              className="author-filter"
+              onChange={(value) => onRarityChange(value)}
+              value={rarity}
+              options={[
+                { value: 'all', label: 'All' },
+                ...['common', 'rare', 'epic', 'legendary'].map((value) => ({
+                  value,
+                  label: titleCase(value),
+                })),
+              ]}
+            />
           </div>
         </details>
       </div>
@@ -1062,58 +1058,61 @@ function CardForm({
                     value={draft.name}
                   />
                 </Field>
-                <Field label="Category" name="card-category">
-                  <select
-                    disabled={busy || draft.category === 'power'}
-                    id="card-category"
-                    onChange={(change) =>
-                      changeCategory(change.target.value as CardCategory)
-                    }
-                    value={draft.category}
-                  >
-                    <option value="creature">Creature</option>
-                    <option value="power">Power</option>
-                  </select>
-                </Field>
-                <Field label="Affinity" name="card-affinity">
-                  <select
-                    disabled={busy}
-                    id="card-affinity"
-                    onChange={(change) => {
-                      const value = change.currentTarget.value as CardAffinity;
-                      setDraft((current) => ({ ...current, affinity: value }));
-                    }}
-                    value={draft.affinity ?? ''}
-                  >
-                    {draft.category === 'power' ? (
-                      <option value="">Typeless</option>
-                    ) : null}
-                    {['wit', 'grit', 'spark', 'spirit', 'mystic'].map(
-                      (value) => (
-                        <option key={value} value={value}>
-                          {titleCase(value)}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </Field>
-                <Field label="Rarity" name="card-rarity">
-                  <select
-                    disabled={busy}
-                    id="card-rarity"
-                    onChange={(change) => {
-                      const value = change.currentTarget.value as CardRarity;
-                      setDraft((current) => ({ ...current, rarity: value }));
-                    }}
-                    value={draft.rarity}
-                  >
-                    {['common', 'rare', 'epic', 'legendary'].map((value) => (
-                      <option key={value} value={value}>
-                        {titleCase(value)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                <SelectField
+                  className="form-field"
+                  label="Category"
+                  disabled={busy || draft.category === 'power'}
+                  id="card-category"
+                  onChange={(value) => changeCategory(value as CardCategory)}
+                  value={draft.category}
+                  options={[
+                    { value: 'creature', label: 'Creature' },
+                    { value: 'power', label: 'Power' },
+                  ]}
+                />
+                <SelectField
+                  className="form-field"
+                  label="Affinity"
+                  disabled={busy}
+                  id="card-affinity"
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      affinity: value as CardAffinity,
+                    }))
+                  }
+                  value={draft.affinity ?? ''}
+                  options={[
+                    ...(draft.category === 'power'
+                      ? [{ value: '', label: 'Typeless' }]
+                      : []),
+                    ...['wit', 'grit', 'spark', 'spirit', 'mystic'].map(
+                      (value) => ({
+                        value,
+                        label: titleCase(value),
+                      }),
+                    ),
+                  ]}
+                />
+                <SelectField
+                  className="form-field"
+                  label="Rarity"
+                  disabled={busy}
+                  id="card-rarity"
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      rarity: value as CardRarity,
+                    }))
+                  }
+                  value={draft.rarity}
+                  options={['common', 'rare', 'epic', 'legendary'].map(
+                    (value) => ({
+                      value,
+                      label: titleCase(value),
+                    }),
+                  )}
+                />
                 {draft.category === 'creature' ? (
                   <>
                     <Field
@@ -1241,6 +1240,7 @@ function CardForm({
                 ) : null}
                 {draft.moves.map((move, index) => (
                   <MoveEditor
+                    busy={busy}
                     errors={errors}
                     expanded={activeMove === index}
                     onToggle={() =>
@@ -1314,6 +1314,7 @@ function CardForm({
                 ) : null}
                 {draft.effects.map((effect, index) => (
                   <EffectEditor
+                    busy={busy}
                     effect={effect}
                     errors={errors}
                     index={index}
@@ -1509,6 +1510,7 @@ function cardArtworkUrl(value: string): string | null {
 }
 
 function MoveEditor({
+  busy,
   errors,
   expanded,
   onToggle,
@@ -1517,6 +1519,7 @@ function MoveEditor({
   onChange,
   onRemove,
 }: {
+  busy: boolean;
   errors: Record<string, string>;
   expanded: boolean;
   onToggle: () => void;
@@ -1578,26 +1581,22 @@ function MoveEditor({
               value={move.name}
             />
           </Field>
-          <Field label="Move type" name={`move-${index}-type`}>
-            <select
-              id={`move-${index}-type`}
-              onChange={(change) =>
-                onChange({
-                  ...move,
-                  moveType: change.target.value as CardMoveType,
-                })
-              }
-              value={move.moveType}
-            >
-              {['basic', 'wit', 'grit', 'spark', 'spirit', 'mystic'].map(
-                (value) => (
-                  <option key={value} value={value}>
-                    {titleCase(value)}
-                  </option>
-                ),
-              )}
-            </select>
-          </Field>
+          <SelectField
+            className="form-field"
+            label="Move type"
+            id={`move-${index}-type`}
+            disabled={busy}
+            onChange={(value) =>
+              onChange({ ...move, moveType: value as CardMoveType })
+            }
+            value={move.moveType}
+            options={['basic', 'wit', 'grit', 'spark', 'spirit', 'mystic'].map(
+              (value) => ({
+                value,
+                label: titleCase(value),
+              }),
+            )}
+          />
           <Field
             error={errors[`move${index}PowerCost`]}
             label="Power cost"
@@ -1622,6 +1621,7 @@ function MoveEditor({
           </Field>
         </div>
         <EffectEditor
+          busy={busy}
           effect={move}
           errors={errors}
           index={index}
@@ -1634,6 +1634,7 @@ function MoveEditor({
 }
 
 function EffectEditor({
+  busy,
   effect,
   errors,
   index,
@@ -1641,6 +1642,7 @@ function EffectEditor({
   onRemove,
   prefix,
 }: {
+  busy: boolean;
   effect: EffectDraft;
   errors: Record<string, string>;
   index: number;
@@ -1696,21 +1698,18 @@ function EffectEditor({
         </div>
       ) : null}
       <div className="author-form__grid">
-        <Field label="Effect type" name={`${prefix}-${index}-effect-type`}>
-          <select
-            id={`${prefix}-${index}-effect-type`}
-            onChange={(change) =>
-              changeType(change.target.value as CardEffectType)
-            }
-            value={effect.effectType}
-          >
-            {['damage', 'debuff', 'heal', 'buff'].map((value) => (
-              <option key={value} value={value}>
-                {titleCase(value)}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <SelectField
+          className="form-field"
+          label="Effect type"
+          id={`${prefix}-${index}-effect-type`}
+          disabled={busy}
+          onChange={(value) => changeType(value as CardEffectType)}
+          value={effect.effectType}
+          options={['damage', 'debuff', 'heal', 'buff'].map((value) => ({
+            value,
+            label: titleCase(value),
+          }))}
+        />
         <Field
           error={errors[`${prefix}${index}EffectValue`]}
           label="Effect value (optional)"
@@ -1735,30 +1734,21 @@ function EffectEditor({
         </Field>
         {modifier ? (
           <>
-            <Field
+            <SelectField
+              className="form-field"
               error={errors[`${prefix}${index}Modifier`]}
               label="Modifier stat"
-              name={`${prefix}-${index}-modifier-stat`}
-            >
-              <select
-                aria-describedby={
-                  errors[`${prefix}${index}Modifier`]
-                    ? `${prefix}-${index}-modifier-stat-error`
-                    : undefined
-                }
-                aria-invalid={Boolean(errors[`${prefix}${index}Modifier`])}
-                id={`${prefix}-${index}-modifier-stat`}
-                onChange={(change) =>
-                  changeStat(change.target.value as '' | CardModifierStat)
-                }
-                value={effect.modifierStat}
-              >
-                <option value="">Choose stat</option>
-                <option value="hp">HP</option>
-                <option value="power">Power</option>
-                <option value="damage_multiplier">Damage multiplier</option>
-              </select>
-            </Field>
+              id={`${prefix}-${index}-modifier-stat`}
+              disabled={busy}
+              onChange={(value) => changeStat(value as '' | CardModifierStat)}
+              value={effect.modifierStat}
+              options={[
+                { value: '', label: 'Choose stat' },
+                { value: 'hp', label: 'HP' },
+                { value: 'power', label: 'Power' },
+                { value: 'damage_multiplier', label: 'Damage multiplier' },
+              ]}
+            />
             <Field
               label="Modifier operation"
               name={`${prefix}-${index}-modifier-operation`}

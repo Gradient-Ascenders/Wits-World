@@ -1,3 +1,5 @@
+import { SelectField } from '../fields/SelectField';
+import { SearchField } from '../fields/SearchField';
 import {
   createAppDateTimeFormatter,
   parseAppDateTimeLocal,
@@ -205,33 +207,27 @@ export function CampaignWorkspace({
           </Link>
         </div>
         <div className="author-toolbar author-toolbar--compact">
-          <label className="author-search" htmlFor="campaign-search">
-            <span>Search campaigns</span>
-            <input
-              id="campaign-search"
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search title or description"
-              type="search"
-              value={search}
-            />
-          </label>
-          <label className="author-filter" htmlFor="campaign-status-filter">
-            <span>Status</span>
-            <select
-              id="campaign-status-filter"
-              onChange={(event) => setStatusFilter(event.target.value)}
-              value={statusFilter}
-            >
-              <option value="all">All statuses</option>
-              {['draft', 'in_review', 'approved', 'published', 'retired'].map(
-                (status) => (
-                  <option key={status} value={status}>
-                    {titleCase(status)}
-                  </option>
-                ),
-              )}
-            </select>
-          </label>
+          <SearchField
+            label="Search campaigns"
+            className="author-search"
+            id="campaign-search"
+            onChange={(value) => setSearch(value)}
+            placeholder="Search title or description"
+            value={search}
+          />
+          <SelectField
+            label="Status"
+            className="author-filter"
+            id="campaign-status-filter"
+            onChange={(value) => setStatusFilter(value)}
+            value={statusFilter}
+            options={[
+              { value: 'all', label: 'All statuses' },
+              ...['draft', 'in_review', 'approved', 'published', 'retired'].map(
+                (status) => ({ value: status, label: titleCase(status) }),
+              ),
+            ]}
+          />
         </div>
         {filteredCampaigns.length === 0 ? (
           <div className="author-state author-state--empty state-message state-message--empty">
@@ -892,17 +888,15 @@ function MembershipFieldset({
         <p>{empty}</p>
       ) : (
         <>
-          <label className="author-search author-membership__search">
-            <span>Search {legend.toLocaleLowerCase()}</span>
-            <input
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
-              }}
-              type="search"
-              value={query}
-            />
-          </label>
+          <SearchField
+            label={['Search', legend.toLocaleLowerCase()].join(' ')}
+            className="author-search author-membership__search"
+            onChange={(value) => {
+              setQuery(value);
+              setPage(1);
+            }}
+            value={query}
+          />
           {filteredItems.length === 0 ? (
             <p>No matching {legend.toLocaleLowerCase()}.</p>
           ) : (

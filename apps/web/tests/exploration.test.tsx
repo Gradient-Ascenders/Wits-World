@@ -1,3 +1,4 @@
+import { selectOption } from './fixtures/select-option';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -301,8 +302,9 @@ describe('map-first campus exploration', () => {
       ]),
     );
 
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Filter events by status' }),
+    await selectOption(
+      user,
+      screen.getByLabelText('Filter events by status'),
       'active',
     );
     expect(screen.getByText('No events match these filters.')).toBeVisible();

@@ -1,3 +1,5 @@
+import { SelectField } from '../fields/SelectField';
+import { SearchField } from '../fields/SearchField';
 import {
   appCalendarDateBoundary,
   createAppDateTimeFormatter,
@@ -265,16 +267,14 @@ export function TrustReviewWorkspace({
               role="search"
             >
               <div className="trust-review__search-row">
-                <label className="author-filter">
-                  <span>Search cases</span>
-                  <input
-                    maxLength={256}
-                    onChange={(event) => setSearchDraft(event.target.value)}
-                    placeholder="Player, case, or player ID"
-                    type="search"
-                    value={searchDraft}
-                  />
-                </label>
+                <SearchField
+                  label="Search cases"
+                  className="author-filter"
+                  maxLength={256}
+                  onChange={(value) => setSearchDraft(value)}
+                  placeholder="Player, case, or player ID"
+                  value={searchDraft}
+                />
                 <div className="trust-review__search-actions">
                   <button className="button button--quiet" type="submit">
                     Search
@@ -290,87 +290,89 @@ export function TrustReviewWorkspace({
                   ) : null}
                 </div>
               </div>
-              <label className="author-filter">
-                <span>Case status</span>
-                <select
-                  onChange={(event) => {
-                    setStatus(event.target.value as TrustCaseStatusFilter);
-                    setPage(1);
-                  }}
-                  value={status}
-                >
-                  <option value="active">Active cases</option>
-                  <option value="open">Open</option>
-                  <option value="under_review">Under review</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="all">All cases</option>
-                </select>
-              </label>
-              <label className="author-filter">
-                <span>Review priority</span>
-                <select
-                  onChange={(event) => {
-                    setBand(event.target.value as TrustReviewBand | 'all');
-                    setPage(1);
-                  }}
-                  value={band}
-                >
-                  <option value="all">All priorities</option>
-                  <option value="urgent_review">Urgent review</option>
-                  <option value="review_required">Review required</option>
-                  <option value="observe">Observe</option>
-                  <option value="normal">Normal</option>
-                </select>
-              </label>
+              <SelectField
+                label="Case status"
+                className="author-filter"
+                onChange={(value) => {
+                  setStatus(value as TrustCaseStatusFilter);
+                  setPage(1);
+                }}
+                value={status}
+                options={[
+                  { value: 'active', label: 'Active cases' },
+                  { value: 'open', label: 'Open' },
+                  { value: 'under_review', label: 'Under review' },
+                  { value: 'resolved', label: 'Resolved' },
+                  { value: 'all', label: 'All cases' },
+                ]}
+              />
+              <SelectField
+                label="Review priority"
+                className="author-filter"
+                onChange={(value) => {
+                  setBand(value as TrustReviewBand | 'all');
+                  setPage(1);
+                }}
+                value={band}
+                options={[
+                  { value: 'all', label: 'All priorities' },
+                  { value: 'urgent_review', label: 'Urgent review' },
+                  { value: 'review_required', label: 'Review required' },
+                  { value: 'observe', label: 'Observe' },
+                  { value: 'normal', label: 'Normal' },
+                ]}
+              />
               <details className="trust-review__advanced-filters">
                 <summary>More filters</summary>
                 <div className="trust-review__advanced-grid">
-                  <label className="author-filter">
-                    <span>Signal type</span>
-                    <select
-                      onChange={(event) => {
-                        setSignalType(
-                          event.target.value as TrustSignalType | 'all',
-                        );
-                        setPage(1);
-                      }}
-                      value={signalType}
-                    >
-                      <option value="all">All signal types</option>
-                      <option value="impossible_movement">
-                        Impossible movement
-                      </option>
-                      <option value="idempotency_payload_conflict">
-                        Submission payload conflict
-                      </option>
-                      <option value="submission_conflict_pattern">
-                        Submission conflict pattern
-                      </option>
-                      <option value="opponent_concentration">
-                        Opponent concentration
-                      </option>
-                      <option value="one_sided_outcome_pattern">
-                        One-sided outcomes
-                      </option>
-                    </select>
-                  </label>
-                  <label className="author-filter">
-                    <span>Restriction state</span>
-                    <select
-                      onChange={(event) => {
-                        setRestrictionState(
-                          event.target.value as
-                            TrustRestrictionStateFilter | 'all',
-                        );
-                        setPage(1);
-                      }}
-                      value={restrictionState}
-                    >
-                      <option value="all">Any restriction state</option>
-                      <option value="active">Active restriction</option>
-                      <option value="none">No active restriction</option>
-                    </select>
-                  </label>
+                  <SelectField
+                    label="Signal type"
+                    className="author-filter"
+                    onChange={(value) => {
+                      setSignalType(value as TrustSignalType | 'all');
+                      setPage(1);
+                    }}
+                    value={signalType}
+                    options={[
+                      { value: 'all', label: 'All signal types' },
+                      {
+                        value: 'impossible_movement',
+                        label: 'Impossible movement',
+                      },
+                      {
+                        value: 'idempotency_payload_conflict',
+                        label: 'Submission payload conflict',
+                      },
+                      {
+                        value: 'submission_conflict_pattern',
+                        label: 'Submission conflict pattern',
+                      },
+                      {
+                        value: 'opponent_concentration',
+                        label: 'Opponent concentration',
+                      },
+                      {
+                        value: 'one_sided_outcome_pattern',
+                        label: 'One-sided outcomes',
+                      },
+                    ]}
+                  />
+                  <SelectField
+                    label="Restriction state"
+                    className="author-filter"
+                    onChange={(value) => {
+                      setRestrictionState(
+                        value as TrustRestrictionStateFilter | 'all',
+                      );
+                      setPage(1);
+                    }}
+                    value={restrictionState}
+                    options={[
+                      { value: 'all', label: 'Any restriction state' },
+                      { value: 'active', label: 'Active restriction' },
+                      { value: 'none', label: 'No active restriction' },
+                    ]}
+                  />
                   <DateFilter
                     label="Opened from (Johannesburg)"
                     onChange={(value) => {
@@ -1491,20 +1493,18 @@ function DecisionSection({
                   </label>
                 ))}
               </fieldset>
-              <label className="author-filter">
-                <span>Duration</span>
-                <select
-                  disabled={controlsDisabled}
-                  onChange={(event) =>
-                    setDurationHours(Number(event.target.value))
-                  }
-                  value={durationHours}
-                >
-                  <option value={24}>24 hours</option>
-                  <option value={72}>72 hours</option>
-                  <option value={168}>7 days</option>
-                </select>
-              </label>
+              <SelectField
+                label="Duration"
+                className="author-filter"
+                disabled={controlsDisabled}
+                onChange={(value) => setDurationHours(Number(value))}
+                value={String(durationHours)}
+                options={[
+                  { value: '24', label: '24 hours' },
+                  { value: '72', label: '72 hours' },
+                  { value: '168', label: '7 days' },
+                ]}
+              />
             </div>
           ) : null}
 
