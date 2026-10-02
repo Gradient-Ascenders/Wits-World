@@ -1,10 +1,17 @@
 import { createPortal } from 'react-dom';
-import { useId, useRef, type KeyboardEvent, type RefObject } from 'react';
+import {
+  useId,
+  useRef,
+  type KeyboardEvent,
+  type RefObject,
+  type ReactNode,
+} from 'react';
 
 import { useModalFocus } from '../useModalFocus';
 
 interface TradeConfirmationDialogProps {
   busy: boolean;
+  children?: ReactNode;
   confirmLabel: string;
   description: string;
   destructive?: boolean;
@@ -16,6 +23,7 @@ interface TradeConfirmationDialogProps {
 
 export function TradeConfirmationDialog({
   busy,
+  children,
   confirmLabel,
   description,
   destructive = false,
@@ -51,7 +59,7 @@ export function TradeConfirmationDialog({
         aria-describedby={descriptionId}
         aria-labelledby={titleId}
         aria-modal="true"
-        className="trade-dialog"
+        className={`trade-dialog${children ? ' trade-dialog--review' : ''}`}
         onKeyDown={handleKeyDown}
         ref={dialogRef}
         role={destructive ? 'alertdialog' : 'dialog'}
@@ -59,6 +67,7 @@ export function TradeConfirmationDialog({
       >
         <h2 id={titleId}>{title}</h2>
         <p id={descriptionId}>{description}</p>
+        {children}
         <div className="trade-dialog__actions">
           <button
             className="button button--quiet"

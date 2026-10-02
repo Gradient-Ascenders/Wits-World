@@ -38,11 +38,13 @@ export function LoadingState({
 }
 
 export function PageLoadingState({
+  announce = true,
   children,
   className = '',
   description,
   title,
 }: {
+  announce?: boolean;
   children?: ReactNode;
   className?: string;
   description: string;
@@ -52,9 +54,9 @@ export function PageLoadingState({
     <section
       aria-atomic="true"
       aria-busy="true"
-      aria-live="polite"
+      aria-live={announce ? 'polite' : undefined}
       className={`page-loading-state state-message state-loading state-loading--prominent${className ? ` ${className}` : ''}`}
-      role="status"
+      role={announce ? 'status' : undefined}
     >
       <LoadingSeal />
       <h1>{title}</h1>

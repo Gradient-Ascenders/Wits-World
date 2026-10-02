@@ -188,6 +188,16 @@ Primary buttons are filled Trail Blue, bold, and at least touch-target height. Q
 
 Ordinary state and content panels combine a thin border, large corner, navy gradient, and panel shadow. Selected options use a blue border and subtle inset emphasis. The collectible frame is a separate signature component with common, rare, epic, and legendary material variants; its frame palette must not become the default panel palette.
 
+### Collectible Card Interaction
+
+**The Shared Card Interaction Rule.** Reuse the collectible thumbnail's pointer tilt and detail inspection when cards are viewed, built into a deck, or edited; keep membership controls separate from inspection.
+
+The shared `CardThumbnail` pairs the existing material frame with `useCardTilt`. Non-touch pointer movement lifts and tilts the card through a spring, returning it to rest on leave or cancellation. The current hover target scales to `1.055` and lifts by `1.35rem`; gallery parents provide `55rem` perspective. Compact draft artwork uses the same hook. Leave room for the transformed card rather than clipping its frame or replacing its transform with a separate hover lift.
+
+Clickable deck roster cards, collection-picker cards, and draft artwork open the shared `CardPresentationDialog`. Inspection presents the supplied card data without changing draft membership or order; unavailable detailed rules receive an explicit message. Keep keyboard activation, visible focus, modal focus containment, Escape dismissal, and focus restoration. Add and Remove remain separate controls outside the frame.
+
+Resolve motion through the application's shared preference: `reduce` disables card transforms regardless of the OS preference, `full` enables the shared pointer effect even when the OS requests reduction, and `system` follows the OS. Touch inspection remains available without tilt. This interaction is a collectible-card staple; ordinary panels retain their existing depth behavior.
+
 ### Inputs / Fields
 
 Fields sit on the darkest navy with ivory text, a thin border, small radius, and touch-target height. Focus uses the global blue outline. Invalid fields use the danger color in the border and an accompanying text error.
@@ -214,3 +224,5 @@ Small pill badges use colored text and faint matching fill for active, upcoming,
 - **Don't** spread collectible rarity metalwork across ordinary panels, forms, or navigation.
 - **Don't** make gold compete with Trail Blue as the default control fill.
 - **Don't** hide task status inside map styling or color alone.
+
+Shared collectible-card interaction guidance was edited with assistance from Codex[GPT-6].

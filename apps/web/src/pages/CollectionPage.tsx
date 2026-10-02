@@ -310,10 +310,17 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
 
   if (collection.status === 'loading') {
     return (
-      <PageLoadingState
-        title="Loading your cards"
-        description="Your collection will appear here shortly."
-      />
+      <div className="collection-page">
+        <CollectionSectionNavigation />
+        <PageLoadingState
+          title={
+            section === 'evolutions'
+              ? 'Loading your evolutions'
+              : 'Loading your cards'
+          }
+          description="Fetching your collection…"
+        />
+      </div>
     );
   }
 
@@ -360,25 +367,25 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   return (
     <div className="collection-page">
       <CollectionSectionNavigation />
-      <header className="collection-page__header">
-        <p className="eyebrow">Your collection</p>
-        <h1>{section === 'cards' ? 'Cards you own' : 'Evolutions'}</h1>
-        <p className="lead">
-          {section === 'cards'
-            ? 'Every card, part of your journey. Open one to explore its details.'
-            : 'Combine three eligible copies into one evolved card.'}
-        </p>
-        {collection.status === 'ready' ? (
-          <p aria-live="polite" className="collection-summary">
-            <strong>{cards.length}</strong>{' '}
-            <span>
-              {cards.length === 1 ? 'owned copy' : 'owned copies'} across{' '}
+      {section !== 'evolutions' ||
+      collection.status !== 'ready' ||
+      cards.length === 0 ? (
+        <header className="collection-page__header">
+          <h1>{section === 'cards' ? 'Your cards' : 'Evolutions'}</h1>
+          {section === 'evolutions' ? (
+            <p className="lead">
+              Combine three available copies into one evolved card.
+            </p>
+          ) : null}
+          {collection.status === 'ready' && section === 'cards' ? (
+            <p aria-live="polite" className="collection-summary">
+              {cards.length} {cards.length === 1 ? 'copy' : 'copies'} ·{' '}
               {cardDefinitionCount}{' '}
               {cardDefinitionCount === 1 ? 'design' : 'designs'}
-            </span>
-          </p>
-        ) : null}
-      </header>
+            </p>
+          ) : null}
+        </header>
+      ) : null}
 
       {collection.status === 'error' ? (
         <CollectionErrorState
@@ -469,17 +476,14 @@ function StarterSelector({
       aria-labelledby="starter-selector-title"
       className="starter-selector"
     >
-      <p className="eyebrow">Begin your collection</p>
       <Heading id="starter-selector-title">
         Choose your starter affinity
       </Heading>
       <p className="starter-selector__intro">
-        Choose the play style that suits you. Each package contains five cards.
-        This is a one-time choice; you can review it before confirming.
+        Choose five starter cards. Your affinity is a one-time choice.
       </p>
       <p className="starter-selector__progression">
-        Spirit, Mystic, and other cards can still be earned later through
-        challenge progression.
+        Earn Spirit, Mystic, and other cards through challenges later.
       </p>
 
       {optionsState.status === 'idle' || optionsState.status === 'loading' ? (
@@ -488,12 +492,10 @@ function StarterSelector({
           className="starter-options-state state-message state-loading state-loading--subtle"
           role="status"
         >
-          <p className="eyebrow">Starter packages</p>
           <h2>
             <QuestMarker />
             Loading your choices
           </h2>
-          <p>Reading the current starter packages from Wits World…</p>
         </div>
       ) : null}
 
@@ -533,7 +535,6 @@ function StarterSelector({
                 {selectedOption ? titleCase(selectedOption.affinity) : ''}{' '}
                 choice
               </button>
-              <p>Nothing is granted until you confirm the final choice.</p>
             </div>
           ) : null}
         </form>
@@ -544,7 +545,6 @@ function StarterSelector({
           aria-labelledby="starter-confirmation-title"
           className="starter-confirmation"
         >
-          <p className="eyebrow">Final confirmation</p>
           <h2
             id="starter-confirmation-title"
             ref={confirmationHeadingRef}
@@ -554,8 +554,8 @@ function StarterSelector({
             {selectedOption.title}
           </h2>
           <p>
-            This one-time choice grants the server package of 3 Creature cards
-            and 2 Power cards. You cannot switch starter affinities later.
+            You’ll receive 3 Creature cards and 2 Power cards. You cannot change
+            your starter affinity later.
           </p>
 
           {error ? (
@@ -633,7 +633,7 @@ function StarterOptionChoice({
         </ul>
       </label>
       <details className="starter-package-details">
-        <summary>View exact package</summary>
+        <summary>View cards</summary>
         <div className="starter-package-details__content">
           <section aria-labelledby={`${inputId}-creatures`}>
             <h3 id={`${inputId}-creatures`}>3 Creature cards</h3>
@@ -706,7 +706,6 @@ function StarterOptionsError({
       role="alert"
     >
       <StateIcon tone="error" />
-      <p className="eyebrow">Starter packages unavailable</p>
       <h2>
         {isAuthorization
           ? 'Your session has expired'
@@ -714,8 +713,8 @@ function StarterOptionsError({
       </h2>
       <p>
         {isAuthorization
-          ? 'Sign in again to securely load the current starter packages.'
-          : 'Check your connection and try loading the starter choices again.'}
+          ? 'Sign in again to view starter choices.'
+          : 'Check your connection and try again.'}
       </p>
       <button
         className="button"
@@ -746,8 +745,8 @@ function StarterError({
       >
         <StateIcon tone="error" />
         <p>
-          <strong>Your starter was already chosen.</strong> Your original choice
-          remains authoritative, so no second set was created.
+          <strong>Your starter was already chosen.</strong> No new cards were
+          added.
         </p>
         <button
           className="button button--quiet"
@@ -821,16 +820,11 @@ function StarterResult({
 
   return (
     <section aria-labelledby="starter-result-title" className="starter-result">
-      <p className="eyebrow">Starter secured</p>
       <h1 id="starter-result-title" ref={headingRef} tabIndex={-1}>
         Your {titleCase(grant.affinity)} starter set
       </h1>
-      <p className="starter-result__intro">
-        These are the five cards Wits World granted and recorded for your
-        collection.
-      </p>
       <p className="starter-result__composition">
-        {grant.cards.length} cards recorded · {creatureCount}{' '}
+        {grant.cards.length} cards · {creatureCount}{' '}
         {creatureCount === 1 ? 'Creature' : 'Creatures'} · {powerCount} Power{' '}
         {powerCount === 1 ? 'card' : 'cards'}
       </p>
@@ -881,11 +875,13 @@ function CollectionGrid({
       }),
     [categoryFilter, groups, rarityFilter, searchQuery, sortOrder],
   );
-  const hasActiveControls =
-    searchQuery !== '' ||
-    categoryFilter !== 'all' ||
-    rarityFilter !== 'all' ||
-    sortOrder !== 'name';
+  const hasActiveFilters =
+    searchQuery !== '' || categoryFilter !== 'all' || rarityFilter !== 'all';
+  const hasActiveControls = hasActiveFilters || sortOrder !== 'name';
+  const activeFilterCount =
+    Number(categoryFilter !== 'all') +
+    Number(rarityFilter !== 'all') +
+    Number(sortOrder !== 'name');
 
   const closeDetails = useCallback(() => {
     setSelectedGroup(null);
@@ -930,12 +926,13 @@ function CollectionGrid({
 
       <div className="collection-controls">
         <label className="collection-control collection-control--search">
-          <span>Search</span>
+          <span className="sr-only">Search</span>
           <span className="collection-search-field">
             <MagnifyingGlass size={20} aria-hidden="true" />
             <input
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Name or affinity"
+              placeholder="Search cards"
+              title="Search by name or affinity"
               type="search"
               value={searchQuery}
             />
@@ -946,15 +943,11 @@ function CollectionGrid({
           type="button"
           aria-expanded={filtersOpen}
           aria-controls="collection-filters"
+          aria-label={`Filters & sort${activeFilterCount > 0 ? ' · Active' : ''}`}
           onClick={() => setFiltersOpen(!filtersOpen)}
         >
           <SlidersHorizontal size={20} aria-hidden="true" />
-          Filters & sort
-          {categoryFilter !== 'all' ||
-          rarityFilter !== 'all' ||
-          sortOrder !== 'name'
-            ? ' · Active'
-            : ''}
+          Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
         </button>
         <div
           id="collection-filters"
@@ -1006,16 +999,22 @@ function CollectionGrid({
         </div>
       </div>
 
-      <div className="collection-gallery__status">
+      <div
+        className={`collection-gallery__status${hasActiveControls ? '' : ' sr-only'}`}
+      >
         <p aria-live="polite" className="collection-gallery__results">
-          Showing {visibleGroups.length} of {groups.length}{' '}
-          {groups.length === 1 ? 'card design' : 'card designs'}
-          {categoryFilter !== 'all'
-            ? ` · ${categoryFilter === 'power' ? 'Power cards' : 'Creatures'}`
-            : ''}
-          {rarityFilter !== 'all' ? ` · ${titleCase(rarityFilter)}` : ''}
+          {hasActiveFilters ? (
+            <>
+              {visibleGroups.length} of {groups.length}{' '}
+              {groups.length === 1 ? 'design' : 'designs'}
+              {categoryFilter !== 'all'
+                ? ` · ${categoryFilter === 'power' ? 'Power cards' : 'Creatures'}`
+                : ''}
+              {rarityFilter !== 'all' ? ` · ${titleCase(rarityFilter)}` : ''}
+            </>
+          ) : null}
         </p>
-        {hasActiveControls ? (
+        {hasActiveControls && visibleGroups.length > 0 ? (
           <button
             className="button button--quiet collection-controls__clear"
             onClick={clearControls}
@@ -1030,7 +1029,7 @@ function CollectionGrid({
         <div className="collection-gallery__empty state-message state-message--empty">
           <StateIcon tone="empty" />
           <h3>No cards match these filters</h3>
-          <p>Adjust the search, category, or rarity to see more cards.</p>
+          <p>Try another search or clear your filters.</p>
           <button
             className="button button--quiet"
             onClick={clearControls}
@@ -1188,7 +1187,6 @@ function CollectionErrorState({
       role="alert"
     >
       <StateIcon tone="error" />
-      <p className="eyebrow">Collection unavailable</p>
       <h2>
         {isAuthorization
           ? 'Your session has expired'
@@ -1196,8 +1194,8 @@ function CollectionErrorState({
       </h2>
       <p>
         {isAuthorization
-          ? 'Sign in again to securely load the card copies saved to your account.'
-          : 'Check your connection and try loading your collection again.'}
+          ? 'Sign in again to view your cards.'
+          : 'Check your connection and try again.'}
       </p>
       <button
         className="button"

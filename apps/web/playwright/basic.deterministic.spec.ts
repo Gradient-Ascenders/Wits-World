@@ -243,7 +243,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   await test.step('11 load the reward from the owned collection', async () => {
     await page.goto('/collection');
     await expect(
-      page.getByRole('heading', { name: 'Cards you own' }),
+      page.getByRole('heading', { name: 'Your cards', exact: true }),
     ).toBeVisible();
     const { cards } = await browserApi<{ cards: OwnedCard[] }>(
       page,
@@ -290,12 +290,14 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       .getByRole('group', { name: 'Editor view' })
       .getByRole('button', { name: /^Your deck \(5\/5\)$/u })
       .click();
-    await expect(page.getByText('Ready to submit')).toBeVisible();
+    await expect(page.getByText('Complete lineup')).toBeVisible();
   });
 
   await test.step('14 persist only the server-validated owned deck copies', async () => {
     const response = page.waitForResponse(`${API_BASE_URL}/decks`);
-    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Create deck', exact: true })
+      .click();
     expect((await response).status()).toBe(201);
     await expect(
       page.getByRole('heading', { name: 'Basic E2E Five' }),
@@ -308,7 +310,9 @@ test('completes the canonical 21-step Basic journey against the real API and tes
     );
     await page.getByRole('button', { name: 'Make active' }).click();
     expect((await response).status()).toBe(200);
-    await expect(page.getByText('Selected for matches')).toBeVisible();
+    await expect(
+      page.locator('.saved-deck-detail').getByText('Active', { exact: true }),
+    ).toBeVisible();
   });
 
   await test.step('16 create a server-authoritative CPU battle snapshot', async () => {

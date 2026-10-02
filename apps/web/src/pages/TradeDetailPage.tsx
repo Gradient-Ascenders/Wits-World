@@ -17,6 +17,8 @@ import {
   cancelTrade,
   declineTrade,
   getTrade,
+  listTradingCatalogue,
+  type TradingCatalogueCard,
   TradeApiError,
   type CardTrade,
 } from '../api/trades';
@@ -48,6 +50,7 @@ export default function TradeDetailPage({
   const { tradeId = '' } = useParams<{ tradeId: string }>();
   const getAccessToken = useApiAccessToken();
   const { getIdTokenClaims, loginWithRedirect } = useAuth0();
+  const [catalogue, setCatalogue] = useState<TradingCatalogueCard[]>([]);
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -114,6 +117,22 @@ export default function TradeDetailPage({
         collectionRequest.current = null;
       }
     }
+  }, [apiBaseUrl, getAccessToken]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void listTradingCatalogue({
+      apiBaseUrl,
+      getAccessToken,
+      signal: controller.signal,
+    })
+      .then((cards) => {
+        if (!controller.signal.aborted) setCatalogue(cards);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCatalogue([]);
+      });
+    return () => controller.abort();
   }, [apiBaseUrl, getAccessToken]);
 
   useEffect(() => {
@@ -185,7 +204,7 @@ export default function TradeDetailPage({
   if (state.status === 'loading') {
     return (
       <PageLoadingState
-        description="Loading the current server-owned offer version."
+        description="Loading the latest offer."
         title="Loading card trade"
       />
     );
@@ -328,12 +347,6 @@ export default function TradeDetailPage({
       <header className="trade-detail-header">
         <div>
           <h1>Trade with {trade.counterpartyPlayerName}</h1>
-          <p>
-            {trade.role === 'sender'
-              ? 'You started this offer.'
-              : 'This offer was sent to you.'}{' '}
-            Created {formatDate(trade.createdAt)}.
-          </p>
         </div>
         <span className={`trade-status trade-status--${trade.status}`}>
           {statusLabel(trade.status)}
@@ -385,14 +398,14 @@ export default function TradeDetailPage({
           <div>
             <h2 id="trade-completed-title">Trade completed</h2>
             <p>
-              The server completed the exchange{' '}
+              Completed{' '}
               {formatDate(trade.settlement?.completedAt ?? trade.terminalAt!)}.
             </p>
             {collectionRefresh === 'loading' ? (
               <p role="status">Refreshing your collection…</p>
             ) : null}
             {collectionRefresh === 'ready' ? (
-              <p role="status">Your authoritative collection is up to date.</p>
+              <p role="status">Your collection is up to date.</p>
             ) : null}
             {collectionRefresh === 'error' ? (
               <p role="alert">
@@ -407,13 +420,14 @@ export default function TradeDetailPage({
               </p>
             ) : null}
             <Link className="button" href="/collection">
-              View updated collection
+              View collection
             </Link>
           </div>
         </section>
       ) : null}
 
       <TradeComparison
+        catalogue={catalogue}
         counterpartyLabel={trade.counterpartyPlayerName}
         counterpartyOffered={trade.counterparty.offeredCopies}
         counterpartyPoints={trade.counterparty.rarityPoints}
@@ -423,10 +437,12 @@ export default function TradeDetailPage({
 
       <div className="trade-request-grid">
         <RequestedCardList
+          catalogue={catalogue}
           definitions={trade.self.requestedDefinitions}
           label="You requested"
         />
         <RequestedCardList
+          catalogue={catalogue}
           definitions={trade.counterparty.requestedDefinitions}
           label={`${trade.counterpartyPlayerName} requested`}
         />
@@ -439,12 +455,10 @@ export default function TradeDetailPage({
         >
           <Warning aria-hidden="true" size={24} />
           <div>
-            <h2 id="trade-imbalance-title">
-              Review the rarity-point difference
-            </h2>
+            <h2 id="trade-imbalance-title">Rarity warning</h2>
             <p>
-              Rarity points are not a price or a guarantee of equal value. Both
-              players must acknowledge this warning for version {trade.version}.
+              Rarity points differ. They aren’t prices. Both players must
+              confirm they’ve reviewed this warning.
             </p>
             {!trade.self.imbalanceAcknowledged && open ? (
               <label>
@@ -454,14 +468,14 @@ export default function TradeDetailPage({
                   onChange={(event) => setAcknowledged(event.target.checked)}
                   type="checkbox"
                 />
-                <span>I reviewed this version’s rarity-point difference.</span>
+                <span>I’ve reviewed the rarity difference.</span>
               </label>
-            ) : (
+            ) : trade.self.imbalanceAcknowledged ? (
               <p className="trade-acknowledged">
                 <ShieldCheck aria-hidden="true" size={18} />
-                You acknowledged this version.
+                Warning reviewed.
               </p>
-            )}
+            ) : null}
             {!trade.self.imbalanceAcknowledged && open ? (
               <button
                 className="button button--quiet"
@@ -470,8 +484,8 @@ export default function TradeDetailPage({
                 type="button"
               >
                 {pendingAction === 'acknowledge'
-                  ? 'Saving acknowledgement…'
-                  : 'Acknowledge version'}
+                  ? 'Saving…'
+                  : 'Confirm warning'}
               </button>
             ) : null}
           </div>
@@ -480,13 +494,6 @@ export default function TradeDetailPage({
 
       {open ? (
         <section className="trade-actions" aria-label="Trade actions">
-          <div>
-            <h2>Review your next action</h2>
-            <p>
-              Editing publishes a new version and clears both players’
-              acceptance and warning acknowledgements.
-            </p>
-          </div>
           <div className="trade-actions__buttons">
             <Link
               className="button button--quiet"
@@ -503,10 +510,10 @@ export default function TradeDetailPage({
               type="button"
             >
               {pendingAction === 'reauthenticating'
-                ? 'Opening Auth0…'
+                ? 'Verifying…'
                 : trade.self.accepted
                   ? 'Accepted'
-                  : 'Verify and accept'}
+                  : 'Accept offer'}
             </button>
             <button
               className="button button--danger"
@@ -522,8 +529,7 @@ export default function TradeDetailPage({
           </div>
           {!trade.complete ? (
             <p className="trade-actions__explanation">
-              This version cannot be accepted until both players have selected
-              exact copies that satisfy the requests.
+              Both players need to choose the requested cards before accepting.
             </p>
           ) : null}
         </section>
@@ -555,7 +561,7 @@ export default function TradeDetailPage({
 
 function confirmationTitle(confirmation: Exclude<Confirmation, null>) {
   return confirmation === 'accept'
-    ? 'Accept this exact version?'
+    ? 'Accept this offer?'
     : confirmation === 'cancel'
       ? 'Cancel this offer?'
       : 'Decline this offer?';
@@ -563,7 +569,7 @@ function confirmationTitle(confirmation: Exclude<Confirmation, null>) {
 
 function confirmationLabel(confirmation: Exclude<Confirmation, null>) {
   return confirmation === 'accept'
-    ? 'Accept version'
+    ? 'Accept offer'
     : confirmation === 'cancel'
       ? 'Cancel offer'
       : 'Decline offer';
@@ -574,11 +580,11 @@ function confirmationDescription(
   trade: CardTrade,
 ) {
   if (confirmation === 'accept') {
-    return `Accept version ${trade.version} of this trade with ${trade.counterpartyPlayerName}? If they have already accepted this same version, the server will complete the card exchange immediately.`;
+    return `Accept version ${trade.version} with ${trade.counterpartyPlayerName}? If they’ve already accepted it, your cards will be exchanged now.`;
   }
   return confirmation === 'cancel'
-    ? 'Cancelling permanently closes this offer and releases its reserved copies. This cannot be undone.'
-    : 'Declining permanently closes this incoming offer and releases its reserved copies. This cannot be undone.';
+    ? 'Cancel this offer and release its cards? This cannot be undone.'
+    : 'Decline this offer and release its cards? This cannot be undone.';
 }
 
 function actionSuccessCopy(action: string, trade: CardTrade) {
@@ -628,7 +634,7 @@ function actionErrorTitle(error: TradeApiError) {
 function actionErrorCopy(error: TradeApiError) {
   if (error.options.detail) return error.options.detail;
   if (error.failure === 'recent-authentication') {
-    return 'Return to Auth0 for a fresh identity check, then review this offer again.';
+    return 'Sign in again to confirm your identity, then review the offer.';
   }
-  return 'The authoritative trade state could not be confirmed. Review the current version and try again.';
+  return 'Couldn’t confirm the trade. Reload the offer and try again.';
 }

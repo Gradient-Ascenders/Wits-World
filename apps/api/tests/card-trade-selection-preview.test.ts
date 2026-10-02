@@ -12,6 +12,44 @@ const REQUESTED_DEFINITION_ID = '20000000-0000-4000-8000-000000000001';
 const SELECTED_COPY_ID = '30000000-0000-4000-8000-000000000001';
 
 describe('card trade selection preview', () => {
+  it('checks an exact normalized active recipient with one read and releases the connection', async () => {
+    const statements: string[] = [];
+    const { database, release } = tradeDatabase(async (statement, values) => {
+      statements.push(normalizedSql(statement));
+      expect(values).toEqual(['other_player', PLAYER_ID]);
+      return {
+        rows: [
+          {
+            id: '10000000-0000-4000-8000-000000000002',
+            player_name: 'other_player',
+          },
+        ],
+      };
+    });
+    await expect(
+      createCardTradeService(database).findRecipient(
+        PLAYER_ID,
+        ' Other_Player ',
+      ),
+    ).resolves.toBe('other_player');
+    expect(statements).toHaveLength(1);
+    expect(statements[0]).toContain('where lower(player_name) = $1');
+    expect(statements[0]).toContain("lifecycle_status = 'active'");
+    expect(statements[0]).toContain('id <> $2::uuid');
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('rejects an absent recipient and releases the connection', async () => {
+    const { database, release } = tradeDatabase(async () => ({ rows: [] }));
+    await expect(
+      createCardTradeService(database).findRecipient(
+        PLAYER_ID,
+        'missing_player',
+      ),
+    ).rejects.toMatchObject({ code: 'TRADE_PLAYER_UNAVAILABLE' });
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   it('computes exact-copy availability and rarity warnings without reserving cards', async () => {
     const { client, database, query, release } = createPreviewDatabase();
     const service = createCardTradeService(database);

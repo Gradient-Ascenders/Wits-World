@@ -341,6 +341,60 @@ export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
 ) => {
   const secured = [app.authenticate, app.requireActivePlayer];
 
+  app.get<{ Querystring: { playerName: string } }>(
+    '/trades/recipient',
+    {
+      config: { rateLimitPolicy: 'gameplay-write' },
+      preHandler: secured,
+      schema: {
+        operationId: 'findCardTradeRecipient',
+        summary: 'Check one exact Player Name before building an offer',
+        tags: ['Trading'],
+        security: [{ bearerAuth: [] }],
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['playerName'],
+          properties: {
+            playerName: { type: 'string', minLength: 3, maxLength: 20 },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['playerName', 'requestId'],
+            properties: {
+              playerName: { type: 'string' },
+              requestId: { type: 'string' },
+            },
+          },
+          400: apiErrorSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+          429: apiErrorSchema,
+        },
+      },
+    },
+    async (request) => {
+      const validation = validatePlayerName(request.query.playerName);
+      if (!validation.valid) throw playerNameValidationError();
+      try {
+        return {
+          playerName: await service.findRecipient(
+            playerId(request),
+            validation.playerName,
+          ),
+          requestId: request.id,
+        };
+      } catch (error) {
+        throw mapTradeError(error);
+      }
+    },
+  );
+
   app.post<{ Body: CreateTradeBody }>(
     '/trades',
     {

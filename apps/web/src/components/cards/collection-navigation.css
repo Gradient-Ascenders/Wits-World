@@ -46,3 +46,23 @@
   background: var(--colour-gold-500);
   content: '';
 }
+
+@media (max-width: 39.999rem) {
+  .collection-navigation ul {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .collection-navigation__link {
+    display: flex;
+    justify-content: center;
+    padding-inline: var(--space-1);
+    font-size: clamp(var(--text-xs), 3.5vw, var(--text-sm));
+  }
+
+  .collection-navigation__link svg {
+    display: none;
+  }
+}
