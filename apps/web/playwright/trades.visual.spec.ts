@@ -42,6 +42,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
 }, testInfo) => {
   const consoleErrors: string[] = [];
   const runtimeErrors: string[] = [];
+  let inboxState: 'populated' | 'empty' | 'paged' | 'error' = 'populated';
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
@@ -83,6 +84,35 @@ test('trading journey is focused, responsive, and server-owned', async ({
       return json(route, { requestId: 'fixture-detail', trade: tradeView() });
     }
     if (pathname.endsWith('/trades') && request.method() === 'GET') {
+      if (inboxState === 'error') {
+        return json(route, { code: 'UNAVAILABLE' }, 503);
+      }
+      const query = new URL(request.url()).searchParams;
+      const pageNumber = Number(query.get('page') ?? 1);
+      const onlyOpen = query.get('status') === 'open';
+      if (inboxState === 'empty' || inboxState === 'paged') {
+        return json(route, {
+          hasMore: inboxState === 'paged' && !onlyOpen && pageNumber === 1,
+          items:
+            inboxState === 'paged' && pageNumber === 2
+              ? [
+                  {
+                    counterpartyPlayerName: 'older_collector',
+                    createdAt: '2026-09-24T08:00:00.000Z',
+                    direction: 'sent',
+                    expiresAt: '2026-09-25T08:00:00.000Z',
+                    status: 'cancelled',
+                    terminalAt: '2026-09-24T09:30:00.000Z',
+                    tradeId: buildUuid(4),
+                    version: 1,
+                  },
+                ]
+              : [],
+          page: pageNumber,
+          pageSize: 50,
+          requestId: 'fixture-list',
+        });
+      }
       return json(route, {
         hasMore: false,
         items: [
@@ -90,11 +120,22 @@ test('trading journey is focused, responsive, and server-owned', async ({
             counterpartyPlayerName: 'other_player',
             createdAt: '2026-09-26T08:00:00.000Z',
             direction: 'received',
-            expiresAt: '2026-09-27T08:00:00.000Z',
+            expiresAt: new Date(Date.now() + 6 * 3_600_000).toISOString(),
             status: 'open',
             terminalAt: null,
             tradeId: TRADE_ID,
             version: 3,
+          },
+          {
+            counterpartyPlayerName:
+              'a_campus_collector_with_a_long_player_name',
+            createdAt: '2026-09-26T08:00:00.000Z',
+            direction: 'sent',
+            expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+            status: 'open',
+            terminalAt: null,
+            tradeId: buildUuid(3),
+            version: 1,
           },
           {
             counterpartyPlayerName: 'campus_collector',
@@ -135,6 +176,82 @@ test('trading journey is focused, responsive, and server-owned', async ({
     fullPage: true,
     path: testInfo.outputPath('trade-inbox-mobile.png'),
   });
+
+  for (const width of [320, 768, 1440]) {
+    await page.setViewportSize({ height: 960, width });
+    await expectNoHorizontalOverflow(page);
+    await expect(page.getByRole('link', { name: 'Start a trade' })).toHaveCount(
+      1,
+    );
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`trade-inbox-${width}.png`),
+    });
+    await page.getByRole('button', { name: 'History', exact: true }).click();
+    await expect(
+      page.getByRole('list', { name: 'Trade history' }),
+    ).toContainText('Completed');
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`trade-history-${width}.png`),
+    });
+    await page.getByRole('button', { name: 'Open', exact: true }).click();
+  }
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  inboxState = 'empty';
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'No open trades' }),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Start a trade' })).toHaveCount(
+    1,
+  );
+  await page.getByRole('button', { name: 'History', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'No trade history yet' }),
+  ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('trade-history-empty.png'),
+  });
+
+  inboxState = 'paged';
+  await page.reload();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'No closed trades on this page' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Load more', exact: true }).click();
+  await expect(page.getByRole('list', { name: 'Trade history' })).toContainText(
+    'older_collector',
+  );
+  await expect(page.getByRole('list', { name: 'Trade history' })).toContainText(
+    'Cancelled',
+  );
+  await expect(
+    page.getByRole('button', { name: 'Load more', exact: true }),
+  ).toHaveCount(0);
+
+  inboxState = 'error';
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Couldn’t load trades' }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('trade-inbox-error.png'),
+  });
+  inboxState = 'populated';
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('heading', { name: 'Incoming' })).toBeVisible();
+  // The two mocked 503 responses above are expected recovery coverage.
+  expect(consoleErrors.filter((message) => !message.includes('503'))).toEqual(
+    [],
+  );
+  consoleErrors.length = 0;
 
   await page.getByRole('link', { name: 'Start a trade' }).click();
   await expect(

@@ -1,11 +1,5 @@
 import { createAppDateTimeFormatter } from '../date-time';
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  ArrowsLeftRight,
-  Clock,
-  Plus,
-} from '@phosphor-icons/react';
+import { Plus } from '@phosphor-icons/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 
@@ -153,8 +147,8 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       <div className="trades-page">
         <CollectionSectionNavigation />
         <PageLoadingState
-          description="Checking your open offers and recent trade history."
-          title="Loading card trades"
+          description="Checking your offers."
+          title="Loading trades"
         />
       </div>
     );
@@ -169,13 +163,7 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     <div className="trades-page">
       <CollectionSectionNavigation />
       <header className="trades-page__header">
-        <div>
-          <h1>Card trades</h1>
-          <p>
-            Build private card-for-card offers, review every change, and keep
-            ownership decisions with the server.
-          </p>
-        </div>
+        <h1>Card trades</h1>
         <Link
           className="button trade-create-link"
           href="/collection/trades/new"
@@ -192,11 +180,7 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           onClick={() => setView('open')}
           type="button"
         >
-          Open{' '}
-          <span>
-            {open.length}
-            {state.status === 'ready' && state.openHasMore ? '+' : ''}
-          </span>
+          Open
         </button>
         <button
           aria-pressed={view === 'history'}
@@ -204,20 +188,14 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           onClick={() => setView('history')}
           type="button"
         >
-          History{' '}
-          {state.status === 'ready' ? (
-            <span>
-              {history.length}
-              {state.historyHasMore ? ' loaded' : ''}
-            </span>
-          ) : null}
+          History
         </button>
       </div>
 
       {state.status === 'error' ? (
         <section className="state-message state-message--error trade-state">
           <StateIcon tone="error" />
-          <h2>Card trades could not be loaded</h2>
+          <h2>Couldn’t load trades</h2>
           <p>{tradeErrorCopy(state.error)}</p>
           <button
             className="button"
@@ -244,7 +222,7 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           onClick={() => void loadMore()}
           type="button"
         >
-          {loadingMore ? 'Loading more…' : 'Load more trades'}
+          {loadingMore ? 'Loading…' : 'Load more'}
         </button>
       ) : null}
     </div>
@@ -261,31 +239,20 @@ function OpenTradeLists({
   if (incoming.length === 0 && outgoing.length === 0) {
     return (
       <section className="state-message state-message--empty trade-state">
-        <ArrowsLeftRight aria-hidden="true" className="state-icon" size={28} />
         <h2>No open trades</h2>
-        <p>
-          Start a private offer using an exact Player Name. New incoming offers
-          will appear here for review.
-        </p>
-        <Link className="button" href="/collection/trades/new">
-          Start a trade
-        </Link>
+        <p>Offers you send or receive will appear here.</p>
       </section>
     );
   }
 
   return (
     <div className="trade-inbox-sections">
-      <TradeList
-        empty="No incoming offers need your attention."
-        title="Incoming"
-        trades={incoming}
-      />
-      <TradeList
-        empty="You have no outgoing offers waiting for another player."
-        title="Outgoing"
-        trades={outgoing}
-      />
+      {incoming.length > 0 ? (
+        <TradeList title="Incoming" trades={incoming} />
+      ) : null}
+      {outgoing.length > 0 ? (
+        <TradeList title="Outgoing" trades={outgoing} />
+      ) : null}
     </div>
   );
 }
@@ -300,87 +267,71 @@ function TradeHistoryList({
   if (trades.length === 0) {
     return (
       <section className="state-message state-message--empty trade-state">
-        <Clock aria-hidden="true" className="state-icon" size={28} />
         <h2>
-          {exhaustive ? 'No trade history yet' : 'No closed trades loaded yet'}
+          {exhaustive
+            ? 'No trade history yet'
+            : 'No closed trades on this page'}
         </h2>
         <p>
           {exhaustive
-            ? 'Completed, expired, declined, cancelled, and invalidated offers appear here.'
-            : 'Load more trades to continue checking older results.'}
+            ? 'Closed offers will appear here.'
+            : 'Load more to check older trades.'}
         </p>
       </section>
     );
   }
-  const groups = [
-    ['Completed', trades.filter((trade) => trade.status === 'completed')],
-    ['Expired', trades.filter((trade) => trade.status === 'expired')],
-    [
-      'Other closed trades',
-      trades.filter(
-        (trade) => trade.status !== 'completed' && trade.status !== 'expired',
-      ),
-    ],
-  ] as const;
-  return (
-    <div className="trade-inbox-sections">
-      {groups.map(([title, items]) =>
-        items.length > 0 ? (
-          <TradeList empty="" key={title} title={title} trades={items} />
-        ) : null,
-      )}
-    </div>
-  );
+  return <TradeRows label="Trade history" trades={trades} />;
 }
 
 function TradeList({
-  empty,
   title,
   trades,
 }: {
-  empty: string;
   title: string;
   trades: TradeSummary[];
 }) {
   return (
     <section className="trade-list-section">
-      <div className="trade-list-section__heading">
-        <h2>{title}</h2>
-        <span>{trades.length}</span>
-      </div>
-      {trades.length > 0 ? (
-        <ul className="trade-list">
-          {trades.map((trade) => (
-            <li key={trade.tradeId}>
-              <Link
-                aria-label={`${trade.direction === 'received' ? 'Incoming trade from' : 'Outgoing trade to'} ${trade.counterpartyPlayerName}, ${statusLabel(trade.status)}`}
-                className="trade-summary"
-                href={`/collection/trades/${trade.tradeId}`}
-              >
-                <span className="trade-summary__direction">
-                  {trade.direction === 'received' ? (
-                    <ArrowDownLeft aria-hidden="true" size={22} />
-                  ) : (
-                    <ArrowUpRight aria-hidden="true" size={22} />
-                  )}
-                </span>
-                <span className="trade-summary__main">
-                  <strong>{trade.counterpartyPlayerName}</strong>
-                  <span>
-                    Version {trade.version} · {summaryTime(trade)}
-                  </span>
-                </span>
-                <span className={`trade-status trade-status--${trade.status}`}>
-                  {statusLabel(trade.status)}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="trade-list-section__empty">{empty}</p>
-      )}
+      <h2>{title}</h2>
+      <TradeRows label={title} trades={trades} />
     </section>
+  );
+}
+
+function TradeRows({
+  label,
+  trades,
+}: {
+  label: string;
+  trades: TradeSummary[];
+}) {
+  return (
+    <ul aria-label={label} className="trade-list">
+      {trades.map((trade) => (
+        <li key={trade.tradeId}>
+          <Link
+            aria-label={`${trade.direction === 'received' ? 'Incoming trade from' : 'Outgoing trade to'} ${trade.counterpartyPlayerName}, ${statusLabel(trade.status)}`}
+            className="trade-summary"
+            href={`/collection/trades/${trade.tradeId}`}
+          >
+            <span className="trade-summary__main">
+              <strong>
+                <span className="trade-summary__direction">
+                  {trade.direction === 'received' ? 'From' : 'To'}{' '}
+                </span>
+                {trade.counterpartyPlayerName}
+              </strong>
+              <span>{summaryTime(trade)}</span>
+            </span>
+            {trade.status !== 'open' ? (
+              <span className={`trade-status trade-status--${trade.status}`}>
+                {statusLabel(trade.status)}
+              </span>
+            ) : null}
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -393,8 +344,8 @@ function summaryTime(trade: TradeSummary) {
     Math.ceil((Date.parse(value) - Date.now()) / 3_600_000),
   );
   return hours <= 1
-    ? 'expires within an hour'
-    : `expires in about ${hours} hours`;
+    ? 'Expires within an hour'
+    : `Expires in about ${hours} hours`;
 }
 
 function formatDate(value: string) {
@@ -420,10 +371,10 @@ function statusLabel(status: TradeSummary['status']) {
 
 function tradeErrorCopy(error: TradeApiError) {
   if (error.failure === 'authorization') {
-    return 'Your session needs to be refreshed before trades can be shown.';
+    return 'Refresh your session and try again.';
   }
   if (error.failure === 'rate-limit') {
-    return 'Trade requests are temporarily limited. Wait a moment and try again.';
+    return 'Too many requests. Wait a moment and try again.';
   }
-  return 'Check your connection and try loading your trades again.';
+  return 'Check your connection and try again.';
 }

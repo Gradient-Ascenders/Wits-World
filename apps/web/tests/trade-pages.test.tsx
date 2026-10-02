@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe('card trade pages', () => {
-  it('groups open offers and closed history in the collection journey', async () => {
+  it('groups open offers and keeps closed history in server order', async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const openRequest = String(input).includes('status=open');
       return Promise.resolve(
@@ -36,6 +36,11 @@ describe('card trade pages', () => {
           items: openRequest
             ? [buildSummary()]
             : [
+                buildSummary({
+                  status: 'expired',
+                  terminalAt: '2026-09-26T11:00:00.000Z',
+                  tradeId: buildUuid(3),
+                }),
                 buildSummary({
                   direction: 'sent',
                   status: 'completed',
@@ -69,8 +74,16 @@ describe('card trade pages', () => {
       ),
     ).toBe(true);
 
-    await userEvent.click(screen.getByRole('button', { name: 'History 1' }));
-    expect(screen.getByRole('heading', { name: 'Completed' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Outgoing' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'History' }));
+    expect(
+      within(screen.getByRole('list', { name: 'Trade history' }))
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('href')),
+    ).toEqual([
+      `/collection/trades/${buildUuid(3)}`,
+      `/collection/trades/${buildUuid(2)}`,
+    ]);
     expect(
       screen.getByText('Completed', { selector: '.trade-status' }),
     ).toBeVisible();
