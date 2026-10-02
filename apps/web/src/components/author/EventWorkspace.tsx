@@ -14,6 +14,7 @@ import {
   CircleIcon,
 } from '@phosphor-icons/react';
 import { AuthorSaveBar } from './AuthorSaveBar';
+import { AuthorDateTimePicker } from './AuthorDateTimePicker';
 import {
   useCallback,
   useEffect,
@@ -988,36 +989,22 @@ function EventForm({
         <fieldset className="author-fieldset" disabled={busy}>
           <legend>Active times (Johannesburg)</legend>
           <div className="author-form__grid">
-            <FormField
+            <AuthorDateTimePicker
               error={errors.startsAt}
               label="Starts at"
-              name="event-starts"
-            >
-              <input
-                aria-describedby={
-                  errors.startsAt ? 'event-starts-error' : undefined
-                }
-                aria-invalid={Boolean(errors.startsAt)}
-                id="event-starts"
-                onChange={(change) => setField('startsAt', change.target.value)}
-                required
-                type="datetime-local"
-                value={draft.startsAt}
-              />
-            </FormField>
-            <FormField error={errors.endsAt} label="Ends at" name="event-ends">
-              <input
-                aria-describedby={
-                  errors.endsAt ? 'event-ends-error' : undefined
-                }
-                aria-invalid={Boolean(errors.endsAt)}
-                id="event-ends"
-                onChange={(change) => setField('endsAt', change.target.value)}
-                required
-                type="datetime-local"
-                value={draft.endsAt}
-              />
-            </FormField>
+              id="event-starts"
+              disabled={busy}
+              onChange={(value) => setField('startsAt', value)}
+              value={draft.startsAt}
+            />
+            <AuthorDateTimePicker
+              error={errors.endsAt}
+              label="Ends at"
+              id="event-ends"
+              disabled={busy}
+              onChange={(value) => setField('endsAt', value)}
+              value={draft.endsAt}
+            />
           </div>
         </fieldset>
 

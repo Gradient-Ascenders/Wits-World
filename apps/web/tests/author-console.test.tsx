@@ -495,8 +495,18 @@ describe('Basic author console', () => {
     await user.type(screen.getByLabelText('Longitude'), '28.03038');
     await user.click(screen.getByRole('button', { name: '75 m' }));
     expect(screen.getByLabelText('Radius (metres)')).toHaveValue(75);
-    await user.type(screen.getByLabelText('Starts at'), '2026-09-01T08:00');
-    await user.type(screen.getByLabelText('Ends at'), '2026-09-01T12:00');
+    await enterEventDateTime(user, 'Starts at', '2026-09-01T08:00');
+    await user.click(
+      screen.getByRole('button', { name: 'Create draft event' }),
+    );
+    expect(screen.getByText('Enter a valid end time.')).toBeVisible();
+    expect(
+      within(screen.getByRole('group', { name: 'Ends at' })).getByRole(
+        'spinbutton',
+        { name: /^year,/ },
+      ),
+    ).toHaveFocus();
+    await enterEventDateTime(user, 'Ends at', '2026-09-01T12:00');
     await user.click(
       screen.getByRole('button', { name: 'Create draft event' }),
     );
@@ -537,8 +547,8 @@ describe('Basic author console', () => {
     ).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: '75 m' }));
-    await user.type(screen.getByLabelText('Starts at'), '2026-09-01T08:00');
-    await user.type(screen.getByLabelText('Ends at'), '2026-09-01T12:00');
+    await enterEventDateTime(user, 'Starts at', '2026-09-01T08:00');
+    await enterEventDateTime(user, 'Ends at', '2026-09-01T12:00');
     await user.click(
       screen.getByRole('button', { name: 'Create draft event' }),
     );
@@ -3082,4 +3092,26 @@ function jsonResponse(payload: object, status = 200): Response {
     headers: { 'Content-Type': 'application/json' },
     status,
   });
+}
+
+async function enterEventDateTime(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+  value: string,
+) {
+  const [year, month, day, hour, minute] = value.split(/[-T:]/);
+  const field = within(screen.getByRole('group', { name: label }));
+  for (const [part, digits] of Object.entries({
+    year,
+    month,
+    day,
+    hour,
+    minute,
+  })) {
+    if (!digits) throw new Error('Incomplete date-time test value');
+    await user.type(
+      field.getByRole('spinbutton', { name: new RegExp(`^${part},`) }),
+      digits,
+    );
+  }
 }

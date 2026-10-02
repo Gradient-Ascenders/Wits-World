@@ -334,8 +334,8 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
   await page.getByLabel('Latitude').fill('-26.1908');
   await page.getByLabel('Longitude').fill('28.0305');
   await page.getByLabel('Radius (metres)').fill('60');
-  await page.getByLabel('Starts at').fill('2026-09-01T10:00');
-  await page.getByLabel('Ends at').fill('2026-09-01T12:00');
+  await enterEventDateTime(page, 'Starts at', '2026-09-01T10:00');
+  await enterEventDateTime(page, 'Ends at', '2026-09-01T12:00');
   await page.getByRole('button', { name: 'Create draft event' }).click();
   await expect(page).toHaveURL(`/author/events/${EVENT_NEW}`);
   await expect(page.getByText('Draft event created.')).toBeFocused();
@@ -1524,6 +1524,76 @@ test('placement workspace stages preview, campus map, and secondary details acro
     fullPage: true,
   });
   expect(consoleErrors).toEqual([]);
+});
+
+test('event schedule picker preserves campus time with keyboard and calendar input', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ timezoneId: 'America/New_York' });
+  const page = await context.newPage();
+  try {
+    await installAuthorApi(page);
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    for (const width of [1280, 1440, 1694]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/author/events/${EVENT_A}/edit`);
+      await enterEventDateTime(page, 'Starts at', '2026-09-01T16:26');
+      const field = page.getByRole('group', { name: 'Starts at', exact: true });
+      const trigger = page.getByRole('button', {
+        name: 'Choose starts at date',
+      });
+      await trigger.click();
+      const calendar = page.getByRole('dialog');
+      await expect(calendar.getByRole('heading')).toHaveText('September 2026');
+      await expect(calendar).toContainText('Johannesburg · UTC+02:00');
+      await mkdir('.impeccable/review', { recursive: true });
+      await page.screenshot({
+        path: `.impeccable/review/event-date-picker-${width}.png`,
+      });
+      await page.keyboard.press('Escape');
+      await expect(calendar).toBeHidden();
+      await expect(trigger).toBeFocused();
+      await trigger.click();
+      await calendar
+        .getByRole('button', { name: 'Next month', exact: true })
+        .click();
+      await expect(calendar.getByRole('heading')).toHaveText('October 2026');
+      await calendar
+        .getByRole('button', { name: 'Previous month', exact: true })
+        .click();
+      await calendar
+        .getByRole('button', {
+          name: /Wednesday.*2 September 2026/u,
+          exact: false,
+        })
+        .first()
+        .click();
+      await expect(calendar).toBeHidden();
+      await expect(
+        field.getByRole('spinbutton', { name: /^hour,/u }),
+      ).toHaveAttribute('aria-valuenow', '16');
+      await expect(
+        field.getByRole('spinbutton', { name: /^minute,/u }),
+      ).toHaveAttribute('aria-valuenow', '26');
+      await enterEventDateTime(page, 'Ends at', '2026-09-03T18:00');
+      const save = page.waitForRequest(
+        (request) =>
+          request.method() === 'PUT' &&
+          request.url().endsWith(`/author/events/${EVENT_A}`),
+      );
+      await page.getByRole('button', { name: 'Save event' }).click();
+      expect((await save).postDataJSON()).toMatchObject({
+        startsAt: '2026-09-02T14:26:00.000Z',
+        endsAt: '2026-09-03T16:00:00.000Z',
+      });
+      await expect(page.getByText('Event changes saved.')).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    await context.close();
+  }
 });
 
 test('author save controls follow Active times in the form', async ({
@@ -2948,4 +3018,23 @@ async function openAuthorNavigation(page: Page) {
     (await toggle.getAttribute('aria-expanded')) === 'false'
   )
     await toggle.click();
+}
+
+async function enterEventDateTime(page: Page, label: string, value: string) {
+  const [year, month, day, hour, minute] = value.split(/[-T:]/);
+  const field = page.getByRole('group', { name: label, exact: true });
+  for (const [part, digits] of Object.entries({
+    year,
+    month,
+    day,
+    hour,
+    minute,
+  })) {
+    const segment = field.getByRole('spinbutton', {
+      name: new RegExp(`^${part},`),
+    });
+    await segment.click();
+    if (!digits) throw new Error('Incomplete date-time test value');
+    await segment.pressSequentially(digits);
+  }
 }
