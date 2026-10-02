@@ -28,6 +28,7 @@ import {
 import { AuthorSidebar } from '../components/author/AuthorSidebar';
 import '../components/author/author.css';
 import '../components/author/author-events.css';
+import '../components/author/author-cards.css';
 
 interface AuthorConsolePageProps {
   apiBaseUrl: string;

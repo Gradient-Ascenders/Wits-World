@@ -947,8 +947,13 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.editCard(cardFixture().id));
 
     await screen.findByLabelText('Card name');
+    await user.click(screen.getByRole('button', { name: /^Move 4 / }));
     const moveNames = screen.getAllByLabelText('Move name');
     await user.clear(moveNames[3]!);
+    await user.click(screen.getByRole('button', { name: /^Quick Peck / }));
+    await user.click(screen.getByRole('button', { name: 'Save card' }));
+    await waitFor(() => expect(moveNames[3]).toHaveFocus());
+    expect(moveNames[3]).toBeVisible();
     await user.type(moveNames[3]!, 'Final Flourish');
     await user.click(screen.getByRole('button', { name: 'Save card' }));
 
@@ -971,6 +976,22 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.newCard);
 
     const artwork = await screen.findByLabelText('Artwork URL (optional)');
+    const preview = screen.getByRole('complementary', {
+      name: 'Live card preview',
+    });
+    expect(within(preview).getByText('Unsaved preview')).toBeVisible();
+    await user.type(screen.getByLabelText('Card name'), 'Library Fox');
+    await user.selectOptions(
+      screen.getByLabelText('Rarity', { selector: '#card-rarity' }),
+      'legendary',
+    );
+    await user.clear(screen.getByLabelText('Hit points (HP)'));
+    await user.type(screen.getByLabelText('Hit points (HP)'), '120');
+    expect(
+      within(preview).getByRole('heading', { name: 'Library Fox' }),
+    ).toBeVisible();
+    expect(preview.querySelector('.card-frame--legendary')).not.toBeNull();
+    expect(within(preview).getByText('120')).toBeVisible();
     await user.type(artwork, 'not-an-image-url');
     expect(
       screen.getByText('Enter an http(s) URL or /cards/ path to preview it.'),
@@ -982,7 +1003,9 @@ describe('Basic author console', () => {
 
     await user.clear(artwork);
     await user.type(artwork, '/cards/quillip.webp');
-    const localImage = await screen.findByAltText('Card artwork preview');
+    const localImage = await screen.findByAltText(
+      'Library Fox artwork preview',
+    );
     expect(localImage).toHaveAttribute('src', '/cards/quillip.webp');
     expect(
       screen.queryByText('Use an http(s) URL or a /cards/ artwork path.'),
@@ -990,7 +1013,9 @@ describe('Basic author console', () => {
 
     await user.clear(artwork);
     await user.type(artwork, 'https://example.test/cards/broken.png');
-    const brokenImage = await screen.findByAltText('Card artwork preview');
+    const brokenImage = await screen.findByAltText(
+      'Library Fox artwork preview',
+    );
     fireEvent.error(brokenImage);
     expect(
       screen.getByText('Image could not load. Check the URL.'),
@@ -998,13 +1023,21 @@ describe('Basic author console', () => {
 
     await user.clear(artwork);
     await user.type(artwork, 'https://example.test/cards/working.png');
-    const workingImage = await screen.findByAltText('Card artwork preview');
+    const workingImage = await screen.findByAltText(
+      'Library Fox artwork preview',
+    );
     fireEvent.load(workingImage);
     expect(workingImage).not.toHaveAttribute('hidden');
     expect(workingImage).toHaveAttribute(
       'src',
       'https://example.test/cards/working.png',
     );
+    await user.selectOptions(
+      screen.getByLabelText('Category', { selector: '#card-category' }),
+      'power',
+    );
+    expect(within(preview).getByText('Power · Typeless')).toBeVisible();
+    expect(within(preview).queryByRole('definition')).not.toBeInTheDocument();
   });
 
   it('associates a name conflict with the field, preserves the draft, and retries successfully', async () => {
@@ -1819,12 +1852,13 @@ describe('Basic author console', () => {
 
     await user.type(await screen.findByLabelText('Card name'), ' delayed');
     await user.click(screen.getByRole('button', { name: 'Save card' }));
-    await user.click(screen.getByRole('link', { name: /Library Fox/ }));
+    await user.click(screen.getByRole('link', { name: 'Cards' }));
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
+    await user.click(await screen.findByRole('link', { name: /Library Fox/ }));
     await user.click(await screen.findByRole('link', { name: 'Edit card' }));
     await user.type(await screen.findByLabelText('Card name'), ' local edit');
 
@@ -1842,17 +1876,19 @@ describe('Basic author console', () => {
       'Library Fox local edit',
     );
     expect(screen.getByLabelText('Card name')).toHaveFocus();
-    expect(screen.getByRole('link', { name: /Library Fox/ })).toHaveAttribute(
-      'aria-current',
-      'true',
-    );
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Library Fox' }),
+    ).toBeVisible();
     expect(screen.queryByText('Card changes saved.')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: /Campus Owl delayed/ }));
+    await user.click(screen.getByRole('link', { name: 'Cards' }));
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
+    );
+    await user.click(
+      await screen.findByRole('link', { name: /Campus Owl delayed/ }),
     );
     await user.click(await screen.findByRole('link', { name: 'Edit card' }));
     expect(await screen.findByLabelText('Card name')).toHaveValue(
@@ -2205,7 +2241,8 @@ describe('Basic author console', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Publish card' }),
     );
-    await user.click(screen.getByRole('link', { name: /Library Fox/ }));
+    await user.click(screen.getByRole('link', { name: 'Cards' }));
+    await user.click(await screen.findByRole('link', { name: /Library Fox/ }));
     await user.click(await screen.findByRole('link', { name: 'Edit card' }));
     await user.type(await screen.findByLabelText('Card name'), ' local edit');
 
@@ -2230,16 +2267,21 @@ describe('Basic author console', () => {
       screen.queryByText('Card published and active.'),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: /Campus Owl/ }));
+    await user.click(screen.getByRole('link', { name: 'Cards' }));
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
+    await user.click(await screen.findByRole('link', { name: /Campus Owl/ }));
     expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Campus Owl/ })).toHaveTextContent(
-      'Published',
-    );
+    expect(
+      within(
+        screen
+          .getByRole('heading', { level: 3, name: 'Campus Owl' })
+          .closest('article')!,
+      ).getByText('Published'),
+    ).toBeVisible();
   });
 
   it('reconciles a delayed challenge lifecycle response without changing the newer challenge', async () => {
@@ -2305,9 +2347,13 @@ describe('Basic author console', () => {
       await screen.findByRole('heading', { level: 3, name: 'Campus Owl' }),
     ).toBeVisible();
     expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Campus Owl/ })).toHaveTextContent(
-      'Approved',
-    );
+    expect(
+      within(
+        screen
+          .getByRole('heading', { level: 3, name: 'Campus Owl' })
+          .closest('article')!,
+      ).getByText('Approved'),
+    ).toBeVisible();
     expect(
       screen.queryByRole('link', { name: 'Edit card' }),
     ).not.toBeInTheDocument();

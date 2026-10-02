@@ -23,7 +23,12 @@ export type AuthorWorkspaceRoute =
     }
   | { mode: 'list'; section: 'cards' }
   | { mode: 'new'; section: 'cards' }
-  | { cardId: string; mode: 'detail' | 'edit'; section: 'cards' }
+  | {
+      cardId: string;
+      mode: 'detail' | 'edit';
+      section: 'cards';
+      tab?: 'details' | 'review';
+    }
   | { mode: 'list'; section: 'review' }
   | { caseId?: string; mode: 'detail' | 'list'; section: 'playerReview' }
   | { mode: 'list'; section: 'analytics' }
@@ -87,6 +92,7 @@ export function parseAuthorWorkspaceRoute(
         cardId: segments[1],
         mode: segments[2] === 'edit' ? 'edit' : 'detail',
         section: 'cards',
+        ...(segments[2] === 'review' ? { tab: 'review' as const } : {}),
       };
     }
     return { mode: 'list', section: 'cards' };

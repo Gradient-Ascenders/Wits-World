@@ -1034,7 +1034,73 @@ test('Player review uses a responsive, privacy-safe master-detail workflow', asy
   expect(consoleErrors).toEqual([]);
 });
 
-test('Card catalogue uses filtered master detail and concise real-card read-only views', async ({
+test('Card editor previews unsaved artwork and metadata beside the form on desktop', async ({
+  page,
+}) => {
+  await installAuthorApi(page);
+  await page.setViewportSize({ height: 900, width: 1715 });
+  await page.goto('/author/cards/new');
+  const preview = page.getByRole('complementary', {
+    name: 'Live card preview',
+  });
+  await expect(preview).toBeVisible();
+  await expect(
+    page.getByRole('complementary', { name: 'Card definitions' }),
+  ).toBeHidden();
+  await page.getByLabel('Card name').fill('Library Fox');
+  await page.locator('#card-rarity').selectOption('legendary');
+  await page.getByLabel('Hit points (HP)').fill('120');
+  await page.getByLabel('Starting Power').fill('25');
+  await page.getByLabel('Artwork URL (optional)').fill('/cards/quillip.webp');
+  const image = preview.getByAltText('Library Fox artwork preview');
+  await expect(image).toBeVisible();
+  await expect(preview.locator('.card-frame--legendary')).toBeVisible();
+  await expect(
+    preview.getByRole('heading', { name: 'Library Fox' }),
+  ).toBeVisible();
+  await expect(preview.getByText('120', { exact: true })).toBeVisible();
+  await expect(preview.getByText('25', { exact: true })).toBeVisible();
+  await mkdir('/tmp/author-card-preview', { recursive: true });
+  for (const width of [1715, 1280]) {
+    await page.setViewportSize({ height: 900, width });
+    const fieldsBox = await page
+      .locator('.author-card-editor__fields')
+      .boundingBox();
+    const previewBox = await preview.boundingBox();
+    expect(fieldsBox).not.toBeNull();
+    expect(previewBox).not.toBeNull();
+    expect(previewBox!.x).toBeGreaterThan(fieldsBox!.x + fieldsBox!.width);
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: `/tmp/author-card-preview/desktop-${width}.png`,
+      fullPage: true,
+    });
+  }
+  await page
+    .getByLabel('Artwork URL (optional)')
+    .fill('/cards/missing-preview.webp');
+  await expect(
+    preview.getByText('Image could not load. Check the URL.'),
+  ).toBeVisible();
+  await page.getByLabel('Artwork URL (optional)').fill('/cards/quillip.webp');
+  await expect(image).toBeVisible();
+  await page.getByLabel('Move name').fill('Quiet Step');
+  await page.getByRole('button', { name: 'Add move', exact: true }).click();
+  await expect(page.locator('#move-1-name')).toBeVisible();
+  await expect(page.locator('#move-0-name')).toBeHidden();
+  await page.getByRole('button', { name: /^Quiet Step / }).click();
+  await page.getByRole('button', { name: 'Create draft card' }).click();
+  await expect(page.locator('#move-1-name')).toBeFocused();
+  await expect(page.locator('#move-1-name')).toBeVisible();
+  await expect(page.locator('#move-0-name')).toBeHidden();
+  await page.locator('#card-category').selectOption('power');
+  await expect(preview.getByText('Power · Typeless')).toBeVisible();
+  await expect(preview.getByLabel('Preview creature attributes')).toHaveCount(
+    0,
+  );
+});
+
+test('Card catalogue and dedicated detail pages preserve filtering, review and lifecycle actions', async ({
   page,
 }, testInfo) => {
   const state = await installAuthorApi(page);
@@ -1190,6 +1256,15 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   await page.getByRole('link', { name: /Campus Owl/u }).click();
   await page.getByRole('link', { name: 'Edit card' }).click();
   await page.getByLabel('Card name').fill('Campus Owl revised');
+  await expect(
+    page.getByRole('complementary', { name: 'Card definitions' }),
+  ).toBeHidden();
+  await page.getByRole('link', { name: 'Cards', exact: true }).first().click();
+  const dirtyDialog = page.getByRole('dialog', {
+    name: 'Discard unsaved changes?',
+  });
+  await expect(dirtyDialog).toContainText('unsaved card draft changes');
+  await dirtyDialog.getByRole('button', { name: 'Discard changes' }).click();
   const cardCatalogue = page.getByRole('complementary', {
     name: 'Card definitions',
   });
@@ -1200,14 +1275,10 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   await cardCatalogue.getByLabel('Rarity').selectOption('all');
   await cardCatalogue.locator('.author-filter-menu > summary').click();
   await page.getByRole('link', { name: /^Four Move Ibex/u }).click();
-  const dirtyDialog = page.getByRole('dialog', {
-    name: 'Discard unsaved changes?',
-  });
-  await expect(dirtyDialog).toContainText('unsaved card draft changes');
-  await dirtyDialog.getByRole('button', { name: 'Discard changes' }).click();
   await expect(page.getByLabel('Card name')).toHaveCount(0);
   await expect(page.locator('.collectible-card')).toBeVisible();
 
+  await page.getByRole('link', { name: 'Card catalogue' }).click();
   await page.getByRole('link', { name: 'New card' }).first().click();
   await page
     .locator('.author-form')
@@ -1257,62 +1328,59 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   ).toBeHidden();
   await expectNoHorizontalOverflow(page);
   const creatureEditorHeight = await documentHeight(page);
-  expect(mobilePublishedCreatureHeight).toBeLessThan(creatureEditorHeight);
 
   await page.setViewportSize({ height: 1000, width: 1600 });
-  await page.goto(`/author/cards/${CARD_CREATURE}`);
-  await expect(page.locator('.collectible-card')).toBeVisible();
-  await expectNoHorizontalOverflow(page);
+  await page.goto('/author/cards');
   await expect(
-    page.getByRole('link', {
-      name: /A Deliberately Long Card Name for the Great Hall Archive Catalogue/u,
-    }),
+    page.getByRole('table', { name: 'Card definitions' }),
   ).toBeVisible();
-  const catalogueScroll = await page
-    .locator('.author-catalogue__list')
-    .evaluate((element) => ({
-      clientHeight: element.clientHeight,
-      overflowY: getComputedStyle(element).overflowY,
-      scrollHeight: element.scrollHeight,
-    }));
-  expect(catalogueScroll.overflowY).toBe('auto');
-  expect(catalogueScroll.scrollHeight).toBeGreaterThan(
-    catalogueScroll.clientHeight,
-  );
+  await expect(
+    page.getByRole('region', { name: 'Card workspace detail' }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole('link', { name: /A Deliberately Long Card Name/ }),
+  ).toBeVisible();
+  await mkdir('/tmp/author-cards-redesign', { recursive: true });
+  await page.screenshot({
+    path: '/tmp/author-cards-redesign/catalogue-1600.png',
+    fullPage: true,
+  });
   const deepLinkedCardId = uuid('5', 128);
-  await page.goto(`/author/cards/${deepLinkedCardId}`);
-  const deepLinkedRow = page.getByRole('link', {
-    name: /Catalogue specimen 29/u,
+  await page.getByRole('link', { name: /Catalogue specimen 29/u }).click();
+  await expect(page).toHaveURL(`/author/cards/${deepLinkedCardId}`);
+  await expect(
+    page.getByRole('complementary', { name: 'Card definitions' }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole('heading', { level: 3, name: 'Catalogue specimen 29' }),
+  ).toBeVisible();
+  await page.goto(`/author/cards/${CARD_CREATURE}`);
+  await expect(
+    page.getByRole('heading', { level: 3, name: 'Four Move Ibex' }),
+  ).toBeVisible();
+  await expect(
+    page.locator('.author-card-detail__layout .collectible-card'),
+  ).toBeVisible();
+  await page.screenshot({
+    path: '/tmp/author-cards-redesign/detail-1600.png',
+    fullPage: true,
   });
-  await expect(deepLinkedRow).toHaveAttribute('aria-current', 'true');
-  await expect
-    .poll(() =>
-      page
-        .locator('.author-catalogue__list')
-        .evaluate((element) => element.scrollTop),
-    )
-    .toBeGreaterThan(0);
-  const selectedRowPosition = await page.evaluate(() => {
-    const list = document.querySelector<HTMLElement>('.author-catalogue__list');
-    const row = document.querySelector<HTMLElement>(
-      '.author-record-summary[aria-current="true"]',
-    );
-    if (!list || !row) throw new Error('Selected catalogue row is missing.');
-    const listBounds = list.getBoundingClientRect();
-    const rowBounds = row.getBoundingClientRect();
-    return {
-      listBottom: listBounds.bottom,
-      listTop: listBounds.top,
-      rowBottom: rowBounds.bottom,
-      rowTop: rowBounds.top,
-    };
+  await page.getByRole('link', { name: 'Review', exact: true }).click();
+  await expect(page).toHaveURL(`/author/cards/${CARD_CREATURE}/review`);
+  await expect(page.getByRole('region', { name: 'Card review' })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Review', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Card review' })).toBeVisible();
+  await expect(page.locator('.author-history')).toHaveAttribute('open', '');
+  await expect(page.getByText('Approve: in review to approved')).toBeVisible();
+  await page.screenshot({
+    path: '/tmp/author-cards-redesign/review-1600.png',
+    fullPage: true,
   });
-  expect(selectedRowPosition.rowTop).toBeGreaterThanOrEqual(
-    selectedRowPosition.listTop - 1,
-  );
-  expect(selectedRowPosition.rowBottom).toBeLessThanOrEqual(
-    selectedRowPosition.listBottom + 1,
-  );
+  await page.getByRole('link', { name: 'Details', exact: true }).click();
+  await expect(page.getByText('Move 4', { exact: true })).toBeVisible();
   await page.goto(`/author/cards/${CARD_RETIRED_CREATURE}`);
   await expect(page.getByText('Legacy move 4')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retire card' })).toHaveCount(
@@ -1375,7 +1443,7 @@ test('tablet and wide workspaces preserve loading, error, empty and deep-link st
   await page.goto(`/author/cards/${CARD_CREATURE}`);
   await expect(
     page.getByRole('complementary', { name: 'Card definitions' }),
-  ).toBeVisible();
+  ).toBeHidden();
   await expect(
     page.locator('.author-card-detail__layout .collectible-card'),
   ).toBeVisible();

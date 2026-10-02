@@ -3147,50 +3147,6 @@ details.trust-signal-summary {
   background: rgb(5 11 22 / 36%);
 }
 
-.card-preview {
-  padding: var(--space-4);
-  border: 1px solid var(--colour-border-default);
-  border-radius: var(--radius-md);
-  background: rgb(13 27 49 / 82%);
-}
-
-.author-artwork-preview {
-  display: grid;
-  width: min(100%, 15rem);
-  aspect-ratio: 1;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid var(--colour-border-subtle);
-  border-radius: var(--radius-sm);
-  background: #08101d;
-}
-
-.author-artwork-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.author-artwork-preview img[hidden] {
-  display: none;
-}
-
-.author-artwork-preview p {
-  padding: var(--space-3);
-  text-align: center;
-}
-
-.card-preview strong {
-  display: block;
-  font-family: var(--font-heading);
-  font-size: var(--text-xl);
-}
-
-.card-preview p:not(.eyebrow) {
-  margin: var(--space-2) 0 0;
-  color: var(--colour-text-secondary);
-}
-
 .author-review {
   display: grid;
   gap: var(--space-4);
