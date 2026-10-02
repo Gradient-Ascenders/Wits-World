@@ -13,6 +13,7 @@ import {
 } from '../tests/fixtures/live';
 import { buildSavedDeck } from '../tests/fixtures/decks';
 import { buildStarterCards } from '../tests/fixtures/cards';
+import artworkManifest from '../../../artwork/cards/manifest.json' with { type: 'json' };
 
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date(LIVE_SERVER_TIME));
@@ -32,6 +33,111 @@ test.beforeEach(async ({ page }) => {
       requestId: 'live-deck-cards',
     }),
   );
+});
+
+test('loads deck artwork before delayed details on entry and reload', async ({
+  page,
+}, testInfo) => {
+  const artwork = artworkManifest.cards.slice(0, 5);
+  const cards = buildStarterCards().map((card, index) => ({
+    ...card,
+    cardDefinitionId: artwork[index]!.id,
+    name: artwork[index]!.name,
+    imageUrl: artwork[index]!.optimized,
+    imageAlt: artwork[index]!.alt,
+  }));
+  const deck = buildSavedDeck({ isSelected: true });
+  deck.cards = deck.cards.map((card, index) => ({
+    ...card,
+    cardDefinitionId: cards[index]!.cardDefinitionId,
+    name: cards[index]!.name,
+  }));
+  await routeCurrentPlayer(page);
+  await page.route('**/api/v1/decks', (route) =>
+    json(route, { decks: [deck], requestId: 'artwork-deck' }),
+  );
+  await page.route('**/api/v1/ranked/queue', (route) =>
+    json(route, queueState()),
+  );
+  await page.route('**/api/v1/ranked/seasons/current', (route) =>
+    json(route, { season: rankedSeason() }),
+  );
+  await page.route('**/api/v1/ranked/me', (route) =>
+    json(route, rankedProfile()),
+  );
+  await page.route('**/api/v1/ranked/standings**', (route) =>
+    json(route, rankedStandings()),
+  );
+  await page.route('**/api/v1/territory/zones', (route) =>
+    json(route, { zones: territoryZones() }),
+  );
+
+  let releaseDetails!: () => void;
+  let detailsGate: Promise<void>;
+  let collectionRequests = 0;
+  await page.route('**/api/v1/cards/collection', async (route) => {
+    collectionRequests++;
+    await detailsGate;
+    await json(route, { cards, requestId: 'delayed-details' });
+  });
+  const timings: object[] = [];
+  for (const width of [390, 825, 1440]) {
+    await page.setViewportSize({ width, height: width === 825 ? 1905 : 900 });
+    for (const reload of [false, true]) {
+      detailsGate = new Promise<void>((resolve) => {
+        releaseDetails = resolve;
+      });
+      const started = Date.now();
+      try {
+        if (reload) await page.reload();
+        else await page.goto('/matches/live');
+        const images = page.locator('.live-deck-fan__card img');
+        await expect(images).toHaveCount(5);
+        await images.evaluateAll(async (elements) => {
+          await Promise.all(
+            elements.map((element) => (element as HTMLImageElement).decode()),
+          );
+        });
+        expect(collectionRequests).toBeGreaterThan(0);
+        await expect(
+          page.locator('.live-deck-fan .card-thumbnail__button'),
+        ).toHaveCount(0);
+        await expect(
+          page.getByRole('button', { name: 'Find battle' }),
+        ).toBeEnabled();
+        await expectNoHorizontalOverflow(page);
+        const sources = await images.evaluateAll((elements) =>
+          elements.map((element) => (element as HTMLImageElement).currentSrc),
+        );
+        expect(
+          sources.every((source) => /-(192|384)\.webp$/.test(source)),
+        ).toBe(true);
+        timings.push({
+          width,
+          reload,
+          artworkReadyMs: Date.now() - started,
+          sources,
+        });
+        if (!reload && width !== 825) {
+          await page.screenshot({
+            animations: 'disabled',
+            fullPage: true,
+            path: testInfo.outputPath(`deck-artwork-pending-${width}.png`),
+          });
+        }
+      } finally {
+        releaseDetails();
+      }
+      await expect(
+        page.locator('.live-deck-fan .card-thumbnail__button'),
+      ).toHaveCount(5);
+      await expect(page.locator('.live-deck-fan__card img')).toHaveCount(5);
+    }
+  }
+  await testInfo.attach('artwork-load-timings', {
+    body: JSON.stringify(timings, null, 2),
+    contentType: 'application/json',
+  });
 });
 
 test('renders authoritative participant and private spectator views responsively', async ({

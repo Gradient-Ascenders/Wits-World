@@ -51,6 +51,7 @@ import {
   CardArtwork,
   CardThumbnail,
 } from '../components/cards/CollectibleCard';
+import { catalogueArtwork } from '../components/cards/catalogue-artwork';
 import {
   CardPresentationDialog,
   type CardDialogPresentation,
@@ -101,6 +102,8 @@ const lobbyTabs: ReadonlyArray<{ id: LobbyTab; label: string }> = [
 const queuePollMs = 2_500;
 const queueHeartbeatMs = 8_000;
 const standingsPageSize = 25;
+const deckArtworkSizes =
+  '(min-width: 48rem) and (max-width: 74.99rem) and (min-height: 75rem) 12.6rem, 7.5rem';
 const numberFormatter = new Intl.NumberFormat('en-ZA');
 const seasonDateFormatter = createAppDateTimeFormatter('en-ZA', {
   dateStyle: 'medium',
@@ -903,14 +906,23 @@ export default function LiveLobbyPage({
                             <CardThumbnail
                               accessibleLabel={`View ${ownedCard.name} details, card ${card.position}`}
                               card={ownedCard}
+                              fetchPriority="high"
                               loading="eager"
                               motion="smooth"
                               nameplate={null}
                               onClick={() => setInspectedCard(ownedCard)}
+                              sizes={deckArtworkSizes}
                             />
                           ) : (
                             <CardArtwork
-                              card={{ ...card, imageUrl: null }}
+                              card={{
+                                ...card,
+                                imageUrl: null,
+                                ...catalogueArtwork(card.cardDefinitionId),
+                              }}
+                              fetchPriority="high"
+                              loading="eager"
+                              sizes={deckArtworkSizes}
                               thumbnail
                             />
                           )}

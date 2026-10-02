@@ -196,6 +196,82 @@ async function connect(projection: Record<string, unknown>) {
 }
 
 describe('live lobby and battle experience', () => {
+  it('loads approved deck artwork while card details are pending and preserves it on failure', async () => {
+    const deck = buildSavedDeck({ isSelected: true });
+    deck.cards[0] = {
+      ...deck.cards[0]!,
+      cardDefinitionId: '84790040-6ea8-6155-c4b7-dec3a22ac3ab',
+      name: 'Quillip',
+    };
+    // A matching name alone must never supply art for an unknown definition.
+    deck.cards[1] = { ...deck.cards[1]!, name: 'Quillip' };
+    let rejectCollection!: (reason: Error) => void;
+    const collection = new Promise<Response>((_, reject) => {
+      rejectCollection = reject;
+    });
+    let collectionRequests = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const pathname = new URL(String(input)).pathname;
+        if (pathname.endsWith('/cards/collection')) {
+          if (++collectionRequests === 1) return collection;
+          return Promise.resolve(
+            jsonResponse({
+              cards: buildStarterCards().map((card, index) => ({
+                ...card,
+                cardDefinitionId: deck.cards[index]!.cardDefinitionId,
+                name: deck.cards[index]!.name,
+                imageUrl: '/cards/ciphra.webp',
+              })),
+              requestId: 'recovered-card-details',
+            }),
+          );
+        }
+        if (pathname.endsWith('/decks'))
+          return Promise.resolve(deckListResponse([deck]));
+        if (pathname.endsWith('/ranked/queue'))
+          return Promise.resolve(jsonResponse(queueState()));
+        if (pathname.endsWith('/ranked/seasons/current'))
+          return Promise.resolve(jsonResponse({ season: rankedSeason() }));
+        const supplemental = rankedLobbyResponse(pathname);
+        if (supplemental) return Promise.resolve(supplemental);
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }),
+    );
+    const { container } = renderRoute(
+      '/matches/live',
+      <LiveLobbyPage apiBaseUrl={apiBaseUrl} />,
+    );
+    await screen.findByRole('heading', { name: deck.name });
+    const image = container.querySelector('.live-deck-fan__card--1 img');
+    expect(image).toHaveAttribute('src', '/cards/quillip.webp');
+    expect(image).toHaveAttribute('loading', 'eager');
+    expect(image).toHaveAttribute('fetchpriority', 'high');
+    expect(image).toHaveAttribute('srcset', expect.stringContaining('192w'));
+    expect(container.querySelector('.live-deck-fan__card--2 img')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Find battle' })).toBeEnabled();
+    await act(async () =>
+      rejectCollection(new Error('Collection unavailable')),
+    );
+    expect(
+      await screen.findByText('Card details couldn’t load.'),
+    ).toBeVisible();
+    expect(container.querySelector('.live-deck-fan__card--1 img')).toBe(image);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    const card = await screen.findByRole('button', {
+      name: 'View Quillip details, card 1',
+    });
+    expect(card.querySelector('img')).toHaveAttribute(
+      'src',
+      '/cards/ciphra.webp',
+    );
+    fireEvent.click(card);
+    expect(screen.getByRole('dialog', { name: 'Quillip' })).toBeVisible();
+    expect(screen.getByText('91')).toBeVisible();
+  });
+
   it('enters ranked search with only the selected deck and opens private spectator links', async () => {
     const user = userEvent.setup();
     const deck = buildSavedDeck({ isSelected: true, name: 'Braamfontein Set' });
