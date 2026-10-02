@@ -208,7 +208,7 @@ function itemPath(item: AuthorReviewQueueItem) {
     return authorPaths.question(item.eventId, item.challengeId, item.entityId);
   if (item.entityType === 'card') return authorPaths.card(item.entityId);
   if (item.entityType === 'campaign')
-    return authorPaths.campaign(item.entityId);
+    return authorPaths.campaignReview(item.entityId);
   return authorPaths.review;
 }
 

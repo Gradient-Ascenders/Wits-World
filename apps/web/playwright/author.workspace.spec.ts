@@ -497,6 +497,151 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   expect(consoleErrors).toEqual([]);
 });
 
+test.describe('desktop campaign workspace', () => {
+  test.use({ timezoneId: 'America/New_York' });
+
+  test('campaign catalogue, editor, content picker and record tabs stay focused', async ({
+    page,
+  }, info) => {
+    const state = await installAuthorApi(page);
+    const errors = monitorConsoleErrors(page);
+    await mkdir('.impeccable/review', { recursive: true });
+    const capture = async (name: string, width: number) => {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: `.impeccable/review/campaign-${name}-${width}.png`,
+        fullPage: true,
+      });
+      await expectNoHorizontalOverflow(page);
+    };
+    for (const width of [1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/author/campaigns');
+      await expect(
+        page.getByRole('heading', { name: 'Campaigns' }),
+      ).toBeVisible();
+      await capture('catalogue', width);
+      await page.getByRole('link', { name: 'New campaign' }).click();
+      await expect(
+        page.getByRole('heading', { name: 'New campaign' }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('complementary', { name: 'Campaign catalogue' }),
+      ).toHaveCount(0);
+      await capture('new', width);
+
+      await page.getByRole('button', { name: 'Create draft campaign' }).click();
+      await expect(page.getByLabel('Campaign title')).toBeFocused();
+      await page.getByLabel('Campaign title').fill(`Open Day ${width}`);
+      await enterEventDateTime(page, 'Starts at', '2026-09-10T08:00');
+      await enterEventDateTime(page, 'Ends at', '2026-09-10T17:00');
+      const add = page.getByRole('button', { name: 'Add content' });
+      await add.click();
+      const picker = page.getByRole('dialog', { name: 'Add content' });
+      await expect(
+        page.getByRole('button', { name: 'Close content picker' }),
+      ).toBeFocused();
+      await expect(
+        page.getByRole('checkbox', { name: /MSL Open Day/ }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('checkbox', { name: /Great Hall Discovery/ }),
+      ).toHaveCount(0);
+      await selectOption(picker.getByLabel('Lifecycle'), 'all');
+      await page
+        .getByRole('checkbox', { name: /Great Hall Discovery/ })
+        .check();
+      // Escape dismisses only the nested menu before dismissing the picker.
+      await picker.getByLabel('Lifecycle').click();
+      await page.keyboard.press('Escape');
+      await expect(picker).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(picker).toBeHidden();
+      await expect(add).toBeFocused();
+      await expect(page.getByText('No content added.')).toBeVisible();
+      await add.click();
+      await page.getByRole('checkbox', { name: /MSL Open Day/ }).check();
+      const trails = page.getByRole('tab', { name: /Trails/ });
+      await trails.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect(page.getByRole('tab', { name: /Events/ })).toBeFocused();
+      await trails.click();
+      await page
+        .getByRole('checkbox', { name: /Campus orientation trail/ })
+        .check();
+      await page.getByRole('tab', { name: /Events/ }).click();
+      await expect(
+        page.getByRole('checkbox', { name: /MSL Open Day/ }),
+      ).toBeChecked();
+      await capture('picker', width);
+      await page.getByRole('button', { name: 'Apply selection' }).focus();
+      await page.keyboard.press('Tab');
+      await expect(
+        page.getByRole('button', { name: 'Close content picker' }),
+      ).toBeFocused();
+      await page.getByRole('button', { name: 'Apply selection' }).click();
+      await expect(add).toBeFocused();
+      await expect(
+        page.getByRole('button', { name: 'Remove event: MSL Open Day' }),
+      ).toBeVisible();
+      await page
+        .getByRole('button', { name: 'Remove trail: Campus orientation trail' })
+        .click();
+      await expect(
+        page.getByRole('button', { name: /Remove trail/ }),
+      ).toHaveCount(0);
+      await capture('filled', width);
+      await page.getByRole('button', { name: 'Create draft campaign' }).click();
+      await expect(page.getByText('Campaign draft created.')).toBeFocused();
+      const saved = state.campaigns[0]!;
+      expect(saved.startsAt).toBe('2026-09-10T06:00:00.000Z');
+      expect(saved.endsAt).toBe('2026-09-10T15:00:00.000Z');
+      expect(saved.events.map((event) => event.eventId)).toEqual([EVENT_B]);
+      await capture('details', width);
+      await page.getByRole('link', { name: 'Review', exact: true }).click();
+      await expect(page).toHaveURL(
+        `/author/campaigns/${saved.campaignId}/review`,
+      );
+      await expect(
+        page.getByRole('button', { name: 'Submit for review' }),
+      ).toBeVisible();
+      await capture('review', width);
+      await page.getByRole('link', { name: 'History', exact: true }).click();
+      await expect(
+        page.getByText('Approve: in review to approved'),
+      ).toBeVisible();
+      await capture('history', width);
+      await page.getByRole('link', { name: 'Edit campaign' }).click();
+      await expect(page.getByLabel('Campaign title')).toHaveValue(
+        `Open Day ${width}`,
+      );
+      await capture('edit', width);
+      await page.getByLabel('Campaign title').fill(`Open Day revised ${width}`);
+      await page.getByRole('button', { name: 'Save campaign' }).click();
+      await expect(page.getByText('Campaign changes saved.')).toBeFocused();
+      expect(
+        state.campaigns.find((item) => item.campaignId === saved.campaignId)
+          ?.version,
+      ).toBe(1);
+      const current = state.campaigns.find(
+        (item) => item.campaignId === saved.campaignId,
+      )!;
+      current.status = 'approved';
+      await page.goto(`/author/campaigns/${saved.campaignId}/edit`);
+      await expect(
+        page.getByText('This campaign is no longer editable.'),
+      ).toBeVisible();
+      await expect(page.getByLabel('Campaign title')).toHaveCount(0);
+      await capture('unavailable', width);
+    }
+    expect(errors).toEqual([]);
+    await info.attach('campaign-desktop-evidence', {
+      body: 'Captured catalogue, new, picker, filled, detail, review, history and edit at 1280, 1440 and 1920px.',
+      contentType: 'text/plain',
+    });
+  });
+});
+
 test('Review and campaign workspaces preserve lifecycle, keyboard and responsive states', async ({
   page,
 }) => {
@@ -544,23 +689,28 @@ test('Review and campaign workspaces preserve lifecycle, keyboard and responsive
   await expect(
     page.getByRole('heading', { name: 'Orientation Week' }),
   ).toBeVisible();
-  await expect(page.getByText('1 events · 1 trails')).toBeVisible();
+  await expect(
+    page.getByText('1 event · 1 trail', { exact: false }),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
-  await page.setViewportSize({ height: 844, width: 390 });
+  await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto('/author/campaigns/new');
   await expect(
-    page.getByRole('heading', { name: 'Create campaign' }),
+    page.getByRole('heading', { name: 'New campaign' }),
   ).toBeVisible();
-  await page.getByLabel('Title').fill('Open Day Schedule');
-  await page.getByLabel('Starts').fill('2026-09-10T08:00');
-  await page.getByLabel('Ends').fill('2026-09-10T17:00');
+  await page.getByLabel('Campaign title').fill('Open Day Schedule');
+  await enterEventDateTime(page, 'Starts at', '2026-09-10T08:00');
+  await enterEventDateTime(page, 'Ends at', '2026-09-10T17:00');
+  await page.getByRole('button', { name: 'Add content' }).click();
   await page.getByRole('checkbox', { name: /MSL Open Day/u }).check();
-  await page.getByRole('button', { name: 'Create campaign' }).click();
+  await page.getByRole('button', { name: 'Apply selection' }).click();
+  await page.getByRole('button', { name: 'Create draft campaign' }).click();
   await expect(page.getByText('Campaign draft created.')).toBeFocused();
   await expect(
     page.getByRole('heading', { name: 'Open Day Schedule' }),
   ).toBeVisible();
+  await page.getByRole('link', { name: 'Review', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Submit for review' }),
   ).toBeVisible();
@@ -2165,6 +2315,21 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
         { campaign, requestId: 'request-campaign-create' },
         201,
       );
+      return;
+    }
+    const campaignUpdate = path.match(/^\/author\/campaigns\/([^/]+)$/u);
+    if (campaignUpdate && method === 'PUT') {
+      const current = state.campaigns.find(
+        (item) => item.campaignId === campaignUpdate[1],
+      )!;
+      const input = request.postDataJSON();
+      expect(input.expectedVersion).toBe(current.version);
+      const campaign = {
+        ...materializeCampaign(input, current.campaignId, state),
+        version: current.version + 1,
+      };
+      replaceById(state.campaigns, campaign, (item) => item.campaignId);
+      await json(route, { campaign, requestId: 'request-campaign-update' });
       return;
     }
     if (path === '/author/trails' && method === 'GET') {

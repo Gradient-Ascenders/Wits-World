@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +7,7 @@ import { AuthorHistoryPanel } from '../src/components/author/AuthorHistoryPanel'
 import { CampaignWorkspace } from '../src/components/author/CampaignWorkspace';
 import { ReviewWorkspace } from '../src/components/author/ReviewWorkspace';
 import { authorPaths } from '../src/components/author/author-routing';
+import { selectOption } from './fixtures/select-option';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
 const getAccessToken = vi.fn().mockResolvedValue('author-access-token');
@@ -197,6 +198,45 @@ describe('Author curation workspaces', () => {
     );
   });
 
+  it('opens campaign review from the review queue', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          items: [
+            {
+              canReview: true,
+              challengeId: null,
+              entityId: campaignId,
+              entityType: 'campaign',
+              eventId: null,
+              label: 'Welcome Week',
+              status: 'in_review',
+              submittedAt: '2026-08-29T08:00:00.000Z',
+              submittedBy: '90000000-0000-4000-8000-000000000002',
+              submittedByName: 'Another Author',
+              version: 2,
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          requestId: 'campaign-review-queue',
+          totalItems: 1,
+          totalPages: 1,
+        }),
+      ),
+    );
+    render(
+      <ReviewWorkspace
+        apiBaseUrl={apiBaseUrl}
+        getAccessToken={getAccessToken}
+      />,
+    );
+    expect(
+      await screen.findByRole('link', { name: 'Review campaign' }),
+    ).toHaveAttribute('href', authorPaths.campaignReview(campaignId));
+  });
+
   it('creates a scheduled campaign with selected event membership', async () => {
     const user = userEvent.setup();
     const navigate = vi.fn();
@@ -243,17 +283,21 @@ describe('Author curation workspaces', () => {
       />,
     );
 
-    await user.type(await screen.findByLabelText('Title'), 'Welcome Week');
-    fireEvent.change(screen.getByLabelText('Starts'), {
-      target: { value: '2026-09-01T08:00' },
-    });
-    fireEvent.change(screen.getByLabelText('Ends'), {
-      target: { value: '2026-09-05T18:00' },
-    });
+    await user.type(
+      await screen.findByLabelText('Campaign title'),
+      'Welcome Week',
+    );
+    await enterCampaignDateTime(user, 'Starts at', '2026-09-01T08:00');
+    await enterCampaignDateTime(user, 'Ends at', '2026-09-05T18:00');
+    await user.click(screen.getByRole('button', { name: 'Add content' }));
+    await selectOption(user, screen.getByLabelText('Lifecycle'), 'all');
     await user.click(
       screen.getByRole('checkbox', { name: /Great Hall history/ }),
     );
-    await user.click(screen.getByRole('button', { name: 'Create campaign' }));
+    await user.click(screen.getByRole('button', { name: 'Apply selection' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Create draft campaign' }),
+    );
 
     await vi.waitFor(() =>
       expect(navigate).toHaveBeenCalledWith(authorPaths.campaign(campaignId)),
@@ -312,49 +356,67 @@ describe('Author curation workspaces', () => {
       />,
     );
 
-    const eventFieldset = await screen.findByRole('group', { name: 'Events' });
-    const trailFieldset = screen.getByRole('group', { name: 'Trails' });
-    await user.click(
-      within(eventFieldset).getByRole('checkbox', { name: /Event 01/ }),
-    );
+    const add = await screen.findByRole('button', { name: 'Add content' });
+    await user.click(add);
+    const dialog = screen.getByRole('dialog', { name: 'Add content' });
     expect(
-      within(eventFieldset).queryByText('Event 11'),
-    ).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Next events page' }));
-    await user.click(
-      within(eventFieldset).getByRole('checkbox', { name: /Event 11/ }),
-    );
+      screen.getByRole('button', { name: 'Close content picker' }),
+    ).toHaveFocus();
+    await selectOption(user, screen.getByLabelText('Lifecycle'), 'all');
+    await user.click(screen.getByRole('checkbox', { name: /Event 01/ }));
+    expect(within(dialog).queryByText('Event 11')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next content page' }));
+    await user.click(screen.getByRole('checkbox', { name: /Event 11/ }));
     await user.type(
-      screen.getByRole('searchbox', { name: 'Search events' }),
+      screen.getByRole('searchbox', { name: 'Search content' }),
       'event 01',
     );
-    expect(
-      within(eventFieldset).getByRole('checkbox', { name: /Event 01/ }),
-    ).toBeChecked();
-    expect(
-      within(eventFieldset).queryByText('Event 11'),
-    ).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Next trails page' }));
-    await user.click(
-      within(trailFieldset).getByRole('checkbox', { name: /Trail 11/ }),
-    );
+    expect(screen.getByRole('checkbox', { name: /Event 01/ })).toBeChecked();
+    await user.click(screen.getByRole('tab', { name: /Trails/ }));
+    await selectOption(user, screen.getByLabelText('Lifecycle'), 'all');
+    await user.click(screen.getByRole('button', { name: 'Next content page' }));
+    await user.click(screen.getByRole('checkbox', { name: /Trail 11/ }));
     await user.type(
-      screen.getByRole('searchbox', { name: 'Search trails' }),
+      screen.getByRole('searchbox', { name: 'Search content' }),
       'missing',
     );
+    expect(screen.getByText('No matching trails.')).toBeVisible();
+    await user.click(screen.getByRole('tab', { name: /Events/ }));
+    expect(screen.getByRole('checkbox', { name: /Event 01/ })).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Apply selection' }));
+    expect(add).toHaveFocus();
     expect(
-      within(trailFieldset).getByText('No matching trails.'),
+      screen.getByRole('button', { name: 'Remove event: Event 11' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Remove trail: Trail 11' }),
     ).toBeVisible();
 
-    await user.type(screen.getByLabelText('Title'), 'Welcome Week');
-    fireEvent.change(screen.getByLabelText('Starts'), {
-      target: { value: '2026-09-01T08:00' },
-    });
-    fireEvent.change(screen.getByLabelText('Ends'), {
-      target: { value: '2026-09-05T18:00' },
-    });
-    await user.click(screen.getByRole('button', { name: 'Create campaign' }));
+    // Dismissal rolls back changes in the picker without losing applied members.
+    await user.click(add);
+    await selectOption(user, screen.getByLabelText('Lifecycle'), 'all');
+    await user.click(screen.getByRole('checkbox', { name: /Event 01/ }));
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(add).toHaveFocus();
+    expect(
+      screen.getByRole('button', { name: 'Remove event: Event 01' }),
+    ).toBeVisible();
+    await user.click(add);
+    await selectOption(user, screen.getByLabelText('Lifecycle'), 'all');
+    expect(screen.getByRole('checkbox', { name: /Event 01/ })).toBeChecked();
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Cancel',
+      }),
+    );
+
+    await user.type(screen.getByLabelText('Campaign title'), 'Welcome Week');
+    await enterCampaignDateTime(user, 'Starts at', '2026-09-01T08:00');
+    await enterCampaignDateTime(user, 'Ends at', '2026-09-05T18:00');
+    await user.click(
+      screen.getByRole('button', { name: 'Create draft campaign' }),
+    );
     await vi.waitFor(() =>
       expect(navigate).toHaveBeenCalledWith(authorPaths.campaign(campaignId)),
     );
@@ -408,9 +470,19 @@ describe('Author curation workspaces', () => {
       />,
     );
 
-    const title = await screen.findByLabelText('Title');
-    expect(screen.getByLabelText('Starts')).toHaveValue('2026-09-01T08:00');
-    expect(screen.getByLabelText('Ends')).toHaveValue('2026-09-05T18:00');
+    const title = await screen.findByLabelText('Campaign title');
+    expect(
+      within(screen.getByRole('group', { name: 'Starts at' })).getByRole(
+        'spinbutton',
+        { name: /^hour,/ },
+      ),
+    ).toHaveTextContent('08');
+    expect(
+      within(screen.getByRole('group', { name: 'Ends at' })).getByRole(
+        'spinbutton',
+        { name: /^hour,/ },
+      ),
+    ).toHaveTextContent('18');
     await user.clear(title);
     await user.type(title, 'Welcome Week revised');
     await user.click(screen.getByRole('button', { name: 'Save campaign' }));
@@ -443,7 +515,7 @@ describe('Author curation workspaces', () => {
     await user.click(
       within(dialog).getByRole('button', { name: 'Reload server version' }),
     );
-    expect(await screen.findByLabelText('Title')).toHaveValue(
+    expect(await screen.findByLabelText('Campaign title')).toHaveValue(
       'Welcome Week from server',
     );
     expect(campaignLoads).toBe(2);
@@ -494,7 +566,12 @@ describe('Author curation workspaces', () => {
         apiBaseUrl={apiBaseUrl}
         getAccessToken={getAccessToken}
         navigate={vi.fn()}
-        route={{ campaignId, mode: 'detail', section: 'campaigns' }}
+        route={{
+          campaignId,
+          mode: 'detail',
+          section: 'campaigns',
+          tab: 'review',
+        }}
       />,
     );
 
@@ -522,7 +599,7 @@ describe('Author curation workspaces', () => {
     expect(
       screen.queryByRole('button', { name: 'Submit for review' }),
     ).not.toBeInTheDocument();
-    expect(screen.getAllByText('In Review').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('In review').length).toBeGreaterThan(0);
   });
 
   it('uses the lifecycle state returned by the server for success feedback', async () => {
@@ -559,7 +636,12 @@ describe('Author curation workspaces', () => {
         apiBaseUrl={apiBaseUrl}
         getAccessToken={getAccessToken}
         navigate={vi.fn()}
-        route={{ campaignId, mode: 'detail', section: 'campaigns' }}
+        route={{
+          campaignId,
+          mode: 'detail',
+          section: 'campaigns',
+          tab: 'review',
+        }}
       />,
     );
 
@@ -665,7 +747,12 @@ describe('Author curation workspaces', () => {
         apiBaseUrl={apiBaseUrl}
         getAccessToken={getAccessToken}
         navigate={vi.fn()}
-        route={{ campaignId, mode: 'detail', section: 'campaigns' }}
+        route={{
+          campaignId,
+          mode: 'detail',
+          section: 'campaigns',
+          tab: 'review',
+        }}
       />,
     );
 
@@ -678,7 +765,11 @@ describe('Author curation workspaces', () => {
     await user.click(
       within(dialog).getByRole('button', { name: 'Retire campaign' }),
     );
-    expect(await screen.findByText(/Campaign retired/u)).toBeVisible();
+    expect(
+      await screen.findByText(
+        'Campaign retired. Existing player history remains intact.',
+      ),
+    ).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Retire campaign' }),
     ).not.toBeInTheDocument();
@@ -769,4 +860,26 @@ function titleCase(value: string) {
   return value
     .replace('_', ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+async function enterCampaignDateTime(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+  value: string,
+) {
+  const [year, month, day, hour, minute] = value.split(/[-T:]/);
+  const field = within(screen.getByRole('group', { name: label }));
+  for (const [part, digits] of Object.entries({
+    year,
+    month,
+    day,
+    hour,
+    minute,
+  })) {
+    if (!digits) throw new Error('Incomplete campaign date');
+    await user.type(
+      field.getByRole('spinbutton', { name: new RegExp(`^${part},`) }),
+      digits,
+    );
+  }
 }

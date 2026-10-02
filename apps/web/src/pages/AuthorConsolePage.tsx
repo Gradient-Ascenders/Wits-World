@@ -118,7 +118,7 @@ export default function AuthorConsolePage({
 
   return (
     <section aria-labelledby="author-console-title" className="author-console">
-      {route.section === 'events' ? (
+      {route.section === 'events' || route.section === 'campaigns' ? (
         <h1 id="author-console-title" className="sr-only">
           Author console
         </h1>

@@ -38,6 +38,7 @@ export type AuthorWorkspaceRoute =
       campaignId: string;
       mode: 'detail' | 'edit';
       section: 'campaigns';
+      tab?: 'details' | 'review' | 'history';
     };
 
 const AUTHOR_ROOT = '/author';
@@ -78,6 +79,9 @@ export function parseAuthorWorkspaceRoute(
         campaignId: segments[1],
         mode: segments[2] === 'edit' ? 'edit' : 'detail',
         section: 'campaigns',
+        ...(segments[2] === 'review' || segments[2] === 'history'
+          ? { tab: segments[2] }
+          : {}),
       };
     }
     return { mode: 'list', section: 'campaigns' };
@@ -185,6 +189,10 @@ export const authorPaths = {
     `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}`,
   editCampaign: (campaignId: string) =>
     `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}/edit`,
+  campaignReview: (campaignId: string) =>
+    `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}/review`,
+  campaignHistory: (campaignId: string) =>
+    `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}/history`,
   cards: `${AUTHOR_ROOT}/cards`,
   card: (cardId: string) =>
     `${AUTHOR_ROOT}/cards/${encodeURIComponent(cardId)}`,
