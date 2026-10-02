@@ -154,20 +154,22 @@ describe('progression profile and standings page', () => {
     expect(within(achievements).getByText('Earned')).toBeVisible();
     expect(within(achievements).getByText('In progress')).toBeVisible();
     await userEvent.click(within(achievements).getByText('Campus Explorer'));
-    await userEvent.click(within(achievements).getByText('First Quiz'));
+    const progressDialog = screen.getByRole('dialog', {
+      name: 'Campus Explorer',
+    });
     expect(
-      within(achievements).getByRole('progressbar', {
+      within(progressDialog).getByRole('progressbar', {
         name: 'Campus Explorer: In progress, 3 of 5',
       }),
     ).toHaveAttribute('value', '3');
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(within(achievements).getByText('First Quiz'));
+    const earnedDialog = screen.getByRole('dialog', { name: 'First Quiz' });
+    expect(within(earnedDialog).getByText(/Earned by/)).toBeVisible();
     expect(
-      within(achievements).getByRole('progressbar', {
-        name: 'First Quiz: Earned, current progress 3, target 1',
-      }),
-    ).toHaveAttribute('value', '3');
-    expect(
-      within(achievements).getByText('Current 3 · target 1'),
-    ).toBeVisible();
+      within(earnedDialog).queryByRole('progressbar'),
+    ).not.toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
 
     const standings = screen.getByRole('list', {
       name: 'Player standings',

@@ -10,7 +10,7 @@ OWN-WORLD: Inherit Campus Quest Atlas navy, ivory, gold, serif headings and blue
 
 STORY: Recognise the player, see their taste, explore a favourite card, then understand earned progress. Owners can edit personal details and curate cards without changing game rules.
 
-FIRST VIEWPORT: Generous avatar beside name, custom status, optional degree/year and bio. Edit profile at the right. Compact progression strip follows. Four equally sized, large cards span desktop; mobile uses two columns. Activity and illustrated achievements follow in two desktop columns and stack on mobile.
+FIRST VIEWPORT: Generous avatar beside name, custom status, optional degree/year and bio, with deliberate vertical spacing. Edit profile at the right. Four equally sized, large cards lead directly after identity; mobile uses two columns. Activity and illustrated achievements follow in two desktop columns and stack on mobile. Progression stats sit beneath the activity calendar.
 
 FORM: User-approved identity and four-card showcase composition, code-led from the confirmed schematic; no concept roll required because the structure and existing visual system are pinned.
 
@@ -24,3 +24,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 - Publish only selected card presentation, earned achievements and aggregate daily activity; exclude provider identity, inventory, owned-copy identifiers and exact activity timestamps.
 - Loading, retry, expired authentication, empty collection, unavailable profiles, ownership changes and save conflicts have visible recovery.
 - Avatar uploads are cropped locally and decoded, resized and re-encoded by the API. Keyboard editing, focus restoration, touch targets, reduced motion and an accessible activity list are required.
+- The GitHub-inspired activity calendar uses Sunday-first weeks, month and weekday labels, green count intensity, and hover/focus/touch tooltips. Inline date captions are omitted. Its expandable list pairs compact calendar dates with aligned counts.
+- Achievement badges open a focused dialog with enlarged artwork and the supplied requirement; unearned badges show actual progress. Earned badges show the player who earned them, without invented tiers, dates or history. Escape, outside click and the close button dismiss the dialog and restore focus.
+- The bio is edited in Edit profile; no separate bio prompt or owner preview link appears in the header.

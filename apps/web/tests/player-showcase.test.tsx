@@ -92,6 +92,39 @@ function mount(profile = buildPlayerProfile(), playerName?: string) {
 }
 
 describe('player showcase', () => {
+  it('opens achievement details with protected focus and returns to the badge on dismissal', async () => {
+    const user = userEvent.setup();
+    mount(buildPlayerProfile({ isPublic: true }));
+    await screen.findByRole('heading', { name: 'naledi-star' });
+    expect(
+      screen.queryByText('Add a little about yourself'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /View player profile/ }),
+    ).not.toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: 'First Quiz: Earned' });
+    await user.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'First Quiz' });
+    const close = within(dialog).getByRole('button', {
+      name: 'Close First Quiz details',
+    });
+    expect(close).toHaveFocus();
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(within(dialog).getByText('naledi-star')).toBeVisible();
+    expect(within(dialog).queryByRole('progressbar')).not.toBeInTheDocument();
+    await user.tab();
+    expect(close).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(close).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    await user.click(trigger);
+    await user.click(document.querySelector('.achievement-backdrop')!);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it('saves personal details and sharing choices, then restores editor focus', async () => {
     const user = userEvent.setup();
     const { calls } = mount();
@@ -252,9 +285,13 @@ describe('player showcase', () => {
         name: '25 September 2026: 0 completed activities',
       }),
     ).toHaveFocus();
-    expect(
-      screen.getByText('25 September 2026 · 0 completed activities'),
-    ).toBeVisible();
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      '0 completed activities',
+    );
+    expect(screen.getByRole('tooltip')).toHaveTextContent('25 September 2026');
+    expect(document.querySelector('.activity-detail')).toBeNull();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
   it('keeps draft data visible after a save conflict and offers a reload', async () => {

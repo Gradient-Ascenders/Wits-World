@@ -183,10 +183,77 @@ test('player showcase, editor and visitor view work across screen sizes', async 
       page.getByRole('button', { name: 'Inspect Quillip' }),
     ).toBeVisible();
     await expectNoOverflow(page);
+    await expect(page.getByText('Add a little about yourself')).toHaveCount(0);
+    await expect(
+      page.getByRole('link', { name: 'View player profile' }),
+    ).toHaveCount(0);
+    expect(
+      await page
+        .locator('.showcase-cards')
+        .evaluate((cards) => cards.getBoundingClientRect().top),
+    ).toBeLessThan(
+      await page
+        .locator('.showcase-stats')
+        .evaluate((stats) => stats.getBoundingClientRect().top),
+    );
     await page.screenshot({
       fullPage: true,
       path: `/tmp/profile-showcase-${width}.png`,
     });
+    const activityDay = page.locator('.activity-day[data-day-index="90"]');
+    await activityDay.focus();
+    await expect(page.getByRole('tooltip')).toContainText('completed');
+    await page.screenshot({
+      path: `/tmp/profile-activity-tooltip-${width}.png`,
+    });
+    const calendar = page.locator('.showcase-activity');
+    await calendar.screenshot({ path: `/tmp/profile-activity-${width}.png` });
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await page.getByText('View activity as a list', { exact: true }).click();
+    await expect(page.locator('.activity-list ul')).toBeVisible();
+    if (width === 390 || width === 1440)
+      await calendar.screenshot({
+        path: `/tmp/profile-activity-list-${width}.png`,
+      });
+    await page.getByText('View activity as a list', { exact: true }).click();
+    const badge = page.getByRole('button', {
+      name: 'First Quiz: Earned',
+      exact: true,
+    });
+    await badge.click();
+    await expect(
+      page.getByRole('dialog', { name: 'First Quiz', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Close First Quiz details' }),
+    ).toBeFocused();
+    await page.screenshot({ path: `/tmp/profile-achievement-${width}.png` });
+    await page.keyboard.press('Tab');
+    await expect(
+      page.getByRole('button', { name: 'Close First Quiz details' }),
+    ).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(badge).toBeFocused();
+    await badge.click();
+    await page
+      .locator('.achievement-backdrop')
+      .click({ position: { x: 2, y: 2 } });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(badge).toBeFocused();
+    await page
+      .getByRole('button', { name: 'Battle Tested: In progress', exact: true })
+      .click();
+    await expect(
+      page.getByRole('progressbar', {
+        name: 'Battle Tested: In progress, 3 of 5',
+      }),
+    ).toBeVisible();
+    if (width === 390)
+      await page.screenshot({
+        path: '/tmp/profile-achievement-progress-mobile.png',
+      });
+    await page.keyboard.press('Escape');
     await page
       .getByRole('button', { name: 'Edit profile', exact: true })
       .click();
@@ -248,6 +315,16 @@ test('player showcase, editor and visitor view work across screen sizes', async 
   await page.getByRole('button', { name: 'Inspect Quillip' }).click();
   await expect(page.getByRole('dialog', { name: 'Quillip' })).toBeVisible();
   await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Edit profile', exact: true }).click();
+  await page.getByLabel('Bio', { exact: true }).fill('');
+  await page.getByLabel(/Degree/).fill('');
+  await page.getByLabel(/Year of study/).fill('');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page
+    .locator('.showcase-identity')
+    .screenshot({ path: '/tmp/profile-header-empty.png' });
   await page.goto('/players/another-player');
   await expect(
     page.getByRole('heading', { name: 'another-player' }),

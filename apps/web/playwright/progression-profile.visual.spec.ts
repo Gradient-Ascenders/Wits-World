@@ -121,6 +121,7 @@ test('renders and operates the progression route across mobile and desktop', asy
       name: 'Campus Explorer: In progress, 3 of 5',
     }),
   ).toBeVisible();
+  await page.keyboard.press('Escape');
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,

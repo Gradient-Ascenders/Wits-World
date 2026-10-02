@@ -1,10 +1,5 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import {
-  ArrowSquareOutIcon,
-  PencilSimpleIcon,
-  PlusIcon,
-  UserIcon,
-} from '@phosphor-icons/react';
+import { PencilSimpleIcon, PlusIcon, UserIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import {
@@ -224,17 +219,7 @@ export function PlayerShowcase({
               {[profile.degree, profile.studyYear].filter(Boolean).join(' · ')}
             </p>
           ) : null}
-          {profile.bio ? (
-            <p className="showcase-bio">{profile.bio}</p>
-          ) : profile.isOwner ? (
-            <button
-              type="button"
-              className="showcase-add-bio"
-              onClick={() => setEditor('identity')}
-            >
-              Add a little about yourself
-            </button>
-          ) : null}
+          {profile.bio ? <p className="showcase-bio">{profile.bio}</p> : null}
         </div>
         {profile.isOwner ? (
           <div className="showcase-owner-actions">
@@ -246,42 +231,15 @@ export function PlayerShowcase({
               <PencilSimpleIcon size={18} aria-hidden="true" />
               Edit profile
             </button>
-            {profile.isPublic ? (
-              <Link
-                className="showcase-public-link"
-                href={`/players/${encodeURIComponent(profile.playerName)}`}
-              >
-                View player profile
-                <ArrowSquareOutIcon size={16} aria-hidden="true" />
-              </Link>
-            ) : (
+            {!profile.isPublic ? (
               <span className="showcase-privacy">Visible only to you</span>
-            )}
+            ) : null}
+            <p className="showcase-save-status" role="status">
+              {notice}
+            </p>
           </div>
         ) : null}
       </header>
-      <p className="showcase-save-status" role="status">
-        {notice}
-      </p>
-      <dl className="showcase-stats">
-        {[
-          ['Points', profile.points.toLocaleString('en-ZA')],
-          ['All-time rank', `#${profile.rank.toLocaleString('en-ZA')}`],
-          [
-            'Current streak',
-            `${profile.currentStreak} ${profile.currentStreak === 1 ? 'day' : 'days'}`,
-          ],
-          [
-            'Best streak',
-            `${profile.longestStreak} ${profile.longestStreak === 1 ? 'day' : 'days'}`,
-          ],
-        ].map(([label, value]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
       <section
         className="showcase-cards"
         aria-labelledby="favourite-cards-heading"
