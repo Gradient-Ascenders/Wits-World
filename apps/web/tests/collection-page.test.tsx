@@ -181,6 +181,143 @@ function duplicateCards(count: number) {
 }
 
 describe('card collection page', () => {
+  it('defaults to ready evolutions and combines name search, rarity, and pagination without refetching', async () => {
+    const user = userEvent.setup();
+    const groups = Array.from({ length: 10 }, (_, index) =>
+      Array.from({ length: 3 }, (_, copy) =>
+        buildCard(2000 + index, {
+          name: `Guardian ${String(index + 1).padStart(2, '0')}`,
+          rarity: index % 2 === 0 ? 'common' : 'rare',
+          ownedCardId: buildUuid(2500 + index * 3 + copy),
+        }),
+      ),
+    );
+    const terminal = buildCard(2100, {
+      name: 'Final Guardian',
+      acquisitionKind: 'evolution',
+      rarity: 'legendary',
+    });
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/cards/collection'))
+        return collectionResponse([...groups.flat(), terminal]);
+      const index = groups.findIndex((group) =>
+        url.includes(group[0]!.cardDefinitionId),
+      );
+      if (index === 9) return new Response(null, { status: 503 });
+      if (index < 0)
+        return jsonResponse({ code: 'EVOLUTION_NOT_AVAILABLE' }, 404);
+      const preview = evolutionPreview(groups[index]!, index === 8 ? 2 : 3);
+      return jsonResponse({
+        ...preview,
+        target: {
+          ...preview.target,
+          name: `Ascended ${String(index + 1).padStart(2, '0')}`,
+        },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderCollection();
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
+    expect(await screen.findByText('1–6 of 8 cards')).toBeVisible();
+    expect(screen.getByRole('combobox', { name: 'Availability' })).toHaveValue(
+      'ready',
+    );
+    const list = screen.getByRole('list', { name: 'Evolution candidates' });
+    expect(list.children).toHaveLength(6);
+    expect(
+      within(list).queryByText('Copies locked in decks'),
+    ).not.toBeInTheDocument();
+    expect(
+      within(list).queryByText('Availability unknown'),
+    ).not.toBeInTheDocument();
+    expect(
+      within(list).queryByText('No evolution available'),
+    ).not.toBeInTheDocument();
+    const pages = screen.getByRole('navigation', { name: 'Evolution pages' });
+    await user.click(within(pages).getByRole('button', { name: 'Next page' }));
+    expect(screen.getByText('7–8 of 8 cards')).toHaveFocus();
+    expect(list.children).toHaveLength(2);
+    expect(
+      within(pages).getByRole('button', { name: 'Next page' }),
+    ).toBeDisabled();
+    const inspect = within(list).getByRole('button', {
+      name: 'View Guardian 07 details',
+    });
+    await user.click(inspect);
+    await user.keyboard('{Escape}');
+    expect(inspect).toHaveFocus();
+    const requestsBeforeSearch = fetchMock.mock.calls.length;
+    const search = screen.getByRole('searchbox', { name: 'Search evolutions' });
+    await user.type(search, '  ASCENDED 02  ');
+    expect(screen.getByText('1–1 of 1 cards')).toBeVisible();
+    expect(
+      within(list).getByRole('button', {
+        name: 'Preview Guardian 02 evolution',
+      }),
+    ).toBeVisible();
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Rarity' }),
+      'rare',
+    );
+    expect(list.children).toHaveLength(1);
+    await user.clear(search);
+    await user.type(search, 'Guardian 03');
+    expect(
+      screen.getByRole('heading', { name: 'No matching cards' }),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(search).toHaveFocus();
+    expect(screen.getByText('1–6 of 11 cards')).toBeVisible();
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Availability' }),
+      'not-ready',
+    );
+    expect(within(list).getByText('Copies locked in decks')).toBeVisible();
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Availability' }),
+      'unavailable',
+    );
+    expect(within(list).getByText('No evolution available')).toBeVisible();
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Availability' }),
+      'failed',
+    );
+    expect(within(list).getByText('Availability unknown')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Retry availability' }),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(requestsBeforeSearch);
+  });
+
+  it('offers all cards when none are ready and retains protected-copy guidance', async () => {
+    const user = userEvent.setup();
+    const cards = duplicateCards(4);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(collectionResponse(cards))
+        .mockResolvedValueOnce(jsonResponse(evolutionPreview(cards, 2))),
+    );
+    renderCollection();
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
+    expect(
+      await screen.findByRole('heading', { name: 'No cards ready to evolve' }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Preview Quillip evolution' }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show all cards' }));
+    expect(screen.getByRole('combobox', { name: 'Availability' })).toHaveValue(
+      'all',
+    );
+    expect(screen.getByText('Copies locked in decks')).toBeVisible();
+    expect(screen.getByText('2 used in a deck')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Preview Quillip evolution' }),
+    ).toBeVisible();
+  });
+
   it('loads and renders the server-provided starter comparison without redundant empty messaging', async () => {
     const user = userEvent.setup();
     let resolveOptions!: (response: Response) => void;
@@ -499,6 +636,10 @@ describe('card collection page', () => {
     });
     expect(within(trigger).getByText('×4')).toBeVisible();
     await user.click(screen.getByRole('link', { name: 'Evolutions' }));
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: 'Availability' }),
+      'all',
+    );
     const detailsTrigger = await screen.findByRole('button', {
       name: 'View Quillip details',
     });
@@ -563,6 +704,10 @@ describe('card collection page', () => {
 
     renderCollection();
     await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: 'Availability' }),
+      'all',
+    );
     expect(await screen.findByText('Copies reserved for trade')).toBeVisible();
     expect(screen.queryByText('Availability unknown')).not.toBeInTheDocument();
     await user.click(
@@ -947,6 +1092,10 @@ describe('card collection page', () => {
     );
     renderCollection();
     await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: 'Availability' }),
+      'all',
+    );
     expect(await screen.findByText('Availability unknown')).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Retry availability' }),

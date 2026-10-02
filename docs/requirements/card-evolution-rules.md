@@ -79,10 +79,20 @@ The Evolutions section checks the existing preview endpoint for each distinct
 owned definition, with at most four requests in flight. It lists available
 relationships with server-returned eligibility, total ownership, and deck locks,
 placing ready evolutions first. The web client validates both lock counts and
-shows trade-reserved copies distinctly. Failed checks remain visible with a retry.
+shows trade-reserved copies distinctly. Failed checks can be viewed through the
+availability filter and retried.
 Definitions without an available relationship are omitted unless an owned copy
 was acquired through evolution. Those entries say that no further evolution is
 currently available; the contract does not explicitly identify final stages.
+
+The Evolutions list opens with only cards the server reports as ready to evolve.
+Players can search source or evolved card names, filter source rarity, and switch
+availability to all cards, not-ready recipes, cards without an evolution, or
+failed checks. The list shows six distinct card definitions per page, with page
+controls above and below the cards. Search and filter changes return to page one;
+clearing filters shows all cards. Browsing uses the loaded preview results without
+additional requests, and eligibility remains server-owned. An empty ready view
+offers Show all cards so players can inspect missing or protected copies.
 
 Selecting a candidate opens a focused preview with three compact source cards
 and a prominent evolved result. The mobile surface fills the screen and scrolls;
@@ -143,3 +153,5 @@ Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
 Page title clarified with assistance from Codex-CLI[GPT-6].
 
 Completion effect and motion behaviour updated with assistance from Codex[GPT-6].
+
+Evolution browsing guidance updated with assistance from Codex[GPT-6].

@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, LockKey } from '@phosphor-icons/react';
+import {
+  ArrowRight,
+  CaretLeft,
+  CaretRight,
+  LockKey,
+  MagnifyingGlass,
+} from '@phosphor-icons/react';
 import {
   CardApiError,
   previewCardEvolution,
   type CardEvolutionPreview,
   type CardEvolutionResult,
+  type CardRarity,
   type OwnedCard,
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
@@ -20,6 +27,10 @@ type Candidate = {
   unavailable?: boolean;
   failed?: boolean;
 };
+
+type AvailabilityFilter =
+  'all' | 'ready' | 'not-ready' | 'unavailable' | 'failed';
+const PAGE_SIZE = 6;
 
 export function CollectionEvolutions({
   apiBaseUrl,
@@ -39,6 +50,12 @@ export function CollectionEvolutions({
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState<Candidate | null>(null);
   const [detailsCard, setDetailsCard] = useState<OwnedCard | null>(null);
+  const [search, setSearch] = useState('');
+  const [availability, setAvailability] = useState<AvailabilityFilter>('ready');
+  const [rarity, setRarity] = useState<CardRarity | 'all'>('all');
+  const [page, setPage] = useState(1);
+  const searchInput = useRef<HTMLInputElement | null>(null);
+  const resultsHeading = useRef<HTMLParagraphElement | null>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const heading = useRef<HTMLHeadingElement | null>(null);
   const loadedSnapshot = useRef<{
@@ -120,6 +137,53 @@ export function CollectionEvolutions({
   }
 
   const isChecking = loading || loadedSnapshot.current?.cards !== cards;
+  const query = search.trim().toLocaleLowerCase();
+  const filteredCandidates = candidates.filter((candidate) => {
+    const matchesName =
+      candidate.card.name.toLocaleLowerCase().includes(query) ||
+      candidate.preview?.target.name.toLocaleLowerCase().includes(query);
+    const matchesAvailability =
+      availability === 'all' ||
+      (availability === 'ready' && candidate.preview?.canEvolve === true) ||
+      (availability === 'not-ready' &&
+        candidate.preview?.canEvolve === false) ||
+      (availability === 'unavailable' && candidate.unavailable) ||
+      (availability === 'failed' && candidate.failed);
+    return (
+      matchesName &&
+      matchesAvailability &&
+      (rarity === 'all' || candidate.card.rarity === rarity)
+    );
+  });
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredCandidates.length / PAGE_SIZE),
+  );
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageCandidates = filteredCandidates.slice(
+    pageStart,
+    pageStart + PAGE_SIZE,
+  );
+  const hasFilters =
+    search !== '' ||
+    rarity !== 'all' ||
+    (availability !== 'all' && availability !== 'ready');
+  const onlyReadyFilter =
+    query === '' && availability === 'ready' && rarity === 'all';
+
+  function clearFilters() {
+    setSearch('');
+    setAvailability('all');
+    setRarity('all');
+    setPage(1);
+    queueMicrotask(() => searchInput.current?.focus());
+  }
+
+  function changePage(nextPage: number) {
+    setPage(nextPage);
+    queueMicrotask(() => resultsHeading.current?.focus());
+  }
 
   return (
     <>
@@ -151,16 +215,121 @@ export function CollectionEvolutions({
           />
         ) : (
           <>
+            {candidates.length > 0 ? (
+              <>
+                <div
+                  className="evolution-browse-controls"
+                  role="search"
+                  aria-label="Find an evolution"
+                >
+                  <label className="collection-control evolution-browse-controls__search">
+                    <span className="sr-only">Search evolutions</span>
+                    <span className="collection-search-field">
+                      <MagnifyingGlass size={20} aria-hidden="true" />
+                      <input
+                        ref={searchInput}
+                        type="search"
+                        placeholder="Search card names"
+                        value={search}
+                        onChange={(event) => {
+                          setSearch(event.target.value);
+                          setPage(1);
+                        }}
+                      />
+                    </span>
+                  </label>
+                  <label className="collection-control">
+                    <span>Availability</span>
+                    <select
+                      value={availability}
+                      onChange={(event) => {
+                        setAvailability(
+                          event.target.value as AvailabilityFilter,
+                        );
+                        setPage(1);
+                      }}
+                    >
+                      <option value="all">All cards</option>
+                      <option value="ready">Ready</option>
+                      <option value="not-ready">Not ready</option>
+                      <option value="unavailable">No evolution</option>
+                      <option value="failed">Check failed</option>
+                    </select>
+                  </label>
+                  <label className="collection-control">
+                    <span>Rarity</span>
+                    <select
+                      value={rarity}
+                      onChange={(event) => {
+                        setRarity(event.target.value as CardRarity | 'all');
+                        setPage(1);
+                      }}
+                    >
+                      <option value="all">All rarities</option>
+                      <option value="common">Common</option>
+                      <option value="rare">Rare</option>
+                      <option value="epic">Epic</option>
+                      <option value="legendary">Legendary</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="evolution-browse-navigation">
+                  <p aria-live="polite" ref={resultsHeading} tabIndex={-1}>
+                    {filteredCandidates.length > 0
+                      ? `${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, filteredCandidates.length)} of ${filteredCandidates.length} cards`
+                      : '0 matching cards'}
+                  </p>
+                  {hasFilters && filteredCandidates.length > 0 ? (
+                    <button
+                      className="button button--quiet"
+                      type="button"
+                      onClick={clearFilters}
+                    >
+                      Clear filters
+                    </button>
+                  ) : null}
+                  {totalPages > 1 ? (
+                    <EvolutionPages
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onChange={changePage}
+                      label="Evolution pages"
+                    />
+                  ) : null}
+                </div>
+              </>
+            ) : null}
             {candidates.length === 0 ? (
               <StatusMessage tone="empty">
                 <p>No evolutions are available for your current cards.</p>
+              </StatusMessage>
+            ) : null}
+            {candidates.length > 0 && filteredCandidates.length === 0 ? (
+              <StatusMessage tone="empty">
+                <h3>
+                  {onlyReadyFilter
+                    ? 'No cards ready to evolve'
+                    : 'No matching cards'}
+                </h3>
+                <p>
+                  {onlyReadyFilter
+                    ? 'Show all cards to check availability and copy requirements.'
+                    : 'Try another name or clear your filters.'}
+                </p>
+                <button
+                  className="button button--quiet"
+                  type="button"
+                  onClick={clearFilters}
+                >
+                  {onlyReadyFilter ? 'Show all cards' : 'Clear filters'}
+                </button>
               </StatusMessage>
             ) : null}
             <ul
               className="evolution-candidates"
               aria-label="Evolution candidates"
             >
-              {candidates.map(({ card, preview, unavailable, failed }) => (
+              {pageCandidates.map(({ card, preview, unavailable, failed }) => (
                 <li key={card.cardDefinitionId} className="evolution-candidate">
                   <div className="evolution-candidate__art">
                     <CardThumbnail
@@ -230,6 +399,16 @@ export function CollectionEvolutions({
                 </li>
               ))}
             </ul>
+            {totalPages > 1 ? (
+              <div className="evolution-browse-navigation evolution-browse-navigation--bottom">
+                <EvolutionPages
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onChange={changePage}
+                  label="Evolution pages below cards"
+                />
+              </div>
+            ) : null}
             {candidates.some((candidate) => candidate.failed) ? (
               <button
                 className="button button--quiet"
@@ -267,5 +446,43 @@ export function CollectionEvolutions({
         ) : null}
       </section>
     </>
+  );
+}
+
+function EvolutionPages({
+  currentPage,
+  totalPages,
+  onChange,
+  label,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onChange: (page: number) => void;
+  label: string;
+}) {
+  return (
+    <nav className="evolution-pages" aria-label={label}>
+      <button
+        className="button button--quiet"
+        type="button"
+        aria-label="Previous page"
+        disabled={currentPage === 1}
+        onClick={() => onChange(currentPage - 1)}
+      >
+        <CaretLeft size={20} aria-hidden="true" />
+      </button>
+      <span>
+        Page {currentPage} of {totalPages}
+      </span>
+      <button
+        className="button button--quiet"
+        type="button"
+        aria-label="Next page"
+        disabled={currentPage === totalPages}
+        onClick={() => onChange(currentPage + 1)}
+      >
+        <CaretRight size={20} aria-hidden="true" />
+      </button>
+    </nav>
   );
 }

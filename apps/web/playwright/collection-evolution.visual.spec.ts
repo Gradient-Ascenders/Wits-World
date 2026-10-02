@@ -192,11 +192,20 @@ for (const reducedMotion of [false, true]) {
         releasePreview?.();
       }
       await expect(
-        page.getByText('Ready to evolve', { exact: true }),
+        page
+          .getByRole('list', { name: 'Evolution candidates' })
+          .getByText('Ready to evolve', { exact: true }),
       ).toBeVisible();
       await expect(
         page.getByText('1 used in a deck', { exact: true }),
       ).toBeVisible();
+      await expect(
+        page.getByRole('combobox', { name: 'Availability' }),
+      ).toHaveValue('ready');
+      await expect(page.getByText('No evolution available')).toHaveCount(0);
+      await page
+        .getByRole('combobox', { name: 'Availability' })
+        .selectOption('all');
       await expect(page.getByText('No evolution available')).toBeVisible();
       const sourceDetailsTrigger = page.getByRole('button', {
         name: 'View Quillip details',
@@ -441,6 +450,9 @@ for (const reducedMotion of [false, true]) {
     eligible = 2;
     await page.getByRole('link', { name: 'Cards', exact: true }).click();
     await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
+    await page
+      .getByRole('combobox', { name: 'Availability' })
+      .selectOption('all');
     await expect(
       page.getByText('Copies locked in decks', { exact: true }),
     ).toBeVisible();
@@ -453,6 +465,9 @@ for (const reducedMotion of [false, true]) {
     previewFails = true;
     await page.getByRole('link', { name: 'Cards', exact: true }).click();
     await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
+    await page
+      .getByRole('combobox', { name: 'Availability' })
+      .selectOption('all');
     await expect(page.getByText('Availability unknown')).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath('preview-error-mobile.png'),
@@ -744,6 +759,242 @@ for (const reducedMotion of [false, true]) {
     ).toEqual([]);
   });
 }
+
+test('finds evolutions across pages and keeps browsing usable after consuming the last page', async ({
+  page,
+}, testInfo) => {
+  const names = [
+    'Axiomar',
+    'Basalox',
+    'Karrik',
+    'Nimbril',
+    'Quillip',
+    'Sigilisk',
+    'Voltiki',
+  ];
+  const groups = names.map((name, index) =>
+    Array.from({ length: 3 }, (_, copy) =>
+      buildCard(3000 + index, {
+        name,
+        rarity: index % 2 === 0 ? 'common' : 'rare',
+        imageUrl: `/cards/${name.toLowerCase()}.webp`,
+        ownedCardId: buildUuid(3500 + index * 3 + copy),
+      }),
+    ),
+  );
+  const terminal = buildCard(4000, {
+    name: 'Arcalyron',
+    rarity: 'legendary',
+    acquisitionKind: 'evolution',
+    imageUrl: '/cards/arcalyron.webp',
+  });
+  let cards = [...groups.flat(), terminal];
+  let previewRequests = 0;
+  let mutationRequests = 0;
+  const definition = (card: typeof terminal) => {
+    const { acquiredAt, acquisitionKind, ownedCardId, ...rest } = card;
+    void acquiredAt;
+    void acquisitionKind;
+    void ownedCardId;
+    return { ...rest, imageAlt: null, deckPointCost: 3 };
+  };
+  const targetCard = buildCard(4001, {
+    name: 'Voltadrake',
+    rarity: 'epic',
+    acquisitionKind: 'evolution',
+    imageUrl: '/cards/voltadrake.webp',
+  });
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/auth/me'))
+      return route.fulfill({
+        json: {
+          connectionStrategy: 'auth0',
+          id: buildUuid(980),
+          lifecycleStatus: 'active',
+          playerName: 'evolution_browse_player',
+          playerNameSetupRequired: false,
+          requestId: 'browse-player',
+          role: 'player',
+        },
+      });
+    if (url.pathname.endsWith('/cards/collection'))
+      return route.fulfill({ json: { cards, requestId: 'browse-collection' } });
+    if (url.pathname.endsWith('/preview')) {
+      previewRequests += 1;
+      const copies = cards.filter((card) =>
+        url.pathname.includes(card.cardDefinitionId),
+      );
+      if (!copies.length || copies[0]!.acquisitionKind === 'evolution')
+        return route.fulfill({
+          status: 404,
+          json: { code: 'EVOLUTION_NOT_AVAILABLE' },
+        });
+      const targetNames: Record<string, string> = {
+        Axiomar: 'Axiomarch',
+        Basalox: 'Basalorn',
+        Karrik: 'Karradon',
+        Nimbril: 'Nimbrael',
+        Quillip: 'Quillume',
+        Sigilisk: 'Sigilith',
+      };
+      const target =
+        copies[0]!.name === 'Voltiki'
+          ? targetCard
+          : buildCard(4100, {
+              name: targetNames[copies[0]!.name],
+              rarity: ['Axiomar', 'Basalox'].includes(copies[0]!.name)
+                ? 'legendary'
+                : 'epic',
+            });
+      return route.fulfill({
+        json: {
+          source: definition(copies[0]!),
+          target: definition(target),
+          copiesRequired: 3,
+          ownedCopyCount: copies.length,
+          eligibleCopyCount: copies.length,
+          deckLockedCopyCount: 0,
+          tradeReservedCopyCount: 0,
+          canEvolve: copies.length >= 3,
+          unavailableReason: copies.length >= 3 ? null : 'insufficient_copies',
+          copies: copies.map((card) => ({
+            acquiredAt: card.acquiredAt,
+            acquisitionKind: card.acquisitionKind,
+            ownedCardId: card.ownedCardId,
+            eligible: true,
+            lockReason: null,
+          })),
+          requestId: 'browse-preview',
+        },
+      });
+    }
+    if (url.pathname.endsWith('/cards/evolutions')) {
+      mutationRequests += 1;
+      const { sourceCardDefinitionId, submissionId } = request.postDataJSON();
+      const consumed = cards.filter(
+        (card) => card.cardDefinitionId === sourceCardDefinitionId,
+      );
+      cards = [
+        ...cards.filter(
+          (card) => card.cardDefinitionId !== sourceCardDefinitionId,
+        ),
+        targetCard,
+      ];
+      return route.fulfill({
+        status: 201,
+        json: {
+          completedAt: '2026-10-02T12:00:00.000Z',
+          consumedOwnedCardIds: consumed.map((card) => card.ownedCardId),
+          evolutionId: buildUuid(4200),
+          newCard: targetCard,
+          replayed: false,
+          requestId: 'browse-result',
+          sourceCardDefinitionId,
+          submissionId,
+          target: definition(targetCard),
+        },
+      });
+    }
+    return route.fulfill({
+      json: { options: [], requestId: 'browse-options' },
+    });
+  });
+
+  for (const viewport of [
+    { width: 320, height: 700 },
+    { width: 390, height: 844 },
+    { width: 768, height: 960 },
+    { width: 1440, height: 960 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/collection/evolutions');
+    const list = page.getByRole('list', { name: 'Evolution candidates' });
+    await expect(
+      page.getByRole('combobox', { name: 'Availability' }),
+    ).toHaveValue('ready');
+    await expect(list.getByRole('listitem')).toHaveCount(6);
+    await expect(page.getByText('1–6 of 7 cards')).toBeVisible();
+    const overflows = await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    );
+    expect(overflows).toBe(false);
+    await page.screenshot({
+      path: testInfo.outputPath(`browse-${viewport.width}.png`),
+      fullPage: true,
+    });
+    const requestsBeforeSearch = previewRequests;
+    const pages = page.getByRole('navigation', {
+      name: 'Evolution pages',
+      exact: true,
+    });
+    await pages.getByRole('button', { name: 'Next page' }).click();
+    await expect(page.getByText('7–7 of 7 cards')).toBeFocused();
+    await expect(
+      list.getByRole('button', { name: 'Preview Voltiki evolution' }),
+    ).toBeVisible();
+    const search = page.getByRole('searchbox', { name: 'Search evolutions' });
+    await search.fill(' VOLTADRAKE ');
+    await expect(page.getByText('1–1 of 1 cards')).toBeVisible();
+    await expect(
+      list.getByRole('button', { name: 'Preview Voltiki evolution' }),
+    ).toBeVisible();
+    await page
+      .getByRole('combobox', { name: 'Rarity' })
+      .selectOption('legendary');
+    await expect(
+      page.getByRole('heading', { name: 'No matching cards' }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`empty-search-${viewport.width}.png`),
+    });
+    await page.getByRole('button', { name: 'Clear filters' }).click();
+    await expect(search).toBeFocused();
+    await search.fill('Arcalyron');
+    await expect(
+      list.getByRole('button', { name: 'View Arcalyron details' }),
+    ).toBeVisible();
+    await page
+      .getByRole('combobox', { name: 'Availability' })
+      .selectOption('ready');
+    await expect(
+      page.getByRole('heading', { name: 'No matching cards' }),
+    ).toBeVisible();
+    expect(previewRequests).toBe(requestsBeforeSearch);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await page
+    .getByRole('combobox', { name: 'Availability' })
+    .selectOption('ready');
+  await page
+    .getByRole('navigation', { name: 'Evolution pages below cards' })
+    .getByRole('button', { name: 'Next page' })
+    .click();
+  await expect(page.getByText('7–7 of 7 cards')).toBeFocused();
+  await expect(
+    page.getByRole('searchbox', { name: 'Search evolutions' }),
+  ).toBeInViewport();
+  await page.getByRole('button', { name: 'Preview Voltiki evolution' }).click();
+  await page.getByRole('button', { name: 'Evolve' }).click();
+  await page.getByRole('button', { name: 'Evolve' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Evolution complete' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Back to evolutions' }).click();
+  await expect(page.getByText('1–6 of 6 cards')).toBeVisible();
+  await expect(
+    page.getByRole('navigation', { name: 'Evolution pages', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('combobox', { name: 'Availability' }),
+  ).toHaveValue('ready');
+  expect(mutationRequests).toBe(1);
+  await page.screenshot({
+    path: testInfo.outputPath('browse-after-evolving.png'),
+  });
+});
 
 test('centres loading screens across every Collection section', async ({
   page,
