@@ -424,7 +424,7 @@ function RecentResults({ state }: { state: RecentResultsState }) {
     <section aria-labelledby="recent-results-title" className="recent-results">
       <div className="recent-results__heading">
         <h2 id="recent-results-title">Recent battles</h2>
-        <Link className="battle-mode-card__link" href="/matches/history">
+        <Link className="button button--quiet" href="/matches/history">
           View history
         </Link>
       </div>

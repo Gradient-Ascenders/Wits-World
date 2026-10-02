@@ -1,0 +1,20 @@
+{
+  "tool": "image_gen.imagegen",
+  "mode": "native",
+  "asset": "ranked-card-back.png",
+  "prompt": "Use case: product-mockup\nAsset type: one reusable transparent PNG trading-card back for the Wits World Live Ranked card fan.\nInput images: Image 1 is the approved page mock, a style and material reference only. Use only the upright central blue-and-ivory card back as the visual reference. Generate entirely new asset artwork; do not copy or crop page pixels.\nPrimary request: Render exactly ONE isolated upright card back, straight-on and centered, with parallel vertical sides and no rotation or perspective. Reproduce the approved card's navy/royal-blue printed back, warm ivory rounded outer edge, narrow dark-blue inset frame, and thin muted-gold inner keyline.\nSubject details: Deep navy blue field approximately #082157 with crisp fine royal-blue diagonal lines forming an evenly spaced diamond lattice. The pattern is printed, precise, restrained, and legible at small display sizes, like the central card in the reference. Keep a warm ivory rounded border approximately #e8d6b5, with a slender muted-gold keyline between the blue inner field and ivory edge. The border and corner radii are consistent and symmetrical.\nComposition/framing: Portrait card with width-to-height ratio about 0.63. Card body at least 450 by 680 pixels, ideally approximately 760 by 1200 pixels on a portrait canvas, with only modest transparent margins. Entire card and all rounded corners visible. Card centered and upright.\nMaterials/lighting: Clean matte printed card stock, subtle material finish, even neutral illumination. Card face and ivory paint fully opaque.\nScene/backdrop: Actual transparent alpha background, empty outside the card silhouette.\nText: None.\nConstraints: Exactly one card, blank patterned back only, no letters, no emblem, no symbol, no words, no watermark. No UI, no background, no tabletop, no other cards, no gradient backdrop, no frame around the canvas. No cast shadow or glow outside the card. No fan arrangement, no tilted card, no fake checkerboard, no perspective or 3D thickness. CSS will handle rotation and shadows.\nProduction correction: The silhouette must be one exact smooth rounded rectangle with no distressed, rough, fringed, jagged, torn, speckled or fuzzy edges. Remove every isolated pixel outside the rounded card silhouette. All pixels inside the card face, including ivory border, blue field and lattice, must have alpha 255 (fully opaque); only the rounded silhouette's antialiasing edge may have partial alpha. Everywhere outside the silhouette must be alpha 0. Thin restrained lattice lines and muted gold keyline; no broad bright highlights. Generate native transparent PNG alpha, not a black backdrop. This is a clean finished shipping asset, not a weathered card.",
+  "background": "transparent",
+  "reference": "../../../.impeccable/mocks/decision/duel-table-v3.png",
+  "source": "/home/kevin/.codex/generated_images/01a0fcda-b301-73c0-a7f4-2bf4ccd517a2/exec-5a4f6d87-74a0-4d05-b86e-9f8d81500f5d.png",
+  "width": 995,
+  "height": 1581,
+  "alphaBounds": {
+    "left": 0,
+    "top": 61,
+    "right": 987,
+    "bottom": 1559
+  },
+  "status": "needs_parent_review",
+  "note": "Native transparent PNG retained unchanged. Main card silhouette is approximately x=71..925 and y=118..1479. Fringe pixels outside silhouette and near-opaque foreground alpha require parent review; no crop, resample, mask, or chroma-key applied.",
+  "encoding": "Indexed PNG, 256 colors, encoded by sharp from native imagegen PNG; native 995x1581 dimensions and alpha retained."
+}

@@ -12,9 +12,26 @@ import {
   territoryZones,
 } from '../tests/fixtures/live';
 import { buildSavedDeck } from '../tests/fixtures/decks';
+import { buildStarterCards } from '../tests/fixtures/cards';
 
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date(LIVE_SERVER_TIME));
+  const artwork = [
+    'quillip',
+    'ciphra',
+    'axiomar',
+    'field-kit',
+    'grand-strategy',
+  ];
+  await page.route('**/api/v1/cards/collection', (route) =>
+    json(route, {
+      cards: buildStarterCards().map((card, index) => ({
+        ...card,
+        imageUrl: `/cards/${artwork[index]}.webp`,
+      })),
+      requestId: 'live-deck-cards',
+    }),
+  );
 });
 
 test('renders authoritative participant and private spectator views responsively', async ({
@@ -264,13 +281,11 @@ test('explains unavailable ranked entry at mobile and desktop widths', async ({
     json(route, { zones: [] }),
   );
 
-  for (const width of [390, 1440]) {
-    await page.setViewportSize({ height: 900, width });
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ height: width === 825 ? 1905 : 900, width });
     await page.goto('/matches/live');
     await expect(
-      page.getByText(
-        'No ranked season is active. Matchmaking will open when the next season begins.',
-      ),
+      page.getByText('No active season. Ranked play returns next season.'),
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Find ranked battle' }),
@@ -293,12 +308,12 @@ test('explains unavailable ranked entry at mobile and desktop widths', async ({
     ).toBeVisible();
     await page.getByRole('tab', { name: 'Watch' }).click();
     const mobileNavigation = page.locator('.primary-navigation--mobile');
-    if (width === 390) {
+    if (width < 1200) {
       await expect(mobileNavigation).toBeVisible();
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       const navigationBox = await mobileNavigation.boundingBox();
       const finalActionBox = await page
-        .getByRole('button', { name: 'Watch entered match' })
+        .getByRole('button', { name: 'Watch match' })
         .boundingBox();
       expect(navigationBox).not.toBeNull();
       expect(finalActionBox).not.toBeNull();
@@ -370,8 +385,8 @@ test('presents the active season, personal record, standings, and territory opti
     json(route, { zones: territoryZones() }),
   );
 
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ height: 900, width });
+  for (const width of [1440, 768, 390, 825]) {
+    await page.setViewportSize({ height: width === 825 ? 1905 : 900, width });
     await page.goto('/matches/live');
     await expect(
       page.getByRole('heading', { name: 'Braamfontein Test Season' }),
@@ -382,6 +397,101 @@ test('presents the active season, personal record, standings, and territory opti
     await expect(
       page.getByRole('heading', { name: 'Season standings' }),
     ).toHaveCount(0);
+    await expect(page.getByText('7 wins · 3 losses')).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Change deck' }),
+    ).toHaveAttribute('href', '/collection/decks');
+    await expect(page.locator('.live-deck-fan__card')).toHaveCount(
+      selectedDeck.cards.length,
+    );
+    const card = page.getByRole('button', {
+      name: `View ${selectedDeck.cards[2]!.name} details, card 3`,
+    });
+    await expect(card).toBeVisible();
+    if (width === 1440) {
+      await card.hover();
+      await expect(card).toHaveAttribute('data-hovered', '');
+      await expect
+        .poll(() =>
+          card.evaluate((element) =>
+            Number.parseFloat(
+              getComputedStyle(element).getPropertyValue('--card-scale'),
+            ),
+          ),
+        )
+        .toBeGreaterThan(1.02);
+      const firstCard = page.getByRole('button', {
+        name: `View ${selectedDeck.cards[0]!.name} details, card 1`,
+      });
+      await firstCard.hover();
+      await expect(firstCard).toHaveAttribute('data-hovered', '');
+      await expect(card.locator('..')).toHaveCSS('z-index', '8');
+      await expect(firstCard.locator('..')).toHaveCSS('z-index', '10');
+      const cards = page.locator('.live-deck-fan .card-thumbnail__button');
+      const centers = await cards.evaluateAll((elements) =>
+        elements.map((element) => {
+          const bounds = element.getBoundingClientRect();
+          return {
+            x: bounds.x + bounds.width / 2,
+            y: bounds.y + bounds.height / 2,
+          };
+        }),
+      );
+      for (const index of [1, 2, 3, 4, 3, 2, 1, 0, 2]) {
+        await page.mouse.move(centers[index]!.x, centers[index]!.y, {
+          steps: 2,
+        });
+      }
+      await expect(card).toHaveAttribute('data-hovered', '');
+      await expect(card.locator('..')).toHaveCSS('z-index', '10');
+      await page.screenshot({
+        path: testInfo.outputPath('live-lobby-fast-hover.png'),
+      });
+    }
+    await card.click();
+    await expect(
+      page.getByRole('dialog', { name: selectedDeck.cards[2]!.name }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Moves' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(card).toBeFocused();
+    await page.getByRole('tab', { name: 'Play' }).focus();
+    await page.mouse.move(0, 0);
+    await expect
+      .poll(() =>
+        page
+          .locator('.live-deck-fan__card img')
+          .evaluateAll((cards) =>
+            cards.every(
+              (card) =>
+                card instanceof HTMLImageElement &&
+                card.complete &&
+                card.naturalWidth > 0,
+            ),
+          ),
+      )
+      .toBe(true);
+    await page.evaluate(() => document.fonts.ready);
+    if (width === 825) {
+      await page.screenshot({
+        animations: 'disabled',
+        fullPage: true,
+        path: testInfo.outputPath('live-lobby-hero-825.png'),
+      });
+    }
+    const rankedAction = page.getByRole('button', {
+      name: 'Find ranked battle',
+    });
+    await expect(rankedAction).toBeInViewport();
+    const actionBox = await rankedAction.boundingBox();
+    const navBox = await page
+      .locator('.primary-navigation--mobile')
+      .boundingBox();
+    expect(actionBox).not.toBeNull();
+    expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(
+      navBox?.y ?? 900,
+    );
     const territoryContest = page.getByRole('checkbox', {
       name: /contest my current territory/i,
     });
@@ -389,18 +499,22 @@ test('presents the active season, personal record, standings, and territory opti
     await territoryContest.click();
     await expect(territoryContest).toBeChecked();
     await expect(
-      page.getByText(/match your location to the public territory map/i),
+      page.getByText(/your location finds your territory on the map/i),
     ).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Territory' })).toHaveCount(
       0,
     );
-    await page
-      .getByRole('button', { name: 'Detect territory and find battle' })
-      .click();
+    await page.getByRole('button', { name: 'Find territory battle' }).click();
     await expect(page.getByText('Contesting Library Lawns')).toBeVisible();
+    const rankedRules = page.locator('.live-ranked-rules summary');
+    await rankedRules.click();
+    await expect(
+      page.getByText(/forfeiting or missing three turns in a row/i),
+    ).toBeVisible();
+    await rankedRules.click();
     if (width === 390) {
       const findBattleBox = await page
-        .getByRole('button', { name: 'Detect territory and find battle' })
+        .getByRole('button', { name: 'Find territory battle' })
         .boundingBox();
       const mobileNavigationBox = await page
         .locator('.primary-navigation--mobile')
@@ -411,6 +525,19 @@ test('presents the active season, personal record, standings, and territory opti
         mobileNavigationBox!.y,
       );
     }
+    if (width < 1200) {
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      const rulesBox = await rankedRules.boundingBox();
+      const navigationBox = await page
+        .locator('.primary-navigation--mobile')
+        .boundingBox();
+      expect(rulesBox).not.toBeNull();
+      expect(navigationBox).not.toBeNull();
+      expect(rulesBox!.y + rulesBox!.height).toBeLessThanOrEqual(
+        navigationBox!.y,
+      );
+    }
+    await page.evaluate(() => window.scrollTo(0, 0));
     await expectNoHorizontalOverflow(page);
     await page.screenshot({
       animations: 'disabled',
@@ -422,13 +549,123 @@ test('presents the active season, personal record, standings, and territory opti
       page.getByRole('heading', { name: 'Season standings' }),
     ).toBeVisible();
     await expect(page).toHaveURL(/\?tab=standings$/u);
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      animations: 'disabled',
+      fullPage: true,
+      path: testInfo.outputPath(`live-lobby-standings-${width}.png`),
+    });
     await page.getByRole('tab', { name: 'Watch' }).click();
     await expect(
       page.getByRole('heading', { name: 'Watch a private match' }),
     ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      animations: 'disabled',
+      fullPage: true,
+      path: testInfo.outputPath(`live-lobby-watch-${width}.png`),
+    });
   }
 
   expect(runtimeErrors).toEqual([]);
+});
+
+test('keeps matchmaking controls visible when changing lobby views', async ({
+  page,
+}, testInfo) => {
+  let status: 'searching' | 'proposed' = 'searching';
+  await routeCurrentPlayer(page);
+  await page.route('**/api/v1/decks', (route) =>
+    json(route, {
+      decks: [buildSavedDeck({ isSelected: true })],
+      requestId: 'live-browser-decks',
+    }),
+  );
+  await page.route('**/api/v1/ranked/seasons/current', (route) =>
+    json(route, { season: rankedSeason() }),
+  );
+  await page.route('**/api/v1/ranked/me', (route) =>
+    json(route, rankedProfile()),
+  );
+  await page.route('**/api/v1/ranked/standings**', (route) =>
+    json(route, rankedStandings()),
+  );
+  await page.route('**/api/v1/territory/zones', (route) =>
+    json(route, { zones: territoryZones() }),
+  );
+  await page.route('**/api/v1/ranked/queue', (route) =>
+    json(
+      route,
+      queueState(
+        status === 'searching'
+          ? {
+              status,
+              queueEntryId: '71000000-0000-4000-8000-000000000001',
+              joinedAt: LIVE_SERVER_TIME,
+              leaseExpiresAt: '2026-09-25T12:00:30.000Z',
+              searchRange: 100,
+            }
+          : {
+              status,
+              proposalId: '71000000-0000-4000-8000-000000000002',
+              acceptanceDeadline: '2026-09-25T12:00:20.000Z',
+            },
+      ),
+    ),
+  );
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const nextStatus of ['searching', 'proposed'] as const) {
+      status = nextStatus;
+      await page.goto('/matches/live');
+      const heading = page.getByRole('heading', {
+        name:
+          status === 'searching'
+            ? 'Searching for an opponent'
+            : 'Opponent found',
+      });
+      await expect(heading).toBeVisible();
+      if (status === 'proposed') await expect(heading).toBeFocused();
+      await page
+        .locator('.live-deck-fan__card img')
+        .evaluateAll(async (images) => {
+          await Promise.all(
+            images.map((image) => (image as HTMLImageElement).decode()),
+          );
+        });
+      for (const card of await page.locator('.live-deck-fan__card').all()) {
+        const cardBox = await card.boundingBox();
+        expect(cardBox).not.toBeNull();
+        expect(cardBox!.height).toBeGreaterThan(cardBox!.width);
+      }
+
+      await page.screenshot({
+        animations: 'disabled',
+        fullPage: true,
+        path: testInfo.outputPath(`live-lobby-${status}-${width}.png`),
+      });
+      await page.getByRole('tab', { name: 'Watch' }).click();
+      await expect(heading).toBeVisible();
+      const action = page.getByRole('button', {
+        name: status === 'searching' ? 'Leave search' : 'Accept match',
+      });
+      await expect(action).toBeEnabled();
+      await expect(action).toBeInViewport();
+      const actionBox = await action.boundingBox();
+      const navBox = await page
+        .locator('.primary-navigation--mobile')
+        .boundingBox();
+      expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(
+        navBox?.y ?? 900,
+      );
+      await expectNoHorizontalOverflow(page);
+      await page.screenshot({
+        animations: 'disabled',
+        fullPage: true,
+        path: testInfo.outputPath(`live-lobby-${status}-watch-${width}.png`),
+      });
+    }
+  }
 });
 
 async function installRealtimeFixture(
