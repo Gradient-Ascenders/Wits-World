@@ -202,16 +202,20 @@ export function PlayerShowcase({
               type="button"
               onClick={() => setEditor('status')}
             >
-              <span aria-hidden="true">
+              <span className="showcase-status__icon" aria-hidden="true">
                 {status?.emoji || <PlusIcon size={16} />}
               </span>
-              {status?.text || 'Set a status'}
+              <span className="showcase-status__label">
+                {status?.text || 'Set a status'}
+              </span>
               <PencilSimpleIcon aria-hidden="true" size={14} />
             </button>
           ) : status ? (
             <p className="showcase-status showcase-status--set">
-              <span aria-hidden="true">{status.emoji}</span>
-              {status.text}
+              <span className="showcase-status__icon" aria-hidden="true">
+                {status.emoji}
+              </span>
+              <span className="showcase-status__label">{status.text}</span>
             </p>
           ) : null}
           {profile.degree || profile.studyYear ? (

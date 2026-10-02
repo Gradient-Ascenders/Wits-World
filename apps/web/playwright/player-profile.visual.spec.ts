@@ -183,6 +183,20 @@ test('player showcase, editor and visitor view work across screen sizes', async 
       page.getByRole('button', { name: 'Inspect Quillip' }),
     ).toBeVisible();
     await expectNoOverflow(page);
+    await expect(page.getByText('View activity as a list')).toHaveCount(0);
+    expect(
+      await page.locator('.activity-scroll').evaluate((scroll) => {
+        const bounds = scroll.getBoundingClientRect();
+        return [...scroll.querySelectorAll('.activity-days button')].every(
+          (day) => {
+            const cell = day.getBoundingClientRect();
+            return (
+              cell.top >= bounds.top + 4 && cell.bottom <= bounds.bottom - 4
+            );
+          },
+        );
+      }),
+    ).toBe(true);
     await expect(page.getByText('Add a little about yourself')).toHaveCount(0);
     await expect(
       page.getByRole('link', { name: 'View player profile' }),
@@ -210,13 +224,6 @@ test('player showcase, editor and visitor view work across screen sizes', async 
     await calendar.screenshot({ path: `/tmp/profile-activity-${width}.png` });
     await page.keyboard.press('Escape');
     await expect(page.getByRole('tooltip')).toHaveCount(0);
-    await page.getByText('View activity as a list', { exact: true }).click();
-    await expect(page.locator('.activity-list ul')).toBeVisible();
-    if (width === 390 || width === 1440)
-      await calendar.screenshot({
-        path: `/tmp/profile-activity-list-${width}.png`,
-      });
-    await page.getByText('View activity as a list', { exact: true }).click();
     const badge = page.getByRole('button', {
       name: 'First Quiz: Earned',
       exact: true,
@@ -321,6 +328,28 @@ test('player showcase, editor and visitor view work across screen sizes', async 
   await page.getByLabel(/Year of study/).fill('');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'In exam mode' }).click();
+  await page.getByLabel('Status', { exact: true }).fill('');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const status = page.getByRole('button', { name: 'Set a status' });
+    await expect(status).toBeVisible();
+    expect(
+      await status.evaluate((button) => {
+        const center = (element: Element) => {
+          const bounds = element.getBoundingClientRect();
+          return bounds.top + bounds.height / 2;
+        };
+        const label = center(button.querySelector('.showcase-status__label')!);
+        return [...button.querySelectorAll('svg')].every(
+          (icon) => Math.abs(center(icon) - label) < 1,
+        );
+      }),
+    ).toBe(true);
+    await status.screenshot({ path: `/tmp/profile-status-empty-${width}.png` });
+  }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page
     .locator('.showcase-identity')

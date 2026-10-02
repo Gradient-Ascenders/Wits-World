@@ -1,4 +1,3 @@
-import { CaretDownIcon, ListBulletsIcon } from '@phosphor-icons/react';
 import {
   useEffect,
   useId,
@@ -240,48 +239,11 @@ export function ProfileActivity({ profile }: { profile: PlayerProfile }) {
               Only you can see this activity.
             </p>
           ) : null}
-          {visibleActivity.length ? (
-            <details className="activity-list">
-              <summary>
-                <ListBulletsIcon size={18} aria-hidden="true" />
-                View activity as a list
-                <CaretDownIcon
-                  className="activity-list-chevron"
-                  size={16}
-                  aria-hidden="true"
-                />
-              </summary>
-              <ul>
-                {visibleActivity
-                  .slice()
-                  .reverse()
-                  .map((day) => (
-                    <li key={day.date}>
-                      <time dateTime={day.date}>
-                        <span className="activity-list-day">
-                          {day.time.getUTCDate()}
-                        </span>
-                        <span>
-                          {day.time.toLocaleDateString('en-ZA', {
-                            month: 'long',
-                            year: 'numeric',
-                            timeZone: 'UTC',
-                          })}
-                        </span>
-                      </time>
-                      <span className="activity-list-count">
-                        <strong>{day.count}</strong>{' '}
-                        {day.count === 1 ? 'activity' : 'activities'}
-                      </span>
-                    </li>
-                  ))}
-              </ul>
-            </details>
-          ) : (
+          {!visibleActivity.length ? (
             <p className="showcase-empty">
               Your next completed challenge or match will appear here.
             </p>
-          )}
+          ) : null}
         </>
       )}
       <dl className="showcase-stats" aria-label="Player progress">
