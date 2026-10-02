@@ -14,6 +14,7 @@ import { useCardTilt } from './useCardTilt';
 
 interface CollectibleCardProps {
   actions?: ReactNode;
+  artwork?: ReactNode;
   card: CardPresentation | OwnedCard;
   compact?: boolean;
   copyNumber?: number;
@@ -22,12 +23,15 @@ interface CollectibleCardProps {
   ownedCopies?: readonly OwnedCard[];
   showOwnership?: boolean;
   showDetails?: boolean;
+  showStats?: boolean;
 }
 
 interface CardThumbnailProps {
   accessibleLabel: string;
   badge?: string;
-  card: OwnedCard;
+  card: Pick<CardPresentation, 'name' | 'rarity' | 'imageUrl' | 'imageAlt'> &
+    Partial<Pick<CardPresentation, 'isActive'>>;
+  nameplate?: ReactNode;
   fetchPriority?: 'high';
   loading?: 'eager' | 'lazy';
   onClick: MouseEventHandler<HTMLButtonElement>;
@@ -39,6 +43,7 @@ export function CardThumbnail({
   card,
   fetchPriority,
   loading,
+  nameplate,
   onClick,
 }: CardThumbnailProps) {
   const tilt = useCardTilt<HTMLButtonElement>();
@@ -47,7 +52,7 @@ export function CardThumbnail({
     <button
       {...tilt}
       aria-label={accessibleLabel}
-      className={`card-thumbnail card-thumbnail__button collectible-card--${card.rarity}${card.isActive ? '' : ' card-thumbnail--inactive'}`}
+      className={`card-thumbnail card-thumbnail__button collectible-card--${card.rarity}${card.isActive === false ? ' card-thumbnail--inactive' : ''}`}
       onClick={onClick}
       type="button"
     >
@@ -56,10 +61,16 @@ export function CardThumbnail({
         card={card}
         fetchPriority={fetchPriority}
         loading={loading}
-        nameplate={<span className="card-thumbnail__title">{card.name}</span>}
+        nameplate={
+          nameplate === undefined ? (
+            <span className="card-thumbnail__title">{card.name}</span>
+          ) : (
+            nameplate
+          )
+        }
         thumbnail
       />
-      {!card.isActive ? (
+      {card.isActive === false ? (
         <span className="card-thumbnail__status">Retired</span>
       ) : null}
     </button>
@@ -68,6 +79,7 @@ export function CardThumbnail({
 
 export function CollectibleCard({
   actions,
+  artwork,
   card,
   compact = false,
   copyNumber = 1,
@@ -76,6 +88,7 @@ export function CollectibleCard({
   ownedCopies,
   showOwnership = true,
   showDetails = true,
+  showStats = true,
 }: CollectibleCardProps) {
   const titleId = `card-${'ownedCardId' in card ? card.ownedCardId : card.cardDefinitionId}-title`;
   const Heading: 'h2' | 'h3' | 'h4' =
@@ -88,7 +101,7 @@ export function CollectibleCard({
       aria-labelledby={titleId}
       className={`collectible-card collectible-card--${card.rarity}${compact ? ' collectible-card--compact' : ''}`}
     >
-      <CardArtwork card={card} showRarity />
+      {artwork ?? <CardArtwork card={card} showRarity />}
 
       <div className="collectible-card__body">
         <div className="collectible-card__heading">
@@ -113,6 +126,7 @@ export function CollectibleCard({
         ) : null}
 
         {!compact &&
+        showStats &&
         card.category === 'creature' &&
         (card.hp !== null || card.power !== null) ? (
           <dl

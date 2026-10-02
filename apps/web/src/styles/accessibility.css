@@ -135,6 +135,9 @@ html[data-motion='reduce'] .evolution-source-copy:last-child,
 html[data-motion='reduce'] .deck-summary-button:hover:not(:disabled) {
   transform: none;
 }
+html[data-motion='reduce'] .card-thumbnail__button {
+  transform: none !important;
+}
 html[data-motion='full'] .card-detail-modal {
   animation: collection-detail-enter 180ms ease-out;
 }
@@ -148,19 +151,6 @@ html[data-motion='full'] .card-thumbnail__button {
     border-color 140ms ease,
     background-color 140ms ease,
     box-shadow 140ms ease;
-}
-@media (hover: hover) and (pointer: fine) {
-  html[data-motion='full'] .card-thumbnail__button {
-    transition:
-      transform 150ms ease,
-      box-shadow 150ms ease;
-  }
-  html[data-motion='full'] .card-thumbnail__button:hover {
-    transform: translateY(-2px);
-  }
-  html[data-motion='full'] .card-thumbnail__button:active {
-    transform: translateY(0);
-  }
 }
 
 .read-page-control {

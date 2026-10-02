@@ -206,6 +206,7 @@ export interface CardTradeSelectionPreview {
 }
 
 export interface CardTradeService {
+  findRecipient(playerId: string, playerName: string): Promise<string>;
   createTrade(input: CreateCardTradeInput): Promise<CardTradeView>;
   reviseTrade(input: ReviseCardTradeInput): Promise<CardTradeView>;
   acknowledgeImbalance(input: VersionedCardTradeInput): Promise<CardTradeView>;
@@ -447,6 +448,15 @@ export function createCardTradeService(
   { createId = randomUUID }: { createId?: () => string } = {},
 ): CardTradeService {
   return {
+    async findRecipient(playerId, playerName) {
+      const client = await database.connect();
+      try {
+        await resolveRecipientPlayerId(client, playerId, playerName);
+        return playerName.trim().toLowerCase();
+      } finally {
+        client.release();
+      }
+    },
     async createTrade(input) {
       validateOwnedCardIds(input.offeredOwnedCardIds);
       validateRequestedDefinitions(input.requestedDefinitions);
@@ -1607,7 +1617,7 @@ async function resolveRecipientPlayerId(
     `
       select id::text, player_name
         from public.players
-       where player_name = $1
+       where lower(player_name) = $1
          and lifecycle_status = 'active'
          and player_name is not null
          and id <> $2::uuid

@@ -90,15 +90,18 @@ function EvolutionCardDetailModal({
     });
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      const activeDialog =
+        dialog?.querySelector<HTMLElement>('[role="alertdialog"]') ?? dialog;
       if (event.key === 'Escape') {
+        if (activeDialog !== dialog) return;
         event.preventDefault();
         requestClose();
         return;
       }
 
-      if (event.key !== 'Tab' || !dialog) return;
+      if (event.key !== 'Tab' || !activeDialog) return;
       const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(
+        activeDialog.querySelectorAll<HTMLElement>(
           'button:not([disabled]), summary, a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ),
       ).filter(
@@ -130,7 +133,7 @@ function EvolutionCardDetailModal({
 
   return createPortal(
     <div
-      className="card-detail-backdrop"
+      className="card-detail-backdrop card-detail-backdrop--evolution"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) requestClose();
       }}

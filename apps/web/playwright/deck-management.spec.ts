@@ -53,6 +53,10 @@ const cards = [1, 2, 3, 4, 5].map((index) => ({
   rarity: 'common',
 }));
 
+test.beforeEach(async ({ page }) => {
+  await stubPlayerShell(page);
+});
+
 test('completes the saved-deck journey and records responsive evidence', async ({
   page,
 }) => {
@@ -123,18 +127,18 @@ test('completes the saved-deck journey and records responsive evidence', async (
 
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/decks');
-  await expect(
-    page.getByRole('heading', { name: 'Build your match deck' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your decks' })).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'No saved decks yet' }),
   ).toBeVisible();
 
   await page.getByRole('button', { name: 'Create a deck' }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Build a deck' }),
-  ).toBeFocused();
+  await page
+    .getByRole('group', { name: 'Editor view' })
+    .getByRole('button', { name: 'Your deck (0/5)' })
+    .click();
   await page.getByRole('textbox', { name: 'Deck name' }).fill('Campus Five');
+  await page.getByRole('button', { name: 'Add cards', exact: true }).click();
 
   for (const card of cards) {
     await page
@@ -142,20 +146,22 @@ test('completes the saved-deck journey and records responsive evidence', async (
       .click();
   }
 
-  await expect(page.getByText('Ready to submit')).toBeVisible();
+  await page.getByRole('button', { name: 'Your deck (5/5)' }).click();
+
+  await expect(page.getByText('Complete lineup')).toBeVisible();
   await expect(page.getByText('5 / 10')).toBeVisible();
   await page.locator('.decks-page').screenshot({
     path: path.join(screenshotsDirectory, '390-editor-ready.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
-  await page.getByRole('button', { name: 'Create saved deck' }).click();
+  await page.getByRole('button', { name: 'Create deck' }).click();
   await expect(
     page.getByRole('heading', { name: 'Campus Five' }),
   ).toBeVisible();
 
-  await page.getByRole('button', { name: 'Edit or rename' }).click();
+  await page.getByRole('button', { name: 'Edit deck' }).click();
   await page.getByRole('textbox', { name: 'Deck name' }).fill('Library Lineup');
-  await page.getByRole('button', { name: 'Save deck changes' }).click();
+  await page.getByRole('button', { name: 'Save deck' }).click();
   await expect(
     page.getByRole('heading', { name: 'Library Lineup' }),
   ).toBeVisible();
@@ -163,7 +169,7 @@ test('completes the saved-deck journey and records responsive evidence', async (
   const makeActive = page.getByRole('button', { name: 'Make active' });
   await makeActive.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Selected for matches')).toBeVisible();
+  await expect(page.getByText('Active', { exact: true }).first()).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Library Lineup' }),
   ).toBeFocused();
@@ -262,7 +268,7 @@ test('recovers from API and stale-deck errors in the browser', async ({
 
   await page.goto('/decks');
   await expect(
-    page.getByRole('heading', { name: 'Your saved decks could not load' }),
+    page.getByRole('heading', { name: 'Saved decks could not load' }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Try loading again' }).click();
   await expect(
@@ -304,6 +310,7 @@ test('selects an active deck with a real mobile touch event', async ({
 
   try {
     const touchPage = await touchContext.newPage();
+    await stubPlayerShell(touchPage);
     monitorBrowser(touchPage, consoleErrors, failedRequests);
     await touchPage.route('**/api/v1/cards/collection', async (route) => {
       await json(route, { cards, requestId: 'touch-collection' });
@@ -324,7 +331,9 @@ test('selects an active deck with a real mobile touch event', async ({
       await touchPage.evaluate(() => navigator.maxTouchPoints),
     ).toBeGreaterThan(0);
     await touchPage.getByRole('button', { name: 'Make active' }).tap();
-    await expect(touchPage.getByText('Selected for matches')).toBeVisible();
+    await expect(
+      touchPage.getByText('Active', { exact: true }).first(),
+    ).toBeVisible();
     await expect(
       touchPage.getByRole('heading', { name: 'Touch Campus Five' }),
     ).toBeFocused();
@@ -336,6 +345,23 @@ test('selects an active deck with a real mobile touch event', async ({
     await touchContext.close();
   }
 });
+
+async function stubPlayerShell(page: Page) {
+  await page.route('**/api/v1/auth/me', (route) =>
+    json(route, {
+      connectionStrategy: 'auth0',
+      id: uuid(980),
+      lifecycleStatus: 'active',
+      playerName: 'deck_browser_player',
+      playerNameSetupRequired: false,
+      requestId: 'deck-browser-player',
+      role: 'player',
+    }),
+  );
+  await page.route('**/api/v1/events', (route) =>
+    json(route, { events: [], requestId: 'deck-browser-events' }),
+  );
+}
 
 function buildDeck(name: string, ownedCardIds: string[], isSelected = false) {
   return {

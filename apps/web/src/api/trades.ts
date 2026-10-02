@@ -327,6 +327,27 @@ export async function getTrade(
   );
 }
 
+export async function findTradeRecipient(
+  options: BaseOptions & { playerName: string },
+): Promise<string> {
+  const query = new URLSearchParams({ playerName: options.playerName });
+  const payload = await tradeRequest({
+    ...options,
+    method: 'GET',
+    path: `/trades/recipient?${query.toString()}`,
+  });
+  if (
+    !isRecord(payload) ||
+    !hasExactKeys(payload, ['playerName', 'requestId']) ||
+    typeof payload.playerName !== 'string' ||
+    typeof payload.requestId !== 'string' ||
+    payload.playerName !== options.playerName.trim().toLowerCase()
+  ) {
+    throw new TradeApiError('unavailable');
+  }
+  return payload.playerName;
+}
+
 export async function previewTradeSelection(
   options: BaseOptions & {
     expectedVersion?: number;

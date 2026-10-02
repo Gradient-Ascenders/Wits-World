@@ -4,6 +4,7 @@ import { PageLoadingState } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   CaretDown,
+  CaretLeft,
   CaretRight,
   CheckCircle,
   Plus,
@@ -32,11 +33,18 @@ import {
   selectSavedDeck,
   updateSavedDeck,
   type SavedDeck,
+  type SavedDeckCard,
 } from '../api/decks';
 import { MatchApiError, MatchModuleLoadError } from '../api/match-errors';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { CollectionSectionNavigation } from '../components/cards/CollectionSectionNavigation';
-import { CardArtwork } from '../components/cards/CollectibleCard';
+import { CardThumbnail } from '../components/cards/CollectibleCard';
+import {
+  CardPresentationDialog,
+  type CardDialogPresentation,
+} from '../components/cards/CardPresentationDialog';
+import { useCardTilt } from '../components/cards/useCardTilt';
+import { collectionArtworkSrcSets } from '../components/cards/collection-artwork-assets';
 import '../components/cards/cards.css';
 import './decks.css';
 import { useDeckSaveBar } from './useDeckSaveBar';
@@ -98,6 +106,8 @@ export default function DecksPage({
   const [revision, setRevision] = useState(0);
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DeckDraft | null>(null);
+  const [inspectedCard, setInspectedCard] =
+    useState<CardDialogPresentation | null>(null);
   const [pending, setPending] = useState<PendingOperation>(null);
   const [actionError, setActionError] = useState<DeckApiError | null>(null);
   const [matchError, setMatchError] = useState<MatchApiError | null>(null);
@@ -409,7 +419,7 @@ export default function DecksPage({
       setDraft((current) => (current?.deckId === staleDeckId ? null : current));
       setDeleteConfirmation(null);
       setNotice(
-        'That deck changed or was deleted elsewhere. Your saved decks are being refreshed.',
+        'That deck changed or was deleted elsewhere. Saved decks are being refreshed.',
       );
       setRevision((value) => value + 1);
     }
@@ -454,7 +464,7 @@ export default function DecksPage({
           <h2>
             {isAuthorization
               ? 'Your session has expired'
-              : 'Your saved decks could not load'}
+              : 'Saved decks could not load'}
           </h2>
           <p>
             {isAuthorization
@@ -497,9 +507,9 @@ export default function DecksPage({
   return (
     <div className={`decks-page${draft ? ' decks-page--editing' : ''}`}>
       <CollectionSectionNavigation />
-      <PageHeader />
-
-      <RulesPanel />
+      {draft === null ? (
+        <PageHeader onCreate={beginCreate} disabled={isMutationPending} />
+      ) : null}
 
       {notice ? (
         <p aria-live="polite" className="deck-notice" role="status">
@@ -531,78 +541,21 @@ export default function DecksPage({
         className="saved-decks"
         hidden={draft !== null}
       >
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Saved loadouts</p>
-            <h2 id="saved-decks-title" ref={deckListHeading} tabIndex={-1}>
-              Your saved decks
-            </h2>
-          </div>
-          <button
-            className="button"
-            aria-label="Create a deck"
-            disabled={isMutationPending}
-            onClick={beginCreate}
-            type="button"
-          >
-            <Plus size={20} aria-hidden="true" /> New deck
-          </button>
-        </div>
-
         {state.decks.length === 0 ? (
           <div className="deck-empty state-message state-message--empty">
             <StateIcon tone="empty" />
-            <h3>No saved decks yet</h3>
-            <p>
-              Build your first deck from the card copies in your collection.
-            </p>
+            <h2 id="saved-decks-title" ref={deckListHeading} tabIndex={-1}>
+              No saved decks yet
+            </h2>
+            <p>Build a deck with cards from your collection.</p>
           </div>
         ) : (
           <div className="deck-workspace">
-            <div className="deck-master">
-              <label className="deck-switcher">
-                Viewing deck
-                <select
-                  value={selectedDeck?.deckId ?? ''}
-                  disabled={isMutationPending}
-                  onChange={(event) => {
-                    const deck = state.decks.find(
-                      (item) => item.deckId === event.target.value,
-                    );
-                    if (deck) showDeckDetails(deck);
-                  }}
-                >
-                  {state.decks.map((deck) => (
-                    <option key={deck.deckId} value={deck.deckId}>
-                      {deck.name}
-                      {deck.isSelected ? ' · Active for matches' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="deck-master__summary">
-                {state.decks.length}{' '}
-                {state.decks.length === 1 ? 'saved deck' : 'saved decks'}
-                <span aria-hidden="true"> · </span>
-                {activeDeck ? `${activeDeck.name} active` : 'No active deck'}
-              </p>
-              <ul aria-label="Saved decks" className="saved-deck-list">
-                {state.decks.map((deck) => (
-                  <li key={deck.deckId}>
-                    <DeckSummaryButton
-                      deck={deck}
-                      disabled={isMutationPending}
-                      isCurrent={selectedDeck?.deckId === deck.deckId}
-                      onSelect={() => showDeckDetails(deck)}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </div>
-
             {selectedDeck ? (
               <SavedDeckDetail
                 deck={selectedDeck}
+                collection={state.cards}
+                onInspect={setInspectedCard}
                 deleteButtonRef={
                   deleteConfirmation === selectedDeck.deckId
                     ? deleteButton
@@ -632,6 +585,39 @@ export default function DecksPage({
                 }
               />
             ) : null}
+            <div className="deck-master">
+              <div className="section-heading">
+                <div>
+                  <h2
+                    id="saved-decks-title"
+                    ref={deckListHeading}
+                    tabIndex={-1}
+                  >
+                    Saved decks
+                  </h2>
+                </div>
+              </div>
+
+              <p className="deck-master__summary">
+                {state.decks.length}{' '}
+                {state.decks.length === 1 ? 'saved deck' : 'saved decks'}
+                <span aria-hidden="true"> · </span>
+                {activeDeck ? `${activeDeck.name} active` : 'No active deck'}
+              </p>
+              <ul aria-label="Saved decks" className="saved-deck-list">
+                {state.decks.map((deck) => (
+                  <li key={deck.deckId}>
+                    <DeckSummaryButton
+                      deck={deck}
+                      collection={state.cards}
+                      disabled={isMutationPending}
+                      isCurrent={selectedDeck?.deckId === deck.deckId}
+                      onSelect={() => showDeckDetails(deck)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         )}
       </section>
@@ -647,20 +633,43 @@ export default function DecksPage({
           onCancel={cancelEdit}
           onChange={setDraft}
           onSubmit={submitDraft}
+          onInspect={setInspectedCard}
+        />
+      ) : null}
+      <RulesPanel />
+      {inspectedCard ? (
+        <CardPresentationDialog
+          card={inspectedCard}
+          onClose={() => setInspectedCard(null)}
         />
       ) : null}
     </div>
   );
 }
 
-function PageHeader() {
+function PageHeader({
+  onCreate,
+  disabled = false,
+}: {
+  onCreate?: () => void;
+  disabled?: boolean;
+}) {
   return (
     <header className="decks-page__header">
-      <p className="eyebrow">Deck management</p>
-      <h1>Build your match deck</h1>
-      <p className="lead">
-        Choose your lineup, build a deck, and get ready for your next match.
-      </p>
+      <div>
+        <h1>Your decks</h1>
+      </div>
+      {onCreate ? (
+        <button
+          className="button"
+          aria-label="Create a deck"
+          disabled={disabled}
+          onClick={onCreate}
+          type="button"
+        >
+          <Plus size={20} aria-hidden="true" /> New deck
+        </button>
+      ) : null}
     </header>
   );
 }
@@ -669,38 +678,25 @@ function RulesPanel() {
   return (
     <details className="deck-rules">
       <summary>
-        <span>Basic deck rules</span>
-        <small>
-          {basicDeckRules.deckSize} cards · {basicDeckRules.creatureCount}{' '}
-          Creature · {basicDeckRules.powerCount} Power ·{' '}
-          {basicDeckRules.pointCap} points maximum
-        </small>
+        <span>Deck rules</span>
         <CaretDown size={20} aria-hidden="true" />
       </summary>
       <div>
-        <h2>A balanced deck from owned copies</h2>
         <ul>
           <li>
-            Exactly {basicDeckRules.deckSize} cards:{' '}
-            {basicDeckRules.creatureCount} Creature cards and{' '}
-            {basicDeckRules.powerCount} Power cards.
+            {basicDeckRules.deckSize} cards: {basicDeckRules.creatureCount}{' '}
+            Creature cards and {basicDeckRules.powerCount} Power cards.
           </li>
-          <li>
-            No more than {basicDeckRules.pointCap} rarity points in total.
-          </li>
+          <li>{basicDeckRules.pointCap} rarity points or fewer.</li>
           <li>
             Common costs {basicDeckRules.rarityPoints.common}, Rare{' '}
             {basicDeckRules.rarityPoints.rare}, Epic{' '}
             {basicDeckRules.rarityPoints.epic}, and Legendary{' '}
             {basicDeckRules.rarityPoints.legendary} points.
           </li>
-          <li>A duplicate needs another separately owned copy in this deck.</li>
+          <li>Each duplicate uses another copy you own.</li>
         </ul>
-        <p>
-          These checks explain your draft. The server verifies ownership,
-          composition, rarity points, and final validity when you save or
-          select.
-        </p>
+        <p>Cards can be used in more than one deck.</p>
       </div>
     </details>
   );
@@ -723,14 +719,13 @@ export function SelectedDeckHandoff({
       className={`active-deck${deck ? ' active-deck--ready' : ''}`}
     >
       <div>
-        <p className="eyebrow">CPU match handoff</p>
         <h2 id="active-deck-title" ref={headingRef} tabIndex={-1}>
           {deck ? `${deck.name} is active` : 'Choose an active deck'}
         </h2>
         <p>
           {deck
-            ? 'Ready for a CPU match. Match creation will use this selected server-validated deck and snapshot it.'
-            : 'Select one saved deck before starting a CPU match.'}
+            ? 'Ready for a CPU match.'
+            : 'Make a deck active to start a CPU match.'}
         </p>
       </div>
       {deck && onStartMatch ? (
@@ -749,11 +744,13 @@ export function SelectedDeckHandoff({
 
 function DeckSummaryButton({
   deck,
+  collection,
   disabled,
   isCurrent,
   onSelect,
 }: {
   deck: SavedDeck;
+  collection: OwnedCard[];
   disabled: boolean;
   isCurrent: boolean;
   onSelect: () => void;
@@ -770,21 +767,25 @@ function DeckSummaryButton({
       onClick={onSelect}
       type="button"
     >
+      <span className="deck-summary-button__art" aria-hidden="true">
+        {deck.cards.map((card) => (
+          <DeckArtwork
+            card={card}
+            collection={collection}
+            compact
+            key={card.ownedCardId}
+          />
+        ))}
+      </span>
       <span className="deck-summary-button__heading">
         <span className="deck-summary-button__title">{deck.name}</span>
         {deck.isSelected ? (
           <span className="deck-active-badge">Active</span>
         ) : null}
       </span>
-      <span className="deck-summary-button__meta">
-        {deck.cards.length} cards
-        <span aria-hidden="true"> · </span>
-        {summary.creatureCount} Creature
-        <span aria-hidden="true"> · </span>
-        {summary.powerCount} Power
-      </span>
       <span className="deck-summary-button__affinity">
-        {summary.affinities}
+        {summary.affinities} · {deck.totalPoints}/{basicDeckRules.pointCap}{' '}
+        points
       </span>
       <span aria-hidden="true" className="deck-summary-button__chevron">
         <CaretRight size={20} />
@@ -793,8 +794,149 @@ function DeckSummaryButton({
   );
 }
 
+function DeckArtwork({
+  card,
+  collection,
+  compact = false,
+  onInspect,
+}: {
+  card: SavedDeckCard;
+  collection: OwnedCard[];
+  compact?: boolean;
+  onInspect?: (card: CardDialogPresentation) => void;
+}) {
+  const owned = collection.find(
+    (copy) => copy.ownedCardId === card.ownedCardId,
+  );
+  const presentation = {
+    name: card.name,
+    rarity: card.rarity,
+    imageUrl: owned?.imageUrl ?? null,
+    imageAlt: owned?.imageAlt ?? null,
+  };
+  return compact ? (
+    <DeckCopyPreview card={presentation} />
+  ) : (
+    <CardThumbnail
+      accessibleLabel={`View ${card.name} details`}
+      card={{ ...presentation, ...(owned ? { isActive: owned.isActive } : {}) }}
+      loading="lazy"
+      nameplate={null}
+      onClick={() => onInspect?.(owned ?? { ...card, ...presentation })}
+    />
+  );
+}
+
+/** Small lineup previews use existing artwork; full cards retain the shared frame. */
+function DeckCopyPreview({
+  card,
+}: {
+  card: Pick<OwnedCard, 'name' | 'imageUrl' | 'imageAlt'>;
+}) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [failedResponsiveUrl, setFailedResponsiveUrl] = useState<string | null>(
+    null,
+  );
+  const srcSet =
+    card.imageUrl !== failedResponsiveUrl
+      ? collectionArtworkSrcSets[card.imageUrl ?? '']
+      : undefined;
+  return (
+    <span className="deck-copy-preview">
+      {card.imageUrl && card.imageUrl !== failedUrl ? (
+        <img
+          alt={card.imageAlt ?? `${card.name} card artwork`}
+          src={card.imageUrl}
+          srcSet={srcSet}
+          sizes="4rem"
+          loading="lazy"
+          onError={() =>
+            srcSet
+              ? setFailedResponsiveUrl(card.imageUrl)
+              : setFailedUrl(card.imageUrl)
+          }
+        />
+      ) : (
+        <span role="img" aria-label={`${card.name} artwork unavailable`}>
+          {card.name.slice(0, 1).toUpperCase()}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function DeckDraftPreviewButton({
+  card,
+  onInspect,
+}: {
+  card: OwnedCard;
+  onInspect: (card: CardDialogPresentation) => void;
+}) {
+  const tilt = useCardTilt<HTMLButtonElement>();
+  return (
+    <button
+      {...tilt}
+      aria-label={`View ${card.name} details`}
+      className="card-thumbnail__button deck-draft-preview"
+      onClick={() => onInspect(card)}
+      type="button"
+    >
+      <DeckCopyPreview card={card} />
+    </button>
+  );
+}
+
+function DeckGalleryPages({
+  currentPage,
+  totalPages,
+  onChange,
+  label,
+  compact = false,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onChange: (page: number) => void;
+  label: string;
+  compact?: boolean;
+}) {
+  return (
+    <nav
+      aria-label={label}
+      className={`deck-gallery-pages${compact ? ' deck-gallery-pages--compact' : ''}`}
+    >
+      <button
+        aria-label="Previous card page"
+        aria-controls="deck-picker-cards"
+        className="button button--quiet"
+        disabled={currentPage === 1}
+        onClick={() => onChange(currentPage - 1)}
+        type="button"
+      >
+        {compact ? <CaretLeft size={18} aria-hidden="true" /> : 'Previous'}
+      </button>
+      {!compact ? (
+        <span>
+          Page {currentPage} of {totalPages}
+        </span>
+      ) : null}
+      <button
+        aria-label="Next card page"
+        aria-controls="deck-picker-cards"
+        className="button button--quiet"
+        disabled={currentPage === totalPages}
+        onClick={() => onChange(currentPage + 1)}
+        type="button"
+      >
+        {compact ? <CaretRight size={18} aria-hidden="true" /> : 'Next'}
+      </button>
+    </nav>
+  );
+}
+
 function SavedDeckDetail({
   deck,
+  collection,
+  onInspect,
   deleteButtonRef,
   headingRef,
   isConfirmingDelete,
@@ -808,6 +950,8 @@ function SavedDeckDetail({
   pendingKind,
 }: {
   deck: SavedDeck;
+  collection: OwnedCard[];
+  onInspect: (card: CardDialogPresentation) => void;
   deleteButtonRef?: RefObject<HTMLButtonElement | null>;
   headingRef: RefObject<HTMLHeadingElement | null>;
   isConfirmingDelete: boolean;
@@ -844,64 +988,16 @@ function SavedDeckDetail({
     >
       <div className="saved-deck-detail__heading">
         <div>
-          <p className="eyebrow">
-            {deck.isSelected ? 'Active deck' : 'Selected deck'}
-          </p>
           <h3 id="selected-deck-title" ref={headingRef} tabIndex={-1}>
             {deck.name}
           </h3>
         </div>
         {deck.isSelected ? (
-          <span className="deck-active-badge">Selected for matches</span>
-        ) : null}
+          <span className="deck-active-badge">Active</span>
+        ) : (
+          <span className="deck-view-badge">Not active</span>
+        )}
       </div>
-
-      <dl
-        aria-label={`${deck.name} composition`}
-        className="deck-detail__stats"
-      >
-        <div>
-          <dt>Cards</dt>
-          <dd>
-            {deck.cards.length} / {basicDeckRules.deckSize}
-          </dd>
-        </div>
-        <div>
-          <dt>Rarity points</dt>
-          <dd>
-            {deck.totalPoints} / {basicDeckRules.pointCap}
-          </dd>
-        </div>
-        <div>
-          <dt>Composition</dt>
-          <dd>
-            {summary.creatureCount} Creature · {summary.powerCount} Power
-          </dd>
-        </div>
-      </dl>
-      <p className="deck-saved-status">
-        <CheckCircle size={20} aria-hidden="true" /> Saved deck · Validated when
-        saved
-      </p>
-
-      <div className="deck-detail__roster-heading">
-        <h4>Card roster</h4>
-        <span>{summary.affinities}</span>
-      </div>
-      <ol aria-label={`${deck.name} cards`} className="deck-detail__cards">
-        {deck.cards.map((card) => (
-          <li key={card.ownedCardId}>
-            <span className="deck-detail__position">{card.position}</span>
-            <span>
-              <strong>{card.name}</strong>
-              <small>
-                {card.affinity ? titleCase(card.affinity) : 'Typeless'} ·{' '}
-                {titleCase(card.category)} · {titleCase(card.rarity)}
-              </small>
-            </span>
-          </li>
-        ))}
-      </ol>
 
       {isConfirmingDelete ? (
         <div
@@ -910,8 +1006,8 @@ function SavedDeckDetail({
           role="group"
         >
           <p>
-            Delete this saved deck? Its card copies stay in your collection.
-            {deck.isSelected ? ' It will no longer be your active deck.' : ''}
+            Delete this deck? Your cards stay in your collection.
+            {deck.isSelected ? ' You will have no active deck.' : ''}
           </p>
           <div>
             <button
@@ -966,7 +1062,7 @@ function SavedDeckDetail({
             onClick={onEdit}
             type="button"
           >
-            <PencilSimple size={20} aria-hidden="true" /> Edit or rename
+            <PencilSimple size={20} aria-hidden="true" /> Edit deck
           </button>
           <button
             className="button button--quiet"
@@ -979,6 +1075,53 @@ function SavedDeckDetail({
           </button>
         </div>
       )}
+
+      <dl
+        aria-label={`${deck.name} composition`}
+        className="deck-detail__stats"
+      >
+        <div>
+          <dt>Rarity points</dt>
+          <dd>
+            {deck.totalPoints} / {basicDeckRules.pointCap}
+          </dd>
+        </div>
+        <div>
+          <dt className="sr-only">Cards</dt>
+          <dd>
+            {summary.creatureCount} Creature · {summary.powerCount} Power
+          </dd>
+        </div>
+      </dl>
+      <div className="deck-detail__roster-heading">
+        <h4>Cards</h4>
+        <span>{summary.affinities}</span>
+      </div>
+      <ol aria-label={`${deck.name} cards`} className="deck-detail__cards">
+        {deck.cards.map((card) => (
+          <li key={card.ownedCardId}>
+            <span className="deck-lineup__art">
+              <DeckArtwork
+                card={card}
+                collection={collection}
+                onInspect={onInspect}
+              />
+            </span>
+            <span>
+              <span className="deck-detail__card-heading">
+                <span className="deck-detail__position" aria-hidden="true">
+                  {card.position}.
+                </span>
+                <strong>{card.name}</strong>
+              </span>
+              <small>
+                {card.affinity ? titleCase(card.affinity) : 'Typeless'} ·{' '}
+                {titleCase(card.category)}
+              </small>
+            </span>
+          </li>
+        ))}
+      </ol>
     </article>
   );
 }
@@ -993,6 +1136,7 @@ function DeckEditor({
   onCancel,
   onChange,
   onSubmit,
+  onInspect,
 }: {
   cards: OwnedCard[];
   draft: DeckDraft;
@@ -1003,12 +1147,15 @@ function DeckEditor({
   onCancel: () => void;
   onChange: (draft: DeckDraft) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onInspect: (card: CardDialogPresentation) => void;
 }) {
   const summary = summarizeDraft(draft, cards);
-  const [view, setView] = useState<'deck' | 'collection'>('deck');
+  const [view, setView] = useState<'deck' | 'collection'>('collection');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [rarity, setRarity] = useState('all');
+  const [page, setPage] = useState(1);
+  const resultsHeading = useRef<HTMLParagraphElement>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [nameTouched, setNameTouched] = useState(false);
   const cancelControl = useRef<HTMLButtonElement | null>(null);
@@ -1055,6 +1202,16 @@ function DeckEditor({
     () => new Map(cards.map((card) => [card.ownedCardId, card])),
     [cards],
   );
+  const pageSize = 6;
+  const totalPages = Math.max(1, Math.ceil(filteredCards.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageCards = filteredCards.slice(pageStart, pageStart + pageSize);
+
+  function changePage(nextPage: number) {
+    setPage(nextPage);
+    queueMicrotask(() => resultsHeading.current?.focus());
+  }
 
   function addCopy(group: OwnedCard[]) {
     const nextCopy = group.find(
@@ -1098,18 +1255,41 @@ function DeckEditor({
     <section aria-labelledby="deck-editor-title" className="deck-editor">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">
-            {draft.mode === 'create' ? 'New saved deck' : 'Edit saved deck'}
-          </p>
-          <h2 id="deck-editor-title" ref={headingRef} tabIndex={-1}>
+          <h1 id="deck-editor-title" ref={headingRef} tabIndex={-1}>
             {draft.mode === 'create'
               ? 'Build a deck'
               : `Edit ${draft.originalDeck?.name ?? 'deck'}`}
-          </h2>
+          </h1>
         </div>
       </div>
 
       <form noValidate onSubmit={onSubmit}>
+        <label className="deck-name-field">
+          <span>Deck name</span>
+          <input
+            aria-describedby={
+              draft.name.trim() === '' ? 'deck-name-error' : undefined
+            }
+            aria-invalid={nameTouched && draft.name.trim() === ''}
+            disabled={isMutationPending}
+            maxLength={80}
+            required
+            onBlur={() => setNameTouched(true)}
+            onChange={(event) =>
+              onChange({ ...draft, name: event.currentTarget.value })
+            }
+            value={draft.name}
+          />
+        </label>
+        {draft.name.trim() === '' ? (
+          <p
+            className={nameTouched ? 'field-error' : 'deck-name-help'}
+            id="deck-name-error"
+          >
+            Enter a deck name.
+          </p>
+        ) : null}
+
         <div
           className="deck-editor__views"
           role="group"
@@ -1132,32 +1312,6 @@ function DeckEditor({
         </div>
         <div className={`deck-editor__layout deck-editor__layout--${view}`}>
           <div className="deck-editor__draft" id="deck-draft-panel">
-            <label className="deck-name-field">
-              <span>Deck name</span>
-              <input
-                aria-describedby={
-                  draft.name.trim() === '' ? 'deck-name-error' : undefined
-                }
-                aria-invalid={nameTouched && draft.name.trim() === ''}
-                disabled={isMutationPending}
-                maxLength={80}
-                required
-                onBlur={() => setNameTouched(true)}
-                onChange={(event) =>
-                  onChange({ ...draft, name: event.currentTarget.value })
-                }
-                value={draft.name}
-              />
-            </label>
-            {draft.name.trim() === '' ? (
-              <p
-                className={nameTouched ? 'field-error' : 'deck-name-help'}
-                id="deck-name-error"
-              >
-                Enter a name for this saved deck.
-              </p>
-            ) : null}
-
             <DraftSummaryPanel summary={summary} />
 
             <section
@@ -1165,15 +1319,16 @@ function DeckEditor({
               className="draft-cards"
             >
               <div className="draft-cards__heading">
-                <h3 id="draft-cards-title">Selected copies</h3>
+                <h3 id="draft-cards-title" tabIndex={-1}>
+                  Your lineup
+                </h3>
                 <span>
                   {draft.ownedCardIds.length} / {basicDeckRules.deckSize}
                 </span>
               </div>
               {draft.ownedCardIds.length === 0 ? (
                 <p className="draft-cards__empty">
-                  Your lineup starts here. Choose Add cards to browse your
-                  collection.
+                  Choose Add cards to build your deck.
                 </p>
               ) : (
                 <ol>
@@ -1185,7 +1340,18 @@ function DeckEditor({
 
                     return (
                       <li key={ownedCardId}>
-                        <span className="draft-card-position">{index + 1}</span>
+                        {card ? (
+                          <DeckDraftPreviewButton
+                            card={card}
+                            onInspect={onInspect}
+                          />
+                        ) : (
+                          <span className="draft-card-art" aria-hidden="true">
+                            <span className="draft-card-position">
+                              {index + 1}
+                            </span>
+                          </span>
+                        )}
                         <span>
                           <strong>
                             {card?.name ??
@@ -1218,12 +1384,7 @@ function DeckEditor({
 
           <section aria-labelledby="card-picker-title" className="card-picker">
             <div className="card-picker__heading">
-              <p className="eyebrow">Owned collection</p>
-              <h3 id="card-picker-title">Add to your lineup</h3>
-              <p>
-                Add or remove copies below. Cards can belong to more than one
-                saved deck.
-              </p>
+              <h3 id="card-picker-title">Add cards</h3>
             </div>
 
             <div className="deck-filters">
@@ -1232,53 +1393,79 @@ function DeckEditor({
                 <input
                   type="search"
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Find a card by name"
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Card name"
                 />
               </label>
-              <details>
-                <summary>
-                  Filter cards
-                  {category !== 'all' || rarity !== 'all' ? ' · Applied' : ''}
-                  <CaretDown size={16} aria-hidden="true" />
-                </summary>
-                <div>
-                  <label>
-                    Type
-                    <select
-                      value={category}
-                      onChange={(event) => setCategory(event.target.value)}
-                    >
-                      <option value="all">All types</option>
-                      <option value="creature">Creature</option>
-                      <option value="power">Power</option>
-                    </select>
-                  </label>
-                  <label>
-                    Rarity
-                    <select
-                      value={rarity}
-                      onChange={(event) => setRarity(event.target.value)}
-                    >
-                      <option value="all">All rarities</option>
-                      {(['common', 'rare', 'epic', 'legendary'] as const).map(
-                        (value) => (
-                          <option key={value} value={value}>
-                            {titleCase(value)}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </label>
-                </div>
-              </details>
+              <div className="deck-filters__choices">
+                <label>
+                  Type
+                  <select
+                    value={category}
+                    onChange={(event) => {
+                      setCategory(event.target.value);
+                      setPage(1);
+                    }}
+                  >
+                    <option value="all">All types</option>
+                    <option value="creature">Creature</option>
+                    <option value="power">Power</option>
+                  </select>
+                </label>
+                <label>
+                  Rarity
+                  <select
+                    value={rarity}
+                    onChange={(event) => {
+                      setRarity(event.target.value);
+                      setPage(1);
+                    }}
+                  >
+                    <option value="all">All rarities</option>
+                    {(['common', 'rare', 'epic', 'legendary'] as const).map(
+                      (value) => (
+                        <option key={value} value={value}>
+                          {titleCase(value)}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </label>
+              </div>
             </div>
+
+            {filteredCards.length > 0 ? (
+              <div className="deck-gallery-navigation">
+                <p
+                  aria-live="polite"
+                  className="deck-gallery-navigation__range"
+                  ref={resultsHeading}
+                  tabIndex={-1}
+                >
+                  {pageStart + 1}–
+                  {Math.min(pageStart + pageSize, filteredCards.length)} of{' '}
+                  {filteredCards.length} card designs
+                </p>
+                {totalPages > 1 ? (
+                  <DeckGalleryPages
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onChange={changePage}
+                    label="Card gallery pages"
+                    compact
+                  />
+                ) : null}
+              </div>
+            ) : null}
 
             {groupedCards.length === 0 ? (
               <div className="deck-empty state-message state-message--empty">
                 <StateIcon tone="empty" />
                 <h4>Your collection is empty</h4>
-                <p>Claim or earn cards before building a saved deck.</p>
+                <p>Earn cards to build a deck.</p>
               </div>
             ) : filteredCards.length === 0 ? (
               <div className="deck-empty state-message state-message--empty">
@@ -1292,6 +1479,7 @@ function DeckEditor({
                     setSearch('');
                     setCategory('all');
                     setRarity('all');
+                    setPage(1);
                   }}
                 >
                   Clear filters
@@ -1301,8 +1489,9 @@ function DeckEditor({
               <ul
                 aria-label="Owned cards available for this deck"
                 className="card-picker__list"
+                id="deck-picker-cards"
               >
-                {filteredCards.map((group) => {
+                {pageCards.map((group) => {
                   const card = group[0]!;
                   const used = group.filter((copy) =>
                     draft.ownedCardIds.includes(copy.ownedCardId),
@@ -1316,11 +1505,13 @@ function DeckEditor({
                     <li key={card.cardDefinitionId}>
                       <article
                         aria-labelledby={titleId}
-                        className={`deck-picker-card card-thumbnail collectible-card--${card.rarity}${used > 0 ? ' deck-picker-card--selected' : ''}${card.isActive ? '' : ' card-thumbnail--inactive'}`}
+                        className={`deck-picker-card collectible-card--${card.rarity}`}
                       >
-                        <CardArtwork
-                          badge={used > 0 ? `×${used}` : undefined}
+                        <CardThumbnail
+                          accessibleLabel={`View ${card.name} details`}
                           card={card}
+                          loading="lazy"
+                          onClick={() => onInspect(card)}
                           nameplate={
                             <span id={titleId} role="heading" aria-level={4}>
                               {card.name}
@@ -1335,7 +1526,11 @@ function DeckEditor({
                               : 'Typeless'}
                           </p>
                           <p className="deck-picker-card__quantity">
-                            Owned {group.length} · Selected {used}
+                            Owned {group.length} ·{' '}
+                            {basicDeckRules.rarityPoints[card.rarity]}{' '}
+                            {basicDeckRules.rarityPoints[card.rarity] === 1
+                              ? 'point'
+                              : 'points'}
                           </p>
                           <div
                             aria-label={`Choose copies of ${card.name}`}
@@ -1378,7 +1573,7 @@ function DeckEditor({
                             </p>
                           ) : (
                             <p className="deck-picker-card__availability">
-                              All owned copies in deck
+                              All copies added
                             </p>
                           )}
                         </div>
@@ -1388,6 +1583,14 @@ function DeckEditor({
                 })}
               </ul>
             )}
+            {totalPages > 1 ? (
+              <DeckGalleryPages
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onChange={changePage}
+                label="Card gallery pages below cards"
+              />
+            ) : null}
           </section>
         </div>
         <div
@@ -1395,6 +1598,52 @@ function DeckEditor({
           data-collapsed={collapsed}
           ref={saveBar}
         >
+          <button
+            aria-label="Review your deck"
+            aria-describedby="draft-tray-composition"
+            aria-controls="deck-draft-panel"
+            className="deck-draft-tray"
+            disabled={isMutationPending}
+            onClick={() => {
+              setView('deck');
+              queueMicrotask(() => {
+                const title = document.getElementById('draft-cards-title');
+                title?.focus();
+              });
+            }}
+            type="button"
+          >
+            <span className="deck-draft-tray__cards" aria-hidden="true">
+              {Array.from({ length: basicDeckRules.deckSize }, (_, index) => {
+                const card = cardsByOwnedId.get(
+                  draft.ownedCardIds[index] ?? '',
+                );
+                return (
+                  <span className="deck-draft-tray__slot" key={index}>
+                    {card ? (
+                      <DeckCopyPreview card={card} />
+                    ) : (
+                      <Plus size={16} />
+                    )}
+                  </span>
+                );
+              })}
+            </span>
+            <span
+              className="deck-draft-tray__composition"
+              id="draft-tray-composition"
+              aria-live="polite"
+            >
+              <strong>
+                Review deck <CaretRight size={16} aria-hidden="true" />
+              </strong>
+              <span>
+                {summary.creatureCount}/{basicDeckRules.creatureCount} Creature
+                · {summary.powerCount}/{basicDeckRules.powerCount} Power ·{' '}
+                {summary.totalPoints}/{basicDeckRules.pointCap} points
+              </span>
+            </span>
+          </button>
           <div
             className="deck-save-full"
             inert={collapsed}
@@ -1402,26 +1651,23 @@ function DeckEditor({
           >
             <div className="deck-save-full__content">
               <div className="deck-save-summary" aria-live="polite">
-                <strong>
-                  {summary.totalCards} / {basicDeckRules.deckSize} cards ·{' '}
-                  {readiness}
-                </strong>
+                <strong>{readiness}</strong>
                 <span>
                   {isSaving
                     ? 'Saving…'
                     : hasSaveError
-                      ? 'Save failed · Unsaved changes'
+                      ? 'Save failed'
                       : isDirty
                         ? 'Unsaved changes'
                         : draft.mode === 'create'
-                          ? 'New deck · Not saved yet'
-                          : 'No unsaved changes'}
+                          ? 'Not saved yet'
+                          : 'No changes'}
                 </span>
                 <small>
                   {!summary.isValid
                     ? summary.issues[0]
                     : draft.name.trim() === ''
-                      ? 'Give your deck a name in Your deck.'
+                      ? 'Enter a deck name.'
                       : ''}
                 </small>
               </div>
@@ -1436,10 +1682,10 @@ function DeckEditor({
                 type="submit"
               >
                 {isSaving
-                  ? 'Saving with the server…'
+                  ? 'Saving…'
                   : draft.mode === 'create'
-                    ? 'Create saved deck'
-                    : 'Save deck changes'}
+                    ? 'Create deck'
+                    : 'Save deck'}
               </button>
               <button
                 className="button button--quiet"
@@ -1457,9 +1703,7 @@ function DeckEditor({
                   role="group"
                   aria-label="Discard unsaved changes"
                 >
-                  <p>
-                    Discard your changes? Your saved deck will stay as it was.
-                  </p>
+                  <p>Discard your changes?</p>
                   <button
                     className="button button--danger"
                     type="button"
@@ -1550,19 +1794,13 @@ function DraftSummaryPanel({ summary }: { summary: DraftSummary }) {
             <WarningCircle size={20} aria-hidden="true" />
           )}
           {summary.isValid
-            ? 'Ready to submit'
+            ? 'Complete lineup'
             : summary.totalCards < basicDeckRules.deckSize
-              ? 'Incomplete deck'
+              ? 'Incomplete'
               : 'Needs changes'}
         </span>
       </div>
       <dl>
-        <div>
-          <dt>Cards</dt>
-          <dd>
-            {summary.totalCards} / {basicDeckRules.deckSize}
-          </dd>
-        </div>
         <div>
           <dt>Creature</dt>
           <dd>
@@ -1589,12 +1827,7 @@ function DraftSummaryPanel({ summary }: { summary: DraftSummary }) {
               <li key={issue}>{issue}</li>
             ))}
           </ul>
-        ) : (
-          <p>
-            Ready to save. Ownership and deck rules are checked again when you
-            save.
-          </p>
-        )}
+        ) : null}
       </div>
     </section>
   );
@@ -1736,21 +1969,19 @@ function summarizeDraft(draft: DeckDraft, cards: OwnedCard[]): DraftSummary {
   const issues: string[] = [];
 
   if (draft.ownedCardIds.length !== basicDeckRules.deckSize) {
-    issues.push(`Choose exactly ${basicDeckRules.deckSize} owned copies.`);
+    issues.push(`Choose ${basicDeckRules.deckSize} cards.`);
   }
 
   if (selectedCards.length !== draft.ownedCardIds.length) {
-    issues.push('Remove any copy no longer returned by your collection.');
+    issues.push('Remove cards no longer in your collection.');
   }
 
   if (creatureCount !== basicDeckRules.creatureCount) {
-    issues.push(
-      `Choose exactly ${basicDeckRules.creatureCount} Creature cards.`,
-    );
+    issues.push(`Choose ${basicDeckRules.creatureCount} Creature cards.`);
   }
 
   if (powerCount !== basicDeckRules.powerCount) {
-    issues.push(`Choose exactly ${basicDeckRules.powerCount} Power cards.`);
+    issues.push(`Choose ${basicDeckRules.powerCount} Power cards.`);
   }
 
   if (totalPoints > basicDeckRules.pointCap) {
@@ -1758,7 +1989,7 @@ function summarizeDraft(draft: DeckDraft, cards: OwnedCard[]): DraftSummary {
   }
 
   if (new Set(draft.ownedCardIds).size !== draft.ownedCardIds.length) {
-    issues.push('The same owned copy cannot be used twice.');
+    issues.push('Each card needs its own copy.');
   }
 
   return {
