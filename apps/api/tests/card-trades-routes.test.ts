@@ -86,6 +86,7 @@ const tradeView: CardTradeView = {
 
 describe('card trading HTTP routes', () => {
   let app: FastifyInstance;
+  let findRecipient: ReturnType<typeof vi.fn>;
   let createTrade: ReturnType<typeof vi.fn>;
   let reviseTrade: ReturnType<typeof vi.fn>;
   let acknowledgeImbalance: ReturnType<typeof vi.fn>;
@@ -115,6 +116,7 @@ describe('card trading HTTP routes', () => {
         lifecycleStatus: 'active',
       });
 
+    findRecipient = vi.fn().mockResolvedValue('recipient_name');
     createTrade = vi.fn().mockResolvedValue(tradeView);
     reviseTrade = vi.fn().mockResolvedValue({ ...tradeView, version: 2 });
     acknowledgeImbalance = vi.fn().mockResolvedValue(tradeView);
@@ -183,6 +185,7 @@ describe('card trading HTTP routes', () => {
       },
     });
     const service = {
+      findRecipient,
       createTrade,
       reviseTrade,
       acknowledgeImbalance,
@@ -219,6 +222,53 @@ describe('card trading HTTP routes', () => {
   });
 
   afterEach(async () => app.close());
+
+  it('checks a normalized exact name without exposing player identity', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/trades/recipient?playerName=Recipient_Name',
+      headers: { authorization: 'Bearer access-token' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(findRecipient).toHaveBeenCalledWith(PLAYER_ID, 'recipient_name');
+    expect(response.json()).toEqual({
+      playerName: 'recipient_name',
+      requestId: expect.any(String),
+    });
+    expect(createTrade).not.toHaveBeenCalled();
+  });
+
+  it('returns the same safe error for unavailable recipients', async () => {
+    findRecipient.mockRejectedValue(
+      new CardTradeError(
+        'TRADE_PLAYER_UNAVAILABLE',
+        'The requested trade participant is unavailable.',
+      ),
+    );
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/trades/recipient?playerName=missing_player',
+      headers: { authorization: 'Bearer access-token' },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ code: 'TRADE_PLAYER_UNAVAILABLE' });
+    expect(createTrade).not.toHaveBeenCalled();
+  });
+
+  it('protects recipient lookup and validates names before querying', async () => {
+    const unauthorized = await app.inject({
+      method: 'GET',
+      url: '/api/v1/trades/recipient?playerName=recipient_name',
+    });
+    expect(unauthorized.statusCode).toBe(401);
+    const invalid = await app.inject({
+      method: 'GET',
+      url: '/api/v1/trades/recipient?playerName=bad%20name',
+      headers: { authorization: 'Bearer access-token' },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(findRecipient).not.toHaveBeenCalled();
+  });
 
   it('requires authentication before any trade command reaches the service', async () => {
     const response = await app.inject({

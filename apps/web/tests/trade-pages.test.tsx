@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe('card trade pages', () => {
-  it('groups open offers and closed history in the collection journey', async () => {
+  it('groups open offers and keeps closed history in server order', async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const openRequest = String(input).includes('status=open');
       return Promise.resolve(
@@ -36,6 +36,11 @@ describe('card trade pages', () => {
           items: openRequest
             ? [buildSummary()]
             : [
+                buildSummary({
+                  status: 'expired',
+                  terminalAt: '2026-09-26T11:00:00.000Z',
+                  tradeId: buildUuid(3),
+                }),
                 buildSummary({
                   direction: 'sent',
                   status: 'completed',
@@ -69,17 +74,146 @@ describe('card trade pages', () => {
       ),
     ).toBe(true);
 
-    await userEvent.click(screen.getByRole('button', { name: 'History 1' }));
-    expect(screen.getByRole('heading', { name: 'Completed' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Outgoing' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'History' }));
+    expect(
+      within(screen.getByRole('list', { name: 'Trade history' }))
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('href')),
+    ).toEqual([
+      `/collection/trades/${buildUuid(3)}`,
+      `/collection/trades/${buildUuid(2)}`,
+    ]);
     expect(
       screen.getByText('Completed', { selector: '.trade-status' }),
     ).toBeVisible();
+  });
+
+  it('keeps unavailable players at entry, retries failed lookups, and ignores results after editing the name', async () => {
+    let recipientCalls = 0;
+    let staleSignal: AbortSignal | null = null;
+    let resolveStale!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/cards/trading-catalogue'))
+          return jsonResponse({
+            definitions: [buildCatalogueDefinition()],
+            requestId: 'catalogue',
+          });
+        if (url.endsWith('/trades/selection-preview'))
+          return jsonResponse(
+            buildPreviewResponse({
+              offeredOwnedCardIds: [],
+              requestedDefinitions: [],
+            }),
+          );
+        if (url.includes('/trades/recipient?')) {
+          recipientCalls += 1;
+          if (recipientCalls === 1)
+            return jsonResponse({ code: 'TRADE_PLAYER_UNAVAILABLE' }, 404);
+          if (recipientCalls === 2) throw new TypeError('Network unavailable');
+          if (recipientCalls === 3) {
+            staleSignal = init?.signal ?? null;
+            return await new Promise<Response>((resolve) => {
+              resolveStale = resolve;
+            });
+          }
+          return jsonResponse({
+            playerName: 'other_player',
+            requestId: 'recipient',
+          });
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+    renderRoute(
+      '/collection/trades/new',
+      <TradeEditorPage apiBaseUrl={apiBaseUrl} />,
+    );
+    const user = userEvent.setup();
+    const input = await screen.findByRole('textbox', { name: 'Player Name' });
+    await user.type(input, 'missing_player');
+    await user.click(screen.getByRole('button', { name: 'Choose cards' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'That player is unavailable.',
+    );
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(
+      screen.getByRole('heading', { name: 'Start a trade' }),
+    ).toBeVisible();
+    await user.clear(input);
+    await user.type(input, 'other_player');
+    await user.click(screen.getByRole('button', { name: 'Choose cards' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Couldn’t check the player. Try again.',
+    );
+    await user.click(screen.getByRole('button', { name: 'Choose cards' }));
+    expect(
+      await screen.findByRole('button', { name: 'Checking player…' }),
+    ).toBeDisabled();
+    await user.clear(input);
+    expect((staleSignal as AbortSignal | null)?.aborted).toBe(true);
+    resolveStale(
+      jsonResponse({ playerName: 'other_player', requestId: 'stale' }),
+    );
+    await user.type(input, 'other_player');
+    expect(
+      screen.getByRole('heading', { name: 'Start a trade' }),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Choose cards' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Trade with other_player' }),
+    ).toBeVisible();
+  });
+
+  it('opens complete card details from offered and requested cards and restores focus', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        if (String(input).endsWith('/cards/trading-catalogue'))
+          return jsonResponse({
+            definitions: [buildCatalogueDefinition()],
+            requestId: 'catalogue',
+          });
+        return jsonResponse({ trade: buildTrade(), requestId: 'detail' });
+      }),
+    );
+    renderRoute(
+      `/collection/trades/${tradeId}`,
+      <Route path="/collection/trades/:tradeId">
+        <TradeDetailPage apiBaseUrl={apiBaseUrl} />
+      </Route>,
+    );
+    const triggers = await screen.findAllByRole('button', {
+      name: 'View Courier Ibis details',
+    });
+    const user = userEvent.setup();
+    for (const trigger of [triggers[0]!, triggers.at(-1)!]) {
+      await user.click(trigger);
+      const dialog = screen.getByRole('dialog', { name: 'Courier Ibis' });
+      expect(within(dialog).getByText('Express Delivery')).toBeVisible();
+      expect(within(dialog).getByText('Deal 20 base damage.')).toBeVisible();
+      await user.click(
+        within(dialog).getByRole('button', {
+          name: 'Close Courier Ibis details',
+        }),
+      );
+      expect(trigger).toHaveFocus();
+    }
   });
 
   it('guards a dirty mobile-first draft and publishes only a current server preview', async () => {
     const fetchMock = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
+        if (url.includes('/trades/recipient?')) {
+          return jsonResponse({
+            playerName: 'other_player',
+            requestId: 'recipient-request',
+          });
+        }
         if (url.endsWith('/cards/trading-catalogue')) {
           return jsonResponse({
             definitions: [buildCatalogueDefinition()],
@@ -137,14 +271,12 @@ describe('card trade pages', () => {
       within(discardDialog).getByRole('button', { name: 'Keep editing' }),
     );
 
-    await user.click(screen.getByRole('button', { name: 'Build trade' }));
+    await user.click(screen.getByRole('button', { name: 'Choose cards' }));
     expect(
-      screen.getByRole('heading', { name: 'Build your offer' }),
+      await screen.findByRole('heading', { name: 'Trade with other_player' }),
     ).toBeVisible();
     expect(
-      screen.getByText(
-        'Choose any active card type. other_player’s collection stays private.',
-      ),
+      screen.getByText('Cards you can request, not other_player’s collection.'),
     ).toBeVisible();
     expect(
       screen.queryByText(
@@ -154,11 +286,11 @@ describe('card trade pages', () => {
     expect(
       screen.queryByText('Resolve these before publishing:'),
     ).not.toBeInTheDocument();
-    const collection = screen.getByRole('list', {
+    const collection = await screen.findByRole('list', {
       name: 'Card types in your collection',
     });
     expect(within(collection).getAllByRole('listitem')).toHaveLength(1);
-    expect(within(collection).getByText('6 owned · 6 tradable')).toBeVisible();
+    expect(within(collection).getByText('6 available')).toBeVisible();
     const cardDetailsTrigger = within(collection).getByRole('button', {
       name: 'View Courier Ibis details',
     });
@@ -184,12 +316,12 @@ describe('card trade pages', () => {
         name: 'Offer one more Courier Ibis',
       }),
     );
-    await user.click(screen.getByRole('button', { name: /Active cards/ }));
+    await user.click(screen.getByRole('button', { name: 'You request' }));
     await user.click(
       screen.getByRole('button', { name: 'Request one more Courier Ibis' }),
     );
 
-    expect(screen.getByRole('heading', { name: 'You receive' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'You request' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'You give' })).toBeVisible();
     expect(
       document.querySelectorAll(
@@ -253,6 +385,12 @@ describe('card trade pages', () => {
       'fetch',
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
+        if (url.includes('/trades/recipient?')) {
+          return jsonResponse({
+            playerName: 'other_player',
+            requestId: 'recipient-request',
+          });
+        }
         if (url.endsWith('/cards/trading-catalogue')) {
           return jsonResponse({
             definitions: [buildCatalogueDefinition()],
@@ -279,9 +417,9 @@ describe('card trade pages', () => {
       await screen.findByRole('textbox', { name: 'Player Name' }),
       'other_player',
     );
-    await user.click(screen.getByRole('button', { name: 'Build trade' }));
+    await user.click(screen.getByRole('button', { name: 'Choose cards' }));
 
-    const collection = screen.getByRole('list', {
+    const collection = await screen.findByRole('list', {
       name: 'Card types in your collection',
     });
     expect(within(collection).getAllByRole('listitem')).toHaveLength(1);
@@ -290,7 +428,7 @@ describe('card trade pages', () => {
     });
     await user.click(add);
     await waitFor(() =>
-      expect(within(collection).getByText(/1 selected/)).toBeVisible(),
+      expect(collection.querySelector('output')).toHaveTextContent('1'),
     );
     await user.click(add);
 
@@ -300,7 +438,7 @@ describe('card trade pages', () => {
         buildUuid(21),
       ]),
     );
-    expect(within(collection).getByText(/2 selected/)).toBeVisible();
+    expect(collection.querySelector('output')).toHaveTextContent('2');
   });
 
   it('aborts an in-flight preview when the local selection changes', async () => {
@@ -311,6 +449,12 @@ describe('card trade pages', () => {
       'fetch',
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
+        if (url.includes('/trades/recipient?')) {
+          return jsonResponse({
+            playerName: 'other_player',
+            requestId: 'recipient-request',
+          });
+        }
         if (url.endsWith('/cards/trading-catalogue')) {
           return jsonResponse({
             definitions: [buildCatalogueDefinition()],
@@ -348,9 +492,9 @@ describe('card trade pages', () => {
       await screen.findByRole('textbox', { name: 'Player Name' }),
       'other_player',
     );
-    await user.click(screen.getByRole('button', { name: 'Build trade' }));
+    await user.click(screen.getByRole('button', { name: 'Choose cards' }));
     const collection = within(
-      screen.getByRole('list', {
+      await screen.findByRole('list', {
         name: 'Card types in your collection',
       }),
     );
@@ -380,37 +524,35 @@ describe('card trade pages', () => {
     );
   });
 
-  it("shows both players' retained sides before publishing a revision", async () => {
+  it('edits a saved offer in the shared builder and publishes only its own exact copies at the loaded version', async () => {
+    const revisions: unknown[] = [];
+    const previews: Record<string, unknown>[] = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/cards/trading-catalogue')) {
+        if (url.endsWith('/cards/trading-catalogue'))
           return jsonResponse({
             definitions: [buildCatalogueDefinition()],
-            requestId: 'catalogue-request',
+            requestId: 'catalogue',
           });
-        }
-        if (url.endsWith(`/trades/${tradeId}`) && init?.method === 'GET') {
-          return jsonResponse({
-            requestId: 'trade-detail-request',
-            trade: buildTrade(),
-          });
-        }
+        if (url.endsWith(`/trades/${tradeId}`) && init?.method === 'GET')
+          return jsonResponse({ trade: buildTrade(), requestId: 'detail' });
         if (url.endsWith('/trades/selection-preview')) {
-          const body = JSON.parse(String(init?.body)) as {
-            offeredOwnedCardIds: string[];
-            requestedDefinitions: {
-              cardDefinitionId: string;
-              quantity: number;
-            }[];
-          };
+          const body = JSON.parse(String(init?.body));
+          previews.push(body);
           return jsonResponse(buildPreviewResponse(body));
+        }
+        if (url.endsWith(`/trades/${tradeId}`) && init?.method === 'PUT') {
+          revisions.push(JSON.parse(String(init.body)));
+          return jsonResponse({
+            trade: buildTrade({ version: 2 }),
+            requestId: 'revised',
+          });
         }
         throw new Error(`Unexpected request: ${url}`);
       }),
     );
-
     renderRoute(
       `/collection/trades/${tradeId}/edit`,
       <Route path="/collection/trades/:tradeId/edit">
@@ -418,21 +560,125 @@ describe('card trade pages', () => {
       </Route>,
     );
     const user = userEvent.setup();
-
+    expect(
+      await screen.findByRole('heading', { name: 'Trade with other_player' }),
+    ).toBeVisible();
+    expect(screen.getByText('Editing version 1')).toBeVisible();
+    expect(
+      screen.queryByRole('list', { name: 'Trade setup progress' }),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Change player' })).toBeNull();
+    expect(previews[0]).toMatchObject({
+      expectedVersion: 1,
+      tradeId,
+      offeredOwnedCardIds: [ownedCardId],
+      requestedDefinitions: [{ cardDefinitionId: definitionId, quantity: 1 }],
+    });
+    const collection = screen.getByRole('list', {
+      name: 'Card types in your collection',
+    });
+    expect(collection.querySelector('output')).toHaveTextContent('1');
     await user.click(
-      await screen.findByRole('button', { name: 'Choose requested cards' }),
+      within(collection).getByRole('button', {
+        name: 'Offer one more Courier Ibis',
+      }),
     );
-    await user.click(screen.getByRole('button', { name: 'Review offer' }));
+    await user.click(screen.getByRole('button', { name: 'You request' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Request one more Courier Ibis' }),
+    );
+    const review = screen.getByRole('button', { name: 'Review offer' });
+    await waitFor(() => expect(review).toBeEnabled());
+    await user.click(review);
+    const dialog = screen.getByRole('dialog', { name: 'Update this offer?' });
+    expect(dialog).toHaveTextContent(
+      'Publish version 2? Both players will need to accept again',
+    );
+    expect(
+      within(dialog).getByRole('heading', { name: 'other_player gives' }),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByRole('heading', { name: 'other_player requested' }),
+    ).toBeVisible();
+    const inspect = within(dialog).getAllByRole('button', {
+      name: 'View Courier Ibis details',
+    })[0]!;
+    await user.click(inspect);
+    const cardDetails = screen.getByRole('dialog', { name: 'Courier Ibis' });
+    expect(within(cardDetails).getByText('Express Delivery')).toBeVisible();
+    await user.keyboard('{Escape}');
+    expect(dialog).toBeVisible();
+    expect(inspect).toHaveFocus();
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Keep reviewing' }),
+    );
+    expect(review).toHaveFocus();
+    expect(revisions).toHaveLength(0);
+    await user.click(review);
+    await user.click(
+      within(
+        screen.getByRole('dialog', { name: 'Update this offer?' }),
+      ).getByRole('button', { name: 'Publish new version' }),
+    );
+    await waitFor(() => expect(revisions).toHaveLength(1));
+    expect(revisions[0]).toEqual({
+      expectedVersion: 1,
+      offeredOwnedCardIds: [buildUuid(20), buildUuid(21)],
+      requestedDefinitions: [{ cardDefinitionId: definitionId, quantity: 2 }],
+      submissionId: expect.any(String),
+    });
+  });
 
+  it('keeps an edited draft and the return path when its loaded version becomes stale', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/cards/trading-catalogue'))
+          return jsonResponse({
+            definitions: [buildCatalogueDefinition()],
+            requestId: 'catalogue',
+          });
+        if (url.endsWith('/trades/selection-preview'))
+          return jsonResponse(
+            buildPreviewResponse(JSON.parse(String(init?.body))),
+          );
+        if (init?.method === 'PUT')
+          return jsonResponse(
+            { code: 'TRADE_VERSION_STALE', requestId: 'stale-revision' },
+            409,
+          );
+        return jsonResponse({ trade: buildTrade(), requestId: 'detail' });
+      }),
+    );
+    renderRoute(
+      `/collection/trades/${tradeId}/edit`,
+      <Route path="/collection/trades/:tradeId/edit">
+        <TradeEditorPage apiBaseUrl={apiBaseUrl} />
+      </Route>,
+    );
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole('button', { name: 'Review offer' }),
+    );
+    await user.click(
+      within(
+        screen.getByRole('dialog', { name: 'Update this offer?' }),
+      ).getByRole('button', { name: 'Publish new version' }),
+    );
     expect(
-      screen.getByRole('heading', { name: 'other_player gives' }),
+      await screen.findByRole('heading', { name: 'The offer changed' }),
     ).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Back to offer' })).toHaveAttribute(
+      'href',
+      `/collection/trades/${tradeId}`,
+    );
     expect(
-      screen.getByRole('heading', { name: 'other_player requested' }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole('button', { name: 'Review version change' }),
-    ).toBeEnabled();
+      screen
+        .getByRole('list', { name: 'Card types in your collection' })
+        .querySelector('output'),
+    ).toHaveTextContent('1');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('reloads a stale offer and keeps the conflict warning visible', async () => {
@@ -493,6 +739,7 @@ describe('card trade pages', () => {
           return jsonResponse({
             requestId: 'completed-detail-request',
             trade: buildTrade({
+              imbalanceWarningRequired: true,
               settlement: { completedAt: '2026-09-26T10:00:00.000Z' },
               status: 'completed',
               terminalAt: '2026-09-26T10:00:00.000Z',
@@ -515,8 +762,9 @@ describe('card trade pages', () => {
     );
 
     expect(
-      await screen.findByText('Your authoritative collection is up to date.'),
+      await screen.findByText('Your collection is up to date.'),
     ).toBeVisible();
+    expect(screen.queryByText('Warning reviewed.')).not.toBeInTheDocument();
     expect(
       fetchMock.mock.calls.filter(([input]) =>
         String(input).endsWith('/cards/collection'),

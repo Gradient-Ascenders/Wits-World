@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+} from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, ArrowsMerge, LockKey, Stack } from '@phosphor-icons/react';
-import { motion, useReducedMotion } from 'motion/react';
+import { ArrowRight, LockKey, Stack } from '@phosphor-icons/react';
+import { useReducedMotion } from 'motion/react';
 
 import {
   CardApiError,
@@ -9,11 +16,15 @@ import {
   previewCardEvolution,
   type CardEvolutionPreview,
   type CardEvolutionResult,
+  type CardPresentation,
   type OwnedCard,
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
+import { useAccessibilityPreferences } from '../../accessibility/preferences';
 import { LoadingState } from '../LoadingState';
 import { CardArtwork, CollectibleCard } from './CollectibleCard';
+import { CardPresentationDialog } from './CardPresentationDialog';
+import { useCardTilt } from './useCardTilt';
 import { StateIcon, StatusMessage } from '../StatusMessage';
 
 type PreviewState =
@@ -121,9 +132,9 @@ export function CardEvolutionFlow({
   }, [loadPreview]);
 
   useEffect(() => {
-    onBusyChange(isSubmitting);
+    onBusyChange(isSubmitting || stage === 'confirm');
     return () => onBusyChange(false);
-  }, [isSubmitting, onBusyChange]);
+  }, [isSubmitting, onBusyChange, stage]);
 
   useEffect(() => {
     if (stage === 'confirm') confirmationHeading.current?.focus();
@@ -190,31 +201,49 @@ export function CardEvolutionFlow({
         aria-labelledby="evolution-result-title"
         className="evolution-result"
       >
-        <p className="eyebrow">Your evolved card</p>
+        <EvolutionParticles />
         <h2 id="evolution-result-title" ref={resultHeading} tabIndex={-1}>
           Evolution complete
         </h2>
-        <p>
-          {result.consumedOwnedCardIds.length} × {card.name} consumed. 1 ×{' '}
-          {result.newCard.name} created.
-        </p>
-        <EvolutionReveal source={initialPreview.source} result={result} />
-        <p>
+        <EvolutionReveal
+          key={result.evolutionId}
+          source={initialPreview.source}
+          result={result}
+        />
+        <p className="evolution-result__quantity">
           {
             collectionCards.filter(
               (copy) =>
                 copy.cardDefinitionId === result.newCard.cardDefinitionId,
             ).length
           }{' '}
-          × {result.newCard.name} now in your collection
+          <span className="sr-only">{result.newCard.name} copies </span>
+          in collection
         </p>
-        <StatusMessage tone={refreshFailed ? 'error' : 'success'}>
+        <div className="evolution-result__receipt">
+          <dl aria-label="Evolution exchange">
+            <div>
+              <dt>Used</dt>
+              <dd>
+                {result.consumedOwnedCardIds.length} × {card.name}
+              </dd>
+            </div>
+            <div>
+              <dt>Created</dt>
+              <dd>1 × {result.newCard.name}</dd>
+            </div>
+          </dl>
+          <ArrowRight size={20} aria-hidden="true" />
+        </div>
+        <StatusMessage
+          tone={isRefreshing ? 'info' : refreshFailed ? 'error' : 'success'}
+        >
           <p>
             {isRefreshing
-              ? 'Evolution complete. Refreshing your collection…'
+              ? 'Updating collection…'
               : refreshFailed
-                ? 'Evolution is complete, but your collection could not be refreshed. Your confirmed result is shown above.'
-                : 'Your collection is up to date.'}
+                ? 'Card evolved. Could not refresh your collection. Try again.'
+                : 'Collection updated'}
           </p>
           {refreshFailed ? (
             <button
@@ -240,6 +269,14 @@ export function CardEvolutionFlow({
     );
   }
 
+  function cancelConfirmation() {
+    if (submissionLocked.current) return;
+    setMutationError(null);
+    setStage('details');
+    window.requestAnimationFrame(() => reviewButton.current?.focus());
+  }
+
+  let confirmation: ReactElement | null = null;
   if (stage === 'confirm' && previewState.status === 'ready') {
     const { preview } = previewState;
     const remainingCopies = preview.ownedCopyCount - preview.copiesRequired;
@@ -247,132 +284,82 @@ export function CardEvolutionFlow({
       ? isNonRetryableEvolutionError(mutationError)
       : false;
 
-    return (
-      <section
-        aria-busy={isSubmitting}
-        aria-labelledby="evolution-confirmation-title"
-        className="evolution-confirmation"
+    confirmation = (
+      <div
+        className="evolution-confirmation-backdrop"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            cancelConfirmation();
+          }
+        }}
       >
-        <p className="eyebrow">Confirm evolution</p>
-        <h2
-          id="evolution-confirmation-title"
-          ref={confirmationHeading}
-          tabIndex={-1}
+        <section
+          role="alertdialog"
+          aria-modal="true"
+          aria-describedby="evolution-confirmation-description"
+          aria-busy={isSubmitting}
+          aria-labelledby="evolution-confirmation-title"
+          className="evolution-confirmation"
         >
-          Combine {preview.copiesRequired} copies of {preview.source.name} into{' '}
-          {preview.target.name}?
-        </h2>
-        <p>
-          Exchange {preview.copiesRequired} available copies for 1 evolved card.
-          This cannot be undone.
-        </p>
+          <h2
+            id="evolution-confirmation-title"
+            ref={confirmationHeading}
+            tabIndex={-1}
+          >
+            Are you sure you want to evolve {preview.source.name}?
+          </h2>
+          <p
+            id="evolution-confirmation-description"
+            className="evolution-confirmation__summary"
+          >
+            This will use {preview.copiesRequired} copies of{' '}
+            {preview.source.name} to create 1 {preview.target.name}.
+          </p>
+          <p>
+            {remainingCopies} {preview.source.name}{' '}
+            {remainingCopies === 1 ? 'copy' : 'copies'} will remain.
+          </p>
+          <p>This cannot be undone.</p>
 
-        <div className="evolution-recipe" aria-label="Evolution recipe">
-          <div className="evolution-recipe__source">
-            <SourceCopies preview={preview} />
-            <span className="evolution-recipe__quantity">
-              ×{preview.copiesRequired}
-            </span>
-            <strong>{preview.source.name}</strong>
-            <span>Consumed</span>
-          </div>
-          <span aria-hidden="true" className="evolution-recipe__arrow">
-            <ArrowRight size={24} />
-          </span>
-          <div className="evolution-recipe__target">
-            <CollectibleCard
-              card={preview.target}
-              headingLevel={3}
-              showOwnership={false}
-              showDetails={false}
-            />
-            <span className="evolution-recipe__quantity">×1</span>
-            <strong>{preview.target.name}</strong>
-            <span>You receive</span>
-            <span>{preview.target.deckPointCost} deck points</span>
-          </div>
-        </div>
-
-        <dl className="evolution-quantity-summary">
-          <div>
-            <dt>Consumed</dt>
-            <dd>{preview.copiesRequired} available copies</dd>
-          </div>
-          <div>
-            <dt>{preview.source.name} remaining</dt>
-            <dd>
-              {remainingCopies} {remainingCopies === 1 ? 'copy' : 'copies'}
-            </dd>
-          </div>
-          {preview.deckLockedCopyCount > 0 ? (
-            <div>
-              <dt>Protected in decks</dt>
-              <dd>{preview.deckLockedCopyCount}</dd>
-            </div>
+          {mutationError ? (
+            <EvolutionError error={mutationError} noticeRef={errorNotice} />
           ) : null}
-          {preview.tradeReservedCopyCount > 0 ? (
-            <div>
-              <dt>Reserved for trade</dt>
-              <dd>{preview.tradeReservedCopyCount}</dd>
+
+          <div className="evolution-action-bar">
+            {isSubmitting ? <p role="status">Evolving your card…</p> : null}
+            <div className="evolution-confirmation__actions">
+              <button
+                className="button button--quiet"
+                disabled={isSubmitting}
+                onClick={cancelConfirmation}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="button"
+                disabled={isSubmitting || retryBlocked}
+                onClick={() => void confirmEvolution()}
+                type="button"
+              >
+                {isSubmitting ? 'Evolving…' : 'Evolve'}
+              </button>
             </div>
-          ) : null}
-        </dl>
-        <p className="evolution-lock-note">
-          <LockKey size={20} aria-hidden="true" />
-          {preview.eligibleCopyCount} available · {preview.deckLockedCopyCount}{' '}
-          in saved decks · {preview.tradeReservedCopyCount} reserved for trade.
-          Protected copies will not be consumed.
-        </p>
-
-        {mutationError ? (
-          <EvolutionError error={mutationError} noticeRef={errorNotice} />
-        ) : null}
-
-        {actionContainer
-          ? createPortal(
-              <div className="evolution-action-bar">
-                <p>
-                  Uses {preview.copiesRequired} copies · creates 1 evolved card
-                </p>
-                {isSubmitting ? (
-                  <p role="status">Waiting for your evolution to complete…</p>
-                ) : null}
-                <div className="evolution-confirmation__actions">
-                  <button
-                    className="button button--quiet"
-                    disabled={isSubmitting}
-                    onClick={() => {
-                      setMutationError(null);
-                      setStage('details');
-                      window.requestAnimationFrame(() =>
-                        reviewButton.current?.focus(),
-                      );
-                    }}
-                    type="button"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="button"
-                    disabled={isSubmitting || retryBlocked}
-                    onClick={() => void confirmEvolution()}
-                    type="button"
-                  >
-                    {isSubmitting ? 'Evolving…' : 'Evolve card'}
-                  </button>
-                </div>
-              </div>,
-              actionContainer,
-            )
-          : null}
-      </section>
+          </div>
+        </section>
+      </div>
     );
   }
 
   return (
     <>
-      <div className="evolution-preview">
-        <p className="eyebrow">Three copies. One new form.</p>
+      <div
+        className="evolution-preview"
+        inert={stage === 'confirm'}
+        aria-hidden={stage === 'confirm' ? true : undefined}
+      >
         {previewState.status === 'loading' ? (
           <LoadingState label="Checking evolution availability…" />
         ) : previewState.status === 'error' ? (
@@ -391,32 +378,14 @@ export function CardEvolutionFlow({
           </StatusMessage>
         ) : previewState.status === 'ready' ? (
           <>
-            <div className="evolution-preview__composition">
-              <div className="evolution-preview__sources">
-                <SourceCopies preview={previewState.preview} />
-                <h2>{previewState.preview.source.name}</h2>
-                <p>
-                  {previewState.preview.copiesRequired} eligible copies will be
-                  consumed
-                </p>
-              </div>
-              <ArrowRight
-                className="evolution-preview__arrow"
-                size={28}
-                aria-hidden="true"
-              />
-              <div className="evolution-preview__target">
-                <p className="eyebrow">Evolved result</p>
-                <CollectibleCard
-                  card={previewState.preview.target}
-                  showOwnership={false}
-                  showDetails={false}
-                  headingLevel={3}
-                />
-              </div>
-            </div>
+            <h2 className="evolution-title">
+              Evolve {previewState.preview.source.name}
+            </h2>
+            <EvolutionComposition preview={previewState.preview} />
             <EvolutionAvailability
-              mutationError={mutationError}
+              confirming={stage === 'confirm'}
+              actionContainer={actionContainer}
+              mutationError={stage === 'confirm' ? null : mutationError}
               noticeRef={errorNotice}
               onReview={() => {
                 setMutationError(null);
@@ -447,7 +416,83 @@ export function CardEvolutionFlow({
           </StatusMessage>
         ) : null}
       </div>
+      {confirmation}
     </>
+  );
+}
+
+function EvolutionComposition({ preview }: { preview: CardEvolutionPreview }) {
+  return (
+    <div
+      className="evolution-preview__composition"
+      aria-label="Evolution preview"
+    >
+      <div className="evolution-preview__target">
+        <CollectibleCard
+          card={preview.target}
+          artwork={<EvolutionCardInspection card={preview.target} />}
+          showStats={false}
+          showOwnership={false}
+          showDetails={false}
+          headingLevel={3}
+        />
+      </div>
+      <EvolutionConvergence />
+      <div className="evolution-preview__sources">
+        <SourceCopies preview={preview} />
+        <h3>{preview.source.name}</h3>
+      </div>
+    </div>
+  );
+}
+
+function EvolutionCardInspection({ card }: { card: CardPresentation }) {
+  const tilt = useCardTilt<HTMLButtonElement>();
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  function inspect() {
+    tilt.ref.current?.focus();
+    setDetailsOpen(true);
+  }
+
+  return (
+    <>
+      <div className="collectible-card__art-perspective">
+        <button
+          {...tilt}
+          aria-label={`View ${card.name} details`}
+          aria-haspopup="dialog"
+          className="collectible-card__tilting-art evolution-card-inspection__button"
+          onClick={inspect}
+          type="button"
+        >
+          <CardArtwork card={card} showRarity />
+        </button>
+      </div>
+      {detailsOpen ? (
+        <CardPresentationDialog
+          card={card}
+          onClose={() => setDetailsOpen(false)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function EvolutionConvergence() {
+  return (
+    <div className="evolution-convergence" aria-hidden="true">
+      <svg viewBox="0 0 256 128" preserveAspectRatio="none" fill="none">
+        <path
+          d="M32 124C32 78 128 80 128 4M128 124V4M224 124C224 78 128 80 128 4"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <span className="evolution-convergence__head" />
+      <span className="evolution-convergence__endpoint evolution-convergence__endpoint--left" />
+      <span className="evolution-convergence__endpoint evolution-convergence__endpoint--centre" />
+      <span className="evolution-convergence__endpoint evolution-convergence__endpoint--right" />
+    </div>
   );
 }
 
@@ -474,6 +519,90 @@ function SourceCopies({ preview }: { preview: CardEvolutionPreview }) {
   );
 }
 
+function EvolutionParticles() {
+  const particleLayer = useRef<HTMLDivElement | null>(null);
+  const [paused, setPaused] = useState(() => document.hidden);
+
+  useEffect(() => {
+    let visible = true;
+    const updatePlayback = () => setPaused(document.hidden || !visible);
+    const observer =
+      typeof IntersectionObserver === 'undefined'
+        ? null
+        : new IntersectionObserver(([entry]) => {
+            if (!entry) return;
+            visible = entry.isIntersecting;
+            updatePlayback();
+          });
+    if (particleLayer.current) observer?.observe(particleLayer.current);
+    document.addEventListener('visibilitychange', updatePlayback);
+    return () => {
+      observer?.disconnect();
+      document.removeEventListener('visibilitychange', updatePlayback);
+    };
+  }, []);
+
+  return (
+    <div
+      className="evolution-particles"
+      aria-hidden="true"
+      data-paused={paused}
+      ref={particleLayer}
+    >
+      {[
+        [7, 18],
+        [16, 42],
+        [9, 76],
+        [23, 89],
+        [33, 23],
+        [43, 66],
+        [54, 12],
+        [63, 38],
+        [76, 19],
+        [89, 32],
+        [95, 61],
+        [82, 77],
+        [72, 92],
+        [58, 83],
+        [37, 94],
+        [3, 53],
+        [26, 57],
+        [69, 63],
+        [86, 9],
+        [93, 94],
+        [12, 28],
+        [5, 91],
+        [20, 64],
+        [29, 8],
+        [47, 37],
+        [60, 97],
+        [73, 47],
+        [85, 54],
+        [97, 22],
+        [90, 85],
+        [15, 97],
+        [80, 99],
+      ].map(([x, y], index) => (
+        <span
+          className="evolution-particles__mote"
+          key={index}
+          style={
+            {
+              left: `${x}%`,
+              top: `${y}%`,
+              '--particle-size': `${2.5 + (index % 5) * 0.75}px`,
+              '--particle-drift': `${index % 2 ? -1.75 : 1.75}rem`,
+              '--particle-duration': `${8 + (index % 6) * 1.3}s`,
+              '--particle-delay': `${-index * 2.3}s`,
+              '--particle-opacity': 0.55 + (index % 3) * 0.2,
+            } as CSSProperties
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
 function EvolutionReveal({
   source,
   result,
@@ -481,73 +610,133 @@ function EvolutionReveal({
   source: CardEvolutionPreview['source'];
   result: CardEvolutionResult;
 }) {
-  const reducedMotion = useReducedMotion();
+  const systemReducedMotion = useReducedMotion();
+  const { motion: motionPreference } = useAccessibilityPreferences();
+  const reducedMotion =
+    motionPreference === 'reduce' ||
+    (motionPreference === 'system' && Boolean(systemReducedMotion));
+  const [celebrating, setCelebrating] = useState(
+    () => !reducedMotion && document.visibilityState !== 'hidden',
+  );
+  const finishReveal = useCallback(() => setCelebrating(false), []);
+
+  useEffect(() => {
+    // A preference change or hidden tab settles this reveal permanently.
+    if (reducedMotion) finishReveal();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') finishReveal();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () =>
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [finishReveal, reducedMotion]);
+
   return (
     <div
       className="evolution-reveal"
       data-testid="evolution-reveal"
       data-reduced-motion={Boolean(reducedMotion)}
+      data-celebrating={celebrating && !reducedMotion}
+      onFocusCapture={finishReveal}
+      onPointerDownCapture={finishReveal}
+      onAnimationEnd={(event) => {
+        if (event.animationName === 'evolution-emerge') finishReveal();
+      }}
     >
-      {!reducedMotion ? (
-        <div className="evolution-reveal__merge" aria-hidden="true">
-          {result.consumedOwnedCardIds.map((id, index) => (
-            <motion.div
-              key={id}
-              className="evolution-reveal__source"
-              initial={{
-                x: (index - 1) * 76,
-                rotate: (index - 1) * 9,
-                opacity: 1,
-              }}
-              animate={{
-                x: [(index - 1) * 76, (index - 1) * 76, 0, 0],
-                rotate: [(index - 1) * 9, 0, 0, 0],
-                scale: [1, 1, 0.8, 0.65],
-                opacity: [1, 1, 1, 0],
-              }}
-              transition={{
-                duration: 0.85,
-                times: [0, 0.2, 0.75, 1],
-                ease: 'easeInOut',
-              }}
-            >
-              <CardArtwork card={source} nameplate={<span>{index + 1}</span>} />
-            </motion.div>
-          ))}
-          <motion.div
-            className="evolution-reveal__light"
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: [0, 0.45, 0], scale: [0.5, 1.1, 1.25] }}
-            transition={{ duration: 0.8, delay: 0.35 }}
-          />
-        </div>
-      ) : null}
-      <motion.div
-        className="evolution-reveal__card"
-        initial={
-          reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.88, y: 16 }
-        }
-        animate={
-          reducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }
-        }
-        transition={{
-          duration: reducedMotion ? 0.18 : 0.65,
-          delay: reducedMotion ? 0 : 0.8,
-          ease: 'easeOut',
-        }}
-      >
+      <div className="evolution-reveal__card">
         <CollectibleCard
           card={result.newCard}
+          artwork={
+            <div className="evolution-reveal__art">
+              <div className="evolution-reveal__stage" aria-hidden="true">
+                <span className="evolution-reveal__halo" />
+                {celebrating && !reducedMotion ? (
+                  <>
+                    <svg
+                      className="evolution-reveal__traces"
+                      viewBox="0 0 256 320"
+                      preserveAspectRatio="none"
+                      fill="none"
+                    >
+                      {[48, 128, 208].map((x) => (
+                        <path
+                          key={x}
+                          d={`M${x} 272C${x} 200 128 220 128 128`}
+                          pathLength="1"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      ))}
+                    </svg>
+                    {result.consumedOwnedCardIds.map((id, index, ids) => {
+                      const offset = index - (ids.length - 1) / 2;
+                      return (
+                        <div
+                          key={id}
+                          className="evolution-reveal__source"
+                          style={
+                            {
+                              '--source-x': `${offset * 85}%`,
+                              '--source-gather-x': `${offset * 68}%`,
+                              '--source-rotation': `${offset * 10}deg`,
+                            } as CSSProperties
+                          }
+                        >
+                          <CardArtwork
+                            card={source}
+                            nameplate={<span>{index + 1}</span>}
+                          />
+                        </div>
+                      );
+                    })}
+                    <span className="evolution-reveal__spark" />
+                    <span className="evolution-reveal__ring" />
+                    {[
+                      [-3, 18, -1, -1],
+                      [103, 30, 1, -1],
+                      [-6, 67, -1, 1],
+                      [106, 78, 1, 1],
+                      [25, 0, -0.5, -1],
+                      [78, 103, 0.5, 1],
+                    ].map(([x, y, dx, dy], index) => (
+                      <svg
+                        key={index}
+                        className="evolution-reveal__glint"
+                        viewBox="0 0 20 20"
+                        style={
+                          {
+                            left: `${x}%`,
+                            top: `${y}%`,
+                            '--glint-x': `${dx}rem`,
+                            '--glint-y': `${dy}rem`,
+                            '--glint-delay': `${2.3 + index * 0.035}s`,
+                          } as CSSProperties
+                        }
+                      >
+                        <path d="M10 0 12.5 7.5 20 10 12.5 12.5 10 20 7.5 12.5 0 10 7.5 7.5Z" />
+                      </svg>
+                    ))}
+                  </>
+                ) : null}
+              </div>
+              <EvolutionCardInspection card={result.newCard} />
+              {celebrating && !reducedMotion ? (
+                <span className="evolution-reveal__sheen" aria-hidden="true" />
+              ) : null}
+            </div>
+          }
           headingLevel={3}
+          showStats={false}
           showOwnership={false}
           showDetails={false}
         />
-      </motion.div>
+      </div>
     </div>
   );
 }
 
 function EvolutionAvailability({
+  actionContainer,
+  confirming,
   mutationError,
   noticeRef,
   onReview,
@@ -555,6 +744,8 @@ function EvolutionAvailability({
   preview,
   reviewButton,
 }: {
+  actionContainer: HTMLDivElement | null;
+  confirming: boolean;
   mutationError: CardApiError | null;
   noticeRef: React.RefObject<HTMLDivElement | null>;
   onReview: () => void;
@@ -567,54 +758,20 @@ function EvolutionAvailability({
       aria-labelledby="evolution-availability-title"
       className="evolution-availability"
     >
-      <div className="evolution-availability__heading">
-        <div>
-          <p className="eyebrow">Copy availability</p>
-          <h3 id="evolution-availability-title">
-            Evolve into {preview.target.name}
-          </h3>
-        </div>
-        <span className="evolution-availability__rarity">
-          {titleCase(preview.target.rarity)}
-        </span>
-      </div>
-
-      <dl className="evolution-quantity-summary">
-        <div>
-          <dt>
-            <Stack size={16} aria-hidden="true" /> Owned
-          </dt>
-          <dd>{preview.ownedCopyCount}</dd>
-        </div>
-        <div>
-          <dt>Available</dt>
-          <dd>{preview.eligibleCopyCount}</dd>
-        </div>
-        <div>
-          <dt>
-            <LockKey size={16} aria-hidden="true" /> In decks
-          </dt>
-          <dd>{preview.deckLockedCopyCount}</dd>
-        </div>
-        {preview.tradeReservedCopyCount > 0 ? (
-          <div>
-            <dt>Reserved for trade</dt>
-            <dd>{preview.tradeReservedCopyCount}</dd>
-          </div>
-        ) : null}
-      </dl>
+      <h3 id="evolution-availability-title" className="sr-only">
+        Copy availability
+      </h3>
 
       {preview.deckLockedCopyCount > 0 ? (
         <p className="evolution-lock-note">
           <LockKey size={20} aria-hidden="true" />
-          Copies in saved decks are protected. Remove them from every saved deck
-          to make them available.
+          Deck copies stay protected. Remove them from all saved decks to use
+          them.
         </p>
       ) : null}
       {preview.tradeReservedCopyCount > 0 ? (
         <p className="evolution-lock-note">
-          Copies reserved by active trade offers cannot be evolved. End the
-          offer to make them available.
+          Trade copies stay reserved. End the offer to use them.
         </p>
       ) : null}
 
@@ -631,19 +788,74 @@ function EvolutionAvailability({
         </>
       ) : null}
 
-      <p className="evolution-availability__guidance">
-        {evolutionAvailabilityMessage(preview)}
-      </p>
-      <button
-        className="button"
-        disabled={!preview.canEvolve}
-        onClick={onReview}
-        ref={reviewButton}
-        type="button"
-      >
-        <ArrowsMerge size={20} aria-hidden="true" />
-        Review evolution
-      </button>
+      {actionContainer
+        ? createPortal(
+            <div
+              className="evolution-action-bar"
+              inert={confirming}
+              aria-hidden={confirming ? true : undefined}
+            >
+              {preview.ownedCopyCount !== preview.eligibleCopyCount ||
+              !preview.canEvolve ? (
+                <dl className="evolution-quantity-summary">
+                  <div>
+                    <dt>
+                      <Stack size={16} aria-hidden="true" /> Owned
+                    </dt>
+                    <dd>{preview.ownedCopyCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Available</dt>
+                    <dd>{preview.eligibleCopyCount}</dd>
+                  </div>
+                  {preview.deckLockedCopyCount > 0 ? (
+                    <div>
+                      <dt>
+                        <LockKey size={16} aria-hidden="true" /> In decks
+                      </dt>
+                      <dd>{preview.deckLockedCopyCount}</dd>
+                    </div>
+                  ) : null}
+                  {preview.tradeReservedCopyCount > 0 ? (
+                    <div>
+                      <dt>Reserved for trade</dt>
+                      <dd>{preview.tradeReservedCopyCount}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              ) : null}
+              <p className="evolution-availability__guidance">
+                {preview.canEvolve
+                  ? `Uses ${preview.copiesRequired} copies · ${preview.ownedCopyCount - preview.copiesRequired} remain`
+                  : evolutionAvailabilityMessage(preview)}
+              </p>
+              <button
+                className="button"
+                disabled={!preview.canEvolve}
+                onClick={onReview}
+                ref={reviewButton}
+                type="button"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="M4 21v-4c0-4 8-4 8-9M12 21V3M20 21v-4c0-4-8-4-8-9M8 7l4-4 4 4" />
+                </svg>
+                Evolve
+              </button>
+            </div>,
+            actionContainer,
+          )
+        : null}
     </section>
   );
 }
@@ -681,15 +893,17 @@ function EvolutionError({
 
 function evolutionAvailabilityMessage(preview: CardEvolutionPreview) {
   if (preview.canEvolve) {
-    return `Use ${preview.copiesRequired} available copies to evolve. ${preview.ownedCopyCount - preview.copiesRequired} ${preview.source.name} ${preview.ownedCopyCount - preview.copiesRequired === 1 ? 'copy stays' : 'copies stay'} in your collection.`;
+    const remaining = preview.ownedCopyCount - preview.copiesRequired;
+    return `${remaining} ${preview.source.name} ${remaining === 1 ? 'copy will' : 'copies will'} remain.`;
   }
-  if (preview.unavailableReason === 'saved_deck_lock') {
-    return `${preview.copiesRequired} available copies are required. You need ${preview.copiesRequired - preview.eligibleCopyCount} more available ${preview.copiesRequired - preview.eligibleCopyCount === 1 ? 'copy' : 'copies'}. Remove ${preview.deckLockedCopyCount === 1 ? 'the locked copy' : 'locked copies'} from saved decks first.`;
+  const needed = preview.copiesRequired - preview.eligibleCopyCount;
+  if (
+    preview.unavailableReason === 'saved_deck_lock' ||
+    preview.unavailableReason === 'trade_reservation'
+  ) {
+    return `You need ${needed} more available ${needed === 1 ? 'copy' : 'copies'}.`;
   }
-  if (preview.unavailableReason === 'trade_reservation') {
-    return `${preview.copiesRequired} available copies are required. You need ${preview.copiesRequired - preview.eligibleCopyCount} more available ${preview.copiesRequired - preview.eligibleCopyCount === 1 ? 'copy' : 'copies'}. End the active trade offer before evolving reserved copies.`;
-  }
-  return `${preview.copiesRequired} available copies are required. You currently have ${preview.eligibleCopyCount}. Collect ${preview.copiesRequired - preview.eligibleCopyCount} more to evolve.`;
+  return `Collect ${needed} more to evolve.`;
 }
 
 function evolutionErrorMessage(error: CardApiError) {
@@ -734,8 +948,4 @@ function toCardApiError(error: unknown) {
   return error instanceof CardApiError
     ? error
     : new CardApiError('unavailable');
-}
-
-function titleCase(value: string) {
-  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }

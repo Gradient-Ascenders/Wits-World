@@ -4,6 +4,7 @@ import {
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -14,6 +15,10 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CardArtwork } from '../src/components/cards/CollectibleCard';
+import {
+  resetAccessibilityPreferences,
+  updateAccessibilityPreferences,
+} from '../src/accessibility/preferences';
 import CollectionPage from '../src/pages/CollectionPage';
 import {
   buildCard,
@@ -26,6 +31,8 @@ import {
 const apiBaseUrl = 'https://api.example.test/api/v1';
 
 afterEach(() => {
+  resetAccessibilityPreferences();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.history.replaceState({}, '', '/');
 });
@@ -174,6 +181,143 @@ function duplicateCards(count: number) {
 }
 
 describe('card collection page', () => {
+  it('defaults to ready evolutions and combines name search, rarity, and pagination without refetching', async () => {
+    const user = userEvent.setup();
+    const groups = Array.from({ length: 10 }, (_, index) =>
+      Array.from({ length: 3 }, (_, copy) =>
+        buildCard(2000 + index, {
+          name: `Guardian ${String(index + 1).padStart(2, '0')}`,
+          rarity: index % 2 === 0 ? 'common' : 'rare',
+          ownedCardId: buildUuid(2500 + index * 3 + copy),
+        }),
+      ),
+    );
+    const terminal = buildCard(2100, {
+      name: 'Final Guardian',
+      acquisitionKind: 'evolution',
+      rarity: 'legendary',
+    });
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/cards/collection'))
+        return collectionResponse([...groups.flat(), terminal]);
+      const index = groups.findIndex((group) =>
+        url.includes(group[0]!.cardDefinitionId),
+      );
+      if (index === 9) return new Response(null, { status: 503 });
+      if (index < 0)
+        return jsonResponse({ code: 'EVOLUTION_NOT_AVAILABLE' }, 404);
+      const preview = evolutionPreview(groups[index]!, index === 8 ? 2 : 3);
+      return jsonResponse({
+        ...preview,
+        target: {
+          ...preview.target,
+          name: `Ascended ${String(index + 1).padStart(2, '0')}`,
+        },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderCollection();
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
+    expect(await screen.findByText('1–6 of 8 cards')).toBeVisible();
+    expect(screen.getByRole('combobox', { name: 'Availability' })).toHaveValue(
+      'ready',
+    );
+    const list = screen.getByRole('list', { name: 'Evolution candidates' });
+    expect(list.children).toHaveLength(6);
+    expect(
+      within(list).queryByText('Copies locked in decks'),
+    ).not.toBeInTheDocument();
+    expect(
+      within(list).queryByText('Availability unknown'),
+    ).not.toBeInTheDocument();
+    expect(
+      within(list).queryByText('No evolution available'),
+    ).not.toBeInTheDocument();
+    const pages = screen.getByRole('navigation', { name: 'Evolution pages' });
+    await user.click(within(pages).getByRole('button', { name: 'Next page' }));
+    expect(screen.getByText('7–8 of 8 cards')).toHaveFocus();
+    expect(list.children).toHaveLength(2);
+    expect(
+      within(pages).getByRole('button', { name: 'Next page' }),
+    ).toBeDisabled();
+    const inspect = within(list).getByRole('button', {
+      name: 'View Guardian 07 details',
+    });
+    await user.click(inspect);
+    await user.keyboard('{Escape}');
+    expect(inspect).toHaveFocus();
+    const requestsBeforeSearch = fetchMock.mock.calls.length;
+    const search = screen.getByRole('searchbox', { name: 'Search evolutions' });
+    await user.type(search, '  ASCENDED 02  ');
+    expect(screen.getByText('1–1 of 1 cards')).toBeVisible();
+    expect(
+      within(list).getByRole('button', {
+        name: 'Preview Guardian 02 evolution',
+      }),
+    ).toBeVisible();
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Rarity' }),
+      'rare',
+    );
+    expect(list.children).toHaveLength(1);
+    await user.clear(search);
+    await user.type(search, 'Guardian 03');
+    expect(
+      screen.getByRole('heading', { name: 'No matching cards' }),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(search).toHaveFocus();
+    expect(screen.getByText('1–6 of 11 cards')).toBeVisible();
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Availability' }),
+      'not-ready',
+    );
+    expect(within(list).getByText('Copies locked in decks')).toBeVisible();
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Availability' }),
+      'unavailable',
+    );
+    expect(within(list).getByText('No evolution available')).toBeVisible();
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Availability' }),
+      'failed',
+    );
+    expect(within(list).getByText('Availability unknown')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Retry availability' }),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(requestsBeforeSearch);
+  });
+
+  it('offers all cards when none are ready and retains protected-copy guidance', async () => {
+    const user = userEvent.setup();
+    const cards = duplicateCards(4);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(collectionResponse(cards))
+        .mockResolvedValueOnce(jsonResponse(evolutionPreview(cards, 2))),
+    );
+    renderCollection();
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
+    expect(
+      await screen.findByRole('heading', { name: 'No cards ready to evolve' }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Preview Quillip evolution' }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show all cards' }));
+    expect(screen.getByRole('combobox', { name: 'Availability' })).toHaveValue(
+      'all',
+    );
+    expect(screen.getByText('Copies locked in decks')).toBeVisible();
+    expect(screen.getByText('2 used in a deck')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Preview Quillip evolution' }),
+    ).toBeVisible();
+  });
+
   it('loads and renders the server-provided starter comparison without redundant empty messaging', async () => {
     const user = userEvent.setup();
     let resolveOptions!: (response: Response) => void;
@@ -219,11 +363,13 @@ describe('card collection page', () => {
     expect(
       screen.queryByRole('radio', { name: /Mystic/i }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/Spirit, Mystic, and other cards/i)).toBeVisible();
+    expect(
+      screen.getByText(/Earn Spirit, Mystic, and other cards/i),
+    ).toBeVisible();
 
     const sparkOption = sparkChoice.closest('article');
     expect(sparkOption).not.toBeNull();
-    await user.click(within(sparkOption!).getByText('View exact package'));
+    await user.click(within(sparkOption!).getByText('View cards'));
     expect(within(sparkOption!).getByText('spark Creature 1')).toBeVisible();
     const moveList = within(sparkOption!).getByRole('list', {
       name: 'spark Creature 1 moves',
@@ -275,7 +421,7 @@ describe('card collection page', () => {
       expect.objectContaining({ body: JSON.stringify({ affinity: 'grit' }) }),
     );
     expect(
-      screen.getByText('5 cards recorded · 3 Creatures · 2 Power cards'),
+      screen.getByText('5 cards · 3 Creatures · 2 Power cards'),
     ).toBeVisible();
   });
 
@@ -329,7 +475,7 @@ describe('card collection page', () => {
       }),
     ).toBeVisible();
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Cards you own' }),
+      screen.getByRole('heading', { level: 1, name: 'Your cards' }),
     ).toBeVisible();
     expect(
       screen.getByRole('heading', {
@@ -490,6 +636,10 @@ describe('card collection page', () => {
     });
     expect(within(trigger).getByText('×4')).toBeVisible();
     await user.click(screen.getByRole('link', { name: 'Evolutions' }));
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: 'Availability' }),
+      'all',
+    );
     const detailsTrigger = await screen.findByRole('button', {
       name: 'View Quillip details',
     });
@@ -508,9 +658,9 @@ describe('card collection page', () => {
     );
 
     const availability = await screen.findByRole('heading', {
-      name: 'Evolve into Quillume',
+      name: 'Copy availability',
     });
-    const section = availability.closest('section');
+    const section = availability.closest<HTMLElement>('[role="dialog"]');
     expect(section).not.toBeNull();
     expect(within(section!).getByText('Owned')).toBeVisible();
     expect(
@@ -520,12 +670,13 @@ describe('card collection page', () => {
     expect(
       within(section!).getByText('In decks').parentElement,
     ).toHaveTextContent('2');
-    expect(section).toHaveTextContent('You need 1 more available copy');
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('You need 1 more available copy');
     expect(
-      within(section!).getByRole('button', { name: 'Review evolution' }),
+      within(dialog).getByRole('button', { name: 'Evolve' }),
     ).toBeDisabled();
     expect(section).toHaveTextContent(
-      'Remove locked copies from saved decks first',
+      'Remove them from all saved decks to use them',
     );
   });
 
@@ -553,17 +704,17 @@ describe('card collection page', () => {
 
     renderCollection();
     await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: 'Availability' }),
+      'all',
+    );
     expect(await screen.findByText('Copies reserved for trade')).toBeVisible();
     expect(screen.queryByText('Availability unknown')).not.toBeInTheDocument();
     await user.click(
       screen.getByRole('button', { name: 'Preview Quillip evolution' }),
     );
     expect(screen.getByText('Reserved for trade')).toBeVisible();
-    expect(
-      screen.getByText(
-        /End the active trade offer before evolving reserved copies/,
-      ),
-    ).toBeVisible();
+    expect(screen.getByText(/End the offer to use them/)).toBeVisible();
   });
 
   it('previews the fixed result before confirmation and supports cancellation', async () => {
@@ -582,29 +733,33 @@ describe('card collection page', () => {
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
     const review = await screen.findByRole('button', {
-      name: 'Review evolution',
+      name: 'Evolve',
     });
     await user.click(review);
 
     const heading = screen.getByRole('heading', {
-      name: 'Combine 3 copies of Quillip into Quillume?',
+      name: 'Are you sure you want to evolve Quillip?',
     });
     expect(heading).toHaveFocus();
-    expect(screen.getByText('3 available copies')).toBeVisible();
-    expect(screen.getByText('1 copy')).toBeVisible();
-    expect(screen.getByRole('article', { name: 'Quillume' })).toBeVisible();
+    expect(
+      screen.getByText(
+        'This will use 3 copies of Quillip to create 1 Quillume.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByText('1 Quillip copy will remain.')).toBeVisible();
+    expect(
+      screen.queryByRole('article', { name: 'Quillume' }),
+    ).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(
       screen.queryByRole('heading', {
-        name: 'Combine 3 copies of Quillip into Quillume?',
+        name: 'Are you sure you want to evolve Quillip?',
       }),
     ).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Review evolution' }),
-      ).toHaveFocus(),
+      expect(screen.getByRole('button', { name: 'Evolve' })).toHaveFocus(),
     );
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -634,10 +789,19 @@ describe('card collection page', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: 'Review evolution' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    const previewDialog = screen.getByRole('dialog');
+    expect(
+      within(previewDialog).getByRole('heading', { name: 'Evolve Quillip' }),
+    ).toBeVisible();
+    expect(within(previewDialog).queryByText('Owned')).not.toBeInTheDocument();
+    expect(
+      within(previewDialog).queryByText('Available'),
+    ).not.toBeInTheDocument();
+    expect(
+      within(previewDialog).getByText('Uses 3 copies · 0 remain'),
+    ).toBeVisible();
+    await user.click(await screen.findByRole('button', { name: 'Evolve' }));
+    await user.click(screen.getByRole('button', { name: 'Evolve' }));
 
     const resultHeading = await screen.findByRole('heading', {
       name: 'Evolution complete',
@@ -645,7 +809,7 @@ describe('card collection page', () => {
     expect(resultHeading).toHaveFocus();
     expect(screen.getByTestId('evolution-reveal')).toBeInTheDocument();
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Your collection is up to date.',
+      'Collection updated',
     );
     expect(fetchMock).toHaveBeenCalledTimes(4);
 
@@ -662,6 +826,74 @@ describe('card collection page', () => {
       screen.getByRole('button', { name: 'View Quillume details' }),
     ).toBeVisible();
   });
+
+  it.each(['keyboard', 'pointer', 'reduced motion', 'hidden tab'] as const)(
+    'settles the celebration immediately for %s without replaying it',
+    async (interruption) => {
+      const user = userEvent.setup();
+      const cards = duplicateCards(3);
+      const preview = evolutionPreview(cards, 3);
+      const result = evolutionResult(preview, buildUuid(1920));
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValueOnce(collectionResponse(cards))
+          .mockResolvedValueOnce(jsonResponse(preview))
+          .mockImplementationOnce(async (_url, options: RequestInit) =>
+            jsonResponse(
+              evolutionResult(
+                preview,
+                JSON.parse(String(options.body)).submissionId,
+              ),
+              201,
+            ),
+          )
+          .mockResolvedValueOnce(collectionResponse([result.newCard])),
+      );
+
+      renderCollection();
+      await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
+      await user.click(
+        await screen.findByRole('button', {
+          name: 'Preview Quillip evolution',
+        }),
+      );
+      await user.click(screen.getByRole('button', { name: 'Evolve' }));
+      await user.click(screen.getByRole('button', { name: 'Evolve' }));
+      const reveal = await screen.findByTestId('evolution-reveal');
+      expect(reveal).toHaveAttribute('data-celebrating', 'true');
+      const inspect = screen.getByRole('button', {
+        name: 'View Quillume details',
+      });
+
+      if (interruption === 'keyboard') {
+        act(() => inspect.focus());
+      } else if (interruption === 'pointer') {
+        fireEvent.pointerDown(inspect);
+      } else if (interruption === 'reduced motion') {
+        act(() => updateAccessibilityPreferences({ motion: 'reduce' }));
+        act(() => updateAccessibilityPreferences({ motion: 'full' }));
+      } else {
+        const visibility = vi.spyOn(document, 'visibilityState', 'get');
+        visibility.mockReturnValue('hidden');
+        fireEvent(document, new Event('visibilitychange'));
+        visibility.mockReturnValue('visible');
+        fireEvent(document, new Event('visibilitychange'));
+      }
+      expect(reveal).toHaveAttribute('data-celebrating', 'false');
+      expect(reveal.querySelector('.evolution-reveal__source')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Back to evolutions' }),
+      ).toBeEnabled();
+
+      await user.click(inspect);
+      expect(screen.getByRole('dialog', { name: 'Quillume' })).toBeVisible();
+      await user.keyboard('{Escape}');
+      expect(inspect).toHaveFocus();
+      expect(reveal).toHaveAttribute('data-celebrating', 'false');
+    },
+  );
 
   it('recovers a stale-copy conflict with refreshed eligibility and collection state', async () => {
     const user = userEvent.setup();
@@ -694,18 +926,19 @@ describe('card collection page', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: 'Review evolution' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    await user.click(await screen.findByRole('button', { name: 'Evolve' }));
+    await user.click(screen.getByRole('button', { name: 'Evolve' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('collection changed before confirmation');
     expect(alert).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Evolve' })).toBeDisabled();
+    const availability = screen
+      .getByRole('heading', { name: 'Copy availability' })
+      .closest<HTMLElement>('[role="dialog"]')!;
     expect(
-      screen.getByRole('button', { name: 'Review evolution' }),
-    ).toBeDisabled();
-    expect(screen.getByText(/You currently have 2/u)).toBeVisible();
+      within(availability).getByText('Available').parentElement,
+    ).toHaveTextContent('2');
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
@@ -725,10 +958,8 @@ describe('card collection page', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: 'Review evolution' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    await user.click(await screen.findByRole('button', { name: 'Evolve' }));
+    await user.click(screen.getByRole('button', { name: 'Evolve' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('could not be completed');
@@ -736,7 +967,7 @@ describe('card collection page', () => {
     expect(
       screen.queryByRole('heading', { name: /Evolution complete/u }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Evolve card' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Evolve' })).toBeEnabled();
   });
 
   it('keeps the sheet open during submission and announces refresh only after it finishes', async () => {
@@ -771,10 +1002,8 @@ describe('card collection page', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: 'Review evolution' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    await user.click(await screen.findByRole('button', { name: 'Evolve' }));
+    await user.click(screen.getByRole('button', { name: 'Evolve' }));
     expect(
       screen.queryByRole('button', { name: 'Lower card sheet' }),
     ).not.toBeInTheDocument();
@@ -788,18 +1017,16 @@ describe('card collection page', () => {
     finishEvolution(jsonResponse(result, 201));
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Refreshing your collection',
+        'Updating collection',
       ),
     );
     expect(screen.getByTestId('evolution-reveal')).toBeInTheDocument();
-    expect(
-      screen.queryByText('Your collection is up to date.'),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText(/3 × Quillip consumed/u)).toBeVisible();
+    expect(screen.queryByText('Collection updated')).not.toBeInTheDocument();
+    expect(screen.getByText('3 × Quillip')).toBeVisible();
     finishRefresh(collectionResponse([result.newCard, anchor]));
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Your collection is up to date.',
+        'Collection updated',
       ),
     );
   });
@@ -834,18 +1061,16 @@ describe('card collection page', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: 'Review evolution' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    await user.click(await screen.findByRole('button', { name: 'Evolve' }));
+    await user.click(screen.getByRole('button', { name: 'Evolve' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Evolution is complete, but your collection could not be refreshed',
+      'Card evolved. Could not refresh your collection. Try again.',
     );
     await user.click(
       screen.getByRole('button', { name: 'Refresh collection' }),
     );
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Your collection is up to date.',
+      'Collection updated',
     );
     expect(
       fetchMock.mock.calls.filter(
@@ -867,6 +1092,10 @@ describe('card collection page', () => {
     );
     renderCollection();
     await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: 'Availability' }),
+      'all',
+    );
     expect(await screen.findByText('Availability unknown')).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Retry availability' }),
@@ -875,7 +1104,7 @@ describe('card collection page', () => {
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
     expect(
-      await screen.findByRole('button', { name: 'Review evolution' }),
+      await screen.findByRole('button', { name: 'Evolve' }),
     ).toBeDisabled();
     expect(screen.getByText(/Collect 1 more to evolve/u)).toBeVisible();
   });

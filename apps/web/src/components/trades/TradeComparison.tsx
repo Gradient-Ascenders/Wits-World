@@ -3,10 +3,12 @@ import { ArrowsDownUp, CheckCircle, Clock } from '@phosphor-icons/react';
 import type {
   TradeOfferedCopy,
   TradeRequestedDefinition,
+  TradingCatalogueCard,
 } from '../../api/trades';
-import { CardArtwork } from '../cards/CollectibleCard';
+import { TradeCardThumbnail } from './TradeCardThumbnail';
 
 interface TradeComparisonProps {
+  catalogue?: readonly TradingCatalogueCard[];
   counterpartyLabel: string;
   counterpartyOffered: readonly TradeOfferedCopy[];
   counterpartyPoints?: number;
@@ -16,6 +18,7 @@ interface TradeComparisonProps {
 }
 
 export function TradeComparison({
+  catalogue,
   counterpartyLabel,
   counterpartyOffered,
   counterpartyPoints,
@@ -26,8 +29,9 @@ export function TradeComparison({
   return (
     <div className="trade-comparison">
       <TradeSide
+        catalogue={catalogue}
         cards={selfOffered}
-        empty="No exact copies selected yet."
+        empty="No cards selected."
         label={selfLabel}
         points={selfPoints}
       />
@@ -35,8 +39,9 @@ export function TradeComparison({
         <ArrowsDownUp size={22} />
       </span>
       <TradeSide
+        catalogue={catalogue}
         cards={counterpartyOffered}
-        empty="Waiting for the other player to select exact copies."
+        empty="Waiting for their cards."
         label={`${counterpartyLabel} gives`}
         points={counterpartyPoints}
       />
@@ -45,9 +50,11 @@ export function TradeComparison({
 }
 
 export function RequestedCardList({
+  catalogue,
   definitions,
   label,
 }: {
+  catalogue?: readonly TradingCatalogueCard[];
   definitions: readonly TradeRequestedDefinition[];
   label: string;
 }) {
@@ -58,7 +65,16 @@ export function RequestedCardList({
         <ul>
           {definitions.map((definition) => (
             <li key={definition.cardDefinitionId}>
-              <CardArtwork card={definition} showRarity />
+              <TradeCardThumbnail
+                card={{
+                  ...catalogue?.find(
+                    (card) =>
+                      card.cardDefinitionId === definition.cardDefinitionId,
+                  ),
+                  ...definition,
+                }}
+                fullFrame
+              />
               <div>
                 <strong>{definition.name}</strong>
                 <span>
@@ -71,7 +87,7 @@ export function RequestedCardList({
           ))}
         </ul>
       ) : (
-        <p>No card definitions requested yet.</p>
+        <p>No cards requested.</p>
       )}
     </section>
   );
@@ -91,17 +107,19 @@ export function ConsentState({
       ) : (
         <Clock aria-hidden="true" size={18} />
       )}
-      {label}: {accepted ? 'accepted this version' : 'not accepted'}
+      {label}: {accepted ? 'accepted' : 'waiting'}
     </span>
   );
 }
 
 function TradeSide({
+  catalogue,
   cards,
   empty,
   label,
   points,
 }: {
+  catalogue?: readonly TradingCatalogueCard[];
   cards: readonly TradeOfferedCopy[];
   empty: string;
   label: string;
@@ -117,7 +135,16 @@ function TradeSide({
         <ul className="trade-side__cards">
           {cards.map((card) => (
             <li key={card.ownedCardId}>
-              <CardArtwork card={card} showRarity />
+              <TradeCardThumbnail
+                card={{
+                  ...catalogue?.find(
+                    (definition) =>
+                      definition.cardDefinitionId === card.cardDefinitionId,
+                  ),
+                  ...card,
+                }}
+                fullFrame
+              />
               <div>
                 <strong>{card.name}</strong>
                 <span>
