@@ -27,6 +27,7 @@ import {
 } from '../components/author/author-mutation-coordinator';
 import { AuthorSidebar } from '../components/author/AuthorSidebar';
 import '../components/author/author.css';
+import '../components/author/author-events.css';
 
 interface AuthorConsolePageProps {
   apiBaseUrl: string;
@@ -116,12 +117,18 @@ export default function AuthorConsolePage({
 
   return (
     <section aria-labelledby="author-console-title" className="author-console">
-      <header className="author-console__header">
-        <div>
-          <p className="eyebrow">University content management</p>
-          <h1 id="author-console-title">Author console</h1>
-        </div>
-      </header>
+      {route.section === 'events' ? (
+        <h1 id="author-console-title" className="sr-only">
+          Author console
+        </h1>
+      ) : (
+        <header className="author-console__header">
+          <div>
+            <p className="eyebrow">University content management</p>
+            <h1 id="author-console-title">Author console</h1>
+          </div>
+        </header>
+      )}
 
       <AuthorSidebar pathname={pathname} route={route} />
       <div className="author-console__workspace">

@@ -11,6 +11,7 @@ export type AuthorWorkspaceRoute =
       eventId: string;
       mode: 'challenge';
       section: 'events';
+      tab?: 'details' | 'review' | 'history';
     }
   | {
       challengeId?: string;
@@ -102,6 +103,13 @@ export function parseAuthorWorkspaceRoute(
   }
 
   const eventId = segments[1];
+  if (
+    segments[2] === 'details' ||
+    segments[2] === 'review' ||
+    segments[2] === 'history'
+  ) {
+    return { eventId, mode: 'challenge', section: 'events', tab: segments[2] };
+  }
   if (segments[2] === 'edit') {
     return { eventId, mode: 'edit', section: 'events' };
   }
@@ -118,6 +126,15 @@ export function parseAuthorWorkspaceRoute(
   }
   if (segments[2] === 'challenges' && segments[3]) {
     const challengeId = segments[3];
+    if (segments[4] === 'review') {
+      return {
+        challengeId,
+        eventId,
+        mode: 'challenge',
+        section: 'events',
+        tab: 'review',
+      };
+    }
     if (segments[4] === 'questions') {
       if (segments[5] === 'new') {
         return {
@@ -170,12 +187,17 @@ export const authorPaths = {
   events: `${AUTHOR_ROOT}/events`,
   event: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}`,
+  eventDetails: (eventId: string) => `${authorPaths.event(eventId)}/details`,
+  eventReview: (eventId: string) => `${authorPaths.event(eventId)}/review`,
+  eventHistory: (eventId: string) => `${authorPaths.event(eventId)}/history`,
   editEvent: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/edit`,
   eventChallenge: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/challenge`,
   challenge: (eventId: string, challengeId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/challenges/${encodeURIComponent(challengeId)}`,
+  challengeReview: (eventId: string, challengeId: string) =>
+    `${authorPaths.challenge(eventId, challengeId)}/review`,
   eventQuestions: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/questions`,
   questions: (eventId: string, challengeId: string) =>

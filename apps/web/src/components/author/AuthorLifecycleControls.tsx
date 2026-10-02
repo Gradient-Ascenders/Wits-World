@@ -76,7 +76,7 @@ export function AuthorLifecycleControls({
         {status === 'draft' ? editControl : null}
         {status === 'draft' ? (
           <button
-            className="button button--quiet"
+            className={reviewPackage ? 'button' : 'button button--quiet'}
             disabled={busy || submitDisabled}
             onClick={() => onAction('submit')}
             type="button"

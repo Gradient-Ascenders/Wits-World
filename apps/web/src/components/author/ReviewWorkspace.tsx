@@ -200,9 +200,10 @@ export function ReviewWorkspace({
 }
 
 function itemPath(item: AuthorReviewQueueItem) {
-  if (item.entityType === 'event') return authorPaths.event(item.entityId);
+  if (item.entityType === 'event')
+    return authorPaths.eventReview(item.entityId);
   if (item.entityType === 'challenge' && item.eventId)
-    return authorPaths.challenge(item.eventId, item.entityId);
+    return authorPaths.challengeReview(item.eventId, item.entityId);
   if (item.entityType === 'question' && item.eventId && item.challengeId)
     return authorPaths.question(item.eventId, item.challengeId, item.entityId);
   if (item.entityType === 'card') return authorPaths.card(item.entityId);

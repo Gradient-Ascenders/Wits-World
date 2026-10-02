@@ -14,6 +14,7 @@ import {
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 
 interface AuthorHistoryPanelProps {
+  defaultOpen?: boolean;
   apiBaseUrl: string;
   entityId: string;
   entityType: AuthorContentEntityType;
@@ -23,12 +24,13 @@ interface AuthorHistoryPanelProps {
 
 export function AuthorHistoryPanel({
   apiBaseUrl,
+  defaultOpen = false,
   entityId,
   entityType,
   getAccessToken,
   revision = 0,
 }: AuthorHistoryPanelProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [page, setPage] = useState(1);
   const [result, setResult] =
     useState<AuthorPage<AuthorContentHistoryItem> | null>(null);
@@ -83,6 +85,7 @@ export function AuthorHistoryPanel({
   return (
     <details
       className="author-history"
+      open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>Review history</summary>

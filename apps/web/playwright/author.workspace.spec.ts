@@ -1,3 +1,4 @@
+import { mkdir } from 'node:fs/promises';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 import type {
@@ -37,7 +38,7 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
 
   await expect(
     page.getByRole('heading', { name: 'Author console' }),
-  ).toBeVisible();
+  ).toBeAttached();
   await expect(page.getByRole('main')).toHaveCount(1);
   await expect(
     page.getByRole('complementary', { name: 'Authored events' }),
@@ -65,27 +66,18 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   await expect(page.getByRole('link', { name: 'New event' })).toHaveCount(1);
   await expect(
     page.getByRole('combobox', { name: 'Schedule', exact: true }),
-  ).toBeHidden();
-  await page.getByText('More filters', { exact: true }).click();
+  ).toBeVisible();
   await page
     .getByRole('combobox', { name: 'Schedule', exact: true })
     .selectOption('upcoming');
   await expect(
     page.getByText('No events match', { exact: true }),
   ).toBeVisible();
-  await page.getByText('More filters (active)', { exact: true }).click();
-  await expect(
-    page.getByRole('combobox', { name: 'Schedule', exact: true }),
-  ).toBeHidden();
-  await expect(
-    page.getByText('No events match', { exact: true }),
-  ).toBeVisible();
-  await page.getByText('More filters (active)', { exact: true }).click();
   await page
     .getByRole('combobox', { name: 'Schedule', exact: true })
     .selectOption('all');
-  await page.getByText('More filters', { exact: true }).click();
 
+  await eventSearch.fill('Great Hall');
   await page.getByRole('link', { name: /Great Hall Discovery/u }).click();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
   await expect(page.locator('.author-record-view')).toBeFocused();
@@ -105,7 +97,7 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   ).toBeVisible();
   await page.getByLabel('Event title').fill('Great Hall Discovery revised');
 
-  await page.getByRole('link', { name: /MSL Open Day/u }).click();
+  await page.getByRole('link', { name: 'Events', exact: true }).first().click();
   const dirtyDialog = page.getByRole('dialog', {
     name: 'Discard unsaved changes?',
   });
@@ -129,6 +121,12 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   await expect(page.getByText('Event changes saved.')).toBeFocused();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
 
+  await page.getByRole('link', { name: 'Events', exact: true }).first().click();
+  await expect(eventSearch).toHaveValue('Great Hall');
+  await page
+    .getByRole('link', { name: /Great Hall Discovery revised/ })
+    .click();
+
   const savedEvent = state.events.find((event) => event.eventId === EVENT_A)!;
   replaceById(
     state.events,
@@ -146,8 +144,11 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   await page.reload();
 
   await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
-  await expect(page.getByRole('heading', { name: 'Challenge' })).toBeVisible();
-  await expect(page.getByText(/Reward ready/)).toBeVisible();
+  await expect(page.getByText('Multiple choice · draft')).toBeVisible();
+  await page.getByRole('link', { name: 'Review', exact: true }).click();
+  await expect(
+    page.getByText('Published Common reward available'),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Publish event package' }).click();
   const publicationError = page.getByText(
@@ -173,17 +174,24 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
 
   state.rejectEventPublication = false;
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Challenge' })).toBeVisible();
+  await expect(page.getByText('Multiple choice · draft')).toBeVisible();
   await page.getByRole('button', { name: 'Publish event package' }).click();
   await expect(
     page.getByText(
       'Event published and available to the player API according to its active times.',
     ),
   ).toBeFocused();
+  await page.getByRole('link', { name: 'Details', exact: true }).click();
+  await expect(page).toHaveURL(`/author/events/${EVENT_A}/details`);
   await page.goBack();
-  await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
+  await expect(
+    page.getByRole('link', { name: 'Review', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
   await page.goForward();
-  await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
+  await expect(
+    page.getByRole('link', { name: 'Details', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+  await page.getByRole('link', { name: 'Review', exact: true }).click();
 
   const retireButton = page.getByRole('button', { name: 'Retire event' });
   await retireButton.click();
@@ -567,75 +575,112 @@ test('Review and campaign workspaces preserve lifecycle, keyboard and responsive
 
 for (const viewport of [
   { height: 800, width: 1280 },
-  { height: 900, width: 1600 },
+  { height: 900, width: 1440 },
+  { height: 1261, width: 1694 },
 ]) {
-  test(`wide Question workspace uses available width at ${viewport.width}px`, async ({
+  test(`desktop event authoring has focused pages at ${viewport.width}px`, async ({
     page,
   }) => {
-    await installAuthorApi(page);
+    const state = await installAuthorApi(page);
     const consoleErrors = monitorConsoleErrors(page);
     await page.setViewportSize(viewport);
-    await page.goto(
-      `/author/events/${EVENT_A}/challenges/${CHALLENGE_A}/questions`,
-    );
-
-    const catalogue = page.getByRole('complementary', {
-      name: 'Challenge questions',
-    });
-    const detail = page.getByRole('region', {
-      name: 'Question workspace detail',
-    });
-    const events = page.getByRole('complementary', { name: 'Authored events' });
-    await expect(events).toBeVisible();
-    await expect(catalogue).toBeVisible();
-    if (viewport.width === 1280) {
-      await expect(detail).toBeHidden();
-      await page
-        .getByRole('link', { name: /Where is the Great Hall/u })
-        .click();
-      await expect(events).toBeVisible();
-      await expect(catalogue).toBeHidden();
-      await expect(detail).toBeVisible();
-      await expectNoHorizontalOverflow(page);
-      await events.getByRole('link', { name: /MSL Open Day/u }).click();
-      await expect(page).toHaveURL(`/author/events/${EVENT_B}`);
-      expect(consoleErrors).toEqual([]);
-      return;
-    }
-    await expect(detail).toBeVisible();
+    // Long real-content patterns exercise both wrapping and catalogue density.
+    state.events[0]!.title = 'Ordering Wits: Science and Discovery';
+    state.questions[0]!.prompt =
+      'Arrange Wits timeline set 16 (1962–1968) from earliest to latest.';
+    await mkdir('.impeccable/review', { recursive: true });
+    const capture = async (name: string) => {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: `.impeccable/review/${name}-${viewport.width}.png`,
+        fullPage: true,
+      });
+    };
+    await page.goto('/author/events');
     await expect(
-      detail.getByRole('heading', { name: 'Select a question' }),
+      page.getByRole('table', { name: 'Authored events', exact: true }),
     ).toBeVisible();
-
-    const listMetrics = await questionWorkspaceMetrics(page);
-    expectWideQuestionWorkspace(listMetrics);
-    expect(listMetrics.welcomeWidth).not.toBeNull();
-    expect(listMetrics.welcomeWidth ?? 0).toBeGreaterThan(320);
-    expect(
-      listMetrics.welcomeWidth ?? Number.POSITIVE_INFINITY,
-    ).toBeLessThanOrEqual(listMetrics.detailWidth);
-    expect(
-      (listMetrics.welcomeWidth ?? 0) / listMetrics.detailWidth,
-    ).toBeGreaterThan(0.4);
     await expectNoHorizontalOverflow(page);
-
-    await page.getByRole('link', { name: /Where is the Great Hall/u }).click();
-    await expect(page).toHaveURL(
-      `/author/events/${EVENT_A}/challenges/${CHALLENGE_A}/questions/${QUESTION_A}`,
-    );
-    await expect(catalogue).toBeVisible();
-    await expect(detail).toBeVisible();
+    await capture('catalogue');
+    await page.getByRole('link', { name: /Ordering Wits/ }).click();
     await expect(
-      detail.getByRole('heading', { name: 'Where is the Great Hall?' }),
+      page.getByRole('complementary', { name: 'Authored events' }),
+    ).toHaveCount(0);
+    const questions = page.getByRole('table', {
+      name: 'Questions',
+      exact: true,
+    });
+    await expect(questions).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'Question workspace detail' }),
+    ).toBeHidden();
+    await expect(
+      page.getByText('Select a question', { exact: true }),
+    ).toHaveCount(0);
+    const widths = await questions.evaluate((table) => ({
+      table: table.getBoundingClientRect().width,
+      workspace: document
+        .querySelector('.author-console__workspace')!
+        .getBoundingClientRect().width,
+    }));
+    expect(widths.table / widths.workspace).toBeGreaterThan(0.95);
+    await expectNoHorizontalOverflow(page);
+    await capture('questions');
+    await page.getByRole('link', { name: /Arrange Wits timeline/ }).click();
+    await expect(
+      page.getByRole('complementary', { name: 'Challenge questions' }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', { name: /Arrange Wits timeline/ }),
     ).toBeVisible();
-
-    const detailMetrics = await questionWorkspaceMetrics(page);
-    expectWideQuestionWorkspace(detailMetrics);
-    expect(detailMetrics.updatedLineRects).toBe(1);
-    expect(detailMetrics.updatedWidth ?? 0).toBeGreaterThan(120);
-    expect(
-      detailMetrics.updatedHeight ?? Number.POSITIVE_INFINITY,
-    ).toBeLessThan(30);
+    await expect(
+      page.getByRole('link', { name: 'Next', exact: true }),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page
+      .getByRole('link', { name: 'Edit question', exact: true })
+      .click();
+    await expect(page.getByLabel('Question prompt')).toBeVisible();
+    await capture('question-editor');
+    await page.getByLabel('Question prompt').fill('Unsaved question change');
+    await page.getByRole('link', { name: 'Next', exact: true }).click();
+    const guard = page.getByRole('dialog', {
+      name: 'Discard unsaved changes?',
+    });
+    await expect(guard).toBeVisible();
+    await guard.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(page.getByLabel('Question prompt')).toHaveValue(
+      'Unsaved question change',
+    );
+    await page
+      .getByRole('button', { name: 'Save question', exact: true })
+      .click();
+    await expect(page.getByText('Question changes saved.')).toBeFocused();
+    await page.getByRole('link', { name: 'Details', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Event details', exact: true }),
+    ).toBeVisible();
+    await capture('details');
+    await page.getByRole('link', { name: 'Review', exact: true }).click();
+    await expect(
+      page.getByText('Published Common reward available'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Submit event and questions' }),
+    ).toBeEnabled();
+    await expectNoHorizontalOverflow(page);
+    await capture('review');
+    await page.reload();
+    await expect(
+      page.getByRole('link', { name: 'Review', exact: true }),
+    ).toHaveAttribute('aria-current', 'page');
+    await page.getByRole('link', { name: 'History', exact: true }).click();
+    await expect(
+      page.getByText('Review history', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Approve: in review to approved'),
+    ).toBeVisible();
     await expectNoHorizontalOverflow(page);
     expect(consoleErrors).toEqual([]);
   });
@@ -2884,84 +2929,6 @@ function monitorConsoleErrors(page: Page) {
 
 async function documentHeight(page: Page) {
   return page.evaluate(() => document.documentElement.scrollHeight);
-}
-
-interface QuestionWorkspaceMetrics {
-  catalogueWidth: number;
-  detailWidth: number;
-  mainContentWidth: number;
-  managementWidth: number;
-  questionWorkspaceWidth: number;
-  recordContentWidth: number;
-  updatedHeight: number | null;
-  updatedLineRects: number | null;
-  updatedWidth: number | null;
-  welcomeWidth: number | null;
-}
-
-async function questionWorkspaceMetrics(
-  page: Page,
-): Promise<QuestionWorkspaceMetrics> {
-  return page.evaluate(() => {
-    const element = (selector: string) => {
-      const match = document.querySelector<HTMLElement>(selector);
-      if (!match) throw new Error(`Missing layout element: ${selector}`);
-      return match;
-    };
-    const width = (selector: string) =>
-      element(selector).getBoundingClientRect().width;
-    const contentWidth = (selector: string) => {
-      const match = element(selector);
-      const styles = getComputedStyle(match);
-      return (
-        match.getBoundingClientRect().width -
-        Number.parseFloat(styles.paddingLeft) -
-        Number.parseFloat(styles.paddingRight)
-      );
-    };
-    const updated = document.querySelector<HTMLElement>(
-      '.question-detail time',
-    );
-    const updatedRange = updated ? document.createRange() : null;
-    if (updated && updatedRange) updatedRange.selectNodeContents(updated);
-
-    return {
-      catalogueWidth: width('.question-catalogue'),
-      detailWidth: width('.question-record-view'),
-      mainContentWidth: contentWidth('.author-console__workspace'),
-      managementWidth: width('.author-management-view--questions'),
-      questionWorkspaceWidth: width('.question-workspace'),
-      recordContentWidth: contentWidth(
-        '.author-management-view--questions > .author-record-view',
-      ),
-      updatedHeight: updated?.getBoundingClientRect().height ?? null,
-      updatedLineRects: updatedRange
-        ? [...updatedRange.getClientRects()].filter((rect) => rect.width > 0)
-            .length
-        : null,
-      updatedWidth: updated?.getBoundingClientRect().width ?? null,
-      welcomeWidth:
-        document
-          .querySelector<HTMLElement>('.question-record-view .author-welcome')
-          ?.getBoundingClientRect().width ?? null,
-    };
-  });
-}
-
-function expectWideQuestionWorkspace(metrics: QuestionWorkspaceMetrics) {
-  expect(metrics.managementWidth).toBeGreaterThanOrEqual(
-    metrics.mainContentWidth - 2,
-  );
-  expect(metrics.questionWorkspaceWidth).toBeGreaterThanOrEqual(
-    metrics.recordContentWidth - 2,
-  );
-  expect(metrics.catalogueWidth).toBeGreaterThanOrEqual(320);
-  expect(metrics.catalogueWidth).toBeLessThanOrEqual(384);
-  expect(metrics.detailWidth).toBeGreaterThanOrEqual(480);
-  expect(metrics.detailWidth).toBeGreaterThan(metrics.catalogueWidth);
-  expect(metrics.detailWidth / metrics.questionWorkspaceWidth).toBeGreaterThan(
-    0.55,
-  );
 }
 
 async function expectNoHorizontalOverflow(page: Page) {

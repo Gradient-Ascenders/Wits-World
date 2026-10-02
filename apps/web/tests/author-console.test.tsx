@@ -97,7 +97,7 @@ describe('Basic author console', () => {
     });
 
     const eventView = renderAuthorRoute(authorPaths.event(eventId));
-    await user.click(await screen.findByText('Event details'));
+    await user.click(await screen.findByRole('link', { name: 'Details' }));
     expect(screen.getByRole('link', { name: 'Source 1' })).toHaveAttribute(
       'href',
       sourceUrl,
@@ -443,7 +443,7 @@ describe('Basic author console', () => {
     });
     expect(reviewLink).toHaveAttribute(
       'href',
-      authorPaths.challenge(eventId, queuedChallengeId),
+      authorPaths.challengeReview(eventId, queuedChallengeId),
     );
     await user.click(reviewLink);
 
@@ -608,6 +608,25 @@ describe('Basic author console', () => {
     );
   });
 
+  it('allows a draft event to create a challenge when only a retired challenge remains', async () => {
+    installAuthorApi({
+      challenges: [challengeFixture({ status: 'retired' })],
+      questions: [questionFixture(1, 'retired')],
+    });
+    renderAuthorRoute(authorPaths.event(eventId));
+
+    expect(
+      await screen.findByRole('button', { name: 'Create challenge' }),
+    ).toBeEnabled();
+    expect(screen.getByLabelText('Format')).toBeVisible();
+    expect(
+      screen.queryByRole('link', { name: 'New question' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText('This challenge is retired. Questions are read-only.'),
+    ).toBeVisible();
+  });
+
   it('selects and creates an ordering challenge format', async () => {
     const user = userEvent.setup();
     const fetchMock = installAuthorApi({ challenges: [] });
@@ -738,6 +757,7 @@ describe('Basic author console', () => {
     expect(
       screen.queryByRole('button', { name: 'Submit for review' }),
     ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Review' }));
     expect(
       screen.getByRole('button', { name: 'Submit event and questions' }),
     ).toBeDisabled();
@@ -1071,7 +1091,9 @@ describe('Basic author console', () => {
     });
     renderAuthorRoute();
 
-    expect(await screen.findByText(/Common reward needed/)).toBeVisible();
+    expect(
+      await screen.findByText(/published Common reward is needed/),
+    ).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Publish event package' }),
     );
@@ -1099,7 +1121,9 @@ describe('Basic author console', () => {
     });
     renderAuthorRoute();
 
-    expect(await screen.findByText('5 questions · Reward ready')).toBeVisible();
+    expect(
+      await screen.findByText('Published Common reward available'),
+    ).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Publish event package' }),
     );
@@ -1118,7 +1142,7 @@ describe('Basic author console', () => {
         questionFixture(index + 1, 'draft'),
       ),
     });
-    renderAuthorRoute(authorPaths.event(eventId));
+    renderAuthorRoute(authorPaths.eventReview(eventId));
 
     const submit = await screen.findByRole('button', {
       name: 'Submit event and questions',
@@ -1256,7 +1280,7 @@ describe('Basic author console', () => {
         return undefined;
       },
     });
-    renderAuthorRoute(authorPaths.event(eventId));
+    renderAuthorRoute(authorPaths.eventReview(eventId));
 
     const submit = await screen.findByRole('button', {
       name: 'Submit event and questions',
@@ -1313,7 +1337,7 @@ describe('Basic author console', () => {
         { timeout: 8_000 },
       ),
     ).toBeVisible();
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
+    await openEvent(user, /Library trail/);
     expect(screen.getByText('Loading challenge…')).toBeVisible();
     expect(
       screen.queryByRole('link', { name: /Question 1/ }),
@@ -1322,7 +1346,7 @@ describe('Basic author console', () => {
       screen.queryByRole('button', { name: 'Publish challenge' }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: /Great Hall history/ }));
+    await openEvent(user, /Great Hall history/);
     expect(
       await screen.findByRole('link', { name: /Question 1/ }),
     ).toBeVisible();
@@ -1361,7 +1385,7 @@ describe('Basic author console', () => {
         { timeout: 8_000 },
       ),
     ).toBeVisible();
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
+    await openEvent(user, /Library trail/);
     await act(async () => {
       pending.resolve(
         problemResponse(500, 'INTERNAL_ERROR', 'Event B failed to load.'),
@@ -1736,12 +1760,7 @@ describe('Basic author console', () => {
     await user.clear(title);
     await user.type(title, 'Delayed Event A');
     await user.click(screen.getByRole('button', { name: 'Save event' }));
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Discard changes',
-      }),
-    );
+    await openEvent(user, /Library trail/, true);
     await user.click(await screen.findByRole('link', { name: 'Edit event' }));
     const eventBTitle = await screen.findByLabelText('Event title');
     await user.type(eventBTitle, ' local edit');
@@ -1760,18 +1779,12 @@ describe('Basic author console', () => {
       'Library trail local edit',
     );
     expect(screen.getByLabelText('Event title')).toHaveFocus();
-    expect(screen.getByRole('link', { name: /Library trail/ })).toHaveAttribute(
-      'aria-current',
-      'true',
-    );
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Library trail' }),
+    ).toBeVisible();
     expect(screen.queryByText('Event changes saved.')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: /Delayed Event A/ }));
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Discard changes',
-      }),
-    );
+    await openEvent(user, /Delayed Event A/, true);
     await user.click(await screen.findByRole('link', { name: 'Edit event' }));
     expect(await screen.findByLabelText('Event title')).toHaveValue(
       'Delayed Event A',
@@ -1859,7 +1872,7 @@ describe('Basic author console', () => {
       ' delayed',
     );
     await user.click(screen.getByRole('button', { name: 'Save question' }));
-    await user.click(screen.getByRole('link', { name: /Question 2/ }));
+    await user.click(screen.getByRole('link', { name: 'Next' }));
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
@@ -1887,15 +1900,12 @@ describe('Basic author console', () => {
       'Question 2 local edit',
     );
     expect(screen.getByLabelText('Question prompt')).toHaveFocus();
-    expect(screen.getByRole('link', { name: /Question 2/ })).toHaveAttribute(
-      'aria-current',
-      'true',
-    );
+    expect(screen.getByText('Question 2 of 2')).toBeVisible();
     expect(
       screen.queryByText('Question changes saved.'),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: /Question 1 delayed/ }));
+    await user.click(screen.getByRole('link', { name: 'Previous' }));
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
@@ -1936,24 +1946,14 @@ describe('Basic author console', () => {
     await user.clear(title);
     await user.type(title, 'Event A version 1');
     await user.click(screen.getByRole('button', { name: 'Save event' }));
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Discard changes',
-      }),
-    );
-    await user.click(screen.getByRole('link', { name: /Great Hall history/ }));
+    await openEvent(user, /Library trail/, true);
+    await openEvent(user, /Great Hall history/);
     await user.click(await screen.findByRole('link', { name: 'Edit event' }));
     const secondTitle = await screen.findByLabelText('Event title');
     await user.clear(secondTitle);
     await user.type(secondTitle, 'Event A version 2');
     await user.click(screen.getByRole('button', { name: 'Save event' }));
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Discard changes',
-      }),
-    );
+    await openEvent(user, /Library trail/, true);
 
     await act(async () => {
       secondSave.resolve(
@@ -1981,7 +1981,7 @@ describe('Basic author console', () => {
     expect(
       screen.getByRole('heading', { level: 3, name: 'Library trail' }),
     ).toBeVisible();
-    await user.click(screen.getByRole('link', { name: /Event A version 2/ }));
+    await openEvent(user, /Event A version 2/);
     await user.click(await screen.findByRole('link', { name: 'Edit event' }));
     expect(await screen.findByLabelText('Event title')).toHaveValue(
       'Event A version 2',
@@ -2092,12 +2092,7 @@ describe('Basic author console', () => {
     const title = await screen.findByLabelText('Event title');
     await user.type(title, ' uncertain');
     await user.click(screen.getByRole('button', { name: 'Save event' }));
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Discard changes',
-      }),
-    );
+    await openEvent(user, /Library trail/, true);
     await act(async () => {
       pending.reject(new TypeError('Response connection lost'));
       await pending.promise.catch(() => undefined);
@@ -2106,9 +2101,7 @@ describe('Basic author console', () => {
     expect(
       screen.queryByText('No content change was confirmed.'),
     ).not.toBeInTheDocument();
-    await user.click(
-      await screen.findByRole('link', { name: /Server-confirmed Event A/ }),
-    );
+    await openEvent(user, /Server-confirmed Event A/);
     await user.click(await screen.findByRole('link', { name: 'Edit event' }));
     expect(await screen.findByLabelText('Event title')).toHaveValue(
       'Server-confirmed Event A',
@@ -2398,7 +2391,7 @@ describe('Basic author console', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Create challenge' }),
     );
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
+    await openEvent(user, /Library trail/);
     const eventBEdit = await screen.findByRole('link', { name: 'Edit event' });
     eventBEdit.focus();
 
@@ -2480,19 +2473,24 @@ describe('Basic author console', () => {
         eventId,
         mode: 'challenge' as const,
         section: 'events' as const,
+        tab: 'review' as const,
       },
     };
     const view = render(<EventWorkspace {...props} cardsState="loading" />);
 
-    expect(await screen.findByText(/Common reward needed/)).toBeVisible();
-    expect(screen.queryByText(/Reward ready/)).not.toBeInTheDocument();
+    expect(await screen.findByText('Loading reward catalogue…')).toBeVisible();
+    expect(
+      screen.queryByText('Published Common reward available'),
+    ).not.toBeInTheDocument();
 
     view.rerender(<EventWorkspace {...props} cardsState="error" />);
     expect(screen.getByRole('button', { name: 'Retry cards' })).toBeVisible();
-    expect(screen.queryByText(/Reward ready/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Published Common reward available'),
+    ).not.toBeInTheDocument();
 
     view.rerender(<EventWorkspace {...props} cardsState="ready" />);
-    expect(screen.getByText(/Reward ready/)).toBeVisible();
+    expect(screen.getByText('Published Common reward available')).toBeVisible();
   });
 });
 
@@ -2849,8 +2847,26 @@ function installAuthorApi(options: ApiOptions = {}) {
   return fetchMock;
 }
 
+async function openEvent(
+  user: ReturnType<typeof userEvent.setup>,
+  name: RegExp,
+  discard = false,
+) {
+  if (!screen.queryByRole('link', { name })) {
+    await user.click(screen.getAllByRole('link', { name: 'Events' })[0]!);
+    if (discard) {
+      await user.click(
+        within(screen.getByRole('dialog')).getByRole('button', {
+          name: 'Discard changes',
+        }),
+      );
+    }
+  }
+  await user.click(await screen.findByRole('link', { name }));
+}
+
 function renderAuthorRoute(
-  pathname = authorPaths.eventChallenge(eventId),
+  pathname = authorPaths.eventReview(eventId),
   authValue = authenticatedAuthor(),
 ) {
   window.history.replaceState({}, '', pathname);
