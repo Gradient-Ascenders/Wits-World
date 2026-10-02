@@ -1,14 +1,14 @@
+import {
+  AuthorRecordBackLink,
+  ReviewSubmissionMeta,
+  useReviewEntry,
+} from './AuthorReviewNavigation';
 import { SelectField } from '../fields/SelectField';
 import { SearchField } from '../fields/SearchField';
 import { createAppDateTimeFormatter } from '../../date-time';
 import { StateIcon } from '../StatusMessage';
 import { LoadingState } from '../LoadingState';
-import {
-  ArrowLeftIcon,
-  CaretRightIcon,
-  CaretDownIcon,
-  ImageIcon,
-} from '@phosphor-icons/react';
+import { ArrowLeftIcon, CaretDownIcon, ImageIcon } from '@phosphor-icons/react';
 import { AuthorSaveBar } from './AuthorSaveBar';
 import {
   useEffect,
@@ -85,6 +85,7 @@ export function CardWorkspace({
   route,
   state,
 }: CardWorkspaceProps) {
+  const reviewEntry = useReviewEntry();
   const [message, setMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [lifecycleFilter, setLifecycleFilter] = useState('all');
@@ -111,20 +112,20 @@ export function CardWorkspace({
 
   useEffect(() => {
     if (state !== 'ready') return;
-    if (focusRouteRef.current === null) {
+    if (focusRouteRef.current === null && !reviewEntry) {
       focusRouteRef.current = routeContext;
       return;
     }
     if (focusRouteRef.current === routeContext) return;
-    focusRouteRef.current = routeContext;
     const timer = window.setTimeout(() => {
+      focusRouteRef.current = routeContext;
       (route.mode === 'list'
         ? catalogueRef.current
         : recordViewRef.current
       )?.focus();
     });
     return () => window.clearTimeout(timer);
-  }, [route.mode, routeContext, state]);
+  }, [route.mode, routeContext, state, reviewEntry]);
 
   const selected = cards.find((card) => card.id === selectedId);
   const visibleCards = useMemo(
@@ -316,9 +317,12 @@ export function CardWorkspace({
                   </thead>
                   <tbody>
                     {visibleCards.map((card) => (
-                      <tr key={card.id}>
+                      <tr className="author-linked-row" key={card.id}>
                         <th scope="row">
-                          <Link href={authorPaths.card(card.id)}>
+                          <Link
+                            className="author-row-link"
+                            href={authorPaths.card(card.id)}
+                          >
                             <span className="card-table__identity">
                               <CatalogueArtwork
                                 key={card.imageUrl}
@@ -326,7 +330,6 @@ export function CardWorkspace({
                               />
                               <span>{card.name}</span>
                             </span>
-                            <CaretRightIcon size={16} aria-hidden="true" />
                           </Link>
                         </th>
                         <td>{titleCase(card.category)}</td>
@@ -592,6 +595,7 @@ function CardDetail({
   onConflict: () => Promise<void>;
   onSaved: CardFormProps['onSaved'];
 }) {
+  const reviewEntry = useReviewEntry();
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
@@ -643,9 +647,9 @@ function CardDetail({
 
   return (
     <article aria-labelledby="card-detail-title" className="author-detail">
-      <Link className="author-back-link" href={authorPaths.cards}>
-        <ArrowLeftIcon size={16} aria-hidden="true" /> Card catalogue
-      </Link>
+      <AuthorRecordBackLink href={authorPaths.cards}>
+        Card catalogue
+      </AuthorRecordBackLink>
       <header className="author-card-detail__header">
         <div className="author-card-detail__identity">
           <h3 id="card-detail-title">{card.name}</h3>
@@ -657,30 +661,14 @@ function CardDetail({
         </div>
         <div className="author-card-detail__lifecycle">
           <StatusBadge status={card.authoringStatus} />
-          <AuthorLifecycleControls
-            busy={busy}
-            editControl={
-              <Link className="button" href={authorPaths.editCard(card.id)}>
-                Edit card
-              </Link>
-            }
-            noun="card"
-            onAction={(action, reason) => void lifecycle(action, reason)}
-            retirementDescription={
-              <p>
-                This definition will leave future reward selection and cannot be
-                republished. Existing owned copies remain intact.
-              </p>
-            }
-            retirementTitle={`Retire ${card.name}?`}
-            status={card.authoringStatus}
-            submittedBy={card.submittedBy}
-          />
-          <AuthorFeedback error={apiError} refObject={feedbackRef} />
-          <AuthorFeedback message={message} refObject={messageRef} />
         </div>
       </header>
 
+      <ReviewSubmissionMeta
+        entityId={card.id}
+        submittedAt={card.submittedAt}
+        submittedBy={card.submittedBy}
+      />
       <nav className="card-tabs" aria-label="Card workspace">
         <Link
           href={authorPaths.card(card.id)}
@@ -695,7 +683,7 @@ function CardDetail({
           Review
         </Link>
       </nav>
-      <div className="author-card-detail__layout" hidden={tab !== 'details'}>
+      <div className="author-card-detail__layout">
         <section
           aria-label={`${card.name} authoring preview`}
           className="author-card-detail__preview"
@@ -737,11 +725,40 @@ function CardDetail({
           <CardMechanicsSummary card={card} />
         </div>
       </div>
+      <div className="author-card-detail__decisions">
+        <AuthorLifecycleControls
+          busy={busy}
+          editControl={
+            <Link className="button" href={authorPaths.editCard(card.id)}>
+              Edit card
+            </Link>
+          }
+          noun="card"
+          onAction={(action, reason) => void lifecycle(action, reason)}
+          retirementDescription={
+            <p>
+              This definition will leave future reward selection and cannot be
+              republished. Existing owned copies remain intact.
+            </p>
+          }
+          retirementTitle={`Retire ${card.name}?`}
+          status={card.authoringStatus}
+          submittedBy={card.submittedBy}
+        />
+        <AuthorFeedback
+          compact={tab === 'review' || Boolean(reviewEntry)}
+          error={apiError}
+          refObject={feedbackRef}
+        />
+        <AuthorFeedback
+          compact={tab === 'review' || Boolean(reviewEntry)}
+          message={message}
+          refObject={messageRef}
+        />
+      </div>
       {tab === 'review' ? (
         <section aria-label="Card review" className="card-review">
-          <h4>Review history</h4>
           <AuthorHistoryPanel
-            defaultOpen
             apiBaseUrl={apiBaseUrl}
             entityId={card.id}
             entityType="card"

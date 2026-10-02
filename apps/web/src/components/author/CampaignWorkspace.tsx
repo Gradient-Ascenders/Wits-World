@@ -1,3 +1,7 @@
+import {
+  AuthorRecordBackLink,
+  ReviewSubmissionMeta,
+} from './AuthorReviewNavigation';
 import { SelectField } from '../fields/SelectField';
 import { SearchField } from '../fields/SearchField';
 import {
@@ -280,13 +284,16 @@ export function CampaignWorkspace({
                   </thead>
                   <tbody>
                     {filteredCampaigns.map((campaign) => (
-                      <tr key={campaign.campaignId}>
+                      <tr
+                        className="author-linked-row"
+                        key={campaign.campaignId}
+                      >
                         <th scope="row">
                           <Link
+                            className="author-row-link"
                             href={authorPaths.campaign(campaign.campaignId)}
                           >
                             {campaign.title}
-                            <CaretRightIcon size={16} aria-hidden="true" />
                           </Link>
                         </th>
                         <td>{campaignScheduleLabel(campaign)}</td>
@@ -445,13 +452,18 @@ function CampaignDetail({
 
   return (
     <article aria-labelledby="campaign-detail-title" className="author-detail">
-      <Link className="author-back-link" href={authorPaths.campaigns}>
-        <ArrowLeftIcon size={16} aria-hidden="true" /> Campaigns
-      </Link>
+      <AuthorRecordBackLink href={authorPaths.campaigns}>
+        Campaigns
+      </AuthorRecordBackLink>
       <header className="author-detail__heading">
         <h3 id="campaign-detail-title">{campaign.title}</h3>
         <CampaignStatus status={campaign.status} />
       </header>
+      <ReviewSubmissionMeta
+        entityId={campaign.campaignId}
+        submittedAt={campaign.submittedAt}
+        submittedBy={campaign.submittedBy}
+      />
       <div className="campaign-detail-summary">
         <p>
           {campaignScheduleLabel(campaign)} · Johannesburg ·{' '}
@@ -486,8 +498,12 @@ function CampaignDetail({
           History
         </Link>
       </nav>
-      <AuthorFeedback error={apiError} refObject={feedbackRef} />
-      {tab === 'details' ? (
+      <AuthorFeedback
+        compact={tab === 'review'}
+        error={apiError}
+        refObject={feedbackRef}
+      />
+      {tab === 'details' || tab === 'review' ? (
         <div className="campaign-definition">
           {campaign.description ? <p>{campaign.description}</p> : null}
           <dl className="campaign-metadata">
@@ -530,18 +546,12 @@ function CampaignDetail({
             ]}
           />
         </div>
-      ) : tab === 'review' ? (
+      ) : null}
+      {tab === 'review' ? (
         <section className="campaign-review" aria-label="Campaign review">
-          <h4>
-            {campaign.status === 'retired'
-              ? 'Campaign retired'
-              : 'Review and publication'}
-          </h4>
-          <p>
-            {campaign.status === 'retired'
-              ? 'This campaign cannot be republished. Existing player history remains intact.'
-              : 'Approval and publication require published content. The server checks schedule conflicts, and another Author must approve the submission.'}
-          </p>
+          {campaign.status === 'retired' ? (
+            <p>This campaign is retired.</p>
+          ) : null}
           <AuthorLifecycleControls
             busy={busy}
             noun="campaign"
@@ -557,7 +567,8 @@ function CampaignDetail({
             submittedBy={campaign.submittedBy}
           />
         </section>
-      ) : (
+      ) : null}
+      {tab === 'history' ? (
         <section className="campaign-history" aria-label="Campaign history">
           <AuthorHistoryPanel
             defaultOpen
@@ -568,7 +579,7 @@ function CampaignDetail({
             revision={campaign.version}
           />
         </section>
-      )}
+      ) : null}
     </article>
   );
 }

@@ -1,6 +1,12 @@
 import { selectOption } from './select-option';
 import { mkdir } from 'node:fs/promises';
-import { expect, test, type Page, type Route } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type Route,
+} from '@playwright/test';
 
 import type {
   AuthorCard,
@@ -11,6 +17,7 @@ import type {
   AuthorEventInput,
   AuthorQuestion,
   AuthorQuestionInput,
+  AuthorReviewQueueItem,
   AuthorTrail,
 } from '../src/api/author';
 
@@ -73,7 +80,9 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   await selectOption(page.getByLabel('Schedule', { exact: true }), 'all');
 
   await eventSearch.fill('Great Hall');
-  await page.getByRole('link', { name: /Great Hall Discovery/u }).click();
+  await openCatalogueRow(
+    page.getByRole('row', { name: /Great Hall Discovery/u }),
+  );
   await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
   await expect(page.locator('.author-record-view')).toBeFocused();
   await expect(
@@ -658,18 +667,22 @@ test('Review and campaign workspaces preserve lifecycle, keyboard and responsive
   await page.setViewportSize({ height: 800, width: 1280 });
   await page.goto('/author/review');
   await expect(
-    page.getByRole('heading', { name: 'Review queue' }),
+    page.getByRole('heading', { name: 'Content review' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('link', { name: 'Review question' }),
+    page.getByRole('link', {
+      name: 'Review question: Where is the Great Hall?',
+    }),
   ).toHaveAttribute(
     'href',
     `/author/events/${EVENT_A}/challenges/${CHALLENGE_A}/questions/${QUESTION_A}`,
   );
-  await expect(page.getByText('In review', { exact: true })).toBeVisible();
-  await page.getByRole('link', { name: 'Review question' }).click();
+  await expect(page.getByText('In review', { exact: true })).toHaveCount(0);
+  await page
+    .getByRole('link', { name: 'Review question: Where is the Great Hall?' })
+    .click();
   await page.getByRole('button', { name: 'Approve question' }).click();
-  await expect(page.getByText('Question approved.')).toBeFocused();
+  await expect(page.getByText('Approved.')).toBeFocused();
   const questionDetail = page.getByRole('article', {
     name: 'Where is the Great Hall?',
   });
@@ -685,7 +698,7 @@ test('Review and campaign workspaces preserve lifecycle, keyboard and responsive
   await expect(
     page.getByRole('link', { name: /Orientation Week/u }),
   ).toBeVisible();
-  await page.getByRole('link', { name: /Orientation Week/u }).click();
+  await openCatalogueRow(page.getByRole('row', { name: /Orientation Week/u }));
   await expect(
     page.getByRole('heading', { name: 'Orientation Week' }),
   ).toBeVisible();
@@ -1359,7 +1372,7 @@ test('Card catalogue and dedicated detail pages preserve filtering, review and l
   ).toBeVisible();
   await expect(page.getByRole('link', { name: /Campus Owl/u })).toHaveCount(0);
 
-  await page.getByRole('link', { name: /^Four Move Ibex/u }).click();
+  await openCatalogueRow(page.getByRole('row', { name: /^Four Move Ibex/u }));
   await expect(page).toHaveURL(`/author/cards/${CARD_CREATURE}`);
   await expect(page.locator('.author-record-view')).toBeFocused();
   await expect(
@@ -1457,12 +1470,14 @@ test('Card catalogue and dedicated detail pages preserve filtering, review and l
   );
   await expect(lifecycleNotice).toBeFocused();
   const noticeBox = await lifecycleNotice.boundingBox();
-  const lifecycleHeaderBox = await page
-    .locator('.author-card-detail__lifecycle')
+  const lifecycleDecisionsBox = await page
+    .locator('.author-card-detail__decisions')
     .boundingBox();
   expect(noticeBox).not.toBeNull();
-  expect(lifecycleHeaderBox).not.toBeNull();
-  expect((noticeBox?.y ?? 0) - (lifecycleHeaderBox?.y ?? 0)).toBeLessThan(150);
+  expect(lifecycleDecisionsBox).not.toBeNull();
+  expect((noticeBox?.y ?? 0) - (lifecycleDecisionsBox?.y ?? 0)).toBeLessThan(
+    150,
+  );
 
   await page.setViewportSize({ height: 1024, width: 768 });
   await page.goto(`/author/cards/${CARD_CREATURE}`);
@@ -1533,6 +1548,8 @@ test('Card catalogue and dedicated detail pages preserve filtering, review and l
   ).toHaveAttribute('aria-current', 'page');
   await page.reload();
   await expect(page.getByRole('region', { name: 'Card review' })).toBeVisible();
+  await expect(page.locator('.author-history')).not.toHaveAttribute('open');
+  await page.getByText('Review history', { exact: true }).click();
   await expect(page.locator('.author-history')).toHaveAttribute('open', '');
   await expect(page.getByText('Approve: in review to approved')).toBeVisible();
   await page.screenshot({
@@ -2232,31 +2249,90 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     }
 
     if (path === '/author/review-queue' && method === 'GET') {
-      const items = state.questions
-        .filter((question) => question.status === 'in_review')
-        .map((question) => ({
-          canReview: question.submittedBy !== uuid('9', 1),
-          challengeId: question.challengeId,
-          entityId: question.questionId,
-          entityType: 'question' as const,
-          eventId:
-            state.challenges.find(
-              (challenge) => challenge.challengeId === question.challengeId,
-            )?.eventId ?? null,
-          label: question.prompt,
-          status: 'in_review' as const,
-          submittedAt: question.submittedAt,
-          submittedBy: question.submittedBy,
-          submittedByName: 'Review submitter',
-          version: question.version,
-        }));
+      const submittedByName = (id: string) =>
+        id === uuid('9', 1) ? 'author-e2e' : 'Review submitter';
+      const metadata = (record: {
+        submittedAt: string | null;
+        submittedBy: string | null;
+        version: number;
+      }) => ({
+        canReview: record.submittedBy !== uuid('9', 1),
+        status: 'in_review' as const,
+        submittedAt: record.submittedAt!,
+        submittedBy: record.submittedBy!,
+        submittedByName: submittedByName(record.submittedBy!),
+        version: record.version,
+      });
+      const items: AuthorReviewQueueItem[] = [
+        ...state.events
+          .filter((event) => event.authoringStatus === 'in_review')
+          .map((event) => ({
+            ...metadata(event),
+            entityType: 'event' as const,
+            entityId: event.eventId,
+            label: event.title,
+            eventId: null,
+            challengeId: null,
+          })),
+        ...state.challenges
+          .filter((challenge) => challenge.status === 'in_review')
+          .map((challenge) => ({
+            ...metadata(challenge),
+            entityType: 'challenge' as const,
+            entityId: challenge.challengeId,
+            label: 'Multiple-choice challenge',
+            eventId: challenge.eventId,
+            challengeId: null,
+          })),
+        ...state.questions
+          .filter((question) => question.status === 'in_review')
+          .map((question) => ({
+            ...metadata(question),
+            entityType: 'question' as const,
+            entityId: question.questionId,
+            label: question.prompt,
+            eventId:
+              state.challenges.find(
+                (challenge) => challenge.challengeId === question.challengeId,
+              )?.eventId ?? null,
+            challengeId: question.challengeId,
+          })),
+        ...state.campaigns
+          .filter((campaign) => campaign.status === 'in_review')
+          .map((campaign) => ({
+            ...metadata(campaign),
+            entityType: 'campaign' as const,
+            entityId: campaign.campaignId,
+            label: campaign.title,
+            eventId: null,
+            challengeId: null,
+          })),
+        ...state.cards
+          .filter((card) => card.authoringStatus === 'in_review')
+          .map((card) => ({
+            ...metadata(card),
+            entityType: 'card' as const,
+            entityId: card.id,
+            label: card.name,
+            eventId: null,
+            challengeId: null,
+          })),
+      ];
+      const query = new URL(request.url()).searchParams;
+      const filtered = items.filter(
+        (item) =>
+          !query.get('entityType') ||
+          item.entityType === query.get('entityType'),
+      );
+      const queuePage = Number(query.get('page') ?? 1);
+      const pageSize = Number(query.get('pageSize') ?? 10);
       await json(route, {
-        items,
-        page: 1,
-        pageSize: 20,
+        items: filtered.slice((queuePage - 1) * pageSize, queuePage * pageSize),
+        page: queuePage,
+        pageSize,
         requestId: 'request-review-queue',
-        totalItems: items.length,
-        totalPages: items.length === 0 ? 0 : 1,
+        totalItems: filtered.length,
+        totalPages: Math.ceil(filtered.length / pageSize),
       });
       return;
     }
@@ -3244,6 +3320,15 @@ async function documentHeight(page: Page) {
   return page.evaluate(() => document.documentElement.scrollHeight);
 }
 
+async function openCatalogueRow(row: Locator) {
+  await expect(row.locator('.author-row-link > svg')).toHaveCount(0);
+  const bounds = await row.boundingBox();
+  if (!bounds) throw new Error('Catalogue row is not visible.');
+  await row.click({
+    position: { x: bounds.width - 16, y: bounds.height / 2 },
+  });
+}
+
 async function expectNoHorizontalOverflow(page: Page) {
   const dimensions = await page.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
@@ -3383,4 +3468,296 @@ test('author creation fields keep keyboard menus and validation usable at respon
     await expect(title).toHaveAttribute('aria-invalid', 'true');
     await expectNoHorizontalOverflow(page);
   }
+});
+
+test('desktop content review keeps evidence, decisions and queue return together', async ({
+  page,
+}) => {
+  const state = await installAuthorApi(page);
+  const errors = monitorConsoleErrors(page);
+  const submission = {
+    submittedAt: '2026-09-25T08:00:00.000Z',
+    submittedBy: uuid('9', 2),
+    version: 2,
+  };
+  state.events[1] = {
+    ...state.events[1]!,
+    ...submission,
+    authoringStatus: 'in_review',
+  };
+  const eventChallenge = {
+    ...challengeFixture(uuid('2', 2), EVENT_B),
+    ...submission,
+    status: 'in_review' as const,
+  };
+  state.challenges.push(eventChallenge);
+  state.questions.push(
+    ...Array.from({ length: 5 }, (_, index) => ({
+      ...questionFixture(
+        index + 31,
+        `Science question ${index + 1}`,
+        'in_review',
+      ),
+      ...submission,
+      challengeId: eventChallenge.challengeId,
+    })),
+  );
+  state.questions[0] = {
+    ...state.questions[0]!,
+    ...submission,
+    status: 'in_review',
+  };
+  state.questions[1] = {
+    ...state.questions[1]!,
+    ...submission,
+    submittedBy: uuid('9', 1),
+    status: 'in_review',
+  };
+  state.campaigns[0] = {
+    ...state.campaigns[0]!,
+    ...submission,
+    status: 'in_review',
+  };
+  state.cards[0] = {
+    ...state.cards[0]!,
+    ...submission,
+    authoringStatus: 'in_review',
+  };
+  state.cards.push(
+    ...Array.from({ length: 20 }, (_, index) => ({
+      ...state.cards[0]!,
+      id: uuid('5', index + 20),
+      name: `Campus Owl ${index + 2}`,
+    })),
+  );
+  await mkdir('.impeccable/review', { recursive: true });
+  const capture = async (name: string, width: number) => {
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: `.impeccable/review/content-review-${name}-${width}.png`,
+      fullPage: true,
+    });
+  };
+  for (const width of [1280, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/author/review');
+    await expect(
+      page.getByRole('heading', { name: 'Content review' }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Your submission', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('In review', { exact: true })).toHaveCount(0);
+    await expect(page.locator('.author-console__header')).toHaveCount(0);
+    await expect(page.locator('.review-table__open svg')).toHaveCount(0);
+    await capture('queue', width);
+
+    await page
+      .getByRole('row', { name: /MSL Open Day/ })
+      .click({ position: { x: 24, y: 24 } });
+    await expect(
+      page.getByRole('link', { name: 'Back to queue' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'Event definition' }),
+    ).toContainText('MSL Open Day');
+    await expect(
+      page
+        .getByRole('region', { name: 'Event definition' })
+        .getByText('Starts · Johannesburg'),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole('region', { name: 'Event definition' })
+        .getByText('Ends', { exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('.review-submission-meta')).toHaveCount(1);
+    await expect(
+      page.getByRole('region', { name: 'Submitted questions' }),
+    ).toContainText('Science question 5');
+    await expect(
+      page.getByRole('button', { name: 'Approve event package' }),
+    ).toBeEnabled();
+    await capture('event', width);
+    await page.getByRole('link', { name: 'Back to queue' }).click();
+
+    await page
+      .getByRole('link', { name: 'Review question: Where is the Great Hall?' })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Where is the Great Hall?' }),
+    ).toBeVisible();
+    await expect(page.getByText('Correct', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText('Author-only fixture explanation.'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Approve question' }),
+    ).toBeEnabled();
+    await capture('question', width);
+    await page
+      .getByRole('button', { name: 'Return to draft', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', {
+      name: 'Return this question to draft?',
+    });
+    await expect(dialog.getByLabel('Reason')).toBeFocused();
+    await dialog
+      .getByRole('button', { name: 'Return question', exact: true })
+      .click();
+    await expect(dialog.getByText('Add a reason.')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('button', { name: 'Return to draft', exact: true }),
+    ).toBeFocused();
+    if (width === 1920) {
+      await page.getByRole('button', { name: 'Approve question' }).click();
+      await expect(page.getByText('Approved.', { exact: true })).toBeFocused();
+      expect(
+        state.questions.find((question) => question.questionId === QUESTION_A)
+          ?.status,
+      ).toBe('approved');
+    }
+    await page.getByRole('link', { name: 'Back to queue' }).click();
+
+    await page
+      .getByRole('row', { name: /Which library is on East Campus\?/ })
+      .click({ position: { x: 24, y: 24 } });
+    await expect(
+      page.getByText('Another author must review this submission.'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Approve question' }),
+    ).toHaveCount(0);
+    await capture('own-question', width);
+    await page.getByRole('link', { name: 'Back to queue' }).click();
+    // Other review types may appear on the next server page with a mixed queue.
+    await selectOption(page.getByLabel('Content type'), 'campaign');
+    await page
+      .getByRole('link', { name: 'Review campaign: Orientation Week' })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Content', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('Campus orientation trail')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Approve campaign' }),
+    ).toBeEnabled();
+    await capture('campaign', width);
+    await page.getByRole('link', { name: 'MSL Open Day', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'MSL Open Day', exact: true }),
+    ).toBeVisible();
+    await page.goBack();
+    await expect(
+      page.getByRole('link', { name: 'Back to queue' }),
+    ).toBeVisible();
+    await page.getByRole('link', { name: 'Back to queue' }).click();
+    await expect(page.getByLabel('Content type')).toContainText('Campaigns');
+
+    await selectOption(page.getByLabel('Content type'), 'card');
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.getByText('Page 2 of 3')).toBeVisible();
+    await page.setViewportSize({ width, height: 600 });
+    const cardLink = page.getByRole('link', {
+      name: 'Review card: Campus Owl 20',
+      exact: true,
+    });
+    await cardLink.scrollIntoViewIfNeeded();
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+    expect(scrollBefore).toBeGreaterThan(0);
+    await cardLink.click();
+    await expect(page).toHaveURL(`/author/cards/${uuid('5', 38)}/review`);
+    await expect(page.locator('.author-record-view')).toBeFocused();
+    await expect(
+      page.getByRole('region', { name: 'Campus Owl 20 authoring preview' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Moves', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Review history', { exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('.author-history')).not.toHaveAttribute('open');
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator('.author-record-view')).toBeFocused();
+    await expect(page.locator('.skip-link')).not.toBeFocused();
+    await expect
+      .poll(() =>
+        page.locator('.skip-link').evaluate((element) => ({
+          focused: element.matches(':focus'),
+          aboveViewport: element.getBoundingClientRect().bottom <= 0,
+        })),
+      )
+      .toEqual({
+        focused: false,
+        aboveViewport: true,
+      });
+    await capture('card', width);
+    await expect(page.locator('.author-record-view')).toBeFocused();
+    await page.setViewportSize({ width, height: 600 });
+    await page.getByRole('link', { name: 'Back to queue' }).click();
+    await expect(page.getByText('Page 2 of 3')).toBeVisible();
+    await expect(cardLink).toBeFocused();
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeCloseTo(scrollBefore, 0);
+    await page.goBack();
+    await expect(
+      page.getByRole('link', { name: 'Back to queue' }),
+    ).toBeVisible();
+    await page.goForward();
+    await expect(cardLink).toBeFocused();
+    await page
+      .getByRole('link', { name: 'Events', exact: true })
+      .first()
+      .click();
+    await page.getByRole('link', { name: /MSL Open Day/ }).click();
+    await expect(page.getByRole('link', { name: 'Back to queue' })).toHaveCount(
+      0,
+    );
+  }
+  expect(errors).toEqual([]);
+});
+
+test('content review returns to a populated page after approving its last item', async ({
+  page,
+}) => {
+  const state = await installAuthorApi(page);
+  const errors = monitorConsoleErrors(page);
+  const submission = {
+    submittedAt: '2026-09-25T08:00:00.000Z',
+    submittedBy: uuid('9', 2),
+    version: 2,
+    authoringStatus: 'in_review' as const,
+  };
+  state.cards = Array.from({ length: 11 }, (_, index) => ({
+    ...state.cards[0]!,
+    ...submission,
+    id: uuid('5', index + 20),
+    name: `Review Owl ${index + 1}`,
+  }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/author/review');
+  await selectOption(page.getByLabel('Content type'), 'card');
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByText('Page 2 of 2')).toBeVisible();
+  await page
+    .getByRole('link', { name: 'Review card: Review Owl 11', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Approve card' }).click();
+  await expect(page.getByText('Approved.', { exact: true })).toBeFocused();
+  await page.getByRole('link', { name: 'Back to queue' }).click();
+  await expect(
+    page.getByRole('link', { name: 'Review card: Review Owl 1', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Review card:/ })).toHaveCount(
+    10,
+  );
+  await expect(
+    page.getByRole('heading', { name: 'Content review' }),
+  ).toBeFocused();
+  await expect(page.getByLabel('Content type')).toContainText('Cards');
+  expect(errors).toEqual([]);
 });

@@ -245,7 +245,7 @@
 }
 
 .card-review .author-history > summary {
-  display: none;
+  display: list-item;
 }
 
 .author-workspace--cards .author-panel--editor {

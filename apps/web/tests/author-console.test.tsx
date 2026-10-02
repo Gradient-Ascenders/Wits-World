@@ -441,7 +441,7 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.review);
 
     const reviewLink = await screen.findByRole('link', {
-      name: 'Review challenge',
+      name: 'Review challenge: Multiple-choice challenge',
     });
     expect(reviewLink).toHaveAttribute(
       'href',
@@ -1209,9 +1209,7 @@ describe('Basic author console', () => {
       expect.objectContaining({ method: 'POST' }),
     );
     expect(
-      await screen.findByText(
-        'Event and questions submitted. Another Author must review them.',
-      ),
+      await screen.findByText('Another author must review this submission.'),
     ).toBeVisible();
     expect(
       fetchMock.mock.calls.some(([input]) =>

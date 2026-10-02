@@ -49,14 +49,11 @@ describe('Author curation workspaces', () => {
     );
 
     expect(
-      await screen.findByText('Your session needs attention.'),
+      await screen.findByText('Sign in again to review content.'),
     ).toBeVisible();
     expect(screen.getByText('Sign in again to continue.')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Retry queue' }));
-    expect(
-      await screen.findByText('No submissions are waiting.'),
-    ).toBeVisible();
-    expect(screen.getByText('The review queue is clear.')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('No submissions to review.')).toBeVisible();
   });
 
   it('loads review history only when the keyboard-accessible disclosure opens', async () => {
@@ -137,7 +134,7 @@ describe('Author curation workspaces', () => {
     );
 
     const editLink = await screen.findByRole('link', {
-      name: 'Review question',
+      name: 'Review question: Where is the Great Hall?',
     });
     expect(editLink).toHaveAttribute(
       'href',
@@ -147,11 +144,11 @@ describe('Author curation workspaces', () => {
       screen.queryByRole('button', { name: 'Approve question' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Return with reason' }),
+      screen.queryByRole('button', { name: 'Return to draft' }),
     ).not.toBeInTheDocument();
   });
 
-  it('keeps the independent-review message for a self-authored queue item', async () => {
+  it('keeps non-reviewable submissions readable without repeated warning panels', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -187,12 +184,12 @@ describe('Author curation workspaces', () => {
       />,
     );
 
+    expect(await screen.findByText('View only')).toBeVisible();
     expect(
-      await screen.findByText(
-        'This submission is awaiting review by another Author. Self-approval is not available.',
-      ),
-    ).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Open question' })).toHaveAttribute(
+      screen.getByRole('link', {
+        name: 'View question: Where is the Great Hall?',
+      }),
+    ).toHaveAttribute(
       'href',
       authorPaths.question(eventId, challengeId, questionId),
     );
@@ -233,7 +230,9 @@ describe('Author curation workspaces', () => {
       />,
     );
     expect(
-      await screen.findByRole('link', { name: 'Review campaign' }),
+      await screen.findByRole('link', {
+        name: 'Review campaign: Welcome Week',
+      }),
     ).toHaveAttribute('href', authorPaths.campaignReview(campaignId));
   });
 

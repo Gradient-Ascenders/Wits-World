@@ -1,3 +1,8 @@
+import {
+  AuthorRecordBackLink,
+  ReviewSubmissionMeta,
+  useReviewEntry,
+} from './AuthorReviewNavigation';
 import { SelectField } from '../fields/SelectField';
 import { SearchField } from '../fields/SearchField';
 import {
@@ -408,16 +413,16 @@ export function EventWorkspace({
                     </thead>
                     <tbody>
                       {visibleEvents.map((event) => (
-                        <tr key={event.eventId}>
+                        <tr className="author-linked-row" key={event.eventId}>
                           <th scope="row">
                             <Link
+                              className="author-row-link"
                               href={authorPaths.event(event.eventId)}
                               onClick={() => {
                                 catalogueScrollRef.current = window.scrollY;
                               }}
                             >
                               {event.title}
-                              <CaretRightIcon size={16} aria-hidden="true" />
                             </Link>
                           </th>
                           <td>
@@ -598,15 +603,20 @@ function MissingEvent() {
 function EventContextHeader({ event }: { event: AuthorEvent }) {
   return (
     <>
-      <Link className="author-back-link" href={authorPaths.events}>
-        <ArrowLeftIcon size={16} aria-hidden="true" /> Events
-      </Link>
+      <AuthorRecordBackLink href={authorPaths.events}>
+        Events
+      </AuthorRecordBackLink>
       <header className="author-detail__heading">
         <div>
           <h3>{event.title}</h3>
         </div>
         <StatusBadge status={event.authoringStatus} />
       </header>
+      <ReviewSubmissionMeta
+        entityId={event.eventId}
+        submittedAt={event.submittedAt}
+        submittedBy={event.submittedBy}
+      />
     </>
   );
 }
@@ -1620,13 +1630,18 @@ function ChallengeWorkspace({
           section: 'events',
         };
 
+  const reviewEntry = useReviewEntry();
+  const focusedQuestion =
+    reviewEntry?.entityType === 'question' &&
+    route.mode === 'questions' &&
+    route.questionMode === 'detail';
   const activeTab =
     route.mode === 'challenge' ? (route.tab ?? 'questions') : 'questions';
 
   return (
     <section aria-label={event.title + ' content'} className="author-detail">
-      <EventContextHeader event={event} />
-      <div className="author-section-heading">
+      {!focusedQuestion ? <EventContextHeader event={event} /> : null}
+      <div className="author-section-heading" hidden={focusedQuestion}>
         <p className="field-help">
           {eventScheduleLabel(event)} ·{' '}
           {event.automaticPlacement
@@ -1644,7 +1659,11 @@ function ChallengeWorkspace({
           </Link>
         ) : null}
       </div>
-      <nav aria-label="Event workspace" className="event-tabs">
+      <nav
+        aria-label="Event workspace"
+        className="event-tabs"
+        hidden={focusedQuestion}
+      >
         {(
           [
             [
@@ -1738,6 +1757,39 @@ function ChallengeWorkspace({
           defaultOpen
         />
       ) : null}
+      {activeTab === 'review' ? (
+        <section className="review-event-summary" aria-label="Event definition">
+          <h4>Event details</h4>
+          <p>{event.description?.trim() || 'No description.'}</p>
+          <dl className="author-metadata" aria-label="Schedule · Johannesburg">
+            <div>
+              <dt>Starts · Johannesburg</dt>
+              <dd>
+                <time dateTime={event.startsAt}>
+                  {formatAuthorDateTime(event.startsAt)}
+                </time>
+              </dd>
+            </div>
+            <div>
+              <dt>Ends</dt>
+              <dd>
+                <time dateTime={event.endsAt}>
+                  {formatAuthorDateTime(event.endsAt)}
+                </time>
+              </dd>
+            </div>
+          </dl>
+          <p>
+            {event.latitude !== null && event.longitude !== null
+              ? `${event.latitude}, ${event.longitude}`
+              : 'No fixed location'}
+            {event.automaticPlacement ? ' · Automatic placement' : ''}
+          </p>
+          {event.sourceUrls.length > 0 ? (
+            <SourceEvidenceList sourceUrls={event.sourceUrls} />
+          ) : null}
+        </section>
+      ) : null}
       <div
         hidden={activeTab !== 'questions' && activeTab !== 'review'}
         className="event-content"
@@ -1810,44 +1862,16 @@ function ChallengeWorkspace({
           />
         ) : null}
         {selected ? (
-          <div className="author-section-heading event-challenge-summary">
+          <div
+            className="author-section-heading event-challenge-summary"
+            hidden={focusedQuestion}
+          >
             <p>
-              {challengeFormatLabel(selected.format)} · {selected.status}
+              {challengeFormatLabel(selected.format)}
+              {focusedQuestion
+                ? ''
+                : ` · ${selected.status.replaceAll('_', ' ')}`}
             </p>
-            {activeTab === 'review' &&
-            event.authoringStatus === 'draft' &&
-            selected.status !== 'draft' ? (
-              <AuthorLifecycleControls
-                busy={busy}
-                noun="challenge"
-                onAction={(action, reason) =>
-                  void challengeLifecycle(action, reason)
-                }
-                retirementDescription={
-                  <p>Retire the event first if it is published.</p>
-                }
-                retirementDisabled={challengeRetirementBlocked}
-                retirementDisabledDescription="Retire the event first."
-                status={selected.status}
-                submittedBy={selected.submittedBy}
-              />
-            ) : null}
-            {activeTab === 'review' &&
-            event.authoringStatus === 'retired' &&
-            selected.status === 'published' ? (
-              <AuthorLifecycleControls
-                busy={busy}
-                noun="challenge"
-                onAction={(action, reason) =>
-                  void challengeLifecycle(action, reason)
-                }
-                retirementDescription={
-                  <p>This challenge cannot be republished.</p>
-                }
-                status={selected.status}
-                submittedBy={selected.submittedBy}
-              />
-            ) : null}
           </div>
         ) : null}
 
@@ -1896,7 +1920,7 @@ function ChallengeWorkspace({
           </>
         ) : null}
 
-        {feedbackPlacement === 'publication' ? (
+        {feedbackPlacement === 'publication' && activeTab !== 'review' ? (
           <AuthorFeedback
             error={apiError}
             message={message}
@@ -1905,11 +1929,45 @@ function ChallengeWorkspace({
         ) : null}
         {activeTab === 'review' ? (
           <section aria-label="Event review" className="event-review">
+            {reviewEntry?.entityType === 'challenge' ? (
+              <ReviewSubmissionMeta
+                entityId={selected?.challengeId ?? ''}
+                submittedAt={selected?.submittedAt ?? null}
+                submittedBy={selected?.submittedBy ?? null}
+              />
+            ) : null}
+            {selected && questionsState === 'ready' ? (
+              <section
+                className="review-question-list"
+                aria-label="Submitted questions"
+              >
+                <h4>Questions</h4>
+                <ol>
+                  {questions
+                    .filter(
+                      (question) =>
+                        question.challengeId === selected.challengeId &&
+                        question.status !== 'retired',
+                    )
+                    .map((question) => (
+                      <li key={question.questionId}>
+                        <Link
+                          href={authorPaths.question(
+                            event.eventId,
+                            selected.challengeId,
+                            question.questionId,
+                          )}
+                        >
+                          {question.prompt}
+                          <CaretRightIcon size={16} aria-hidden="true" />
+                        </Link>
+                      </li>
+                    ))}
+                </ol>
+              </section>
+            ) : null}
             <div className="event-review-heading">
-              <h4>Review package</h4>
-              <p>
-                Event, challenge, and questions move through review together.
-              </p>
+              <h4>Publication requirements</h4>
             </div>
             <ul className="event-readiness">
               <ReadinessItem
@@ -1929,7 +1987,7 @@ function ChallengeWorkspace({
                 detail={
                   questionsState !== 'ready'
                     ? 'Question state unavailable'
-                    : `${activeQuestionCount} active questions · 5 minimum`
+                    : `${activeQuestionCount} questions · 5 required`
                 }
               />
               <ReadinessItem
@@ -1946,9 +2004,53 @@ function ChallengeWorkspace({
                 }
               />
             </ul>
-            <p className="field-help">
-              The server checks all publication requirements before publishing.
-            </p>
+
+            {feedbackPlacement === 'publication' ? (
+              <AuthorFeedback
+                compact
+                error={apiError}
+                message={message}
+                refObject={feedbackRef}
+              />
+            ) : null}
+            {selected ? (
+              <div>
+                {activeTab === 'review' &&
+                event.authoringStatus === 'draft' &&
+                selected.status !== 'draft' ? (
+                  <AuthorLifecycleControls
+                    busy={busy}
+                    noun="challenge"
+                    onAction={(action, reason) =>
+                      void challengeLifecycle(action, reason)
+                    }
+                    retirementDescription={
+                      <p>Retire the event first if it is published.</p>
+                    }
+                    retirementDisabled={challengeRetirementBlocked}
+                    retirementDisabledDescription="Retire the event first."
+                    status={selected.status}
+                    submittedBy={selected.submittedBy}
+                  />
+                ) : null}
+                {activeTab === 'review' &&
+                event.authoringStatus === 'retired' &&
+                selected.status === 'published' ? (
+                  <AuthorLifecycleControls
+                    busy={busy}
+                    noun="challenge"
+                    onAction={(action, reason) =>
+                      void challengeLifecycle(action, reason)
+                    }
+                    retirementDescription={
+                      <p>This challenge cannot be republished.</p>
+                    }
+                    status={selected.status}
+                    submittedBy={selected.submittedBy}
+                  />
+                ) : null}
+              </div>
+            ) : null}
             <div className="author-publish-bar">
               <div className="author-actions">
                 {!hasAuthoritativeCommon ? (
@@ -2027,6 +2129,7 @@ function QuestionWorkspace({
   questions,
   route,
 }: QuestionWorkspaceProps) {
+  const reviewEntry = useReviewEntry();
   const [message, setMessage] = useState('');
   const feedbackRef = useRef<HTMLDivElement>(null);
   const catalogueRef = useRef<HTMLElement>(null);
@@ -2218,7 +2321,7 @@ function QuestionWorkspace({
         role="region"
         tabIndex={-1}
       >
-        {selectedId ? (
+        {selectedId && route.questionMode !== 'detail' ? (
           <QuestionNavigation
             eventId={event.eventId}
             challengeId={challenge.challengeId}
@@ -2226,7 +2329,11 @@ function QuestionWorkspace({
             selectedId={selectedId}
           />
         ) : null}
-        <AuthorFeedback message={message} refObject={feedbackRef} />
+        <AuthorFeedback
+          compact={Boolean(reviewEntry)}
+          message={message}
+          refObject={feedbackRef}
+        />
         {route.questionMode === 'list' ? null : route.questionMode === 'new' ? (
           challenge.status !== 'retired' ? (
             <QuestionForm
@@ -2282,6 +2389,14 @@ function QuestionWorkspace({
               onConflict={onLifecycleConflict}
               onSaved={updateQuestion}
               question={selected}
+              navigation={
+                <QuestionNavigation
+                  eventId={event.eventId}
+                  challengeId={challenge.challengeId}
+                  questions={questions}
+                  selectedId={selected.questionId}
+                />
+              }
             />
           )
         ) : (
@@ -2314,6 +2429,7 @@ function QuestionDetail({
   onConflict,
   onSaved,
   question,
+  navigation,
 }: {
   apiBaseUrl: string;
   challenge: AuthorChallenge;
@@ -2324,6 +2440,7 @@ function QuestionDetail({
   onConflict: () => Promise<void>;
   onSaved: QuestionFormProps['onSaved'];
   question: AuthorQuestion;
+  navigation: React.ReactNode;
 }) {
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -2385,18 +2502,23 @@ function QuestionDetail({
       aria-labelledby="question-detail-title"
       className="question-detail"
     >
-      <Link
-        className="author-back-link"
+      <AuthorRecordBackLink
         href={authorPaths.questions(event.eventId, challenge.challengeId)}
       >
-        <ArrowLeftIcon size={16} aria-hidden="true" /> Questions
-      </Link>
+        Questions
+      </AuthorRecordBackLink>
       <header className="author-detail__heading">
         <div>
           <h5 id="question-detail-title">{question.prompt}</h5>
         </div>
         <StatusBadge status={question.status} />
       </header>
+      <ReviewSubmissionMeta
+        entityId={question.questionId}
+        submittedAt={question.submittedAt}
+        submittedBy={question.submittedBy}
+      />
+      {navigation}
       <dl className="author-metadata author-metadata--compact">
         <div>
           <dt>Difficulty</dt>
@@ -2412,11 +2534,7 @@ function QuestionDetail({
         </div>
       </dl>
       <section className="question-answer-summary">
-        <h6>
-          {question.format === 'ordering'
-            ? 'Correct sequence'
-            : 'Choices and accepted answer'}
-        </h6>
+        <h6>{question.format === 'ordering' ? 'Correct order' : 'Answers'}</h6>
         <ol className={question.format === 'ordering' ? 'is-numbered' : ''}>
           {question.format === 'ordering'
             ? [...question.items]
@@ -2439,7 +2557,9 @@ function QuestionDetail({
                   >
                     <span>{choice.text}</span>
                     {choice.choiceId === question.acceptedChoiceId ? (
-                      <strong>Accepted answer</strong>
+                      <strong>
+                        <CheckCircleIcon size={16} aria-hidden="true" /> Correct
+                      </strong>
                     ) : null}
                   </li>
                 ))}
@@ -2447,14 +2567,14 @@ function QuestionDetail({
       </section>
       {question.explanation ? (
         <section className="author-summary-block author-summary-block--plain">
-          <h6>Author explanation</h6>
+          <h6>Explanation</h6>
           <p>{question.explanation}</p>
         </section>
       ) : null}
       {question.sourceUrls.length > 0 ? (
         <SourceEvidenceList sourceUrls={question.sourceUrls} />
       ) : null}
-      <AuthorFeedback error={apiError} refObject={feedbackRef} />
+      <AuthorFeedback compact error={apiError} refObject={feedbackRef} />
       {challenge.status !== 'retired' &&
       event.authoringStatus === 'draft' &&
       question.status === 'draft' ? (

@@ -1,3 +1,9 @@
+import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
+import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
+import {
+  useReviewQueueNavigation,
+  type ReviewQueueFilter,
+} from './AuthorReviewNavigation';
 import { SelectField } from '../fields/SelectField';
 import { createAppDateTimeFormatter } from '../../date-time';
 import { authorErrorDetail } from './author-error-copy';
@@ -9,7 +15,6 @@ import { Link } from 'wouter';
 import {
   AuthorApiError,
   listAuthorReviewQueue,
-  type AuthorContentEntityType,
   type AuthorPage,
   type AuthorReviewQueueItem,
 } from '../../api/author';
@@ -21,14 +26,21 @@ interface ReviewWorkspaceProps {
   getAccessToken: ApiAccessTokenProvider;
 }
 
-type QueueFilter = 'all' | AuthorContentEntityType;
-
 export function ReviewWorkspace({
   apiBaseUrl,
   getAccessToken,
 }: ReviewWorkspaceProps) {
-  const [filter, setFilter] = useState<QueueFilter>('all');
-  const [page, setPage] = useState(1);
+  const navigation = useReviewQueueNavigation();
+  const { state: playerState } = useCurrentPlayer();
+  const [localFilter, setLocalFilter] = useState<ReviewQueueFilter>('all');
+  const [localPage, setLocalPage] = useState(1);
+  const filter = navigation?.filter ?? localFilter;
+  const page = navigation?.page ?? localPage;
+  const setFilter = navigation?.setFilter ?? setLocalFilter;
+  const setPage = navigation?.setPage ?? setLocalPage;
+  const restoredRef = useRef(false);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [result, setResult] =
     useState<AuthorPage<AuthorReviewQueueItem> | null>(null);
   const [state, setState] = useState<'error' | 'loading' | 'ready'>('loading');
@@ -51,6 +63,10 @@ export function ReviewWorkspace({
         signal: controller.signal,
       });
       if (!controller.signal.aborted) {
+        if (page > Math.max(1, next.totalPages)) {
+          setPage(Math.max(1, next.totalPages));
+          return;
+        }
         setResult(next);
         setState('ready');
       }
@@ -60,30 +76,42 @@ export function ReviewWorkspace({
         setState('error');
       }
     }
-  }, [apiBaseUrl, filter, getAccessToken, page]);
+  }, [apiBaseUrl, filter, getAccessToken, page, setPage]);
 
   useEffect(() => {
     void load();
     return () => requestRef.current?.abort();
   }, [load]);
 
+  useEffect(() => {
+    if (state !== 'ready' || restoredRef.current) return;
+    restoredRef.current = true;
+    if (!navigation?.item) return;
+    const key = `${navigation.item.entityType}:${navigation.item.entityId}`;
+    const frame = window.requestAnimationFrame(() => {
+      const link = Array.from(
+        tableRef.current?.querySelectorAll<HTMLAnchorElement>(
+          'a[data-review-key]',
+        ) ?? [],
+      ).find((element) => element.dataset.reviewKey === key);
+      (link ?? headingRef.current)?.focus({ preventScroll: true });
+      window.scrollTo({ top: navigation.scrollY, behavior: 'instant' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [navigation, state]);
+
   return (
     <section aria-labelledby="review-workspace-title" className="author-review">
       <header className="author-section-heading author-review__heading">
-        <div>
-          <p className="eyebrow">Independent review</p>
-          <h2 id="review-workspace-title">Review queue</h2>
-          <p>
-            Open each submission to review its full authoritative detail before
-            choosing an action.
-          </p>
-        </div>
+        <h2 id="review-workspace-title" ref={headingRef} tabIndex={-1}>
+          Content review
+        </h2>
         <SelectField
           label="Content type"
           className="author-filter"
           id="review-type-filter"
           onChange={(value) => {
-            setFilter(value as QueueFilter);
+            setFilter(value as ReviewQueueFilter);
             setPage(1);
           }}
           value={filter}
@@ -100,7 +128,7 @@ export function ReviewWorkspace({
       </header>
 
       {state === 'loading' ? (
-        <LoadingState label="Loading review queue…" />
+        <LoadingState label="Loading submissions…" />
       ) : null}
       {state === 'error' ? (
         <section
@@ -109,67 +137,98 @@ export function ReviewWorkspace({
         >
           <StateIcon tone="error" />
           <strong>
-            {loadErrorTitle(apiError, 'The review queue is unavailable.')}
+            {loadErrorTitle(apiError, 'Couldn’t load submissions.')}
           </strong>
-          <p>{apiError ? authorErrorDetail(apiError) : null}</p>
+          {apiError && apiError.failure !== 'unavailable' ? (
+            <p>{authorErrorDetail(apiError)}</p>
+          ) : null}
           <button
             className="button button--quiet"
             onClick={() => void load()}
             type="button"
           >
-            Retry queue
+            Retry
           </button>
         </section>
       ) : null}
       {state === 'ready' && result?.items.length === 0 ? (
         <section className="author-state author-state--empty state-message state-message--empty">
           <StateIcon tone="empty" />
-          <strong>No submissions are waiting.</strong>
-          <p>
+          <strong>
             {filter === 'all'
-              ? 'The review queue is clear.'
-              : `No ${filter} submissions match this filter.`}
-          </p>
+              ? 'No submissions to review.'
+              : `No ${filter} submissions to review.`}
+          </strong>
+          {filter !== 'all' ? (
+            <button
+              className="button button--quiet"
+              onClick={() => {
+                setFilter('all');
+                setPage(1);
+              }}
+              type="button"
+            >
+              Show all content
+            </button>
+          ) : null}
         </section>
       ) : null}
       {state === 'ready' && result && result.items.length > 0 ? (
-        <ol className="author-review__list">
-          {result.items.map((item) => (
-            <li
-              className="author-review__item"
-              key={`${item.entityType}:${item.entityId}`}
-            >
-              <div className="author-review__summary">
-                <div>
-                  <p className="eyebrow">{titleCase(item.entityType)}</p>
-                  <h3>{item.label}</h3>
-                </div>
-                <span className="status-badge status-badge--author-in_review">
-                  In review
-                </span>
-              </div>
-              <p>
-                Submitted by {item.submittedByName} ·{' '}
-                <time dateTime={item.submittedAt}>
-                  {formatDateTime(item.submittedAt)}
-                </time>
-              </p>
-              <div className="author-review__controls">
-                <Link className="button" href={itemPath(item)}>
-                  {item.canReview ? 'Review' : 'Open'} {item.entityType}
-                  {item.entityType === 'event' ? ' package' : ''}
-                </Link>
-                {!item.canReview ? (
-                  <p className="author-notice" role="status">
-                    {item.entityType === 'event'
-                      ? 'Another Author must review this event package.'
-                      : 'This submission is awaiting review by another Author. Self-approval is not available.'}
-                  </p>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ol>
+        <div className="review-table-wrap">
+          <table className="review-table" ref={tableRef}>
+            <caption className="sr-only">
+              Submissions awaiting independent review
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Submission</th>
+                <th scope="col">Type</th>
+                <th scope="col">Author</th>
+                <th scope="col">Submitted · Johannesburg</th>
+                <th scope="col">
+                  <span className="sr-only">Action</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.items.map((item) => {
+                const ownSubmission =
+                  playerState.status === 'ready' &&
+                  playerState.player.id === item.submittedBy;
+                return (
+                  <tr key={`${item.entityType}:${item.entityId}`}>
+                    <th scope="row">
+                      <span>{item.label}</span>
+                      {!item.canReview ? (
+                        <small>
+                          {ownSubmission ? 'Your submission' : 'View only'}
+                        </small>
+                      ) : null}
+                    </th>
+                    <td>{titleCase(item.entityType)}</td>
+                    <td>{item.submittedByName}</td>
+                    <td>
+                      <time dateTime={item.submittedAt}>
+                        {formatDateTime(item.submittedAt)}
+                      </time>
+                    </td>
+                    <td>
+                      <Link
+                        className="review-table__open"
+                        href={itemPath(item)}
+                        data-review-key={`${item.entityType}:${item.entityId}`}
+                        aria-label={`${item.canReview ? 'Review' : 'View'} ${item.entityType}: ${item.label}`}
+                        onClick={() => navigation?.open(item, itemScope(item))}
+                      >
+                        {item.canReview ? 'Review' : 'View'}
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : null}
 
       {state === 'ready' && result && result.totalPages > 1 ? (
@@ -177,10 +236,10 @@ export function ReviewWorkspace({
           <button
             className="button button--quiet"
             disabled={result.page <= 1}
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            onClick={() => setPage(Math.max(1, page - 1))}
             type="button"
           >
-            Previous
+            <CaretLeftIcon size={16} aria-hidden="true" /> Previous
           </button>
           <span>
             Page {result.page} of {result.totalPages}
@@ -188,10 +247,10 @@ export function ReviewWorkspace({
           <button
             className="button button--quiet"
             disabled={result.page >= result.totalPages}
-            onClick={() => setPage((current) => current + 1)}
+            onClick={() => setPage(page + 1)}
             type="button"
           >
-            Next
+            Next <CaretRightIcon size={16} aria-hidden="true" />
           </button>
         </nav>
       ) : null}
@@ -206,10 +265,19 @@ function itemPath(item: AuthorReviewQueueItem) {
     return authorPaths.challengeReview(item.eventId, item.entityId);
   if (item.entityType === 'question' && item.eventId && item.challengeId)
     return authorPaths.question(item.eventId, item.challengeId, item.entityId);
-  if (item.entityType === 'card') return authorPaths.card(item.entityId);
+  if (item.entityType === 'card')
+    return `${authorPaths.card(item.entityId)}/review`;
   if (item.entityType === 'campaign')
     return authorPaths.campaignReview(item.entityId);
   return authorPaths.review;
+}
+
+function itemScope(item: AuthorReviewQueueItem) {
+  if (item.entityType === 'event') return authorPaths.event(item.entityId);
+  if (item.entityType === 'card') return authorPaths.card(item.entityId);
+  if (item.entityType === 'campaign')
+    return authorPaths.campaign(item.entityId);
+  return item.eventId ? authorPaths.event(item.eventId) : authorPaths.review;
 }
 
 function toAuthorError(error: unknown) {
@@ -223,8 +291,8 @@ function toAuthorError(error: unknown) {
 
 function loadErrorTitle(error: AuthorApiError | null, fallback: string) {
   if (error?.failure === 'authorization')
-    return 'Your session needs attention.';
-  if (error?.failure === 'forbidden') return 'Author permission was refused.';
+    return 'Sign in again to review content.';
+  if (error?.failure === 'forbidden') return 'Author access is required.';
   return fallback;
 }
 

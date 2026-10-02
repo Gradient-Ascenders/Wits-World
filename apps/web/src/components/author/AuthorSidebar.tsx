@@ -1,4 +1,8 @@
 import {
+  useReviewEntry,
+  useReviewQueueNavigation,
+} from './AuthorReviewNavigation';
+import {
   CalendarBlankIcon,
   CardsIcon,
   ChartBarIcon,
@@ -34,6 +38,9 @@ export function AuthorSidebar({
   route: AuthorWorkspaceRoute;
   pathname: string;
 }) {
+  const reviewEntry = useReviewEntry();
+  const reviewNavigation = useReviewQueueNavigation();
+  const activeSection = reviewEntry ? 'review' : route.section;
   const [expanded, setExpanded] = useState(false);
   useEffect(() => setExpanded(false), [pathname]);
 
@@ -47,7 +54,7 @@ export function AuthorSidebar({
         type="button"
       >
         <ListIcon size={20} aria-hidden="true" />
-        {sections.find((item) => item.section === route.section)?.label} ·
+        {sections.find((item) => item.section === activeSection)?.label} ·
         Navigation
       </button>
       <nav
@@ -60,8 +67,11 @@ export function AuthorSidebar({
           <Link
             key={section}
             href={authorPaths[section]}
+            onClick={() => {
+              if (section !== 'review') reviewNavigation?.clear();
+            }}
             className="author-sections__link"
-            aria-current={route.section === section ? 'page' : undefined}
+            aria-current={activeSection === section ? 'page' : undefined}
           >
             <Icon size={20} aria-hidden="true" />
             {label}
