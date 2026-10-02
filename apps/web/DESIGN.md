@@ -237,7 +237,7 @@ Live Ranked inherits the standard app background. Its bordered stage uses the sh
 
 General controls use the small and medium radii; panels use large corners; badges and handles use pill or circular silhouettes. Borders remain thin and translucent. Collectible cards are the deliberate exception: they use a recessed square artwork window, metallic rims, corner engraving, and rarity-specific material colors while sharing one frame geometry.
 
-Live Ranked uses a `1px` Beacon Gold Light stage border, the shared `1rem` panel radius, and a scoped `1.75rem` radius in tall portrait layouts. The Change deck control keeps pill corners.
+Live Ranked uses a `1px` Beacon Gold Light stage border, the shared `1rem` panel radius, and a scoped `1.75rem` radius in tall portrait layouts. The Change deck control uses the shared button radius of `0.625rem`.
 
 ## Components
 
@@ -274,6 +274,8 @@ Small pill badges use colored text and faint matching fill for active, upcoming,
 ### Live Ranked stage and deck fan
 
 The stage groups the current season, real season record and rating, selected deck, and ranked search action. Play, Standings, and Watch remain semantic tabs. The card fan resolves the selected deck’s exact owned-card IDs through the owned-card collection, ordered by deck position. It uses shared `CardThumbnail` artwork and rarity frames without visible nameplates. Card names remain in accessible button labels and the details dialog. Hover lifts and tilts a card; keyboard focus raises it above overlapping neighbors. Click, tap, or Enter opens the shared `CardPresentationDialog` with authoritative stats and rules, Escape closes it, and focus returns to the card. Collection loading and failure do not block matchmaking; named fallback frames remain visible and failed details can be retried.
+
+Lobby copy keeps the next action clear: Find battle, Accept, Cancel search, and Select deck. The deck preview omits turn-time copy; searching omits the rating-range diagnostic. Territory location guidance appears only when contesting is selected, and territory failures use one actionable queue alert. Ranked penalties stay in the collapsed rules and proposal guidance. Watch uses one link-or-ID field label and a short privacy hint. Standings show rank, player, rating, and win/loss record without a repeated match count.
 
 The fan has a non-looping `550ms` entry settle using the shared easing curve. Searching and proposed queue states fold it to `min(100%, 24rem)`, reduce horizontal translation and rotation to 65%, and cancel the settle animation. The hover lift is 0.5rem over 260ms with exponential easing. The fan retains 30% rotation and 45% enlargement with flat transform composition. Its shared thumbnail opts into a critically damped cursor response that preserves velocity when direction changes and follows elapsed frame time. Pointer coordinates use the bounds captured at hover entry and clamp to the card’s original range, preventing the moving card from feeding motion back into its own target. Other card surfaces retain their existing spring. The active hover or keyboard card uses z-index 10. On pointer exit, the outgoing card immediately returns to its normal fan layer while its transform eases to rest. Settling no longer controls stacking or toggles compositor hints, preventing a delayed overlap change after fast swipes. The fan isolates these layers from the page. Reduced-motion preference removes the card animation, lift, and tilt. The visual fold reflects server queue state and supplies no matchmaking authority.
 

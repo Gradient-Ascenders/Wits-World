@@ -285,16 +285,16 @@ test('explains unavailable ranked entry at mobile and desktop widths', async ({
     await page.setViewportSize({ height: width === 825 ? 1905 : 900, width });
     await page.goto('/matches/live');
     await expect(
-      page.getByText('No active season. Ranked play returns next season.'),
+      page.getByText('No active season. Check back later.'),
     ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Find ranked battle' }),
-    ).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Find battle' })).toHaveCount(
+      0,
+    );
     await expect(
       page.getByRole('heading', { name: 'Ranked season' }),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Check season again' }),
+      page.getByRole('button', { name: 'Refresh season' }),
     ).toBeEnabled();
     await expectNoHorizontalOverflow(page);
     await page.screenshot({
@@ -303,9 +303,7 @@ test('explains unavailable ranked entry at mobile and desktop widths', async ({
       path: testInfo.outputPath(`live-lobby-unavailable-${width}.png`),
     });
     await page.getByRole('tab', { name: 'Standings' }).click();
-    await expect(
-      page.getByText('Standings open with the next season'),
-    ).toBeVisible();
+    await expect(page.getByText('Standings return next season')).toBeVisible();
     await page.getByRole('tab', { name: 'Watch' }).click();
     const mobileNavigation = page.locator('.primary-navigation--mobile');
     if (width < 1200) {
@@ -313,7 +311,7 @@ test('explains unavailable ranked entry at mobile and desktop widths', async ({
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       const navigationBox = await mobileNavigation.boundingBox();
       const finalActionBox = await page
-        .getByRole('button', { name: 'Watch match' })
+        .getByRole('button', { name: 'Watch', exact: true })
         .boundingBox();
       expect(navigationBox).not.toBeNull();
       expect(finalActionBox).not.toBeNull();
@@ -526,7 +524,7 @@ test('presents the active season, personal record, standings, and territory opti
       });
     }
     const rankedAction = page.getByRole('button', {
-      name: 'Find ranked battle',
+      name: 'Find battle',
     });
     await expect(rankedAction).toBeInViewport();
     const actionBox = await rankedAction.boundingBox();
@@ -538,13 +536,13 @@ test('presents the active season, personal record, standings, and territory opti
       navBox?.y ?? 900,
     );
     const territoryContest = page.getByRole('checkbox', {
-      name: /contest my current territory/i,
+      name: /contest territory/i,
     });
     await expect(territoryContest).not.toBeChecked();
     await territoryContest.click();
     await expect(territoryContest).toBeChecked();
     await expect(
-      page.getByText(/your location finds your territory on the map/i),
+      page.getByText(/uses your location when you search/i),
     ).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Territory' })).toHaveCount(
       0,
@@ -554,7 +552,7 @@ test('presents the active season, personal record, standings, and territory opti
     const rankedRules = page.locator('.live-ranked-rules summary');
     await rankedRules.click();
     await expect(
-      page.getByText(/forfeiting or missing three turns in a row/i),
+      page.getByText(/forfeit or miss three turns in a row/i),
     ).toBeVisible();
     await rankedRules.click();
     if (width === 390) {
@@ -602,7 +600,7 @@ test('presents the active season, personal record, standings, and territory opti
     });
     await page.getByRole('tab', { name: 'Watch' }).click();
     await expect(
-      page.getByRole('heading', { name: 'Watch a private match' }),
+      page.getByRole('textbox', { name: 'Private battle link or ID' }),
     ).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await page.screenshot({
@@ -664,10 +662,7 @@ test('keeps matchmaking controls visible when changing lobby views', async ({
       status = nextStatus;
       await page.goto('/matches/live');
       const heading = page.getByRole('heading', {
-        name:
-          status === 'searching'
-            ? 'Searching for an opponent'
-            : 'Opponent found',
+        name: status === 'searching' ? 'Finding opponent…' : 'Opponent found',
       });
       await expect(heading).toBeVisible();
       if (status === 'proposed') await expect(heading).toBeFocused();
@@ -692,7 +687,7 @@ test('keeps matchmaking controls visible when changing lobby views', async ({
       await page.getByRole('tab', { name: 'Watch' }).click();
       await expect(heading).toBeVisible();
       const action = page.getByRole('button', {
-        name: status === 'searching' ? 'Leave search' : 'Accept match',
+        name: status === 'searching' ? 'Cancel search' : 'Accept',
       });
       await expect(action).toBeEnabled();
       await expect(action).toBeInViewport();

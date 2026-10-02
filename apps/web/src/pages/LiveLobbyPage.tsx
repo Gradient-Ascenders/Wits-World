@@ -158,9 +158,7 @@ export default function LiveLobbyPage({
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const proposalHeading = useRef<HTMLHeadingElement>(null);
   const previousQueueStatus = useRef<RankedQueueState['status'] | null>(null);
-  const [announcement, setAnnouncement] = useState(
-    'Loading live battle lobby.',
-  );
+  const [announcement, setAnnouncement] = useState('Loading ranked battles.');
   const [seasonRevision, setSeasonRevision] = useState(0);
   const refreshedSeasonBoundary = useRef<string | null>(null);
   stateRef.current = state;
@@ -405,9 +403,7 @@ export default function LiveLobbyPage({
         .catch(() => {
           if (!controller.signal.aborted) {
             setQueueConnectionInterrupted(true);
-            setAnnouncement(
-              'Matchmaking could not refresh. Trying again automatically.',
-            );
+            setAnnouncement('Connection lost. Reconnecting…');
           }
         });
     }, queuePollMs);
@@ -423,9 +419,7 @@ export default function LiveLobbyPage({
         .catch(() => {
           if (!controller.signal.aborted) {
             setQueueConnectionInterrupted(true);
-            setAnnouncement(
-              'Your search could not be kept active. Checking its latest status…',
-            );
+            setAnnouncement('Connection lost. Checking your search…');
           }
         });
     }, queueHeartbeatMs);
@@ -496,8 +490,7 @@ export default function LiveLobbyPage({
     if (territories.status !== 'ready') {
       setTerritoryDetection({ status: 'unavailable' });
       throw new LiveApiError('validation', {
-        detail:
-          'Territories could not be checked. Retry or turn off territory contesting.',
+        detail: 'Territories unavailable. Retry or turn off Contest territory.',
       });
     }
     setTerritoryDetection({ status: 'checking' });
@@ -518,7 +511,7 @@ export default function LiveLobbyPage({
       setTerritoryDetection({ status: 'none' });
       throw new LiveApiError('validation', {
         detail:
-          'No territory found. Move farther inside a territory or turn off territory contesting.',
+          'No active territory found. Move inside one or turn off Contest territory.',
       });
     }
     setTerritoryDetection({
@@ -609,9 +602,7 @@ export default function LiveLobbyPage({
       );
     } catch {
       setQueueConnectionInterrupted(true);
-      setAnnouncement(
-        'Matchmaking is still reconnecting. Keep this page open.',
-      );
+      setAnnouncement('Still reconnecting. Keep this page open.');
     } finally {
       setQueueRefreshPending(false);
     }
@@ -620,9 +611,7 @@ export default function LiveLobbyPage({
   function openSpectatorMatch() {
     const matchId = parseSpectatorMatchId(spectatorEntry);
     if (!matchId) {
-      setSpectatorError(
-        'Paste a valid private battle link or enter its match ID.',
-      );
+      setSpectatorError('Enter a valid battle link or ID.');
       return;
     }
     setSpectatorError(null);
@@ -631,9 +620,7 @@ export default function LiveLobbyPage({
 
   async function pasteAndOpenSpectatorMatch() {
     if (!navigator.clipboard?.readText) {
-      setSpectatorError(
-        'Clipboard unavailable. Paste the link into the field.',
-      );
+      setSpectatorError('Paste your battle link into the field.');
       return;
     }
     try {
@@ -641,25 +628,21 @@ export default function LiveLobbyPage({
       setSpectatorEntry(value);
       const matchId = parseSpectatorMatchId(value);
       if (!matchId) {
-        setSpectatorError(
-          'Copy a private battle link or match ID, then try again.',
-        );
+        setSpectatorError('Copy a battle link or ID, then try again.');
         return;
       }
       setSpectatorError(null);
       navigate(`/matches/live/${matchId}`);
     } catch {
-      setSpectatorError(
-        'Clipboard access blocked. Paste the link into the field.',
-      );
+      setSpectatorError('Clipboard blocked. Paste your link into the field.');
     }
   }
 
   if (state.status === 'loading') {
     return (
       <PageLoadingState
-        title="Opening live ranked battles"
-        description="Checking your deck and search…"
+        title="Loading ranked battles"
+        description="Checking your deck…"
       />
     );
   }
@@ -767,10 +750,8 @@ export default function LiveLobbyPage({
               >
                 <WarningCircle size={24} aria-hidden="true" />
                 <div>
-                  <strong>Reconnecting to matchmaking</strong>
-                  <p>
-                    Keep this page open. Your search will update automatically.
-                  </p>
+                  <strong>Reconnecting…</strong>
+                  <p>Keep this page open.</p>
                 </div>
                 <button
                   className="button button--quiet"
@@ -778,7 +759,7 @@ export default function LiveLobbyPage({
                   onClick={() => void refreshQueueStatus()}
                   type="button"
                 >
-                  {queueRefreshPending ? 'Checking…' : 'Check now'}
+                  {queueRefreshPending ? 'Checking…' : 'Retry'}
                 </button>
               </div>
             ) : null}
@@ -792,10 +773,10 @@ export default function LiveLobbyPage({
                   </h2>
                   {queue.accepted ? (
                     <p>
-                      Waiting for the other player until{' '}
+                      Waiting for opponent until{' '}
                       {queue.acceptanceDeadline
                         ? formatTime(queue.acceptanceDeadline)
-                        : 'the acceptance window closes'}
+                        : 'the deadline'}
                       .
                     </p>
                   ) : (
@@ -803,9 +784,8 @@ export default function LiveLobbyPage({
                       Accept before{' '}
                       {queue.acceptanceDeadline
                         ? formatTime(queue.acceptanceDeadline)
-                        : 'the acceptance window closes'}
-                      . Declining or missing it pauses matchmaking for 30
-                      seconds.
+                        : 'the deadline'}
+                      . Declining or missing this match adds a 30-second wait.
                     </p>
                   )}
                   {!queue.accepted ? (
@@ -827,7 +807,7 @@ export default function LiveLobbyPage({
                         type="button"
                       >
                         <Check size={18} aria-hidden="true" />
-                        {pending === 'accept' ? 'Accepting…' : 'Accept match'}
+                        {pending === 'accept' ? 'Accepting…' : 'Accept'}
                       </button>
                       <button
                         className="button button--quiet"
@@ -856,16 +836,10 @@ export default function LiveLobbyPage({
               <div className="live-searching" role="status">
                 <span className="live-searching__signal" aria-hidden="true" />
                 <div>
-                  <h2>Searching for an opponent</h2>
-                  <p>
-                    Rating range
-                    {queue.searchRange === null
-                      ? ' is expanding.'
-                      : `: ±${queue.searchRange}.`}
-                    {territoryDetection.status === 'confirmed'
-                      ? ` Contesting ${territoryDetection.name}.`
-                      : ''}
-                  </p>
+                  <h2>Finding opponent…</h2>
+                  {territoryDetection.status === 'confirmed' ? (
+                    <p>Contesting {territoryDetection.name}.</p>
+                  ) : null}
                 </div>
                 <button
                   className="button button--quiet"
@@ -881,7 +855,7 @@ export default function LiveLobbyPage({
                   }
                   type="button"
                 >
-                  {pending === 'cancel' ? 'Leaving search…' : 'Leave search'}
+                  {pending === 'cancel' ? 'Cancelling…' : 'Cancel search'}
                 </button>
               </div>
             ) : null}
@@ -960,7 +934,6 @@ export default function LiveLobbyPage({
               <div className="live-lobby__deck-info">
                 <span className="sr-only">Selected deck</span>
                 <h2>{deck?.name ?? 'No deck selected'}</h2>
-                <p>One minute per turn.</p>
                 {deck && !proposal && !searching ? (
                   <Link
                     className="button button--quiet live-lobby__change-deck"
@@ -978,10 +951,10 @@ export default function LiveLobbyPage({
                 <div>
                   <strong>
                     {queue.status === 'expired'
-                      ? 'Your search expired'
-                      : 'Your previous search ended'}
+                      ? 'Search expired'
+                      : 'Search ended'}
                   </strong>
-                  <p>Your rating is unchanged. You can search again.</p>
+                  <p>Your rating is unchanged.</p>
                 </div>
               </div>
             ) : null}
@@ -990,30 +963,29 @@ export default function LiveLobbyPage({
               <div className="live-lobby__start">
                 {queue.status === 'restricted' ? (
                   <p className="live-lobby__warning">
-                    Ranked play is unavailable for this account. You can still
-                    play other modes or watch a private match.
+                    Ranked play is unavailable for your account. Try another
+                    mode or watch a match.
                   </p>
                 ) : queue.status === 'invalid_deck' ? (
                   <p className="live-lobby__warning">
-                    Your deck no longer meets ranked rules. Review it to
-                    continue.
+                    Update your deck to play ranked.
                   </p>
                 ) : null}
                 {!rankedEntryAvailable ? (
                   <div className="live-lobby__availability" role="status">
                     <p className="live-lobby__warning">
                       {season?.status === 'closing'
-                        ? 'This season is closing. Ranked play returns next season.'
+                        ? 'Season closing. Play resumes next season.'
                         : seasonBoundaryReached
-                          ? 'This season has ended. Checking the next season…'
-                          : 'No active season. Ranked play returns next season.'}
+                          ? 'Season ended. Checking for a new season…'
+                          : 'No active season. Check back later.'}
                     </p>
                     <button
                       className="button button--quiet"
                       onClick={refreshSeasonResources}
                       type="button"
                     >
-                      Check season again
+                      Refresh season
                     </button>
                   </div>
                 ) : null}
@@ -1034,10 +1006,10 @@ export default function LiveLobbyPage({
                       type="button"
                     >
                       {pending === 'join'
-                        ? 'Starting search…'
+                        ? 'Finding opponent…'
                         : contestTerritory
                           ? 'Find territory battle'
-                          : 'Find ranked battle'}
+                          : 'Find battle'}
                       <ArrowRight size={22} aria-hidden="true" />
                     </button>
                     <TerritoryQueueOption
@@ -1056,19 +1028,16 @@ export default function LiveLobbyPage({
                       <summary>Ranked rules</summary>
                       <p>
                         Accept within 20 seconds. Declining or missing a match
-                        pauses your search for 30 seconds.
+                        adds a 30-second wait.
                       </p>
-                      <p>
-                        Forfeiting or missing three turns in a row counts as a
-                        loss.
-                      </p>
+                      <p>Forfeit or miss three turns in a row and you lose.</p>
                     </details>
                   </>
                 ) : rankedEntryAvailable && queue.status !== 'restricted' ? (
                   <Link className="button" href="/collection/decks">
                     {queue.status === 'invalid_deck'
-                      ? 'Review battle deck'
-                      : 'Select a battle deck'}
+                      ? 'Edit deck'
+                      : 'Select deck'}
                   </Link>
                 ) : null}
               </div>
@@ -1100,9 +1069,6 @@ export default function LiveLobbyPage({
             id="live-panel-watch"
             role="tabpanel"
           >
-            <div className="live-lobby__lane-heading">
-              <h2>Watch a private match</h2>
-            </div>
             <form
               className="live-spectator-form"
               onSubmit={(event) => {
@@ -1110,7 +1076,9 @@ export default function LiveLobbyPage({
                 openSpectatorMatch();
               }}
             >
-              <label htmlFor="live-match-entry">Private match link or ID</label>
+              <label htmlFor="live-match-entry">
+                Private battle link or ID
+              </label>
               <input
                 aria-describedby={
                   spectatorError ? 'live-match-entry-error' : 'live-match-hint'
@@ -1130,9 +1098,7 @@ export default function LiveLobbyPage({
                 spellCheck={false}
                 value={spectatorEntry}
               />
-              <p id="live-match-hint">
-                Watch the battle. Players’ hands stay hidden.
-              </p>
+              <p id="live-match-hint">Players’ hands stay hidden.</p>
               {spectatorError ? (
                 <p id="live-match-entry-error" role="alert">
                   {spectatorError}
@@ -1151,7 +1117,7 @@ export default function LiveLobbyPage({
                   disabled={spectatorEntry.trim() === ''}
                   type="submit"
                 >
-                  Watch match
+                  Watch
                 </button>
               </div>
             </form>
@@ -1213,7 +1179,7 @@ function RankedSeasonStrip({
               title={`Ends ${seasonDateFormatter.format(new Date(season.activeEndsAt))}`}
             >
               {season.status === 'closing'
-                ? 'Final matches are settling.'
+                ? 'Final matches settling'
                 : seasonCountdownLabel(season.activeEndsAt, clock)}
             </time>
           </p>
@@ -1223,11 +1189,11 @@ function RankedSeasonStrip({
       {profile.status === 'loading' ? (
         <LoadingState
           className="ranked-season-strip__state"
-          label="Loading your ranked record"
+          label="Loading your record"
         />
       ) : profile.status === 'error' ? (
         <div className="ranked-season-strip__state" role="alert">
-          <p>Your ranked record could not load.</p>
+          <p>Couldn’t load your record.</p>
           <button
             className="button button--quiet"
             onClick={onRetry}
@@ -1238,13 +1204,13 @@ function RankedSeasonStrip({
         </div>
       ) : mismatch ? (
         <div className="ranked-season-strip__state" role="status">
-          <p>Your ranked record does not match this season yet.</p>
+          <p>Your record hasn’t updated for this season.</p>
           <button
             className="button button--quiet"
             onClick={onRetry}
             type="button"
           >
-            Refresh season record
+            Refresh record
           </button>
         </div>
       ) : profile.data.season === null ||
@@ -1295,8 +1261,7 @@ function TerritoryQueueOption({
           type="checkbox"
         />
         <span>
-          <strong>Contest my current territory</strong>
-          <small>Optional. Uses your location when you start a search.</small>
+          <strong>Contest territory</strong>
         </span>
       </label>
 
@@ -1305,15 +1270,13 @@ function TerritoryQueueOption({
           <LoadingState label="Loading active territories" />
         ) : state.status === 'error' ? (
           <div className="ranked-territory-option__state" role="status">
-            <p>
-              Territories could not load. Retry or turn this option off to play.
-            </p>
+            <p>Couldn’t load territories. Retry or turn this option off.</p>
             <button
               className="button button--quiet"
               onClick={onRetry}
               type="button"
             >
-              Retry territories
+              Retry
             </button>
           </div>
         ) : activeZones.length === 0 ? (
@@ -1324,8 +1287,8 @@ function TerritoryQueueOption({
           <div className="ranked-territory-option__detection">
             {detection.status === 'idle' ? (
               <p id="ranked-territory-help">
-                <MapPin aria-hidden="true" size={18} /> Your location finds your
-                territory on the map. It is checked but not stored.
+                <MapPin aria-hidden="true" size={18} /> Uses your location when
+                you search. It isn’t stored.
               </p>
             ) : (
               <TerritoryDetectionResult state={detection} />
@@ -1348,62 +1311,30 @@ function TerritoryDetectionResult({
     return (
       <div className="ranked-territory-detection-result" role="status">
         <MapPin aria-hidden="true" size={18} />
-        <strong>Detecting your territory…</strong>
+        <strong>Finding territory…</strong>
       </div>
     );
   }
-  if (
-    state.status === 'detected' ||
-    state.status === 'confirmed' ||
-    state.status === 'rejected'
-  ) {
+  if (state.status === 'detected' || state.status === 'confirmed') {
     return (
       <div
-        className={`ranked-territory-detection-result ranked-territory-detection-result--${state.status === 'rejected' ? 'warning' : 'success'}`}
-        role={state.status === 'rejected' ? 'alert' : 'status'}
+        className="ranked-territory-detection-result ranked-territory-detection-result--success"
+        role="status"
       >
-        {state.status === 'rejected' ? (
-          <WarningCircle aria-hidden="true" size={18} />
-        ) : (
-          <Check aria-hidden="true" size={18} />
-        )}
+        <Check aria-hidden="true" size={18} />
         <div>
           <strong>
             {state.status === 'confirmed'
               ? `Contesting ${state.name}`
-              : `Territory detected: ${state.name}`}
+              : state.name}
           </strong>
-          {state.status !== 'confirmed' ? (
-            <p>
-              {state.status === 'rejected'
-                ? 'You could not be confirmed in this territory.'
-                : 'Checking territory eligibility…'}
-            </p>
-          ) : null}
+          {state.status !== 'confirmed' ? <p>Checking location…</p> : null}
         </div>
       </div>
     );
   }
-  return (
-    <div
-      className="ranked-territory-detection-result ranked-territory-detection-result--warning"
-      role="alert"
-    >
-      <WarningCircle aria-hidden="true" size={18} />
-      <div>
-        <strong>
-          {state.status === 'none'
-            ? 'No active territory detected'
-            : 'Location could not be checked'}
-        </strong>
-        <p>
-          {state.status === 'none'
-            ? 'Move farther inside a mapped territory and try again, or play without contesting.'
-            : 'Check location access and try again, or play without contesting.'}
-        </p>
-      </div>
-    </div>
-  );
+  // Queue errors already explain territory failures and how to recover.
+  return null;
 }
 
 function RankedStandingsSection({
@@ -1431,18 +1362,18 @@ function RankedStandingsSection({
     >
       <div className="ranked-standings__heading">
         <h2 id="ranked-standings-title">Season standings</h2>
-        <p>Complete five placement matches to appear here.</p>
+        <p>Listed after five placement matches.</p>
       </div>
 
       {season === null ? (
         <div className="ranked-standings__state state-message state-message--empty">
           <StateIcon tone="empty" />
           <div>
-            <strong>Standings open with the next season</strong>
+            <strong>Standings return next season</strong>
           </div>
         </div>
       ) : state.status === 'loading' ? (
-        <LoadingState label="Loading season standings" />
+        <LoadingState label="Loading standings" />
       ) : state.status === 'error' ? (
         <div
           className="ranked-standings__state state-message state-message--error"
@@ -1450,13 +1381,13 @@ function RankedStandingsSection({
         >
           <StateIcon tone="error" />
           <div>
-            <strong>Season standings could not load.</strong>
+            <strong>Couldn’t load standings.</strong>
             <button
               className="button button--quiet"
               onClick={onRetry}
               type="button"
             >
-              Retry standings
+              Retry
             </button>
           </div>
         </div>
@@ -1467,13 +1398,13 @@ function RankedStandingsSection({
         >
           <StateIcon tone="empty" />
           <div>
-            <strong>Standings are updating for this season</strong>
+            <strong>Standings haven’t updated for this season</strong>
             <button
               className="button button--quiet"
               onClick={onRetry}
               type="button"
             >
-              Refresh season standings
+              Refresh standings
             </button>
           </div>
         </div>
@@ -1516,14 +1447,13 @@ function RankedStandingsSection({
                 </strong>
                 <span className="ranked-standing-row__record">
                   {entry.wins}W · {entry.losses}L
-                  <small>{entry.settledMatchCount} matches</small>
                 </span>
               </li>
             ))}
           </ol>
           {pageError ? (
             <p className="ranked-standings__page-error" role="alert">
-              More standings could not load. Try again or refresh.
+              Couldn’t load more players. Retry or refresh.
             </p>
           ) : null}
           <div className="ranked-standings__actions">
@@ -1534,7 +1464,7 @@ function RankedStandingsSection({
                 onClick={onLoadMore}
                 type="button"
               >
-                {loadingMore ? 'Loading more…' : 'Load more standings'}
+                {loadingMore ? 'Loading…' : pageError ? 'Retry' : 'Load more'}
               </button>
             ) : null}
             {pageError ? (
@@ -1684,7 +1614,7 @@ export function parseSpectatorMatchId(value: string): string | null {
 function seasonCountdownLabel(activeEndsAt: string, clock: number): string {
   const remaining = Date.parse(activeEndsAt) - clock;
   if (remaining <= 0) {
-    return 'Season ended. Checking status…';
+    return 'Season ended';
   }
   const totalMinutes = Math.ceil(remaining / 60_000);
   const days = Math.floor(totalMinutes / (24 * 60));
@@ -1693,14 +1623,14 @@ function seasonCountdownLabel(activeEndsAt: string, clock: number): string {
     return `${days} ${days === 1 ? 'day' : 'days'} left`;
   }
   if (hours > 0) {
-    return `${hours} ${hours === 1 ? 'hour' : 'hours'} remaining.`;
+    return `${hours} ${hours === 1 ? 'hour' : 'hours'} left`;
   }
-  return `${totalMinutes} ${totalMinutes === 1 ? 'minute' : 'minutes'} remaining.`;
+  return `${totalMinutes} ${totalMinutes === 1 ? 'minute' : 'minutes'} left`;
 }
 
 function placementCopy(remaining: number): string {
   if (remaining === 0) return 'placements complete';
-  return `${remaining} placement ${remaining === 1 ? 'match' : 'matches'} remaining`;
+  return `${remaining} placement ${remaining === 1 ? 'match' : 'matches'} left`;
 }
 
 function queueStatusLabel(queue: RankedQueueState): string {
@@ -1729,42 +1659,40 @@ function queueAnnouncement(queue: RankedQueueState): string {
 
 function queuePendingLabel(kind: 'join' | 'cancel' | 'accept' | 'decline') {
   return {
-    join: 'Joining ranked matchmaking…',
-    cancel: 'Leaving the search…',
-    accept: 'Accepting the match…',
-    decline: 'Declining the match…',
+    join: 'Finding opponent…',
+    cancel: 'Cancelling search…',
+    accept: 'Accepting…',
+    decline: 'Declining…',
   }[kind];
 }
 
 function queueErrorMessage(error: LiveApiError): string {
   if (error.failure === 'authentication')
-    return 'Sign in again to join or watch live ranked battles.';
+    return 'Sign in again to play or watch.';
   if (error.failure === 'restricted')
-    return 'Ranked play is unavailable for this account. You can still play other modes or watch a private match.';
+    return 'Ranked play is unavailable for your account. Try another mode or watch a match.';
   if (error.failure === 'invalid-deck')
-    return 'Your deck does not meet ranked rules. Review it to continue.';
+    return 'Update your deck to play ranked.';
   if (error.failure === 'location') {
     return error.options.code === 'denied'
-      ? 'Location access denied. Allow access or turn off territory contesting.'
-      : 'Location could not be checked. Retry or turn off territory contesting.';
+      ? 'Allow location access or turn off Contest territory.'
+      : 'Couldn’t check location. Retry or turn off Contest territory.';
   }
   if (error.failure === 'territory-ineligible')
-    return 'You could not be confirmed in this territory. Retry inside it or turn off territory contesting.';
+    return 'Location not confirmed. Move inside the territory or turn off Contest territory.';
   if (error.failure === 'territory-unavailable')
-    return 'Territories are unavailable. Turn off territory contesting to play.';
+    return 'Territories unavailable. Turn off Contest territory to play.';
   if (error.failure === 'validation')
     return (
       error.options.detail ??
-      'Check your deck and territory option, then try again.'
+      'Check your deck and territory choice, then retry.'
     );
   if (error.failure === 'conflict')
     return (
-      error.options.detail ??
-      'Your search status changed. Check it and try again.'
+      error.options.detail ?? 'Search changed. Check its status and retry.'
     );
   return (
-    error.options.detail ??
-    'Ranked matchmaking is temporarily unavailable. Try again or play another mode.'
+    error.options.detail ?? 'Couldn’t connect. Retry or play another mode.'
   );
 }
 

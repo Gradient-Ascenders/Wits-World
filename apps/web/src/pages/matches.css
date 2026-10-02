@@ -4049,14 +4049,8 @@
   line-height: 1.15;
 }
 
-.live-lobby__deck-info p {
-  margin: 0;
-  color: var(--colour-text-secondary);
-}
-
 .live-lobby__change-deck {
   margin-top: var(--space-1);
-  border-radius: var(--radius-pill);
 }
 
 .live-lobby__find {
@@ -4154,10 +4148,6 @@
 
   .live-lobby__deck-info h2 {
     font-size: 3.25rem;
-  }
-
-  .live-lobby__deck-info p {
-    font-size: 1.75rem;
   }
 
   .live-lobby__change-deck {
@@ -4440,7 +4430,6 @@
   gap: var(--space-1);
 }
 
-.ranked-territory-option__toggle small,
 .ranked-territory-option__detection p,
 .ranked-territory-option__state {
   margin: 0;
@@ -4500,14 +4489,6 @@
 
 .ranked-territory-detection-result--success > svg {
   color: var(--colour-status-success);
-}
-
-.ranked-territory-detection-result--warning {
-  background: rgb(225 169 58 / 8%);
-}
-
-.ranked-territory-detection-result--warning > svg {
-  color: var(--colour-status-warning);
 }
 
 .ranked-territory-option__state .button {
@@ -4589,10 +4570,6 @@
   gap: var(--space-1);
 }
 
-.ranked-standing-row__record small {
-  color: var(--colour-text-muted);
-}
-
 .ranked-standings__state .button {
   margin-top: var(--space-3);
 }
@@ -4609,8 +4586,6 @@
   gap: var(--space-3);
 }
 
-.live-lobby__lane-heading h2,
-.live-lobby__lane-heading p,
 .live-proposal h2,
 .live-proposal p,
 .live-searching h2,
@@ -4620,11 +4595,6 @@
   margin: 0;
 }
 
-.live-lobby__lane-heading h2 {
-  font-size: var(--text-2xl);
-}
-
-.live-lobby__lane-heading p,
 .live-proposal p,
 .live-searching p,
 .live-lobby__start p,
@@ -5122,10 +5092,6 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     color: var(--colour-text-secondary);
-  }
-
-  .ranked-standing-row__record small::before {
-    content: '· ';
   }
 
   .ranked-territory-option__detection {
