@@ -1,0 +1,117 @@
+{
+  "asset": "achievements.png",
+  "purpose": "Wits Quest profile achievement artwork",
+  "generation": {
+    "mode": "built-in image_gen",
+    "tool": "image_gen.imagegen",
+    "transparent_background": true,
+    "workflow": "New atlas generation followed by one edit for cell safe margins.",
+    "source_artifact": "/home/kevin/.codex/generated_images/01a0fe60-a2cf-7931-b54f-755831af209c/exec-6e04c28f-ed7a-4428-bef3-dc39cc2e35e4.png",
+    "selected_artifact": "/home/kevin/.codex/generated_images/01a0fe60-a2cf-7931-b54f-755831af209c/exec-5a5bdeef-96e5-49eb-bdad-e6a7e6f175b7.png",
+    "prompt": "Use case: stylized-concept\nAsset type: production transparent PNG sprite atlas for six Wits Quest player achievement badges.\nPrimary request: Create one polished illustrated achievement atlas, exactly three equal columns and two equal rows on a landscape canvas with a 3:2 aspect ratio. Prefer 1536 by 1024 pixels so the six cells are square. One large centered isolated collectible enamel and metal campus pin in each cell. No visible grid, no tiles, no backing plates, no background. True transparent alpha everywhere outside the six pins.\nStyle/medium: Carefully crafted scholarly campus collectible pins, appealing like illustrated GitHub achievement artwork, with dimensional gold metal edges, sculpted ivory relief, polished navy and royal blue enamel, soft precise highlights, subtle small material imperfections, crisp readable silhouette, compact richly designed forms. Consistent frontal view with slight dimensional depth and consistent light from the upper left. Art should read beautifully at 80 to 140 pixels.\nColor palette: deep navy #050b16, warm ivory #f7f3e7, antique gold #d4af37, royal blue #2a6bff. Any shading stays within these hues. No extra bright colors.\nComposition/framing: The implied cells occupy the exact equal thirds horizontally and equal halves vertically. Pin centers at normalized coordinates (1/6, 1/4), (1/2, 1/4), (5/6, 1/4), (1/6, 3/4), (1/2, 3/4), (5/6, 3/4). Every pin has comparable overall silhouette size, around 65 percent of its square cell width and height; each stays entirely inside its own cell with generous clear transparent margins. Separate objects, no overlapping cells. Visually balanced scale.\nCell subjects in row-major order:\n1. Upper left — first_quiz: ivory rolled quiz parchment with delicate blank engraved rule marks, a small royal blue wax seal, and a neat gold scholarly pen motif. A welcoming first-study collectible; no readable writing.\n2. Upper center — perfect_quiz: pristine ivory parchment, one prominent gold five-point merit star at its center, a royal blue ribbon flourish behind. A more elevated companion to the first parchment, equally large.\n3. Upper right — five_quizzes: a beautiful round campus explorer compass with gold rim, deep navy compass face, ivory compass rose, royal blue needle, a small understated scholarly architectural accent in the pin shape. No letters or numbers on the compass.\n4. Lower left — first_cpu_win: a proud academic victory crest, gold edged navy shield, ivory laurel branches and a raised gold victory star, small royal blue ribbon folds. No text.\n5. Lower center — five_cpu_matches: two crossed playing-card-shaped shields with gold rims, one navy and one royal blue, their faces bearing simple ivory ornamental shield marks, with compact gold laurel detail. Battle-tested collectible, no weapons, no text.\n6. Lower right — three_day_streak: a lively raised gold and ivory flame with three distinct flame tips, set in a compact sun halo accented with navy and blue enamel. This is an activity streak pin, not a calendar and not a count label.\nConstraints: Exactly six pins. Each has a distinct clear silhouette while keeping equal apparent visual weight. All pin details remain inside its own cell. No words, letters, digits, titles, logos, watermark, captions, labels, interface, border, grid, scenery, shadow floor, or opaque canvas. Do not add extra detached sparkles or ornaments outside the pins. The transparent area between the six subjects is completely empty. Deliver one single transparent PNG atlas, not six files.",
+    "refinement_prompt": "Use case: precise-object-edit\nAsset type: transparent PNG achievement sprite atlas\nInput image: edit target, the six-pin atlas.\nPrimary request: Refine only the placement and safe margins of this atlas. Preserve all six illustrated pins, their designs, materials, navy/ivory/gold/blue palette, order, and light exactly. Keep the canvas 1536 by 1024 pixels, exactly three equal columns by two equal rows of 512 by 512 pixels each, with no drawn grid.\nScale every complete pin down by approximately 20 percent compared with the reference so that the longest dimension of each complete pin is between 340 and 360 pixels. Center each complete pin at the exact center of its own 512 by 512 cell: (256,256), (768,256), (1280,256), (256,768), (768,768), (1280,768). This gives at least 75 pixels of clear transparent safe area on all four sides of every pin.\nConstraints: Change only pin scale and position, not pin artwork. Exactly six pins, same row-major order. True transparent alpha outside each pin, with empty transparent gaps and no shadows, floor, scenery, color field, border, background, labels, words, digits, watermark, or extra ornaments. Keep the complete silhouette of every badge and place no part of a badge outside its own cell. One transparent PNG atlas.",
+    "post_processing": "Selected PNG copied into the workspace, then exact final edit prompt embedded as PNG metadata. Artwork and decoded RGBA pixels unchanged."
+  },
+  "dimensions": {
+    "width": 1536,
+    "height": 1024,
+    "columns": 3,
+    "rows": 2,
+    "cell_width": 512,
+    "cell_height": 512
+  },
+  "cells": [
+    {
+      "code": "first_quiz",
+      "row": 0,
+      "column": 0,
+      "background_position": "0% 0%",
+      "motif": "quiz parchment"
+    },
+    {
+      "code": "perfect_quiz",
+      "row": 0,
+      "column": 1,
+      "background_position": "50% 0%",
+      "motif": "parchment and merit star"
+    },
+    {
+      "code": "five_quizzes",
+      "row": 0,
+      "column": 2,
+      "background_position": "100% 0%",
+      "motif": "campus explorer compass"
+    },
+    {
+      "code": "first_cpu_win",
+      "row": 1,
+      "column": 0,
+      "background_position": "0% 100%",
+      "motif": "victory crest"
+    },
+    {
+      "code": "five_cpu_matches",
+      "row": 1,
+      "column": 1,
+      "background_position": "50% 100%",
+      "motif": "crossed card shields"
+    },
+    {
+      "code": "three_day_streak",
+      "row": 1,
+      "column": 2,
+      "background_position": "100% 100%",
+      "motif": "three-tip flame and sun"
+    }
+  ],
+  "consumption": {
+    "background_size": "300% 200%",
+    "element_aspect_ratio": "1 / 1"
+  },
+  "authority": "Achievement codes verified against database/migrations/0026_create_player_progression.sql. Streak achievement is three_day_streak, threshold 3.",
+  "verification": {
+    "visual_inspection": "Six coordinated illustrated enamel pins, distinct motifs, no readable text, no visible grid, clean per-cell separation.",
+    "png_format": "RGBA PNG",
+    "alpha_min": 0,
+    "alpha_max": 254,
+    "edge_alpha_max_in_outer_48_pixels_of_each_cell": 1,
+    "sha256": "0bd7f50f2d1b52b987a55f40784bac8744226f77d86f2e25b9c02acf7a921d05",
+    "pixel_rgba_sha256": "edb6f452e140cdc2aaf8a72c788dcfc8b055f5f9e5795d99eb6dd84a4aa74276",
+    "prompt_metadata": "Embedded exact final image_gen edit prompt using Impeccable embed-prompt; decoded RGBA pixels verified unchanged."
+  },
+  "encodings": {
+    "webp": {
+      "asset": "achievements.webp",
+      "origin": "Lossless format conversion of achievements.png; no new artwork generation.",
+      "source_sha256": "0bd7f50f2d1b52b987a55f40784bac8744226f77d86f2e25b9c02acf7a921d05",
+      "encoder": "Sharp 0.35.2",
+      "options": {
+        "lossless": true,
+        "exact": true,
+        "quality": 100,
+        "alphaQuality": 100,
+        "effort": 6
+      },
+      "bytes": 1277314,
+      "sha256": "098ebb82c5e5ca77475580e85ce8a25b81c7bce2736ec141bee2a6ff82cf8073",
+      "pixel_rgba_sha256": "edb6f452e140cdc2aaf8a72c788dcfc8b055f5f9e5795d99eb6dd84a4aa74276",
+      "pixel_equivalence": "Decoded RGBA buffer compared byte-for-byte with source PNG; identical.",
+      "dimensions": {
+        "width": 1536,
+        "height": 1024,
+        "columns": 3,
+        "rows": 2,
+        "cell_width": 512,
+        "cell_height": 512
+      },
+      "alpha_preserved": true,
+      "atlas_cell_positions_preserved": true,
+      "metadata": {
+        "tool": "Impeccable embed-prompt",
+        "storage": "Tool-generated sidecar fallback for WebP",
+        "sidecar": "achievements.webp.json",
+        "sidecar_sha256": "4008930bd6d31d0739d4ef2134a91b6d0ebd18dec454c15432d051c2d97b751c"
+      }
+    }
+  }
+}

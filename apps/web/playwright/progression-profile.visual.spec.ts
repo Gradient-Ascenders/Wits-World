@@ -1,5 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
+import { profileExtension } from '../tests/fixtures/player-profile';
+
 import {
   buildProgressionProfile,
   buildStandingEntry,
@@ -38,8 +40,9 @@ test('renders and operates the progression route across mobile and desktop', asy
       role: 'player',
     }),
   );
-  await page.route(`${API_BASE_URL}/progression/me`, (route) =>
+  await page.route(`${API_BASE_URL}/profiles/me`, (route) =>
     json(route, {
+      ...profileExtension,
       ...buildProgressionProfile({ playerName: PLAYER_NAME }),
       requestId: 'progression-browser-profile',
     }),
@@ -106,11 +109,18 @@ test('renders and operates the progression route across mobile and desktop', asy
   await page.goto('/profile');
 
   await expect(page.getByRole('heading', { name: PLAYER_NAME })).toBeVisible();
-  await expect(page.getByText('Your Wits Quest progression')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Favourite cards' }),
+  ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Campus standings' }),
   ).toHaveCount(0);
-  await expect(page.getByRole('progressbar', { name: '3 of 5' })).toBeVisible();
+  await page.getByText('Campus Explorer', { exact: true }).click();
+  await expect(
+    page.getByRole('progressbar', {
+      name: 'Campus Explorer: In progress, 3 of 5',
+    }),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,

@@ -197,6 +197,16 @@ export function AppRoutes({
                   <ProfilePage apiBaseUrl={apiBaseUrl} />
                 </ProtectedRoute>
               </Route>
+              <Route path="/players/:playerName">
+                {(params) => (
+                  <ProtectedRoute destination="view a player profile">
+                    <ProfilePage
+                      apiBaseUrl={apiBaseUrl}
+                      playerName={params.playerName}
+                    />
+                  </ProtectedRoute>
+                )}
+              </Route>
               <Route path="/account">
                 <ProtectedRoute
                   allowPlayerNameSetupRequired

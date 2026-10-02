@@ -13,7 +13,7 @@ export default defineConfig({
   reporter: 'line',
   retries: 0,
   testDir: '.',
-  testMatch: /progression-profile\.visual\.spec\.ts/,
+  testMatch: /(?:progression|player)-profile\.visual\.spec\.ts/,
   timeout: 120_000,
   use: {
     ...devices['Desktop Chrome'],
