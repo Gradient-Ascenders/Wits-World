@@ -3875,10 +3875,11 @@
 }
 
 .live-lobby__stage {
+  --live-stage-padding: clamp(var(--space-4), 3vw, var(--space-6));
   display: grid;
   min-width: 0;
   gap: var(--space-5);
-  padding: clamp(var(--space-4), 3vw, var(--space-6));
+  padding: var(--live-stage-padding);
   border: 1px solid var(--colour-gold-400);
   border-radius: var(--radius-lg);
   background: var(--colour-background-app);
@@ -3915,11 +3916,6 @@
   transition: translate 260ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Keep an outgoing card above the resting fan until its spring settles. */
-.live-deck-fan__card:has([data-tilting]) {
-  z-index: 8;
-}
-
 .live-deck-fan__card:hover,
 .live-deck-fan__card:focus-within {
   z-index: 10;
@@ -3931,6 +3927,11 @@
     rotateY(calc(var(--card-tilt-y) * 0.3))
     scale(calc(1 + (var(--card-scale) - 1) * 0.45));
   transform-style: flat;
+}
+
+/* Settling must not trigger a second stacking or compositor-layer change. */
+.live-deck-fan .card-thumbnail__button[data-tilting] {
+  will-change: auto;
 }
 
 .live-deck-fan .card-thumbnail__button[data-hovered] {
@@ -3951,6 +3952,16 @@
   min-height: 0;
   flex: 1;
   aspect-ratio: auto;
+}
+
+.live-deck-fan .collectible-card__artwork {
+  position: absolute;
+  inset: 0;
+  aspect-ratio: auto;
+}
+
+.live-deck-fan .collectible-card__artwork > img {
+  object-fit: cover;
 }
 
 .live-deck-fan .card-frame__rail {
@@ -5069,6 +5080,12 @@
 @media (max-width: 47.99rem) {
   .live-lobby {
     gap: var(--space-4);
+  }
+
+  .live-lobby__stage {
+    /* Move the border outward while preserving the fan's available width. */
+    margin-inline: calc(-1 * var(--space-3));
+    padding-inline: calc(var(--live-stage-padding) + var(--space-3));
   }
 
   .ranked-season-strip {

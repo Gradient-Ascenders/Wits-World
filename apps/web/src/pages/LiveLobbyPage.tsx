@@ -930,16 +930,13 @@ export default function LiveLobbyPage({
                               accessibleLabel={`View ${ownedCard.name} details, card ${card.position}`}
                               card={ownedCard}
                               loading="eager"
+                              motion="smooth"
+                              nameplate={null}
                               onClick={() => setInspectedCard(ownedCard)}
                             />
                           ) : (
                             <CardArtwork
                               card={{ ...card, imageUrl: null }}
-                              nameplate={
-                                <span className="card-thumbnail__title">
-                                  {card.name}
-                                </span>
-                              }
                               thumbnail
                             />
                           )}

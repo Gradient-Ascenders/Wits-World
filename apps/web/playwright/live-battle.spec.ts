@@ -425,7 +425,7 @@ test('presents the active season, personal record, standings, and territory opti
       });
       await firstCard.hover();
       await expect(firstCard).toHaveAttribute('data-hovered', '');
-      await expect(card.locator('..')).toHaveCSS('z-index', '8');
+      await expect(card.locator('..')).toHaveCSS('z-index', '3');
       await expect(firstCard.locator('..')).toHaveCSS('z-index', '10');
       const cards = page.locator('.live-deck-fan .card-thumbnail__button');
       const centers = await cards.evaluateAll((elements) =>
@@ -444,9 +444,54 @@ test('presents the active season, personal record, standings, and territory opti
       }
       await expect(card).toHaveAttribute('data-hovered', '');
       await expect(card.locator('..')).toHaveCSS('z-index', '10');
+      const motion = await card.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          x: Number.parseFloat(style.getPropertyValue('--card-tilt-x')),
+          y: Number.parseFloat(style.getPropertyValue('--card-tilt-y')),
+          scale: Number.parseFloat(style.getPropertyValue('--card-scale')),
+        };
+      });
+      expect(Math.abs(motion.x)).toBeLessThanOrEqual(10.01);
+      expect(Math.abs(motion.y)).toBeLessThanOrEqual(12.01);
+      expect(motion.scale).toBeLessThanOrEqual(1.056);
       await page.screenshot({
         path: testInfo.outputPath('live-lobby-fast-hover.png'),
       });
+      // Record the entire return to rest: outgoing cards must not linger in
+      // raised layers and reshuffle the fan when their animation completes.
+      await page.mouse.move(0, 0);
+      const settling = await cards.evaluateAll(async (elements) => {
+        const frames: {
+          layers: string[];
+          promotions: string[];
+          moving: boolean;
+        }[] = [];
+        const start = performance.now();
+        do {
+          frames.push({
+            layers: elements.map(
+              (element) => getComputedStyle(element.parentElement!).zIndex,
+            ),
+            promotions: elements.map(
+              (element) => getComputedStyle(element).willChange,
+            ),
+            moving: elements.some((element) =>
+              element.hasAttribute('data-tilting'),
+            ),
+          });
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+        } while (performance.now() - start < 650);
+        return frames;
+      });
+      expect(settling.some((frame) => frame.moving)).toBe(true);
+      expect(settling.at(-1)!.moving).toBe(false);
+      for (const frame of settling) {
+        expect(frame.layers).toEqual(['1', '2', '3', '2', '1']);
+        expect(frame.promotions).toEqual(Array(5).fill('auto'));
+      }
     }
     await card.click();
     await expect(

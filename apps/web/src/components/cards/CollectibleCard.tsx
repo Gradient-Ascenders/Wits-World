@@ -10,7 +10,7 @@ import type {
 
 import { CardFrame } from './CardFrame';
 import { collectionArtworkSrcSets } from './collection-artwork-assets';
-import { useCardTilt } from './useCardTilt';
+import { useCardTilt, type CardTiltMotion } from './useCardTilt';
 
 interface CollectibleCardProps {
   actions?: ReactNode;
@@ -35,6 +35,7 @@ interface CardThumbnailProps {
   fetchPriority?: 'high';
   loading?: 'eager' | 'lazy';
   onClick: MouseEventHandler<HTMLButtonElement>;
+  motion?: CardTiltMotion;
 }
 
 export function CardThumbnail({
@@ -45,8 +46,9 @@ export function CardThumbnail({
   loading,
   nameplate,
   onClick,
+  motion = 'spring',
 }: CardThumbnailProps) {
-  const tilt = useCardTilt<HTMLButtonElement>();
+  const tilt = useCardTilt<HTMLButtonElement>(motion);
 
   return (
     <button
