@@ -471,6 +471,22 @@ for (const reducedMotion of [false, true]) {
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();
     await expect.poll(() => Boolean(releaseSuccess)).toBe(true);
+    if (!reducedMotion) {
+      // Freeze the authored sequence at insertion so captures do not depend
+      // on machine speed or the duration of a screenshot.
+      await page.evaluate(() => {
+        const observer = new MutationObserver(() => {
+          const reveal = document.querySelector('.evolution-reveal');
+          if (!reveal) return;
+          reveal.getAnimations({ subtree: true }).forEach((animation) => {
+            animation.pause();
+            animation.currentTime = 0;
+          });
+          observer.disconnect();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      });
+    }
     releaseSuccess!();
     await expect(
       page.getByRole('heading', { name: 'Evolution complete' }),
@@ -484,11 +500,122 @@ for (const reducedMotion of [false, true]) {
       'data-reduced-motion',
       String(reducedMotion),
     );
-    if (!reducedMotion)
+    const particle = dialog.locator('.evolution-particles__mote').first();
+    await expect(dialog.locator('.evolution-particles')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+    await expect(particle).toHaveCSS(
+      'animation-name',
+      reducedMotion ? 'none' : 'evolution-particle-drift',
+    );
+    if (!reducedMotion) {
+      await expect(page.getByTestId('evolution-reveal')).toHaveAttribute(
+        'data-celebrating',
+        'true',
+      );
+      await expect(
+        page.getByRole('button', { name: 'Back to evolutions' }),
+      ).toBeEnabled();
+      for (const viewport of [
+        { width: 320, height: 568 },
+        { width: 390, height: 844 },
+        { width: 768, height: 960 },
+        { width: 1440, height: 960 },
+      ]) {
+        await page.setViewportSize(viewport);
+        await dialog.evaluate(async (element) => {
+          // Finish the incumbent sheet's viewport-height transition before
+          // inspecting the separately paused card sequence.
+          await Promise.all(
+            element.getAnimations().map((animation) => animation.finished),
+          );
+        });
+        for (const [phase, time] of [
+          ['gather', 510],
+          ['merging', 1000],
+          ['convergence', 1320],
+          ['reveal', 2300],
+          ['glint', 2700],
+          ['settled', 3300],
+        ] as const) {
+          await page
+            .getByTestId('evolution-reveal')
+            .evaluate((element, time) => {
+              element.getAnimations({ subtree: true }).forEach((animation) => {
+                animation.currentTime = time;
+              });
+            }, time);
+          if (phase === 'merging') {
+            expect(
+              await dialog
+                .locator('.evolution-reveal__source')
+                .evaluateAll((sources) =>
+                  sources.every(
+                    (source) => Number(getComputedStyle(source).opacity) > 0.5,
+                  ),
+                ),
+            ).toBe(true);
+          }
+          await expect(dialog.getByText('Collection updated')).toBeInViewport();
+          await expect(
+            page.getByRole('button', { name: 'Back to evolutions' }),
+          ).toBeInViewport();
+          await page.screenshot({
+            path: testInfo.outputPath(
+              `ascension-${phase}-${viewport.width}.png`,
+            ),
+          });
+        }
+      }
+      const lateFrame = dialog.locator(
+        '.evolution-reveal__card .evolution-card-inspection__button > .card-frame',
+      );
+      const beforeCompletion = await lateFrame.boundingBox();
+      // Hover tilt must retain its shadow and edges before the decoration ends.
+      await lateFrame.hover({ position: { x: 35, y: 45 } });
+      await expect(
+        dialog.locator('.evolution-reveal .collectible-card__art-perspective'),
+      ).toHaveCSS('clip-path', 'none');
       await page.screenshot({
-        path: testInfo.outputPath('merging-mobile.png'),
+        path: testInfo.outputPath('late-hover-desktop.png'),
       });
-    await page.waitForTimeout(reducedMotion ? 200 : 1500);
+      await page.mouse.move(0, 0);
+      await expect
+        .poll(async () => {
+          const bounds = await lateFrame.boundingBox();
+          return Math.abs(bounds!.width - beforeCompletion!.width);
+        })
+        .toBeLessThan(0.1);
+      await page.getByTestId('evolution-reveal').evaluate((element) => {
+        element.getAnimations({ subtree: true }).forEach((animation) => {
+          animation.play();
+        });
+      });
+      await expect(page.getByTestId('evolution-reveal')).toHaveAttribute(
+        'data-celebrating',
+        'false',
+      );
+      const afterCompletion = await lateFrame.boundingBox();
+      expect(
+        Math.abs(afterCompletion!.width - beforeCompletion!.width),
+      ).toBeLessThan(0.1);
+      expect(
+        Math.abs(afterCompletion!.height - beforeCompletion!.height),
+      ).toBeLessThan(0.1);
+      expect(Math.abs(afterCompletion!.x - beforeCompletion!.x)).toBeLessThan(
+        0.1,
+      );
+      expect(Math.abs(afterCompletion!.y - beforeCompletion!.y)).toBeLessThan(
+        0.1,
+      );
+      await page.setViewportSize({ width: 390, height: 844 });
+    }
+    await expect(page.getByTestId('evolution-reveal')).toHaveAttribute(
+      'data-celebrating',
+      'false',
+    );
+    await expect(page.locator('.evolution-reveal__glint')).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath('success-mobile.png') });
     for (const viewport of reducedMotion
       ? [{ width: 390, height: 844 }]
@@ -533,6 +660,7 @@ for (const reducedMotion of [false, true]) {
       await expect(
         resultDetails.getByRole('heading', { name: 'Base stats' }),
       ).toBeVisible();
+      await expect(particle).toHaveCSS('animation-play-state', 'paused');
       await page.keyboard.press('Tab');
       await expect(
         resultDetails.locator('.trade-card-detail__body'),
@@ -540,6 +668,8 @@ for (const reducedMotion of [false, true]) {
       await page.keyboard.press('Escape');
       await expect(resultDetails).not.toBeVisible();
       await expect(resultCard).toBeFocused();
+      if (!reducedMotion)
+        await expect(particle).toHaveCSS('animation-play-state', 'running');
       await page.mouse.move(0, 0);
       await page.getByRole('button', { name: 'Close evolution' }).focus();
       await expect(
@@ -582,6 +712,14 @@ for (const reducedMotion of [false, true]) {
     await expect(page.getByTestId('evolution-reveal')).toHaveAttribute(
       'data-reduced-motion',
       String(!reducedMotion),
+    );
+    await expect(particle).toHaveCSS(
+      'animation-name',
+      reducedMotion ? 'evolution-particle-drift' : 'none',
+    );
+    await expect(page.getByTestId('evolution-reveal')).toHaveAttribute(
+      'data-celebrating',
+      'false',
     );
     await page.getByRole('button', { name: 'Back to evolutions' }).click();
     await page.getByRole('link', { name: 'Cards', exact: true }).click();

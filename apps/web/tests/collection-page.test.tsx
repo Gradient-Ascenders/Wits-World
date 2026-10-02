@@ -4,6 +4,7 @@ import {
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -14,6 +15,10 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CardArtwork } from '../src/components/cards/CollectibleCard';
+import {
+  resetAccessibilityPreferences,
+  updateAccessibilityPreferences,
+} from '../src/accessibility/preferences';
 import CollectionPage from '../src/pages/CollectionPage';
 import {
   buildCard,
@@ -26,6 +31,8 @@ import {
 const apiBaseUrl = 'https://api.example.test/api/v1';
 
 afterEach(() => {
+  resetAccessibilityPreferences();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.history.replaceState({}, '', '/');
 });
@@ -674,6 +681,74 @@ describe('card collection page', () => {
       screen.getByRole('button', { name: 'View Quillume details' }),
     ).toBeVisible();
   });
+
+  it.each(['keyboard', 'pointer', 'reduced motion', 'hidden tab'] as const)(
+    'settles the celebration immediately for %s without replaying it',
+    async (interruption) => {
+      const user = userEvent.setup();
+      const cards = duplicateCards(3);
+      const preview = evolutionPreview(cards, 3);
+      const result = evolutionResult(preview, buildUuid(1920));
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValueOnce(collectionResponse(cards))
+          .mockResolvedValueOnce(jsonResponse(preview))
+          .mockImplementationOnce(async (_url, options: RequestInit) =>
+            jsonResponse(
+              evolutionResult(
+                preview,
+                JSON.parse(String(options.body)).submissionId,
+              ),
+              201,
+            ),
+          )
+          .mockResolvedValueOnce(collectionResponse([result.newCard])),
+      );
+
+      renderCollection();
+      await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
+      await user.click(
+        await screen.findByRole('button', {
+          name: 'Preview Quillip evolution',
+        }),
+      );
+      await user.click(screen.getByRole('button', { name: 'Evolve' }));
+      await user.click(screen.getByRole('button', { name: 'Evolve' }));
+      const reveal = await screen.findByTestId('evolution-reveal');
+      expect(reveal).toHaveAttribute('data-celebrating', 'true');
+      const inspect = screen.getByRole('button', {
+        name: 'View Quillume details',
+      });
+
+      if (interruption === 'keyboard') {
+        act(() => inspect.focus());
+      } else if (interruption === 'pointer') {
+        fireEvent.pointerDown(inspect);
+      } else if (interruption === 'reduced motion') {
+        act(() => updateAccessibilityPreferences({ motion: 'reduce' }));
+        act(() => updateAccessibilityPreferences({ motion: 'full' }));
+      } else {
+        const visibility = vi.spyOn(document, 'visibilityState', 'get');
+        visibility.mockReturnValue('hidden');
+        fireEvent(document, new Event('visibilitychange'));
+        visibility.mockReturnValue('visible');
+        fireEvent(document, new Event('visibilitychange'));
+      }
+      expect(reveal).toHaveAttribute('data-celebrating', 'false');
+      expect(reveal.querySelector('.evolution-reveal__source')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Back to evolutions' }),
+      ).toBeEnabled();
+
+      await user.click(inspect);
+      expect(screen.getByRole('dialog', { name: 'Quillume' })).toBeVisible();
+      await user.keyboard('{Escape}');
+      expect(inspect).toHaveFocus();
+      expect(reveal).toHaveAttribute('data-celebrating', 'false');
+    },
+  );
 
   it('recovers a stale-copy conflict with refreshed eligibility and collection state', async () => {
     const user = userEvent.setup();

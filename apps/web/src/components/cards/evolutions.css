@@ -364,30 +364,249 @@
   isolation: isolate;
   margin-block: var(--space-2) var(--space-5);
 }
-.evolution-reveal__merge {
+.evolution-reveal__art {
+  position: relative;
+  width: min(100%, var(--evolution-card-width));
+  margin-inline: auto;
+}
+.evolution-reveal__stage {
+  position: absolute;
+  inset: var(--space-3) 0;
+  pointer-events: none;
+}
+.evolution-reveal__halo {
+  position: absolute;
+  inset: -1.5rem;
+  border-radius: 50%;
+  opacity: 0.18;
+  background: radial-gradient(ellipse, var(--colour-gold-400), transparent 70%);
+}
+.evolution-reveal[data-celebrating='true'] .evolution-reveal__halo {
+  animation: evolution-halo 3.4s ease-out both;
+}
+.evolution-reveal__traces {
   position: absolute;
   inset: 0;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  stroke: var(--colour-gold-400);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  animation: evolution-traces 1.7s ease-in-out both;
 }
 .evolution-reveal__source {
   position: absolute;
   z-index: 1;
-  width: 6rem;
-  top: 5rem;
+  width: 34%;
+  top: 40%;
+  left: 50%;
+  transform-origin: center;
+  animation: evolution-gather 1.7s cubic-bezier(0.65, 0, 0.35, 1) both;
 }
-.evolution-reveal__light {
+.evolution-reveal__spark,
+.evolution-reveal__ring {
   position: absolute;
-  top: 2rem;
-  width: 13rem;
-  height: 13rem;
+  top: 40%;
+  left: 50%;
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: 50%;
-  background: radial-gradient(circle, var(--colour-gold-400), transparent 65%);
+  opacity: 0;
+}
+.evolution-reveal__spark {
+  z-index: 2;
+  background: radial-gradient(
+    circle,
+    var(--colour-text-primary) 0%,
+    var(--colour-gold-400) 8%,
+    transparent 65%
+  );
+  animation: evolution-spark 0.9s 0.92s ease-out both;
+}
+.evolution-reveal__ring {
+  border: 1px solid var(--colour-gold-400);
+  animation: evolution-ring 1s 1.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.evolution-reveal__glint {
+  position: absolute;
+  z-index: 2;
+  width: 1.3rem;
+  height: 1.3rem;
+  fill: var(--colour-text-primary);
+  stroke: var(--colour-gold-400);
+  stroke-width: 0.5;
+  filter: drop-shadow(0 0 0.35rem var(--colour-gold-400));
+  opacity: 0;
+  animation: evolution-glint 0.9s var(--glint-delay) ease-out both;
+}
+.evolution-reveal__sheen {
+  position: absolute;
+  z-index: 2;
+  inset: var(--space-3) 0;
+  padding: 4px;
+  border-radius: 15px;
+  background: linear-gradient(
+    115deg,
+    transparent 35%,
+    var(--colour-gold-400) 46%,
+    var(--colour-text-primary) 50%,
+    transparent 61%
+  );
+  background-size: 300% 100%;
+  /* Opaque mask layers cut out the center; their color is never painted. */
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: evolution-sheen 0.9s 2.35s ease-out both;
 }
 .evolution-reveal__card {
   position: relative;
   text-align: center;
+}
+.evolution-reveal[data-celebrating='true'] .collectible-card__art-perspective {
+  animation: evolution-emerge 3.4s linear both;
+}
+.evolution-reveal[data-reduced-motion='true']
+  .collectible-card__art-perspective {
+  animation: evolution-soft-reveal 0.18s ease-out;
+}
+@keyframes evolution-gather {
+  0% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--source-x)), 0%)
+      rotate(var(--source-rotation));
+  }
+  30% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--source-gather-x)), -6%) rotate(0deg);
+  }
+  78% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.18);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.02);
+  }
+}
+@keyframes evolution-traces {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 1;
+  }
+  25% {
+    opacity: 0.8;
+    stroke-dashoffset: 1;
+  }
+  78% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    opacity: 0;
+    stroke-dashoffset: -1;
+  }
+}
+@keyframes evolution-spark {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.04);
+  }
+  42% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.55);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.4);
+  }
+}
+@keyframes evolution-ring {
+  0% {
+    opacity: 0.65;
+    transform: translate(-50%, -50%) scale(0.08);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.65);
+  }
+}
+@keyframes evolution-halo {
+  0%,
+  15% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  38% {
+    opacity: 0.55;
+    transform: scale(1.1);
+  }
+  75%,
+  100% {
+    opacity: 0.18;
+    transform: scale(1);
+  }
+}
+@keyframes evolution-emerge {
+  0%,
+  50% {
+    opacity: 0;
+    transform: translateY(1.25rem) scale(0.94);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  76%,
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes evolution-glint {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+  45% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(
+        calc(-50% + var(--glint-x)),
+        calc(-50% + var(--glint-y))
+      )
+      scale(0.1);
+  }
+}
+@keyframes evolution-sheen {
+  0% {
+    opacity: 0;
+    background-position: 100% 0;
+  }
+  20%,
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    background-position: 0% 0;
+  }
+}
+@keyframes evolution-soft-reveal {
+  from {
+    opacity: 0.65;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .evolution-surface .evolution-result__receipt {
   position: relative;
@@ -573,6 +792,60 @@
 }
 .card-detail-modal.evolution-surface:has(.evolution-result) {
   --evolution-card-width: clamp(10.5rem, 32dvh, 16rem);
+  position: relative;
+  isolation: isolate;
+}
+.evolution-particles {
+  position: absolute;
+  z-index: -1;
+  inset: 3.25rem var(--space-3) 4.25rem;
+  overflow: hidden;
+  pointer-events: none;
+}
+.evolution-particles__mote {
+  position: absolute;
+  width: var(--particle-size);
+  height: var(--particle-size);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    var(--colour-text-primary) 10%,
+    var(--colour-gold-400) 65%
+  );
+  box-shadow:
+    0 0 0.7rem color-mix(in srgb, var(--colour-gold-400), transparent 20%),
+    0 0 1.25rem color-mix(in srgb, var(--colour-gold-400), transparent 65%);
+  opacity: var(--particle-opacity);
+}
+:root[data-motion='full'] .evolution-particles__mote {
+  animation: evolution-particle-drift var(--particle-duration)
+    var(--particle-delay) linear infinite;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-motion='reduce']) .evolution-particles__mote {
+    animation: evolution-particle-drift var(--particle-duration)
+      var(--particle-delay) linear infinite;
+  }
+}
+.evolution-particles[data-paused='true'] .evolution-particles__mote,
+.card-detail-backdrop[inert] .evolution-particles__mote {
+  animation-play-state: paused;
+}
+@keyframes evolution-particle-drift {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 3rem, 0);
+  }
+  20% {
+    opacity: var(--particle-opacity);
+  }
+  80% {
+    opacity: var(--particle-opacity);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--particle-drift), -10rem, 0);
+  }
 }
 .evolution-surface:has(.evolution-result) .card-detail-modal__scroll {
   display: flex;

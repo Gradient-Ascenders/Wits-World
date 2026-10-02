@@ -3,11 +3,12 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactElement,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRight, LockKey, Stack } from '@phosphor-icons/react';
-import { motion, useReducedMotion } from 'motion/react';
+import { useReducedMotion } from 'motion/react';
 
 import {
   CardApiError,
@@ -200,10 +201,15 @@ export function CardEvolutionFlow({
         aria-labelledby="evolution-result-title"
         className="evolution-result"
       >
+        <EvolutionParticles />
         <h2 id="evolution-result-title" ref={resultHeading} tabIndex={-1}>
           Evolution complete
         </h2>
-        <EvolutionReveal source={initialPreview.source} result={result} />
+        <EvolutionReveal
+          key={result.evolutionId}
+          source={initialPreview.source}
+          result={result}
+        />
         <p className="evolution-result__quantity">
           {
             collectionCards.filter(
@@ -513,6 +519,90 @@ function SourceCopies({ preview }: { preview: CardEvolutionPreview }) {
   );
 }
 
+function EvolutionParticles() {
+  const particleLayer = useRef<HTMLDivElement | null>(null);
+  const [paused, setPaused] = useState(() => document.hidden);
+
+  useEffect(() => {
+    let visible = true;
+    const updatePlayback = () => setPaused(document.hidden || !visible);
+    const observer =
+      typeof IntersectionObserver === 'undefined'
+        ? null
+        : new IntersectionObserver(([entry]) => {
+            if (!entry) return;
+            visible = entry.isIntersecting;
+            updatePlayback();
+          });
+    if (particleLayer.current) observer?.observe(particleLayer.current);
+    document.addEventListener('visibilitychange', updatePlayback);
+    return () => {
+      observer?.disconnect();
+      document.removeEventListener('visibilitychange', updatePlayback);
+    };
+  }, []);
+
+  return (
+    <div
+      className="evolution-particles"
+      aria-hidden="true"
+      data-paused={paused}
+      ref={particleLayer}
+    >
+      {[
+        [7, 18],
+        [16, 42],
+        [9, 76],
+        [23, 89],
+        [33, 23],
+        [43, 66],
+        [54, 12],
+        [63, 38],
+        [76, 19],
+        [89, 32],
+        [95, 61],
+        [82, 77],
+        [72, 92],
+        [58, 83],
+        [37, 94],
+        [3, 53],
+        [26, 57],
+        [69, 63],
+        [86, 9],
+        [93, 94],
+        [12, 28],
+        [5, 91],
+        [20, 64],
+        [29, 8],
+        [47, 37],
+        [60, 97],
+        [73, 47],
+        [85, 54],
+        [97, 22],
+        [90, 85],
+        [15, 97],
+        [80, 99],
+      ].map(([x, y], index) => (
+        <span
+          className="evolution-particles__mote"
+          key={index}
+          style={
+            {
+              left: `${x}%`,
+              top: `${y}%`,
+              '--particle-size': `${2.5 + (index % 5) * 0.75}px`,
+              '--particle-drift': `${index % 2 ? -1.75 : 1.75}rem`,
+              '--particle-duration': `${8 + (index % 6) * 1.3}s`,
+              '--particle-delay': `${-index * 2.3}s`,
+              '--particle-opacity': 0.55 + (index % 3) * 0.2,
+            } as CSSProperties
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
 function EvolutionReveal({
   source,
   result,
@@ -525,71 +615,121 @@ function EvolutionReveal({
   const reducedMotion =
     motionPreference === 'reduce' ||
     (motionPreference === 'system' && Boolean(systemReducedMotion));
+  const [celebrating, setCelebrating] = useState(
+    () => !reducedMotion && document.visibilityState !== 'hidden',
+  );
+  const finishReveal = useCallback(() => setCelebrating(false), []);
+
+  useEffect(() => {
+    // A preference change or hidden tab settles this reveal permanently.
+    if (reducedMotion) finishReveal();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') finishReveal();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () =>
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [finishReveal, reducedMotion]);
+
   return (
     <div
       className="evolution-reveal"
       data-testid="evolution-reveal"
       data-reduced-motion={Boolean(reducedMotion)}
+      data-celebrating={celebrating && !reducedMotion}
+      onFocusCapture={finishReveal}
+      onPointerDownCapture={finishReveal}
+      onAnimationEnd={(event) => {
+        if (event.animationName === 'evolution-emerge') finishReveal();
+      }}
     >
-      {!reducedMotion ? (
-        <div className="evolution-reveal__merge" aria-hidden="true">
-          {result.consumedOwnedCardIds.map((id, index) => (
-            <motion.div
-              key={id}
-              className="evolution-reveal__source"
-              initial={{
-                x: (index - 1) * 76,
-                y: 180,
-                rotate: (index - 1) * 9,
-                opacity: 1,
-              }}
-              animate={{
-                x: [(index - 1) * 76, (index - 1) * 76, 0, 0],
-                y: [180, 180, 0, -24],
-                rotate: [(index - 1) * 9, 0, 0, 0],
-                scale: [1, 1, 0.8, 0.65],
-                opacity: [1, 1, 1, 0],
-              }}
-              transition={{
-                duration: 0.85,
-                times: [0, 0.2, 0.75, 1],
-                ease: 'easeInOut',
-              }}
-            >
-              <CardArtwork card={source} nameplate={<span>{index + 1}</span>} />
-            </motion.div>
-          ))}
-          <motion.div
-            className="evolution-reveal__light"
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: [0, 0.45, 0], scale: [0.5, 1.1, 1.25] }}
-            transition={{ duration: 0.8, delay: 0.35 }}
-          />
-        </div>
-      ) : null}
-      <motion.div
-        className="evolution-reveal__card"
-        initial={
-          reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.88, y: 16 }
-        }
-        animate={
-          reducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }
-        }
-        transition={{
-          duration: reducedMotion ? 0.18 : 0.65,
-          delay: reducedMotion ? 0 : 0.8,
-          ease: 'easeOut',
-        }}
-      >
+      <div className="evolution-reveal__card">
         <CollectibleCard
           card={result.newCard}
-          artwork={<EvolutionCardInspection card={result.newCard} />}
+          artwork={
+            <div className="evolution-reveal__art">
+              <div className="evolution-reveal__stage" aria-hidden="true">
+                <span className="evolution-reveal__halo" />
+                {celebrating && !reducedMotion ? (
+                  <>
+                    <svg
+                      className="evolution-reveal__traces"
+                      viewBox="0 0 256 320"
+                      preserveAspectRatio="none"
+                      fill="none"
+                    >
+                      {[48, 128, 208].map((x) => (
+                        <path
+                          key={x}
+                          d={`M${x} 272C${x} 200 128 220 128 128`}
+                          pathLength="1"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      ))}
+                    </svg>
+                    {result.consumedOwnedCardIds.map((id, index, ids) => {
+                      const offset = index - (ids.length - 1) / 2;
+                      return (
+                        <div
+                          key={id}
+                          className="evolution-reveal__source"
+                          style={
+                            {
+                              '--source-x': `${offset * 85}%`,
+                              '--source-gather-x': `${offset * 68}%`,
+                              '--source-rotation': `${offset * 10}deg`,
+                            } as CSSProperties
+                          }
+                        >
+                          <CardArtwork
+                            card={source}
+                            nameplate={<span>{index + 1}</span>}
+                          />
+                        </div>
+                      );
+                    })}
+                    <span className="evolution-reveal__spark" />
+                    <span className="evolution-reveal__ring" />
+                    {[
+                      [-3, 18, -1, -1],
+                      [103, 30, 1, -1],
+                      [-6, 67, -1, 1],
+                      [106, 78, 1, 1],
+                      [25, 0, -0.5, -1],
+                      [78, 103, 0.5, 1],
+                    ].map(([x, y, dx, dy], index) => (
+                      <svg
+                        key={index}
+                        className="evolution-reveal__glint"
+                        viewBox="0 0 20 20"
+                        style={
+                          {
+                            left: `${x}%`,
+                            top: `${y}%`,
+                            '--glint-x': `${dx}rem`,
+                            '--glint-y': `${dy}rem`,
+                            '--glint-delay': `${2.3 + index * 0.035}s`,
+                          } as CSSProperties
+                        }
+                      >
+                        <path d="M10 0 12.5 7.5 20 10 12.5 12.5 10 20 7.5 12.5 0 10 7.5 7.5Z" />
+                      </svg>
+                    ))}
+                  </>
+                ) : null}
+              </div>
+              <EvolutionCardInspection card={result.newCard} />
+              {celebrating && !reducedMotion ? (
+                <span className="evolution-reveal__sheen" aria-hidden="true" />
+              ) : null}
+            </div>
+          }
           headingLevel={3}
           showStats={false}
           showOwnership={false}
           showDetails={false}
         />
-      </motion.div>
+      </div>
     </div>
   );
 }

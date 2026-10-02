@@ -99,9 +99,15 @@ the consumed copies or derives the evolved definition.
 
 After a successful mutation, the UI immediately applies the authoritative
 consumed identifiers and granted card from the result, then refetches the whole
-collection. Only after server success does Motion converge the three source
-cards and reveal the result, over approximately 1.45 seconds. Reduced motion
-uses a 180 ms fade. The result reports the resulting owned quantity, including
+collection. Only after server success does the completion effect merge the three
+source cards over 1.7 seconds, then reveal the granted card with gold glints and
+a metallic frame sweep. The full effect lasts 3.4 seconds. Background gold
+particles float behind the result and pause while the tab is hidden or card
+details are open. Reduced motion uses a 180 ms fade and static particles.
+Focusing or pressing the result immediately settles the reveal for inspection;
+returning to the tab or changing motion preferences does not replay it. Card
+inspection and Back to evolutions remain available throughout the effect.
+The result reports the resulting owned quantity, including
 when that evolved definition was already owned, and offers Back to evolutions.
 Insufficient-copy and saved-deck conflicts refresh both the preview
 and collection before another action is offered. Confirmation is single-flight,
@@ -135,3 +141,5 @@ ChatGPT-Web[GPT-5.6 Sol].
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Completion effect and motion behaviour updated with assistance from Codex[GPT-6].
