@@ -222,10 +222,13 @@ describe('asynchronous PvP routes', () => {
           return {
             rows: [{ id: CREATURE_ID, name: 'Arcayx', rarity: 'epic' }],
           };
-        if (sql.includes('from private.async_pvp_submission_receipts'))
+        if (sql.includes('private.async_pvp_submission_receipts'))
           return {
             rows: [
               {
+                now: new Date('2026-09-05T09:00:00Z'),
+                invitation_id: null,
+                match_id: INVITATION_ID,
                 committed_response: receipt,
                 payload_hash: createHash('sha256')
                   .update(

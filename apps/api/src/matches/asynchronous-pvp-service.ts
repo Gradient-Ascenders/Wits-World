@@ -958,13 +958,13 @@ export function createAsyncPvpService(
           'match_action',
           input.submissionId,
         );
-        const replay = await loadReceipt<AsyncPvpMatchView>(
-          client,
-          input.playerId,
-          'match_action',
-          input.submissionId,
-          payloadHash,
-        );
+        const { replay, now } =
+          await loadActionReceiptAndTime<AsyncPvpMatchView>(
+            client,
+            input.playerId,
+            input.submissionId,
+            payloadHash,
+          );
         if (replay)
           return normalizeMatchReceiptWithHistory(
             client,
@@ -972,7 +972,6 @@ export function createAsyncPvpService(
             input.matchId,
             replay,
           );
-        const now = await databaseNow(client);
         if (
           match.status === 'active' &&
           match.turn_deadline &&
@@ -1109,7 +1108,12 @@ export function createAsyncPvpService(
             match.id,
           );
         }
-        const view = await loadMatchView(client, input.playerId, match.id);
+        const view = await loadMatchView(
+          client,
+          input.playerId,
+          match.id,
+          true,
+        );
         await insertReceipt(client, {
           actorId: input.playerId,
           operation: 'match_action',
@@ -1584,7 +1588,65 @@ async function loadReceipt<T>(
     `,
     [actorId, operation, submissionId],
   );
-  const receipt = result.rows[0];
+  return readReceipt<T>(
+    result.rows[0],
+    actorId,
+    operation,
+    submissionId,
+    payloadHash,
+  );
+}
+
+async function loadActionReceiptAndTime<T>(
+  client: AsyncPvpClient,
+  actorId: string,
+  submissionId: string,
+  payloadHash: string,
+): Promise<{ replay: T | null; now: Date }> {
+  // Keep this statement after both locks, so a waiting submission observes
+  // the committed receipt. The database clock is read after the receipt join.
+  const result = await client.query<
+    NowRow & {
+      payload_hash: string | null;
+      committed_response: unknown;
+      invitation_id: string | null;
+      match_id: string | null;
+    }
+  >(
+    `
+      select receipt.payload_hash, receipt.committed_response,
+             receipt.invitation_id::text, receipt.match_id::text,
+             clock_timestamp() as now
+        from (values (1)) as singleton(value)
+        left join private.async_pvp_submission_receipts receipt
+          on receipt.actor_player_id = $1::uuid
+         and receipt.operation = 'match_action'
+         and receipt.submission_id = $2::uuid
+    `,
+    [actorId, submissionId],
+  );
+  const row = result.rows[0];
+  const replay = readReceipt<T>(
+    row && row.payload_hash !== null
+      ? { ...row, payload_hash: row.payload_hash }
+      : undefined,
+    actorId,
+    'match_action',
+    submissionId,
+    payloadHash,
+  );
+  if (!row?.now)
+    throw new Error('Database did not return its transaction time.');
+  return { replay, now: row.now };
+}
+
+function readReceipt<T>(
+  receipt: ReceiptRow | undefined,
+  actorId: string,
+  operation: string,
+  submissionId: string,
+  payloadHash: string,
+): T | null {
   if (!receipt) return null;
   if (receipt.payload_hash !== payloadHash) {
     throw new AsyncPvpIdempotencyConflictError(
@@ -1913,10 +1975,27 @@ async function loadMatchView(
   client: AsyncPvpClient,
   playerId: string,
   matchId: string,
+  includeCardPresentation = false,
 ): Promise<AsyncPvpMatchView> {
-  const result = await client.query<MatchRow>(
-    `${matchProjectionSql}
-      where match.id = $1::uuid and viewer.player_id = $2::uuid`,
+  const projection = `${matchProjectionSql}
+      where match.id = $1::uuid and viewer.player_id = $2::uuid`;
+  const result = await client.query<
+    MatchRow & { card_presentation?: Record<string, SnapshotCardPresentation> }
+  >(
+    includeCardPresentation
+      ? `
+          with match_view as (${projection}),
+               card_presentation as (${cardPresentationSql})
+          select match_view.*,
+                 coalesce((
+                   select jsonb_object_agg(
+                     id, jsonb_build_object('name', name, 'rarity', rarity)
+                   )
+                   from card_presentation
+                 ), '{}'::jsonb) as card_presentation
+            from match_view
+        `
+      : projection,
     [matchId, playerId],
   );
   const match = result.rows[0];
@@ -1926,7 +2005,9 @@ async function loadMatchView(
       'The requested PvP match was not found.',
     );
   }
-  const cards = await loadCardPresentation(client, matchId);
+  const cards = includeCardPresentation
+    ? (match.card_presentation ?? {})
+    : await loadCardPresentation(client, matchId);
   return projectMatch(match, cards);
 }
 
@@ -1934,6 +2015,16 @@ interface SnapshotCardPresentation {
   name: string;
   rarity: LoadedPlayerBattleDeck['cards'][number]['rarity'];
 }
+
+const cardPresentationSql = `
+  select card.battle_card_id::text as id,
+         card.card_snapshot ->> 'name' as name,
+         card.rarity
+    from public.async_pvp_match_participants participant
+    join private.async_pvp_deck_snapshot_cards card
+      on card.snapshot_id = participant.deck_snapshot_id
+   where participant.match_id = $1::uuid
+`;
 
 async function loadCardPresentation(
   client: AsyncPvpClient,
@@ -1943,18 +2034,7 @@ async function loadCardPresentation(
     id: string;
     name: string;
     rarity: SnapshotCardPresentation['rarity'];
-  }>(
-    `
-      select card.battle_card_id::text as id,
-             card.card_snapshot ->> 'name' as name,
-             card.rarity
-        from public.async_pvp_match_participants participant
-        join private.async_pvp_deck_snapshot_cards card
-          on card.snapshot_id = participant.deck_snapshot_id
-       where participant.match_id = $1::uuid
-    `,
-    [matchId],
-  );
+  }>(cardPresentationSql, [matchId]);
   return Object.fromEntries(
     result.rows.map((row) => [row.id, { name: row.name, rarity: row.rarity }]),
   );

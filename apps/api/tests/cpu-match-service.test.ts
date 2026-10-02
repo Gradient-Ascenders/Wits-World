@@ -1950,6 +1950,54 @@ function createCpuConfigurationQuery(
       return { rows: cpuRows };
     }
 
+    if (
+      statement.includes('from public.card_moves') &&
+      statement.includes('union all')
+    ) {
+      const definitionIds = values?.[0] as string[];
+      return {
+        rows: definitionIds.flatMap<Record<string, unknown>>((definitionId) =>
+          categoryByDefinition.get(definitionId) === 'creature'
+            ? Array.from({ length: 4 }, (_, index) => ({
+                row_kind: 0,
+                position: index + 1,
+                id: `${definitionId.slice(0, 24)}${String(index + 1).padStart(12, '0')}`,
+                card_definition_id: definitionId,
+                card_move_id: null,
+                name: `Move ${index + 1}`,
+                move_type: 'basic',
+                effect_type: 'damage',
+                effect_value: 1,
+                modifier_stat: null,
+                modifier_operation: null,
+                modifier_duration_turns: null,
+                power_cost: 0,
+                effect_code: null,
+                effect_config: null,
+              }))
+            : [
+                {
+                  row_kind: 2,
+                  position: 1,
+                  id: `${definitionId.slice(0, 24)}000000000001`,
+                  card_definition_id: definitionId,
+                  card_move_id: null,
+                  name: null,
+                  move_type: null,
+                  effect_type: 'heal',
+                  effect_value: 1,
+                  modifier_stat: null,
+                  modifier_operation: null,
+                  modifier_duration_turns: null,
+                  power_cost: null,
+                  effect_code: 'heal',
+                  effect_config: {},
+                },
+              ],
+        ),
+      };
+    }
+
     if (statement.includes('from public.card_moves')) {
       const definitionIds = values?.[0] as string[];
       return {

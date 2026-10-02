@@ -96,6 +96,24 @@ interface MoveEffectRow extends EffectRow {
   card_move_id: string;
 }
 
+interface HydrationRow extends pg.QueryResultRow {
+  row_kind: 0 | 1 | 2;
+  position: number;
+  id: string;
+  card_definition_id: string;
+  card_move_id: string | null;
+  name: string | null;
+  move_type: CardMove['moveType'] | null;
+  effect_type: CardEffect['effectType'];
+  effect_value: number | null;
+  modifier_stat: CardEffect['modifierStat'];
+  modifier_operation: CardEffect['modifierOperation'];
+  modifier_duration_turns: number | null;
+  power_cost: number | null;
+  effect_code: EffectCode | null;
+  effect_config: unknown;
+}
+
 export async function loadPlayerBattleDeck(
   client: BattleDeckQueryClient,
   playerId: string,
@@ -189,75 +207,122 @@ export async function loadPlayerBattleDeck(
   }
 
   const definitionIds = [...new Set(rows.map((row) => row.card_definition_id))];
-  const [movesResult, moveEffectsResult, effectsResult] = await Promise.all([
-    client.query<MoveRow>(
-      `
-        select
-          id::text,
-          card_definition_id::text,
-          name,
-          move_type,
-          effect_type,
-          effect_value,
-          modifier_stat,
-          modifier_operation,
-          modifier_duration_turns,
-          power_cost
-        from public.card_moves
-        where card_definition_id = any($1::uuid[])
-        order by card_definition_id, position
-      `,
-      [definitionIds],
-    ),
-    client.query<MoveEffectRow>(
-      `
-        select
-          effect.id::text,
-          effect.card_move_id::text,
-          effect.card_definition_id::text,
-          effect.effect_code,
-          effect.effect_value,
-          effect.effect_config,
-          case
-            when effect.effect_code = 'damage' then 'damage'
-            when effect.effect_code = 'heal' then 'heal'
-            when effect.effect_code in ('poison', 'stun') then 'debuff'
-            when effect.effect_code in ('power_change', 'damage_modifier')
-              and effect.effect_config ->> 'target' = 'opponent' then 'debuff'
-            else 'buff'
-          end as effect_type,
-          null::text as modifier_stat,
-          null::text as modifier_operation,
-          null::integer as modifier_duration_turns
-        from public.card_move_effects effect
-        where effect.card_definition_id = any($1::uuid[])
-        order by effect.card_definition_id, effect.card_move_id, effect.position
-      `,
-      [definitionIds],
-    ),
-    client.query<EffectRow>(
-      `
-        select
-          id::text,
-          card_definition_id::text,
-          effect_type,
-          effect_value,
-          modifier_stat,
-          modifier_operation,
-          modifier_duration_turns,
-          effect_code,
-          effect_config
-        from public.card_effects
-        where card_definition_id = any($1::uuid[])
-        order by card_definition_id, position
-      `,
-      [definitionIds],
-    ),
-  ]);
+  const hydrationResult = await client.query<HydrationRow>(
+    `
+      select
+        0 as row_kind,
+        position,
+        id::text,
+        card_definition_id::text,
+        null::text as card_move_id,
+        name,
+        move_type,
+        effect_type,
+        effect_value,
+        modifier_stat,
+        modifier_operation,
+        modifier_duration_turns,
+        power_cost,
+        null::text as effect_code,
+        null::jsonb as effect_config
+      from public.card_moves
+      where card_definition_id = any($1::uuid[])
 
-  const movesByDefinition = groupByDefinition(movesResult.rows);
-  const effectsByMove = groupRows(moveEffectsResult.rows, 'card_move_id');
-  const effectsByDefinition = groupByDefinition(effectsResult.rows);
+      union all
+
+      select
+        1 as row_kind,
+        effect.position,
+        effect.id::text,
+        effect.card_definition_id::text,
+        effect.card_move_id::text,
+        null::text as name,
+        null::text as move_type,
+        case
+          when effect.effect_code = 'damage' then 'damage'
+          when effect.effect_code = 'heal' then 'heal'
+          when effect.effect_code in ('poison', 'stun') then 'debuff'
+          when effect.effect_code in ('power_change', 'damage_modifier')
+            and effect.effect_config ->> 'target' = 'opponent' then 'debuff'
+          else 'buff'
+        end as effect_type,
+        effect.effect_value,
+        null::text as modifier_stat,
+        null::text as modifier_operation,
+        null::integer as modifier_duration_turns,
+        null::integer as power_cost,
+        effect.effect_code,
+        effect.effect_config
+      from public.card_move_effects effect
+      where effect.card_definition_id = any($1::uuid[])
+
+      union all
+
+      select
+        2 as row_kind,
+        position,
+        id::text,
+        card_definition_id::text,
+        null::text as card_move_id,
+        null::text as name,
+        null::text as move_type,
+        effect_type,
+        effect_value,
+        modifier_stat,
+        modifier_operation,
+        modifier_duration_turns,
+        null::integer as power_cost,
+        effect_code,
+        effect_config
+      from public.card_effects
+      where card_definition_id = any($1::uuid[])
+
+      order by row_kind, card_definition_id, card_move_id, position
+    `,
+    [definitionIds],
+  );
+
+  const moves: MoveRow[] = [];
+  const moveEffects: MoveEffectRow[] = [];
+  const effects: EffectRow[] = [];
+  for (const row of hydrationResult.rows) {
+    const effect = {
+      id: row.id,
+      card_definition_id: row.card_definition_id,
+      effect_type: row.effect_type,
+      effect_value: row.effect_value,
+      modifier_stat: row.modifier_stat,
+      modifier_operation: row.modifier_operation,
+      modifier_duration_turns: row.modifier_duration_turns,
+    };
+    if (row.row_kind === 0) {
+      // Legacy move effects have no effect_code property; mapEffect uses that
+      // distinction to preserve the original fallback behavior.
+      moves.push({
+        ...effect,
+        name: row.name!,
+        move_type: row.move_type!,
+        power_cost: row.power_cost!,
+      });
+    } else if (row.row_kind === 1) {
+      moveEffects.push({
+        ...effect,
+        card_move_id: row.card_move_id!,
+        effect_code: row.effect_code!,
+        effect_config: row.effect_config,
+      });
+    } else {
+      effects.push({
+        ...effect,
+        effect_code: row.effect_code!,
+        effect_config: row.effect_config,
+      });
+    }
+  }
+
+  const movesByDefinition = groupByDefinition(moves);
+  const effectsByMove = groupRows(moveEffects, 'card_move_id');
+  const effectsByDefinition = groupByDefinition(effects);
   const creatures: BattleCreatureCard[] = [];
   const powerCards: BattlePowerCard[] = [];
   const cards: PlayerBattleDeckCard[] = [];
