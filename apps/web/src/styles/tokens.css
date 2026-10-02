@@ -77,6 +77,7 @@
   --player-navigation-height: 4.5rem;
 
   /* Shape and elevation */
+  /* Default for interactive highlights; see DESIGN.md's Gentle Highlight Rule. */
   --radius-sm: 0.375rem;
   --radius-md: 0.625rem;
   --radius-lg: 1rem;

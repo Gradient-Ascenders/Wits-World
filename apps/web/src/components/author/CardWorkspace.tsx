@@ -5,6 +5,7 @@ import {
   ArrowLeftIcon,
   CaretRightIcon,
   CaretDownIcon,
+  ImageIcon,
 } from '@phosphor-icons/react';
 import { AuthorSaveBar } from './AuthorSaveBar';
 import {
@@ -316,7 +317,13 @@ export function CardWorkspace({
                       <tr key={card.id}>
                         <th scope="row">
                           <Link href={authorPaths.card(card.id)}>
-                            {card.name}
+                            <span className="card-table__identity">
+                              <CatalogueArtwork
+                                key={card.imageUrl}
+                                card={card}
+                              />
+                              <span>{card.name}</span>
+                            </span>
                             <CaretRightIcon size={16} aria-hidden="true" />
                           </Link>
                         </th>
@@ -1412,6 +1419,34 @@ function CardForm({
         </AuthorSaveBar>
       </form>
     </section>
+  );
+}
+
+function CatalogueArtwork({ card }: { card: AuthorCard }) {
+  const [failed, setFailed] = useState(false);
+  const url = cardArtworkUrl(card.imageUrl ?? '');
+
+  return (
+    <span
+      aria-hidden="true"
+      className="card-table__artwork"
+      title={!url || failed ? 'Artwork unavailable' : undefined}
+    >
+      {url && !failed ? (
+        <img
+          alt=""
+          decoding="async"
+          height={36}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          referrerPolicy="no-referrer"
+          src={url}
+          width={36}
+        />
+      ) : (
+        <ImageIcon size={20} />
+      )}
+    </span>
   );
 }
 

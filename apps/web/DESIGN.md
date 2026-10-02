@@ -88,6 +88,8 @@ components:
     backgroundColor: 'rgb(212 175 55 / 8%)'
     textColor: '{colors.beacon-gold-light}'
     rounded: '{rounded.md}'
+  interactive-highlight:
+    rounded: '{rounded.sm}'
   status-active:
     backgroundColor: 'rgb(57 184 121 / 8%)'
     textColor: '{colors.success-green}'
@@ -178,6 +180,10 @@ Depth is layered and ambient. Dark tonal steps, translucent borders, and restrai
 
 General controls use the small and medium radii; panels use large corners; badges and handles use pill or circular silhouettes. Borders remain thin and translucent. Collectible cards are the deliberate exception: they use a recessed square artwork window, metallic rims, corner engraving, and rarity-specific material colors while sharing one frame geometry.
 
+**The Gentle Highlight Rule.** Interactive background highlights use the small radius (`--radius-sm`, mapped to `rounded.sm`) and enough horizontal padding to keep text clear of their edges. Apply this treatment consistently to tabs, section navigation, and clickable list or table rows in hover, focus, and selected states wherever those states have a background fill. Preserve each component's existing accent colors, selection underline, and visible keyboard focus.
+
+For table rows, round only the outer corners of the first and last cells so the highlight reads as one continuous surface. Keep table rules and column alignment intact; use separate borders with zero spacing when collapsed borders prevent rounding. Avoid clipping focus outlines to achieve rounded highlights. Existing buttons, panels, and primary navigation retain their own radius tokens.
+
 ## Components
 
 ### Buttons
@@ -218,6 +224,7 @@ Small pill badges use colored text and faint matching fill for active, upcoming,
 - **Do** retain the Campus Seal and the current icon-and-label navigation language.
 - **Do** pair state colors with words or icons and maintain the bright visible focus treatment.
 - **Do** use the shared spacing and radius steps before adding local values.
+- **Do** give interactive highlights gentle corners and breathing room using the Gentle Highlight Rule.
 
 ### Don't:
 
@@ -225,4 +232,4 @@ Small pill badges use colored text and faint matching fill for active, upcoming,
 - **Don't** make gold compete with Trail Blue as the default control fill.
 - **Don't** hide task status inside map styling or color alone.
 
-Shared collectible-card interaction guidance was edited with assistance from Codex[GPT-6].
+Shared collectible-card interaction and gentle-highlight guidance was edited with assistance from Codex[GPT-6].
