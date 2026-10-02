@@ -1,5 +1,43 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { buildCard, buildUuid } from '../tests/fixtures/cards';
+
+async function scrollToEvolutionFeedback(page: Page, dialog: Locator) {
+  const scroll = dialog.locator('.card-detail-modal__scroll');
+  await scroll.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const overflow = await scroll.evaluate(
+    (element) => element.scrollHeight - element.clientHeight,
+  );
+  if (overflow > 0) {
+    // Short phones intentionally scroll the result; actions stay anchored.
+    await scroll.hover();
+    await page.mouse.wheel(0, overflow);
+    await expect
+      .poll(() => scroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThanOrEqual(overflow - 1);
+  }
+}
+
+async function expectEvolutionFeedbackVisible(dialog: Locator) {
+  const feedback = dialog.locator('.evolution-result > .state-message');
+  await expect(feedback).toBeInViewport({ ratio: 1 });
+  // Viewport intersection alone can miss clipping by the sheet's scroll area.
+  await expect
+    .poll(() =>
+      feedback.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const scroll = element
+          .closest('.card-detail-modal__scroll')!
+          .getBoundingClientRect();
+        return bounds.top >= scroll.top && bounds.bottom <= scroll.bottom;
+      }),
+    )
+    .toBe(true);
+  await expect(
+    dialog.getByRole('button', { name: 'Back to evolutions' }),
+  ).toBeInViewport({ ratio: 1 });
+}
 
 for (const reducedMotion of [false, true]) {
   test(`evolution across layouts and recovery, reduced motion: ${reducedMotion}`, async ({
@@ -32,6 +70,7 @@ for (const reducedMotion of [false, true]) {
     let cards = [...initialCards, existingTarget];
     let eligible = 3;
     let previewFails = false;
+    let collectionRefreshFails = false;
     let mutation: 'success' | 'error' | 'stale' = 'error';
     let posts = 0;
     let holdPreview = false;
@@ -59,10 +98,13 @@ for (const reducedMotion of [false, true]) {
           },
         });
       }
-      if (url.endsWith('/cards/collection'))
+      if (url.endsWith('/cards/collection')) {
+        if (collectionRefreshFails)
+          return route.fulfill({ status: 503, json: {} });
         return route.fulfill({
           json: { cards, requestId: 'fixture-collection' },
         });
+      }
       if (url.endsWith('/preview')) {
         if (!url.includes(source.cardDefinitionId))
           return route.fulfill({
@@ -502,11 +544,27 @@ for (const reducedMotion of [false, true]) {
         observer.observe(document.body, { childList: true, subtree: true });
       });
     }
+    collectionRefreshFails = true;
+    await page.setViewportSize({ width: 320, height: 568 });
     releaseSuccess!();
     await expect(
       page.getByRole('heading', { name: 'Evolution complete' }),
     ).toBeFocused();
+    await expect(dialog.getByRole('alert')).toContainText(
+      'Card evolved. Could not refresh your collection. Try again.',
+    );
+    await scrollToEvolutionFeedback(page, dialog);
+    await expectEvolutionFeedbackVisible(dialog);
+    const refresh = dialog.getByRole('button', { name: 'Refresh collection' });
+    await expect(refresh).toBeInViewport({ ratio: 1 });
+    await page.screenshot({
+      path: testInfo.outputPath('refresh-error-320x568.png'),
+    });
+    collectionRefreshFails = false;
+    await refresh.focus();
+    await page.keyboard.press('Enter');
     await expect(page.getByRole('status')).toContainText('Collection updated');
+    expect(posts).toBe(3);
     await expect(page.getByText('3 × Quillip', { exact: true })).toBeVisible();
     await expect(page.locator('.evolution-result__quantity')).toHaveText(
       '2 Quillume copies in collection',
@@ -546,6 +604,7 @@ for (const reducedMotion of [false, true]) {
             element.getAnimations().map((animation) => animation.finished),
           );
         });
+        await scrollToEvolutionFeedback(page, dialog);
         for (const [phase, time] of [
           ['gather', 510],
           ['merging', 1000],
@@ -572,10 +631,7 @@ for (const reducedMotion of [false, true]) {
                 ),
             ).toBe(true);
           }
-          await expect(dialog.getByText('Collection updated')).toBeInViewport();
-          await expect(
-            page.getByRole('button', { name: 'Back to evolutions' }),
-          ).toBeInViewport();
+          await expectEvolutionFeedbackVisible(dialog);
           await page.screenshot({
             path: testInfo.outputPath(
               `ascension-${phase}-${viewport.width}.png`,
@@ -633,7 +689,10 @@ for (const reducedMotion of [false, true]) {
     await expect(page.locator('.evolution-reveal__glint')).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath('success-mobile.png') });
     for (const viewport of reducedMotion
-      ? [{ width: 390, height: 844 }]
+      ? [
+          { width: 390, height: 844 },
+          { width: 320, height: 568 },
+        ]
       : [
           { width: 390, height: 844 },
           { width: 768, height: 960 },
@@ -687,10 +746,8 @@ for (const reducedMotion of [false, true]) {
         await expect(particle).toHaveCSS('animation-play-state', 'running');
       await page.mouse.move(0, 0);
       await page.getByRole('button', { name: 'Close evolution' }).focus();
-      await expect(
-        page.getByRole('button', { name: 'Back to evolutions' }),
-      ).toBeInViewport();
-      await expect(dialog.getByText('Collection updated')).toBeInViewport();
+      await scrollToEvolutionFeedback(page, dialog);
+      await expectEvolutionFeedbackVisible(dialog);
       const geometry = await dialog.evaluate((element) => {
         const result = element
           .querySelector('.evolution-result')!
