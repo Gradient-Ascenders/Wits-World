@@ -657,7 +657,7 @@ describe('card collection page', () => {
     expect(resultHeading).toHaveFocus();
     expect(screen.getByTestId('evolution-reveal')).toBeInTheDocument();
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Your collection is up to date.',
+      'Collection updated',
     );
     expect(fetchMock).toHaveBeenCalledTimes(4);
 
@@ -797,18 +797,16 @@ describe('card collection page', () => {
     finishEvolution(jsonResponse(result, 201));
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Refreshing your collection',
+        'Updating collection',
       ),
     );
     expect(screen.getByTestId('evolution-reveal')).toBeInTheDocument();
-    expect(
-      screen.queryByText('Your collection is up to date.'),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText(/3 × Quillip consumed/u)).toBeVisible();
+    expect(screen.queryByText('Collection updated')).not.toBeInTheDocument();
+    expect(screen.getByText('3 × Quillip')).toBeVisible();
     finishRefresh(collectionResponse([result.newCard, anchor]));
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Your collection is up to date.',
+        'Collection updated',
       ),
     );
   });
@@ -852,7 +850,7 @@ describe('card collection page', () => {
       screen.getByRole('button', { name: 'Refresh collection' }),
     );
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Your collection is up to date.',
+      'Collection updated',
     );
     expect(
       fetchMock.mock.calls.filter(

@@ -475,13 +475,11 @@ for (const reducedMotion of [false, true]) {
     await expect(
       page.getByRole('heading', { name: 'Evolution complete' }),
     ).toBeFocused();
-    await expect(page.getByRole('status')).toContainText(
-      'Your collection is up to date',
+    await expect(page.getByRole('status')).toContainText('Collection updated');
+    await expect(page.getByText('3 × Quillip', { exact: true })).toBeVisible();
+    await expect(page.locator('.evolution-result__quantity')).toHaveText(
+      '2 Quillume copies in collection',
     );
-    await expect(page.getByText(/3 × Quillip consumed/)).toBeVisible();
-    await expect(
-      page.getByText('2 × Quillume now in your collection'),
-    ).toBeVisible();
     await expect(page.getByTestId('evolution-reveal')).toHaveAttribute(
       'data-reduced-motion',
       String(reducedMotion),
@@ -492,6 +490,84 @@ for (const reducedMotion of [false, true]) {
       });
     await page.waitForTimeout(reducedMotion ? 200 : 1500);
     await page.screenshot({ path: testInfo.outputPath('success-mobile.png') });
+    for (const viewport of reducedMotion
+      ? [{ width: 390, height: 844 }]
+      : [
+          { width: 390, height: 844 },
+          { width: 768, height: 960 },
+          { width: 1440, height: 960 },
+          { width: 749, height: 897 },
+          { width: 320, height: 568 },
+        ]) {
+      await page.setViewportSize(viewport);
+      const resultCard = dialog.getByRole('button', {
+        name: 'View Quillume details',
+      });
+      await expect(resultCard).toBeVisible();
+      await expect(dialog.getByLabel('Creature attributes')).toHaveCount(0);
+      await expect(dialog.getByText(/Added to your collection/)).toHaveCount(0);
+      await expect(dialog.getByLabel('Evolution exchange')).toContainText(
+        'Used3 × QuillipCreated1 × Quillume',
+      );
+      if (viewport.width >= 640) {
+        await resultCard.hover({ position: { x: 35, y: 45 } });
+        await expect(resultCard).toHaveAttribute('data-hovered', '');
+        await expect
+          .poll(() =>
+            resultCard.evaluate(
+              (element) => getComputedStyle(element).transform,
+            ),
+          )
+          .not.toBe('none');
+      } else if (reducedMotion) {
+        await resultCard.hover();
+        await expect(resultCard).not.toHaveAttribute('data-hovered', '');
+      }
+      await resultCard.focus();
+      await page.keyboard.press('Enter');
+      const resultDetails = page.getByRole('dialog', {
+        name: 'Quillume',
+        exact: true,
+      });
+      await expect(resultDetails.getByText('Knowledge Surge')).toBeVisible();
+      await expect(
+        resultDetails.getByRole('heading', { name: 'Base stats' }),
+      ).toBeVisible();
+      await page.keyboard.press('Tab');
+      await expect(
+        resultDetails.locator('.trade-card-detail__body'),
+      ).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(resultDetails).not.toBeVisible();
+      await expect(resultCard).toBeFocused();
+      await page.mouse.move(0, 0);
+      await page.getByRole('button', { name: 'Close evolution' }).focus();
+      await expect(
+        page.getByRole('button', { name: 'Back to evolutions' }),
+      ).toBeInViewport();
+      await expect(dialog.getByText('Collection updated')).toBeInViewport();
+      const geometry = await dialog.evaluate((element) => {
+        const result = element
+          .querySelector('.evolution-result')!
+          .getBoundingClientRect();
+        const scroll = element
+          .querySelector('.card-detail-modal__scroll')!
+          .getBoundingClientRect();
+        return {
+          gapBelowResult: scroll.bottom - result.bottom,
+          overflows: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      expect(geometry.overflows).toBe(false);
+      if (viewport.width >= 640) {
+        expect(geometry.gapBelowResult).toBeLessThan(48);
+      }
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `success-${viewport.width}x${viewport.height}.png`,
+        ),
+      });
+    }
     await page.evaluate(
       (motion) => {
         const key = 'wits-world.accessibility-preferences.v1';

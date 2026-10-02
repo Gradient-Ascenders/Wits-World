@@ -99,20 +99,10 @@
   width: 100%;
   min-width: 0;
 }
-.evolution-preview__label {
-  margin: 0 0 var(--space-2);
-  color: var(--colour-text-secondary);
-  font-size: var(--text-xs);
-}
-.evolution-preview__label {
-  line-height: 1.2;
-}
-.evolution-preview__rarity {
-  text-transform: capitalize;
-}
 .evolution-surface .evolution-preview__target .collectible-card,
 .evolution-surface .evolution-reveal .evolution-reveal__card .collectible-card {
   display: block;
+  overflow: visible;
   border: 0;
   border-radius: 0;
   background: none;
@@ -125,12 +115,14 @@
   margin-inline: auto;
   filter: drop-shadow(0 0.5rem 1rem rgb(0 0 0 / 35%));
 }
-.evolution-preview__target .collectible-card__art-perspective {
+.evolution-preview__target .collectible-card__art-perspective,
+.evolution-reveal__card .collectible-card__art-perspective {
   width: min(100%, var(--evolution-card-width));
   margin-inline: auto;
   padding-block: var(--space-3);
 }
-.evolution-preview__target .collectible-card {
+.evolution-preview__target .collectible-card,
+.evolution-reveal__card .collectible-card {
   overflow: visible;
 }
 .evolution-card-inspection__button {
@@ -152,7 +144,10 @@
   border-radius: 0;
 }
 .evolution-surface .evolution-preview__target .collectible-card__body,
-.evolution-surface .evolution-reveal__card .collectible-card__body {
+.evolution-surface
+  .evolution-reveal
+  .evolution-reveal__card
+  .collectible-card__body {
   padding: var(--space-2) 0 0;
 }
 .evolution-surface .collectible-card__heading {
@@ -367,8 +362,7 @@
 .evolution-reveal {
   position: relative;
   isolation: isolate;
-  min-height: 26rem;
-  margin-block: var(--space-4);
+  margin-block: var(--space-2) var(--space-5);
 }
 .evolution-reveal__merge {
   position: absolute;
@@ -396,13 +390,40 @@
   text-align: center;
 }
 .evolution-surface .evolution-result__receipt {
-  padding-top: var(--space-3);
+  position: relative;
+  max-width: 30rem;
+  margin-inline: auto;
+  padding-top: var(--space-4);
   border-top: 1px solid var(--colour-border-subtle);
   text-align: center;
-  text-wrap: balance;
+}
+.evolution-result__receipt dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-6);
+  margin: 0;
+}
+.evolution-result__receipt dt {
+  margin-bottom: var(--space-1);
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+.evolution-result__receipt dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.evolution-result__receipt > svg {
+  position: absolute;
+  top: calc(50% + var(--space-2));
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--colour-text-secondary);
 }
 .evolution-surface .evolution-result__quantity {
-  margin-top: var(--space-2);
+  margin: calc(-1 * var(--space-4)) 0 var(--space-5);
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
   text-align: center;
 }
 .evolution-result > .state-message {
@@ -448,9 +469,6 @@
   .evolution-surface .evolution-quantity-summary {
     padding-block: var(--space-2);
   }
-  .evolution-reveal {
-    min-height: 22rem;
-  }
 }
 @media (min-width: 768px) {
   .evolution-candidates {
@@ -491,9 +509,6 @@
   .evolution-preview__sources h3 {
     margin-top: var(--space-1);
     font-size: var(--text-lg);
-  }
-  .evolution-reveal {
-    min-height: 16rem;
   }
 }
 @media (min-width: 1024px) {
@@ -549,14 +564,36 @@
   .evolution-surface .evolution-title {
     margin-bottom: var(--space-2);
   }
-  .evolution-surface .evolution-preview__label {
-    margin-bottom: var(--space-1);
-  }
   .evolution-surface .evolution-preview__target .collectible-card__body {
     padding-top: var(--space-1);
   }
   .evolution-surface .collectible-card__stats {
     margin-top: var(--space-1);
+  }
+}
+.card-detail-modal.evolution-surface:has(.evolution-result) {
+  --evolution-card-width: clamp(10.5rem, 32dvh, 16rem);
+}
+.evolution-surface:has(.evolution-result) .card-detail-modal__scroll {
+  display: flex;
+  flex-direction: column;
+  padding-block: var(--space-5);
+}
+.evolution-surface .evolution-result {
+  margin-block: auto;
+}
+@media (min-width: 640px) {
+  .card-detail-modal.evolution-surface:has(.evolution-result) {
+    width: min(42rem, calc(100vw - 2rem));
+    height: auto;
+  }
+}
+@media (max-width: 639px) and (max-height: 650px) {
+  .card-detail-modal.evolution-surface:has(.evolution-result) {
+    --evolution-card-width: clamp(7rem, 22dvh, 10rem);
+  }
+  .evolution-surface:has(.evolution-result) .card-detail-modal__scroll {
+    padding-block: var(--space-3);
   }
 }
 .evolution-confirmation-backdrop {

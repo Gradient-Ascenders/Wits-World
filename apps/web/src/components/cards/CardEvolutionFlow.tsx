@@ -6,7 +6,7 @@ import {
   type ReactElement,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { LockKey, Stack } from '@phosphor-icons/react';
+import { ArrowRight, LockKey, Stack } from '@phosphor-icons/react';
 import { motion, useReducedMotion } from 'motion/react';
 
 import {
@@ -204,10 +204,6 @@ export function CardEvolutionFlow({
           Evolution complete
         </h2>
         <EvolutionReveal source={initialPreview.source} result={result} />
-        <p className="evolution-result__receipt">
-          {result.consumedOwnedCardIds.length} × {card.name} consumed. 1 ×{' '}
-          {result.newCard.name} created.
-        </p>
         <p className="evolution-result__quantity">
           {
             collectionCards.filter(
@@ -215,15 +211,33 @@ export function CardEvolutionFlow({
                 copy.cardDefinitionId === result.newCard.cardDefinitionId,
             ).length
           }{' '}
-          × {result.newCard.name} now in your collection
+          <span className="sr-only">{result.newCard.name} copies </span>
+          in collection
         </p>
-        <StatusMessage tone={refreshFailed ? 'error' : 'success'}>
+        <div className="evolution-result__receipt">
+          <dl aria-label="Evolution exchange">
+            <div>
+              <dt>Used</dt>
+              <dd>
+                {result.consumedOwnedCardIds.length} × {card.name}
+              </dd>
+            </div>
+            <div>
+              <dt>Created</dt>
+              <dd>1 × {result.newCard.name}</dd>
+            </div>
+          </dl>
+          <ArrowRight size={20} aria-hidden="true" />
+        </div>
+        <StatusMessage
+          tone={isRefreshing ? 'info' : refreshFailed ? 'error' : 'success'}
+        >
           <p>
             {isRefreshing
-              ? 'Refreshing your collection…'
+              ? 'Updating collection…'
               : refreshFailed
                 ? 'Card evolved. Could not refresh your collection. Try again.'
-                : 'Your collection is up to date.'}
+                : 'Collection updated'}
           </p>
           {refreshFailed ? (
             <button
@@ -567,15 +581,11 @@ function EvolutionReveal({
           ease: 'easeOut',
         }}
       >
-        <p className="evolution-preview__label">
-          Added to your collection ·{' '}
-          <span className="evolution-preview__rarity">
-            {result.newCard.rarity}
-          </span>
-        </p>
         <CollectibleCard
           card={result.newCard}
+          artwork={<EvolutionCardInspection card={result.newCard} />}
           headingLevel={3}
+          showStats={false}
           showOwnership={false}
           showDetails={false}
         />
