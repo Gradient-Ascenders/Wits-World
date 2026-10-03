@@ -204,10 +204,10 @@ export function createPlayerProfileService(
         studyYear: row.study_year ?? '',
         avatarDataUrl: row.avatar_data_url,
         status:
-          row.status_active && row.status_text
+          row.status_active && (row.status_text || row.status_emoji)
             ? {
                 emoji: row.status_emoji ?? '',
-                text: row.status_text,
+                text: row.status_text ?? '',
                 expiresAt: row.status_expires_at?.toISOString() ?? null,
               }
             : null,

@@ -18,7 +18,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 ## Behavior and boundaries
 
-- User-written status has optional server-timed expiry; no online presence.
+- User-written status can contain an emoji, text, or both, with optional server-timed expiry; no online presence. Clearing both fields removes the status. The empty owner status control shows a single plus icon with an accessible label.
+- The status emoji dropdown searches names and keywords. Arrow keys browse matches, Enter selects, and Escape closes the dropdown and restores trigger focus. Selecting or clearing an emoji updates the draft; Save changes persists it through the normal profile flow.
 - Degree and study year are optional self-reported fields. Names remain governed by the existing account policy.
 - Public means visible to authenticated active players. Profile publication and daily activity sharing require owner choices.
 - Publish only selected card presentation, earned achievements and aggregate daily activity; exclude provider identity, inventory, owned-copy identifiers and exact activity timestamps.

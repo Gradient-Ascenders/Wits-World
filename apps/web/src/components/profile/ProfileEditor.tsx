@@ -19,6 +19,7 @@ import { useModalFocus } from '../useModalFocus';
 import { CardThumbnail } from '../cards/CollectibleCard';
 import { CardPresentationDialog } from '../cards/CardPresentationDialog';
 import { ProfileAvatar } from './PlayerShowcase';
+import { StatusEmojiPicker } from './StatusEmojiPicker';
 
 function editFromProfile(profile: PlayerProfile): ProfileEdit {
   return {
@@ -295,17 +296,11 @@ export function ProfileEditor({
             ) : section === 'status' ? (
               <>
                 <div className="profile-status-fields">
-                  <label>
-                    Emoji
-                    <input
-                      maxLength={16}
-                      value={edit.statusEmoji}
-                      placeholder="📚"
-                      onChange={(event) =>
-                        change('statusEmoji', event.target.value)
-                      }
-                    />
-                  </label>
+                  <StatusEmojiPicker
+                    value={edit.statusEmoji}
+                    disabled={busy}
+                    onChange={(emoji) => change('statusEmoji', emoji)}
+                  />
                   <label>
                     Status
                     <input

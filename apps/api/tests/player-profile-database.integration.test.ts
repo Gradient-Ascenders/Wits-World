@@ -150,6 +150,32 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
       ).toHaveLength(1);
       expect((await service.get(ownerId)).version).toBe(2);
     }, 30000);
+    it('saves and reloads emoji-only status for owners and visitors, and clears both fields', async () => {
+      const saved = await service.save(visitorId, {
+        ...blank,
+        statusText: '   ',
+      });
+      const status = { emoji: '📚', text: '', expiresAt: null };
+      expect(saved.status).toEqual(status);
+      expect((await service.get(visitorId)).status).toEqual(status);
+      expect((await service.get(ownerId, 'profile-two')).status).toEqual(
+        status,
+      );
+      await pool.query(
+        `update public.player_profiles set status_expires_at = now() - interval '1 second' where player_id = $1`,
+        [visitorId],
+      );
+      expect((await service.get(visitorId)).status).toBeNull();
+      expect((await service.get(ownerId, 'profile-two')).status).toBeNull();
+      const cleared = await service.save(visitorId, {
+        ...blank,
+        expectedVersion: saved.version!,
+        statusEmoji: '',
+        statusText: '',
+      });
+      expect(cleared.status).toBeNull();
+      expect((await service.get(ownerId, 'profile-two')).status).toBeNull();
+    }, 30000);
     it('uses server time to expire custom status and Johannesburg midnight', async () => {
       await service.save(ownerId, {
         ...blank,

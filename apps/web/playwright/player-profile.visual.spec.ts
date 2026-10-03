@@ -151,13 +151,14 @@ test('player showcase, editor and visitor view work across screen sizes', async 
           activityVisible: edit.activityVisible,
           featuredOwnedCardIds: edit.featuredOwnedCardIds,
           version: (profile.version ?? 0) + 1,
-          status: edit.statusText
-            ? {
-                text: edit.statusText,
-                emoji: edit.statusEmoji,
-                expiresAt: null,
-              }
-            : null,
+          status:
+            edit.statusText || edit.statusEmoji
+              ? {
+                  text: edit.statusText,
+                  emoji: edit.statusEmoji,
+                  expiresAt: null,
+                }
+              : null,
           featuredCards: edit.featuredOwnedCardIds.map(
             (id) =>
               featuredCards[
@@ -274,6 +275,35 @@ test('player showcase, editor and visitor view work across screen sizes', async 
     await expect(
       page.getByRole('button', { name: 'Edit profile', exact: true }),
     ).toBeFocused();
+    await page.getByRole('button', { name: 'In exam mode' }).click();
+    const emojiTrigger = page.getByRole('button', {
+      name: 'Choose status emoji',
+    });
+    await emojiTrigger.click();
+    const emojiFilter = page.getByRole('combobox', { name: 'Filter emojis' });
+    await expect(emojiFilter).toBeFocused();
+    const emojiMenu = page.getByRole('group', { name: 'Select an emoji' });
+    const bounds = await emojiMenu.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(16);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width - 16);
+    expect(bounds!.y).toBeGreaterThanOrEqual(16);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+      width === 390 ? 844 - 16 : 1000 - 16,
+    );
+    await expectNoOverflow(page);
+    await page.screenshot({ path: `/tmp/profile-emoji-picker-${width}.png` });
+    await emojiFilter.fill('books');
+    await page.keyboard.press('Enter');
+    await expect(emojiTrigger).toBeFocused();
+    await expect(
+      page.getByRole('dialog', { name: 'Set your status' }),
+    ).toBeVisible();
+    await emojiTrigger.click();
+    await page.keyboard.press('Escape');
+    await expect(emojiFilter).toHaveCount(0);
+    await expect(emojiTrigger).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
   }
   await page.getByRole('button', { name: 'Edit profile', exact: true }).click();
   await page.getByLabel('Choose picture').setInputFiles({
@@ -332,6 +362,15 @@ test('player showcase, editor and visitor view work across screen sizes', async 
   await page.getByLabel('Status', { exact: true }).fill('');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  const emojiOnlyStatus = page.getByRole('button', { name: 'Edit status: 📚' });
+  await expect(emojiOnlyStatus).toBeVisible();
+  await page.reload();
+  await expect(emojiOnlyStatus).toBeVisible();
+  await emojiOnlyStatus.click();
+  await expect(page.getByLabel('Status', { exact: true })).toHaveValue('');
+  await page.getByRole('button', { name: 'Clear status now' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   for (const width of [390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     const status = page.getByRole('button', { name: 'Set a status' });
@@ -342,22 +381,30 @@ test('player showcase, editor and visitor view work across screen sizes', async 
           const bounds = element.getBoundingClientRect();
           return bounds.top + bounds.height / 2;
         };
-        const label = center(button.querySelector('.showcase-status__label')!);
-        return [...button.querySelectorAll('svg')].every(
-          (icon) => Math.abs(center(icon) - label) < 1,
+        const icon = button.querySelector('svg')!;
+        return (
+          button.querySelectorAll('svg').length === 1 &&
+          button.textContent?.trim() === '' &&
+          Math.abs(center(icon) - center(button)) < 1
         );
       }),
     ).toBe(true);
+    await page.screenshot({
+      fullPage: true,
+      path: `/tmp/profile-status-empty-page-${width}.png`,
+    });
     await status.screenshot({ path: `/tmp/profile-status-empty-${width}.png` });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page
     .locator('.showcase-identity')
     .screenshot({ path: '/tmp/profile-header-empty.png' });
+  profile.status = { emoji: '📚', text: '', expiresAt: null };
   await page.goto('/players/another-player');
   await expect(
     page.getByRole('heading', { name: 'another-player' }),
   ).toBeVisible();
+  await expect(page.getByText('📚', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit profile' })).toHaveCount(
     0,
   );

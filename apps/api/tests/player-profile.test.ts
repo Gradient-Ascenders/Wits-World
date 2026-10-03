@@ -1,7 +1,10 @@
 import Fastify from 'fastify';
 import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vitest';
-import { normalizeProfileAvatar } from '../src/players/player-profile.js';
+import {
+  createPlayerProfileService,
+  normalizeProfileAvatar,
+} from '../src/players/player-profile.js';
 import { playerProfileRoutes } from '../src/routes/player-profiles.js';
 
 describe('profile avatar normalization', () => {
@@ -32,6 +35,74 @@ describe('profile avatar normalization', () => {
       });
     expect(await normalizeProfileAvatar(null)).toBeNull();
   });
+});
+
+describe('profile status projections', () => {
+  it.each([
+    {
+      emoji: '📚',
+      text: '',
+      active: true,
+      expected: { emoji: '📚', text: '', expiresAt: null },
+    },
+    {
+      emoji: '',
+      text: 'Studying',
+      active: true,
+      expected: { emoji: '', text: 'Studying', expiresAt: null },
+    },
+    {
+      emoji: '📚',
+      text: 'Studying',
+      active: true,
+      expected: { emoji: '📚', text: 'Studying', expiresAt: null },
+    },
+    { emoji: '📚', text: '', active: false, expected: null },
+    { emoji: '', text: '', active: true, expected: null },
+  ])(
+    'projects active status for owners and visitors: $emoji $text (active: $active)',
+    async ({ emoji, text, active, expected }) => {
+      const ownerId = '17400000-0000-4000-8000-000000000001';
+      for (const viewerId of [
+        ownerId,
+        '17400000-0000-4000-8000-000000000002',
+      ]) {
+        const query = vi
+          .fn()
+          .mockResolvedValue({ rows: [] })
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: ownerId,
+                status_active: active,
+                status_emoji: emoji,
+                status_text: text,
+                status_expires_at: null,
+                today: '2026-10-03',
+                is_public: true,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                player_name: 'owner',
+                total_points: 0,
+                standing_rank: 1,
+                current_streak: 0,
+                longest_streak: 0,
+                achievements: [],
+              },
+            ],
+          });
+        const service = createPlayerProfileService({
+          connect: vi.fn().mockResolvedValue({ query, release: vi.fn() }),
+        });
+        expect((await service.get(viewerId, 'owner')).status).toEqual(expected);
+      }
+    },
+  );
 });
 
 describe('profile mutation boundaries', () => {

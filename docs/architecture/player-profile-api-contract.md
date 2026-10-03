@@ -36,7 +36,7 @@ pixel limit and emits a metadata-free 256×256 JPEG. Null removes the picture.
 
 `statusExpiry` is `keep`, `today`, `week` or `never`. Today ends at the next
 Johannesburg midnight; week is seven days from the server's transaction time.
-Blank status text clears the visible status. Both projections suppress expired
+Status may contain an emoji, text, or both. Clearing both fields clears the visible status. Both projections suppress expired
 status. The browser honors the returned expiry while the page remains open.
 
 A new profile has version zero; each save increments it. The write locks the

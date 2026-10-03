@@ -198,21 +198,33 @@ export function PlayerShowcase({
           </h1>
           {profile.isOwner ? (
             <button
-              className={`showcase-status${status ? ' showcase-status--set' : ''}`}
+              className={`showcase-status${status ? ' showcase-status--set' : ' showcase-status--empty'}`}
               type="button"
+              aria-label={
+                !status
+                  ? 'Set a status'
+                  : !status.text
+                    ? `Edit status: ${status.emoji}`
+                    : undefined
+              }
               onClick={() => setEditor('status')}
             >
               <span className="showcase-status__icon" aria-hidden="true">
                 {status?.emoji || <PlusIcon size={16} />}
               </span>
-              <span className="showcase-status__label">
-                {status?.text || 'Set a status'}
-              </span>
-              <PencilSimpleIcon aria-hidden="true" size={14} />
+              {status?.text ? (
+                <>
+                  <span className="showcase-status__label">{status.text}</span>
+                  <PencilSimpleIcon aria-hidden="true" size={14} />
+                </>
+              ) : null}
             </button>
           ) : status ? (
             <p className="showcase-status showcase-status--set">
-              <span className="showcase-status__icon" aria-hidden="true">
+              <span
+                className="showcase-status__icon"
+                aria-hidden={!!status.text}
+              >
                 {status.emoji}
               </span>
               <span className="showcase-status__label">{status.text}</span>

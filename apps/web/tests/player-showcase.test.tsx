@@ -39,13 +39,14 @@ function mount(profile = buildPlayerProfile(), playerName?: string) {
           activityVisible: edit.activityVisible,
           featuredOwnedCardIds: edit.featuredOwnedCardIds,
           version: (profile.version ?? 0) + 1,
-          status: edit.statusText
-            ? {
-                text: edit.statusText,
-                emoji: edit.statusEmoji,
-                expiresAt: null,
-              }
-            : null,
+          status:
+            edit.statusText || edit.statusEmoji
+              ? {
+                  text: edit.statusText,
+                  emoji: edit.statusEmoji,
+                  expiresAt: null,
+                }
+              : null,
           featuredCards: edit.featuredOwnedCardIds.map((id) => {
             const card = cards.find((entry) => entry.ownedCardId === id)!;
             return {
@@ -171,7 +172,14 @@ describe('player showcase', () => {
       await screen.findByRole('button', { name: 'Set a status' }),
     );
     expect(screen.getByLabelText('Clear status')).toHaveValue('never');
-    await user.type(screen.getByLabelText('Emoji'), '📚');
+    await user.click(
+      screen.getByRole('button', { name: 'Choose status emoji' }),
+    );
+    await user.type(
+      screen.getByRole('combobox', { name: 'Filter emojis' }),
+      'books',
+    );
+    await user.click(screen.getByRole('option', { name: 'books' }));
     await user.type(screen.getByLabelText('Status'), 'In exam mode');
     await user.selectOptions(screen.getByLabelText('Clear status'), 'today');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -186,6 +194,144 @@ describe('player showcase', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(calls).toHaveLength(1);
     expect(screen.getByRole('button', { name: /In exam mode/ })).toHaveFocus();
+  });
+
+  it('saves an emoji-only status, reopens it and clears it', async () => {
+    const user = userEvent.setup();
+    const { calls } = mount();
+    const empty = await screen.findByRole('button', { name: 'Set a status' });
+    expect(empty).toHaveTextContent('');
+    expect(empty.querySelectorAll('svg')).toHaveLength(1);
+    await user.click(empty);
+    await user.click(
+      screen.getByRole('button', { name: 'Choose status emoji' }),
+    );
+    await user.type(
+      screen.getByRole('combobox', { name: 'Filter emojis' }),
+      'books',
+    );
+    await user.keyboard('{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    const status = await screen.findByRole('button', {
+      name: 'Edit status: 📚',
+    });
+    expect(status).toHaveTextContent('📚');
+    expect(status.querySelector('svg')).toBeNull();
+    expect(calls[0]).toMatchObject({ statusEmoji: '📚', statusText: '' });
+    await user.click(status);
+    expect(screen.getByLabelText('Status')).toHaveValue('');
+    expect(
+      screen.getByRole('button', { name: 'Choose status emoji' }),
+    ).toHaveTextContent('📚');
+    await user.click(screen.getByRole('button', { name: 'Clear status now' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByRole('button', { name: 'Set a status' });
+    expect(calls[1]).toMatchObject({ statusEmoji: '', statusText: '' });
+  });
+
+  it('shows an emoji-only status to visitors', async () => {
+    mount(
+      buildPlayerProfile({
+        isOwner: false,
+        version: null,
+        isPublic: true,
+        status: { emoji: '📚', text: '', expiresAt: null },
+        activity: null,
+        achievements: [],
+      }),
+      'another-player',
+    );
+    await screen.findByRole('heading', { name: 'naledi-star' });
+    expect(screen.getByText('📚')).toBeVisible();
+    expect(screen.getByText('📚')).not.toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('filters emojis, handles empty searches and clears only the draft emoji', async () => {
+    const user = userEvent.setup();
+    const { calls } = mount(
+      buildPlayerProfile({
+        status: { emoji: '📚', text: 'Cooking', expiresAt: null },
+      }),
+    );
+    await user.click(await screen.findByRole('button', { name: 'Cooking' }));
+    const trigger = screen.getByRole('button', { name: 'Choose status emoji' });
+    await user.click(trigger);
+    const filter = screen.getByRole('combobox', { name: 'Filter emojis' });
+    expect(filter).toHaveFocus();
+    expect(screen.getByRole('option', { name: 'books' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await user.type(filter, 'no-such-emoji');
+    expect(
+      within(screen.getByRole('group', { name: 'Select an emoji' })).getByRole(
+        'status',
+      ),
+    ).toHaveTextContent('No emojis found');
+    await user.keyboard('{Enter}');
+    expect(calls).toHaveLength(0);
+    await user.clear(filter);
+    await user.type(filter, 'fried egg');
+    expect(screen.getAllByRole('option').length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('option', { name: 'fried_egg' }));
+    expect(trigger).toHaveTextContent('🍳');
+    expect(trigger).toHaveFocus();
+    expect(screen.getByLabelText('Status')).toHaveValue('Cooking');
+    expect(calls).toHaveLength(0);
+    await user.click(trigger);
+    await user.click(screen.getByRole('button', { name: 'Clear emoji' }));
+    expect(trigger).not.toHaveTextContent('🍳');
+    expect(trigger).toHaveFocus();
+    expect(screen.getByLabelText('Status')).toHaveValue('Cooking');
+    expect(screen.getByLabelText('Clear status')).toHaveValue('keep');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(calls[0]).toMatchObject({
+      statusEmoji: '',
+      statusText: 'Cooking',
+      statusExpiry: 'keep',
+    });
+  });
+
+  it('selects emojis by keyboard and dismisses the picker before the status editor', async () => {
+    const user = userEvent.setup();
+    const { calls } = mount();
+    await user.click(
+      await screen.findByRole('button', { name: 'Set a status' }),
+    );
+    const trigger = screen.getByRole('button', { name: 'Choose status emoji' });
+    await user.click(trigger);
+    const filter = screen.getByRole('combobox', { name: 'Filter emojis' });
+    await user.type(filter, 'smile');
+    await user.keyboard('{ArrowDown}');
+    const active = document.getElementById(
+      filter.getAttribute('aria-activedescendant')!,
+    );
+    const glyph = active?.querySelector('.status-emoji-glyph')?.textContent;
+    await user.keyboard('{Enter}');
+    expect(trigger).toHaveTextContent(glyph!);
+    expect(trigger).toHaveFocus();
+    expect(calls).toHaveLength(0);
+    await user.click(trigger);
+    await user.keyboard('{Escape}');
+    expect(
+      screen.queryByRole('combobox', { name: 'Filter emojis' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: 'Set your status' }),
+    ).toBeVisible();
+    expect(trigger).toHaveFocus();
+    await user.click(trigger);
+    await user.click(screen.getByLabelText('Status'));
+    expect(
+      screen.queryByRole('combobox', { name: 'Filter emojis' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Status')).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(calls).toHaveLength(0);
   });
 
   it('selects exact owned copies and changes their order using buttons', async () => {
