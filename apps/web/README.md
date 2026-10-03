@@ -25,8 +25,9 @@ site exclusion, ending overrides, and validated rollback; semantic tables remain
 usable if the synchronized placement map cannot load.
 Server-authoritative CPU battles and private
 completed-match history are available through the protected `/matches` routes.
-The protected `/profile` route presents server-authoritative points, rank,
-streaks, achievement progress, and privacy-safe all-time or monthly standings.
+The protected `/profile` route presents personal identity, four favourite owned
+cards, aggregate activity and server-authoritative progression. `/leaderboard`
+presents privacy-safe all-time or monthly standings.
 Asynchronous PvP is
 available alongside CPU play through `/matches/pvp`, with exact Player Name
 lookup, invitations, saved-deck selection, server-timed turns, polling, and
@@ -405,8 +406,11 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
   authoritative active or completed CPU match state.
 - `/matches/history` requires Auth0 sign-in and lists the authenticated player's
   private completed CPU matches.
-- `/profile` requires Auth0 sign-in and shows the current player's approved
-  progression fields, achievement progress, and paginated standings.
+- `/profile` requires Auth0 sign-in and shows the current player's editable
+  profile, favourite cards, aggregate activity and authoritative progression.
+- `/players/:playerName` requires an active signed-in player and shows only
+  profiles their owners have made visible to players. Standings names link here.
+- `/leaderboard` shows paginated authoritative all-time and monthly standings.
 - `/account` requires Auth0 sign-in, shows the API-resolved player identity and
   provider category, delegates credential recovery, and coordinates permanent
   deletion without collecting passwords.
@@ -797,14 +801,42 @@ after completion is unavailable by API contract.
 
 ## Progression profile and standings
 
-The protected `/profile` route loads `GET /api/v1/progression/me` and
-`GET /api/v1/progression/standings` independently. A profile failure therefore
-does not hide available standings, and either request can be retried without
-replaying or changing gameplay. The browser displays only Player Name, points,
-all-time rank, current and longest streak, achievement definition and progress
-fields, and the privacy-safe standings fields. Its closed runtime validation
-rejects unexpected keys such as email, Auth0 identity, location, or gameplay
-history rather than rendering a partial response.
+The protected `/profile` route loads `GET /api/v1/profiles/me`. The owner can
+edit a bio (280 characters), optional degree (100) and study year (32), a
+cropped picture, profile publication and activity visibility. Player Name
+continues to use the existing account policy. A separate status editor accepts
+an emoji and an 80-character message, with existing expiry, Johannesburg end of
+day, seven days or no expiry. The API owns expiry and hides expired status;
+the browser also removes it when the loaded expiry passes.
+
+The showcase editor selects up to four exact owned copies, orders them through
+keyboard-accessible move controls, and submits one versioned profile save.
+Selected cards reuse the existing thumbnail, motion preference and inspection
+dialog. A transfer removes the old owner's showcase entry; deletion or evolution
+of a selected copy cascades its removal. Public projection joins current
+ownership on every read. No inventory, copy IDs or acquisition times are
+returned to visitors.
+
+`/players/:playerName` loads `GET /api/v1/profiles/players/:playerName`.
+Publication is opt-in and limited to active signed-in players. Visitors see
+identity, selected card presentation, progression and earned achievements.
+Daily activity is separately opt-in, exposes only dates and completed counts
+over the last 365 Johannesburg days, and never returns locations or exact
+timestamps. Owners see both earned and in-progress illustrated badges. Their
+activity calendar defaults to a recent period on small screens and offers an
+accessible list and arrow-key date navigation.
+
+`PUT /api/v1/profiles/me` requires `expectedVersion` and validates ownership
+inside a transaction. Conflicts retain the local draft and offer a reload.
+Avatar uploads are cropped to 256 pixels in the browser, then decoded, resized
+and re-encoded as JPEG by the API, stripping metadata. Read and save responses
+use `private, no-store`. Migration `0064_create_player_profile_showcase.sql`
+adds persistence, transfer cleanup and deletion-time metadata purging.
+
+`/leaderboard` loads `GET /api/v1/progression/standings` independently. Profile
+failures do not hide standings. Both response parsers reject unexpected private
+fields rather than rendering a partial response. The existing
+`GET /api/v1/progression/me` contract remains available.
 
 All-time standings load first with a server-bounded page size of 20. Players may
 select a `YYYY-MM` Johannesburg calendar month, and Previous/Next requests use
@@ -825,7 +857,7 @@ explicit and recoverable.
 Run the focused component and client coverage from the repository root:
 
 ```bash
-npm test --workspace @wits-world/web -- --run tests/progression-client.test.ts tests/profile-page.test.tsx
+npx vitest run --config apps/web/vite.config.ts apps/web/tests/player-showcase.test.tsx apps/web/tests/player-profile-client.test.ts apps/web/tests/profile-page.test.tsx
 npm run test:e2e:progression --workspace @wits-world/web
 ```
 

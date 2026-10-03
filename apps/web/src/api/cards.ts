@@ -295,12 +295,13 @@ export async function listOwnedCards({
   apiBaseUrl,
   getAccessToken,
   signal,
-}: CardRequestOptions): Promise<OwnedCard[]> {
+  unique = false,
+}: CardRequestOptions & { unique?: boolean }): Promise<OwnedCard[]> {
   const payload = await cardRequest({
     apiBaseUrl,
     getAccessToken,
     method: 'GET',
-    path: '/cards/collection',
+    path: unique ? '/cards/collection?unique=true' : '/cards/collection',
     signal,
   });
 

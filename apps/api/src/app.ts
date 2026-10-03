@@ -90,6 +90,8 @@ import { authorContentRoutes } from './routes/author-content.js';
 import type { AuthenticatedRateProtection } from './security/rate-protection.js';
 import type { ProgressionReadService } from './progression/progression-read-service.js';
 import { progressionRoutes } from './routes/progression.js';
+import { playerProfileRoutes } from './routes/player-profiles.js';
+import type { PlayerProfileService } from './players/player-profile.js';
 import type { AuthorTrailService } from './trails/author-trail-service.js';
 import type { PlayerTrailService } from './trails/player-trail-service.js';
 import { authorTrailRoutes } from './routes/author-trails.js';
@@ -151,6 +153,7 @@ export interface BuildAppOptions {
     reads: TerritoryReadService;
   };
   progressionReadService?: ProgressionReadService;
+  playerProfileService?: PlayerProfileService;
   rateProtection?: AuthenticatedRateProtection;
   developerApi?: {
     keyService: DeveloperApiKeyService;
@@ -221,6 +224,7 @@ export async function buildApp({
   ranked,
   territory,
   progressionReadService,
+  playerProfileService,
   rateProtection,
   developerApi,
   offlineChallengeService,
@@ -375,7 +379,10 @@ export async function buildApp({
   if (cardTrade && !playerIdentityService) {
     throw new Error('Card trading routes require the player identity service.');
   }
-  if (progressionReadService && !playerIdentityService) {
+  if (
+    (progressionReadService || playerProfileService) &&
+    !playerIdentityService
+  ) {
     throw new Error('Progression services require a player identity service.');
   }
   if (trustReviewService && !playerIdentityService) {
@@ -714,6 +721,13 @@ export async function buildApp({
     await app.register(territoryRoutes, {
       prefix: '/api/v1',
       reads: territory.reads,
+    });
+  }
+
+  if (playerProfileService) {
+    await app.register(playerProfileRoutes, {
+      prefix: '/api/v1',
+      service: playerProfileService,
     });
   }
 

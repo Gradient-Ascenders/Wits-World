@@ -144,6 +144,7 @@ describe.skipIf(!runIntegrationTests)(
           '0061_persist_trust_review_evidence_summaries.sql',
           '0062_detach_deleted_player_history.sql',
           '0063_purge_deleted_player_progression.sql',
+          '0064_create_player_profile_showcase.sql',
         ],
         skipped: [],
       });
@@ -215,6 +216,7 @@ describe.skipIf(!runIntegrationTests)(
           '0061_persist_trust_review_evidence_summaries.sql',
           '0062_detach_deleted_player_history.sql',
           '0063_purge_deleted_player_progression.sql',
+          '0064_create_player_profile_showcase.sql',
         ],
       });
     }, 30_000);
@@ -450,6 +452,7 @@ describe.skipIf(!runIntegrationTests)(
             '0061_persist_trust_review_evidence_summaries.sql',
             '0062_detach_deleted_player_history.sql',
             '0063_purge_deleted_player_progression.sql',
+            '0064_create_player_profile_showcase.sql',
           ],
         });
 

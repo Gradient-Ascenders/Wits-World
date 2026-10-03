@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import ProfilePage from '../src/pages/ProfilePage';
+import { profileExtension } from './fixtures/player-profile';
 import LeaderboardPage from '../src/pages/LeaderboardPage';
 import {
   buildProgressionProfile,
@@ -62,8 +63,15 @@ function progressionFetch(
   return vi.fn().mockImplementation((input: RequestInfo | URL) => {
     const url = String(input);
 
-    if (url.endsWith('/progression/me')) {
-      return Promise.resolve(profile());
+    if (url.endsWith('/profiles/me')) {
+      const response = profile();
+      if (!response.ok) return Promise.resolve(response);
+      return response.json().then((payload: unknown) =>
+        jsonResponse({
+          ...profileExtension,
+          ...(payload as Record<string, unknown>),
+        }),
+      );
     }
 
     if (url.includes('/progression/standings?')) {
@@ -131,12 +139,10 @@ describe('progression profile and standings page', () => {
       await screen.findByRole('heading', { name: longPlayerName }),
     ).toBeVisible();
     expect(
-      screen.getByText('Player profile', { selector: '.eyebrow' }),
+      screen.getByRole('heading', { name: 'Favourite cards' }),
     ).toBeVisible();
     expect(
-      within(screen.getByText('All-time rank').closest('div')!).getByLabelText(
-        'Rank 4',
-      ),
+      within(screen.getByText('All-time rank').closest('div')!).getByText('#4'),
     ).toBeVisible();
     expect(screen.getAllByText(/1\s240/u).length).toBeGreaterThan(0);
     expect(screen.getAllByText('3 days').length).toBeGreaterThan(0);
@@ -147,19 +153,23 @@ describe('progression profile and standings page', () => {
     });
     expect(within(achievements).getByText('Earned')).toBeVisible();
     expect(within(achievements).getByText('In progress')).toBeVisible();
+    await userEvent.click(within(achievements).getByText('Campus Explorer'));
+    const progressDialog = screen.getByRole('dialog', {
+      name: 'Campus Explorer',
+    });
     expect(
-      within(achievements).getByRole('progressbar', {
+      within(progressDialog).getByRole('progressbar', {
         name: 'Campus Explorer: In progress, 3 of 5',
       }),
     ).toHaveAttribute('value', '3');
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(within(achievements).getByText('First Quiz'));
+    const earnedDialog = screen.getByRole('dialog', { name: 'First Quiz' });
+    expect(within(earnedDialog).getByText(/Earned by/)).toBeVisible();
     expect(
-      within(achievements).getByRole('progressbar', {
-        name: 'First Quiz: Earned, current progress 3, target 1',
-      }),
-    ).toHaveAttribute('value', '3');
-    expect(
-      within(achievements).getByText('Current 3 · target 1'),
-    ).toBeVisible();
+      within(earnedDialog).queryByRole('progressbar'),
+    ).not.toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
 
     const standings = screen.getByRole('list', {
       name: 'Player standings',
@@ -191,12 +201,7 @@ describe('progression profile and standings page', () => {
 
     expect(
       screen
-        .getByText('Loading your progression profile…')
-        .closest('[role="status"]'),
-    ).toHaveAttribute('role', 'status');
-    expect(
-      screen
-        .getByText('Loading achievement progress…')
+        .getByRole('heading', { name: 'Loading player profile' })
         .closest('[role="status"]'),
     ).toHaveAttribute('role', 'status');
     expect(
@@ -240,9 +245,7 @@ describe('progression profile and standings page', () => {
     renderProfile();
 
     expect(
-      await screen.findByRole('heading', {
-        name: 'No achievements are available yet',
-      }),
+      await screen.findByText('No achievements are available yet.'),
     ).toBeVisible();
     expect(
       screen.getByRole('heading', { name: 'No players appear on this page' }),
@@ -318,9 +321,15 @@ describe('progression profile and standings page', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: 'This progression profile is unavailable',
+        name: 'Profile unavailable',
       }),
     ).toBeVisible();
+    expect(
+      screen.getByRole('link', { name: 'Account settings' }),
+    ).toHaveAttribute('href', '/account');
+    expect(
+      screen.queryByRole('button', { name: 'Sign in again' }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole('heading', {
         name: 'No active standing is available',
@@ -329,7 +338,7 @@ describe('progression profile and standings page', () => {
     expect(
       screen.getByText(/Only active players receive a live rank/),
     ).toBeVisible();
-    expect(screen.getAllByText(/pending-deletion accounts/)).toHaveLength(2);
+    expect(screen.getAllByText(/pending-deletion accounts/)).toHaveLength(1);
   });
 
   it('rejects malformed profile and standings payloads with safe retry states', async () => {
@@ -361,12 +370,15 @@ describe('progression profile and standings page', () => {
     const malformedHeadings = await screen.findAllByRole('heading', {
       name: 'Progression data could not be displayed',
     });
-    expect(malformedHeadings).toHaveLength(2);
+    expect(malformedHeadings).toHaveLength(1);
+    expect(
+      screen.getByRole('heading', { name: 'Your profile could not be loaded' }),
+    ).toBeVisible();
     expect(
       screen.getAllByText(
         'Your progression could not be displayed. Try loading it again.',
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(screen.queryByText('private@example.test')).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(
       2,
@@ -391,7 +403,7 @@ describe('progression profile and standings page', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: 'Your progression profile could not load',
+        name: 'Your profile could not be loaded',
       }),
     ).toBeVisible();
     expect(
@@ -441,7 +453,7 @@ describe('progression profile and standings page', () => {
     expect(standingsAttempts).toBe(2);
     expect(
       fetchMock.mock.calls.filter(([input]) =>
-        String(input).endsWith('/progression/me'),
+        String(input).endsWith('/profiles/me'),
       ),
     ).toHaveLength(1);
   });

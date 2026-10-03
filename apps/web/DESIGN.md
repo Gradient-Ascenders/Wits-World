@@ -196,6 +196,12 @@ The shared `CardThumbnail` pairs the existing material frame with `useCardTilt`.
 
 Clickable deck roster cards, collection-picker cards, and draft artwork open the shared `CardPresentationDialog`. Inspection presents the supplied card data without changing draft membership or order; unavailable detailed rules receive an explicit message. Keep keyboard activation, visible focus, modal focus containment, Escape dismissal, and focus restoration. Add and Remove remain separate controls outside the frame.
 
+The favourite-card editor shows the selected cards as artwork in order. Drag the
+artwork or its grip to reorder; arrow keys on the grip provide the keyboard
+alternative. Inspection and removal remain separate actions. The picker requests
+one currently owned copy per definition and renders 12 cards at a time, retaining
+saved copy IDs for existing favourites.
+
 Resolve motion through the application's shared preference: `reduce` disables card transforms regardless of the OS preference, `full` enables the shared pointer effect even when the OS requests reduction, and `system` follows the OS. Touch inspection remains available without tilt. This interaction is a collectible-card staple; ordinary panels retain their existing depth behavior.
 
 ### Inputs / Fields
