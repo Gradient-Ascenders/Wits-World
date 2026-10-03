@@ -44,6 +44,22 @@ typography:
     fontWeight: 800
     lineHeight: 1.1
     letterSpacing: '0.14em'
+  live-ranked-label:
+    fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif'
+    fontSize: '1rem'
+    fontWeight: 700
+    lineHeight: 1.5
+    letterSpacing: '0'
+  live-ranked-deck-title:
+    fontFamily: "'Old Standard TT', 'Playfair Display', Georgia, 'Times New Roman', serif"
+    fontSize: 'clamp(1.65rem, 4.5vw, 2.5rem)'
+    fontWeight: 700
+    lineHeight: 1.15
+  live-ranked-rating:
+    fontFamily: "'Old Standard TT', 'Playfair Display', Georgia, 'Times New Roman', serif"
+    fontSize: 'clamp(2rem, 5.5vw, 3.25rem)'
+    fontWeight: 700
+    lineHeight: 1
 rounded:
   sm: '0.375rem'
   md: '0.625rem'
@@ -51,6 +67,7 @@ rounded:
   xl: '1.5rem'
   pill: '999px'
   frame: '15px'
+  live-ranked-stage-tall: '1.75rem'
 spacing:
   '1': '0.25rem'
   '2': '0.5rem'
@@ -104,6 +121,30 @@ components:
     textColor: '#292d34'
     rounded: '{rounded.frame}'
     padding: '1rem 0.75rem 0.75rem'
+  live-ranked-stage:
+    backgroundColor: '{colors.night-sky}'
+    textColor: '{colors.ivory}'
+    rounded: '{rounded.lg}'
+    padding: 'clamp(1rem, 3vw, 2rem)'
+  live-ranked-stage-tall:
+    backgroundColor: '{colors.night-sky}'
+    textColor: '{colors.ivory}'
+    rounded: '{rounded.live-ranked-stage-tall}'
+    padding: 'clamp(2rem, 5.5vw, 3rem)'
+  live-ranked-search:
+    backgroundColor: '{colors.trail-blue}'
+    textColor: '#ffffff'
+    rounded: '{rounded.md}'
+    padding: '0.75rem 3rem'
+    height: '3.5rem'
+    width: '100%'
+  live-ranked-search-tall:
+    backgroundColor: '{colors.trail-blue}'
+    textColor: '#ffffff'
+    rounded: '{rounded.xl}'
+    padding: '0.75rem 4rem'
+    height: '7rem'
+    width: '100%'
 ---
 
 # Design System: Wits World
@@ -116,12 +157,15 @@ The interface feels adventurous and scholarly. Deep Night Sky surfaces establish
 
 The system uses clear controls and crafted rewards. Common panels, forms, and navigation share restrained geometry and readable spacing. Collectible card frames carry the dense celestial academic metalwork, with material and engraving changes for rarity. The approved Campus Seal and W/star marks anchor the identity. This record describes the existing React interface in `src/styles/`, page styles, and assets; it does not prescribe a new visual direction.
 
+Live Ranked is an approved scoped extension of this identity. Its competitive entry uses a compact Live Ranked label beside the tabs, a plain Night Sky stage with a thin gold border, and the active deck’s actual card faces. Both battle lobbies use Collection-style icon-and-label tabs with ivory selected text and a short gold underline. `/matches/pvp` has its own open inbox composition: a full serif page title, challenge action, separate tab row, and divided battle lists. The shared campus chrome and other surfaces retain their established rules. The Live Ranked surface contract and approved `duel-table-v3.png` carry that page's composition; final pixel-fidelity review remains pending.
+
 **Key Characteristics:**
 
 - Dark navy layers with warm ivory text and selective gold and blue accents.
 - Serif display headings paired with compact sans-serif controls and comfortable body copy.
 - Mobile navigation and task panels built around touch, safe areas, and visible state.
 - Ambient panel depth; ornate finish reserved for collectible rewards.
+- Collection-style tabs connect the battle lobbies; Live Ranked's competitive stage and deck preview remain distinct from the open Player Battles inbox.
 
 ## Colors
 
@@ -143,6 +187,7 @@ The palette combines Night Sky neutrals, Beacon Gold identity cues, and Trail Bl
 
 - **Night Sky** (`night-sky`) is the page ground. Its deeper, panel, and raised companions separate content without introducing a light canvas.
 - **Ivory** (`ivory`) is primary text. **Slate Secondary** and **Slate Muted** reduce emphasis for descriptions and metadata.
+- **Live Ranked background** inherits the shared app background; the bordered stage uses `--colour-background-app` (Night Sky). Its border, mode label, and real season rating use Beacon Gold Light; the search action uses Trail Blue. Card faces retain the shared collection rarity materials.
 
 **The Two Accent Rule.** Blue identifies an action or focus target; gold identifies the world, progress, or a current destination. Preserve that distinction in working screens.
 
@@ -161,6 +206,10 @@ Serif headings give the world its academic voice. Sans-serif body copy, labels, 
 
 **The Reading and Doing Rule.** Use serif type to introduce places, sections, or rewards; use sans-serif type for actions, values, and forms.
 
+### Live Ranked extension
+
+The route self-hosts **Old Standard TT Bold** (weight 700, `font-display: swap`) from `src/assets/fonts/old-standard-tt/OldStandard-Bold.ttf`; its source README and SIL Open Font License 1.1 are adjacent. It leads the selected deck title and season rating stacks; the mode label uses the shared body face at 1rem. The season name retains the shared sans-serif stack. The normative scoped roles above record compact sizing; the tall portrait layout raises the deck title to `3.25rem` and rating to `3.75rem`. The compact mode label, controls, and state copy remain sans-serif.
+
 ## Layout
 
 The app starts with a fluid mobile layout. General content is capped at `76rem`, readable prose at `44rem`, and header content at `90rem`. Spacing follows the eight-step scale in the frontmatter, from a quarter rem to four rem. Controls use at least a `2.75rem` target height.
@@ -168,6 +217,14 @@ The app starts with a fluid mobile layout. General content is capped at `76rem`,
 Authenticated player routes use a fixed bottom navigation bar on smaller screens, with safe-area clearance in page content. At `75rem` and above it moves into the header. The Explore route uses a viewport-height map and a movable sheet; its task information remains available through a list. Author pages use a compact expandable navigation below `64rem` and a sidebar at larger widths. Home uses an image-led hero and changes from stacked sections to multiple columns at `48rem` and `64rem`.
 
 **The Mobile Task Rule.** Reserve space for the bottom navigation and safe area before sizing sheets, sticky actions, or full-height views.
+
+### Live Ranked extension
+
+The lobby is capped at `56rem`. Its stage is a single grid with a `1.5rem` gap and fluid padding. Below `48rem`, the stage border extends `space-3` (12px) into each page gutter with matching additional inner padding; the content width, card size, and fan geometry stay unchanged. The compact interactive fan is capped at `30rem`, uses aspect ratio `2.25`, and gives each card `25%` of fan width; tablets from `48rem` through `74.99rem` cap the fan at `26rem`. The search control spans the usable stage width with centered text and a right-positioned arrow; its `3.5rem` minimum height is 56px at the default root size.
+
+Tall portrait viewports from `48rem` through `74.99rem` wide and at least `75rem` high use the scoped tall variants: `5.5rem` top clearance, a `4rem` stage gap, fan cap `45rem`, fan aspect ratio `2.04`, and card width `28%`. The fan's horizontal translations tighten from `-150%, -75%, 0%, 75%, 150%` to `-130%, -60%, 0%, 60%, 130%`. The search control grows to a `7rem` minimum height (112px at the default root size), with `2.5rem` type and centered text. These media rules express the approved tall composition without imposing that density on shorter tablets or desktop screens. Component `height` tokens describe minimum control heights, following the existing button convention.
+
+The tall portrait entry controls also use the existing spacing scale: `space-6` (`2rem`, 32px at the default root size) separates the start controls and pads the territory option at the top; `space-7` (`3rem`, 48px) pads Ranked rules at the top; and `space-8` (`4rem`, 64px) sets the rules summary's minimum height. This lower-stage spacing keeps the search action, optional territory choice, and rules disclosure distinct while leaving shorter layouts compact.
 
 ## Elevation & Depth
 
@@ -181,9 +238,13 @@ Depth is layered and ambient. Dark tonal steps, translucent borders, and restrai
 
 **The Ambient Depth Rule.** Use tonal separation for routine grouping; reserve stronger shadows for surfaces that float over other content.
 
+Live Ranked inherits the standard app background. Its bordered stage uses the shared Night Sky app background token, with no stage shadow or glow. Depth comes from card overlap and the shared card-frame shadows; the fan avoids a filtering layer around moving cards. Shared collection card frames supply the printed material; CSS supplies card rotation and shadow.
+
 ## Shapes
 
 General controls use the small and medium radii; panels use large corners; badges and handles use pill or circular silhouettes. Borders remain thin and translucent. Collectible cards are the deliberate exception: they use a recessed square artwork window, metallic rims, corner engraving, and rarity-specific material colors while sharing one frame geometry.
+
+Live Ranked uses a `1px` Beacon Gold Light stage border, the shared `1rem` panel radius, and a scoped `1.75rem` radius in tall portrait layouts. The Change deck control uses the shared button radius of `0.625rem`.
 
 **The Gentle Highlight Rule.** Interactive background highlights use the small radius (`--radius-sm`, mapped to `rounded.sm`) and enough horizontal padding to keep text clear of their edges. Apply this treatment consistently to tabs, section navigation, and clickable list or table rows in hover, focus, and selected states wherever those states have a background fill. Preserve each component's existing accent colors, selection underline, and visible keyboard focus.
 
@@ -231,6 +292,24 @@ Player navigation uses icon and text labels. The current item receives gold text
 
 Small pill badges use colored text and faint matching fill for active, upcoming, ended, and informational states. They remain readable as text without depending on color.
 
+### Player Battles lobby
+
+`/matches/pvp` uses an open `64rem` inbox with a full serif page title, a compact turn-window hint, and the challenge action in its header. Active, Invitations, and History sit on a separate tab row beneath that header. Their icons, label weight, ivory active text, and inset gold underline match Collection; zero counts remain accessible without visual clutter. Section headings, controls, player names, and status use the shared body face. Battle and invitation records use divided rows with textual status, without an enclosing stage or decorative side borders. Received and sent invitations form two columns on wide screens and stack on mobile. Confirmed challenge setup places lookup beside deck and starting-creature selection on wide screens, keeping the original linear order on mobile.
+
+When there are no active battles or pending invitations in either direction, challenge setup opens on arrival. Otherwise the existing priority remains: your turn, received challenges, then waiting battles. Exact Player Name lookup precedes deck and starting-creature selection, ending in a full-width Send challenge control. A confirmed send closes setup and selects Invitations. Tab selection closes setup without clearing draft choices. Polling does not override the player's chosen view. Server validation, exact owned-card identity, safe retry IDs, pagination, cancellation confirmation, and recovery remain authoritative.
+
+Tab headings remain available to screen readers without repeating the selected tab visually. Challenge setup uses short labels and one exact-name privacy hint. Invitation rows omit repeated direction labels and creation times, keeping the expiry or latest update. Errors state the problem and recovery action once; safe retries and irreversible cancellation remain explicit.
+
+### Live Ranked stage and deck fan
+
+The stage groups the current season, real season record and rating, selected deck, and ranked search action. Play, Standings, and Watch remain semantic tabs. The card fan resolves the selected deck’s exact owned-card IDs through the owned-card collection, ordered by deck position. It uses shared `CardThumbnail` artwork and rarity frames without visible nameplates. Card names remain in accessible button labels and the details dialog. Hover lifts and tilts a card; keyboard focus raises it above overlapping neighbors. Click, tap, or Enter opens the shared `CardPresentationDialog` with authoritative stats and rules, Escape closes it, and focus returns to the card. Collection loading and failure do not block matchmaking or packaged artwork: the deck summary’s exact card definition IDs resolve approved manifest images immediately, using eager, high-priority responsive sources sized for the fan. Unknown definitions retain named fallback frames. Collection responses supply the authoritative image URLs and full details when ready, and failed details can be retried.
+
+Lobby copy keeps the next action clear: Find battle, Accept, Cancel search, and Select deck. The deck preview omits turn-time copy; searching omits the rating-range diagnostic. Territory location guidance appears only when contesting is selected, and territory failures use one actionable queue alert. Ranked penalties stay in the collapsed rules and proposal guidance. Watch uses one link-or-ID field label and a short privacy hint. Standings show rank, player, rating, and win/loss record without a repeated match count.
+
+The fan has a non-looping `550ms` entry settle using the shared easing curve. Searching and proposed queue states fold it to `min(100%, 24rem)`, reduce horizontal translation and rotation to 65%, and cancel the settle animation. The hover lift is 0.5rem over 260ms with exponential easing. The fan retains 30% rotation and 45% enlargement with flat transform composition. Its shared thumbnail opts into a critically damped cursor response that preserves velocity when direction changes and follows elapsed frame time. Pointer coordinates use the bounds captured at hover entry and clamp to the card’s original range, preventing the moving card from feeding motion back into its own target. Other card surfaces retain their existing spring. The active hover or keyboard card uses z-index 10. On pointer exit, the outgoing card immediately returns to its normal fan layer while its transform eases to rest. Settling no longer controls stacking or toggles compositor hints, preventing a delayed overlap change after fast swipes. The fan isolates these layers from the page. Reduced-motion preference removes the card animation, lift, and tilt. The visual fold reflects server queue state and supplies no matchmaking authority.
+
+Only a current, matching, loaded server profile supplies season wins, losses, rating, and provisional text. Loading, retry, season mismatch, unavailable season, missing or invalid deck, restriction, queue recovery, proposal acceptance, and private watching keep their real controls and textual states. Do not fill absent records with a sample score, tier, rank, streak, or match history. Queue eligibility, deadlines, legal actions, and settlement remain server-owned. Documentation records implemented styling; it does not certify the pending full-pixel review.
+
 ## Do's and Don'ts
 
 ### Do:
@@ -239,6 +318,8 @@ Small pill badges use colored text and faint matching fill for active, upcoming,
 - **Do** retain the Campus Seal and the current icon-and-label navigation language.
 - **Do** pair state colors with words or icons and maintain the bright visible focus treatment.
 - **Do** use the shared spacing and radius steps before adding local values.
+- **Do** share the Collection-style icon tabs across the battle lobbies while keeping their compositions distinct; keep Live Ranked's stage, deck fan, and responsive tall variants scoped to that surface.
+- **Do** preserve authoritative records, recovery controls, and reduced-motion behavior in ranked presentation.
 - **Do** give interactive highlights gentle corners and breathing room using the Gentle Highlight Rule.
 
 ### Don't:
@@ -246,5 +327,6 @@ Small pill badges use colored text and faint matching fill for active, upcoming,
 - **Don't** spread collectible rarity metalwork across ordinary panels, forms, or navigation.
 - **Don't** make gold compete with Trail Blue as the default control fill.
 - **Don't** hide task status inside map styling or color alone.
+- **Don't** invent ranked tiers, ratings, ranks, streaks, history, or eligibility to complete a visual composition.
 
 Shared collectible-card interaction, gentle-highlight, filter-control, and selection-control guidance was edited with assistance from Codex[GPT-6].

@@ -10,7 +10,7 @@ import type {
 
 import { CardFrame } from './CardFrame';
 import { collectionArtworkSrcSets } from './collection-artwork-assets';
-import { useCardTilt } from './useCardTilt';
+import { useCardTilt, type CardTiltMotion } from './useCardTilt';
 
 interface CollectibleCardProps {
   actions?: ReactNode;
@@ -34,7 +34,9 @@ interface CardThumbnailProps {
   nameplate?: ReactNode;
   fetchPriority?: 'high';
   loading?: 'eager' | 'lazy';
+  sizes?: string;
   onClick: MouseEventHandler<HTMLButtonElement>;
+  motion?: CardTiltMotion;
 }
 
 export function CardThumbnail({
@@ -43,10 +45,12 @@ export function CardThumbnail({
   card,
   fetchPriority,
   loading,
+  sizes,
   nameplate,
   onClick,
+  motion = 'spring',
 }: CardThumbnailProps) {
-  const tilt = useCardTilt<HTMLButtonElement>();
+  const tilt = useCardTilt<HTMLButtonElement>(motion);
 
   return (
     <button
@@ -61,6 +65,7 @@ export function CardThumbnail({
         card={card}
         fetchPriority={fetchPriority}
         loading={loading}
+        sizes={sizes}
         nameplate={
           nameplate === undefined ? (
             <span className="card-thumbnail__title">{card.name}</span>
@@ -205,6 +210,7 @@ export function CardArtwork({
   card,
   fetchPriority,
   loading,
+  sizes,
   showRarity = true,
   thumbnail = false,
 }: {
@@ -213,6 +219,7 @@ export function CardArtwork({
   card: Pick<CardPresentation, 'name' | 'rarity' | 'imageUrl' | 'imageAlt'>;
   fetchPriority?: 'high';
   loading?: 'eager' | 'lazy';
+  sizes?: string;
   showRarity?: boolean;
   thumbnail?: boolean;
 }) {
@@ -250,7 +257,8 @@ export function CardArtwork({
             }}
             sizes={
               srcSet
-                ? '(min-width: 64rem) 12rem, (min-width: 40rem) calc((100vw - 6rem) / 4), calc((100vw - 6rem) / 2)'
+                ? (sizes ??
+                  '(min-width: 64rem) 12rem, (min-width: 40rem) calc((100vw - 6rem) / 4), calc((100vw - 6rem) / 2)')
                 : undefined
             }
             src={card.imageUrl ?? undefined}

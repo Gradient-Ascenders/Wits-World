@@ -1,6 +1,4 @@
-import { StateIcon } from '../components/StatusMessage';
 import { PageLoadingState } from '../components/LoadingState';
-import { QuestMarker } from '../components/branding/QuestMarker';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
@@ -23,8 +21,7 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
 import {
-  BattleResultColumns,
-  BattleResultSummary,
+  BattleHistoryList,
   formatMatchDate,
   mergeBattleHistory,
   type BattleHistoryItem,
@@ -229,7 +226,7 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   }
 
   return (
-    <div className="matches-page">
+    <div className="matches-page match-dashboard-page">
       <header className="matches-page__header">
         <h1
           ref={(node) => {
@@ -239,12 +236,11 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         >
           Battles
         </h1>
-        <p className="lead">Choose how you want to play.</p>
       </header>
 
       <div className="match-dashboard">
         <div className="battle-mode-grid">
-          <LiveBattlePanel deck={state.deck} />
+          <LiveBattlePanel />
           <PlayerBattlePanel state={playerBattles} />
           <StartMatchPanel
             activeMatch={state.activeMatch}
@@ -260,7 +256,7 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   );
 }
 
-function LiveBattlePanel({ deck }: { deck: SavedDeck | null }) {
+function LiveBattlePanel() {
   return (
     <section
       aria-labelledby="live-battles-title"
@@ -268,19 +264,7 @@ function LiveBattlePanel({ deck }: { deck: SavedDeck | null }) {
     >
       <div className="battle-mode-card__intro">
         <h2 id="live-battles-title">Live Ranked</h2>
-        <p>
-          Play with one minute for each decision, or watch a private battle.
-        </p>
-      </div>
-      <div className="battle-mode-card__state">
-        <strong>
-          {deck ? `Ready with ${deck.name}` : 'Spectator entry available'}
-        </strong>
-        <span>
-          {deck
-            ? 'Ranked wins and losses change your seasonal rating. Your first five results are placement matches.'
-            : 'Select a deck to compete, or use a shared match link to watch.'}
-        </span>
+        <p>Compete for a seasonal rating. One minute per turn.</p>
       </div>
       <div className="battle-mode-card__actions">
         <Link className="button" href="/matches/live">
@@ -303,13 +287,10 @@ function StartMatchPanel({
   onStart: (deck: SavedDeck) => Promise<void>;
 }) {
   return (
-    <section
-      aria-labelledby="cpu-battle-title"
-      className={`battle-mode-card${activeMatch ? ' battle-mode-card--active' : ''}`}
-    >
+    <section aria-labelledby="cpu-battle-title" className="battle-mode-card">
       <div className="battle-mode-card__intro">
         <h2 id="cpu-battle-title">CPU battle</h2>
-        <p>Battle the computer with your selected deck.</p>
+        <p>Practise against the computer.</p>
       </div>
 
       {activeMatch ? (
@@ -335,11 +316,9 @@ function StartMatchPanel({
       ) : deck ? (
         <>
           <div className="battle-mode-card__state">
-            <span>Selected deck</span>
-            <strong>{deck.name}</strong>
-            <small>
-              {deck.cards.length} cards · {deck.totalPoints} rarity points
-            </small>
+            <span>
+              Selected deck: <strong>{deck.name}</strong>
+            </span>
           </div>
           <div className="battle-mode-card__actions">
             <button
@@ -351,7 +330,7 @@ function StartMatchPanel({
               {isStarting ? 'Preparing battle…' : 'Start CPU battle'}
             </button>
             <Link className="button button--quiet" href="/collection/decks">
-              Review selected deck
+              Change deck
             </Link>
           </div>
         </>
@@ -359,7 +338,6 @@ function StartMatchPanel({
         <>
           <div className="battle-mode-card__state">
             <strong>No deck selected</strong>
-            <span>Choose a saved deck before starting.</span>
           </div>
           <div className="battle-mode-card__actions">
             <Link className="button" href="/collection/decks">
@@ -382,16 +360,15 @@ function PlayerBattlePanel({ state }: { state: PlayerBattlesState }) {
   return (
     <section
       aria-labelledby="player-battles-title"
-      className={`battle-mode-card${featuredMatch ? ' battle-mode-card--active' : ''}`}
+      className="battle-mode-card"
     >
       <div className="battle-mode-card__intro">
         <h2 id="player-battles-title">Player Battles</h2>
-        <p>Challenge another player and take turns when you are ready.</p>
+        <p>Challenge a player and take turns.</p>
       </div>
       {state.status === 'loading' ? (
         <div className="battle-mode-card__state" role="status">
           <strong>Checking active battles…</strong>
-          <span>Your invitations and matches are still available.</span>
         </div>
       ) : state.status === 'unavailable' ? (
         <div className="battle-mode-card__state" role="status">
@@ -412,20 +389,15 @@ function PlayerBattlePanel({ state }: { state: PlayerBattlesState }) {
             </time>
           </span>
           {state.hasMore ? (
-            <small>More active player battles are waiting.</small>
+            <small>More active battles</small>
           ) : state.matches.length > 1 ? (
             <small>
-              {state.matches.length - 1} more active player{' '}
+              {state.matches.length - 1} more active{' '}
               {state.matches.length === 2 ? 'battle' : 'battles'}
             </small>
           ) : null}
         </div>
-      ) : (
-        <div className="battle-mode-card__state">
-          <strong>Invites and active matches</strong>
-          <span>Manage challenges and continue player battles.</span>
-        </div>
-      )}
+      ) : null}
       <div className="battle-mode-card__actions">
         {featuredMatch ? (
           <Link
@@ -457,58 +429,39 @@ function RecentResults({ state }: { state: RecentResultsState }) {
       </div>
 
       {state.status === 'loading' ? (
-        <div
-          aria-live="polite"
-          className="recent-results__empty state-message state-loading state-loading--subtle"
-          role="status"
-        >
-          <h3>
-            <QuestMarker />
-            Loading recent results
-          </h3>
-          <p>Loading your latest CPU and Player Battles…</p>
+        <div aria-live="polite" className="recent-results__empty" role="status">
+          <p>Loading recent results</p>
         </div>
       ) : state.status === 'unavailable' ? (
-        <div
-          className="recent-results__empty state-message state-message--info"
-          role="status"
-        >
-          <StateIcon tone="info" />
-          <h3>Recent results unavailable</h3>
+        <div className="recent-results__empty" role="status">
           <p>
-            Try the full history again without interrupting an active battle.
+            Recent results unavailable. Try{' '}
+            <Link href="/matches/history">battle history</Link>.
           </p>
         </div>
       ) : state.battles.length === 0 ? (
-        <div className="recent-results__empty state-message state-message--empty">
-          <StateIcon tone="empty" />
-          <h3>
+        <div
+          className="recent-results__empty"
+          role={state.partial ? 'status' : undefined}
+        >
+          <p>
             {state.partial
               ? 'Some recent results unavailable'
               : 'No completed battles yet'}
-          </h3>
-          <p>
-            {state.partial
-              ? 'Showing no results until the remaining battle history can be checked.'
-              : 'Finish a CPU or Player Battle to see your result here.'}
           </p>
         </div>
       ) : (
         <>
           {state.partial ? (
             <p className="recent-results__notice" role="status">
-              Some battle history is temporarily unavailable. Showing the
-              results that loaded.
+              Some recent results are unavailable.
             </p>
           ) : null}
-          <BattleResultColumns />
-          <ol aria-label="Recent battle results" className="recent-match-list">
-            {state.battles.map((battle) => (
-              <li key={`${battle.kind}-${battle.match.matchId}`}>
-                <BattleResultSummary battle={battle} compact headingLevel={3} />
-              </li>
-            ))}
-          </ol>
+          <BattleHistoryList
+            battles={state.battles}
+            headingLevel={3}
+            label="Recent battle results"
+          />
         </>
       )}
     </section>

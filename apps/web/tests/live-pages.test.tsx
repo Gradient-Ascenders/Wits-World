@@ -18,6 +18,7 @@ import { Route, Router } from 'wouter';
 import LiveLobbyPage from '../src/pages/LiveLobbyPage';
 import LiveMatchPage from '../src/pages/LiveMatchPage';
 import { deckListResponse, buildSavedDeck } from './fixtures/decks';
+import { buildCard, buildStarterCards } from './fixtures/cards';
 import {
   LIVE_MATCH_ID,
   participantProjection,
@@ -145,6 +146,9 @@ function liveFetch(snapshots: Record<string, unknown>[]) {
 }
 
 function rankedLobbyResponse(pathname: string, hasSeason = true) {
+  if (pathname.endsWith('/cards/collection')) {
+    return jsonResponse({ cards: buildStarterCards(), requestId: 'cards' });
+  }
   if (pathname.endsWith('/ranked/me')) {
     return jsonResponse(
       hasSeason
@@ -192,13 +196,104 @@ async function connect(projection: Record<string, unknown>) {
 }
 
 describe('live lobby and battle experience', () => {
+  it('loads approved deck artwork while card details are pending and preserves it on failure', async () => {
+    const deck = buildSavedDeck({ isSelected: true });
+    deck.cards[0] = {
+      ...deck.cards[0]!,
+      cardDefinitionId: '84790040-6ea8-6155-c4b7-dec3a22ac3ab',
+      name: 'Quillip',
+    };
+    // A matching name alone must never supply art for an unknown definition.
+    deck.cards[1] = { ...deck.cards[1]!, name: 'Quillip' };
+    let rejectCollection!: (reason: Error) => void;
+    const collection = new Promise<Response>((_, reject) => {
+      rejectCollection = reject;
+    });
+    let collectionRequests = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const pathname = new URL(String(input)).pathname;
+        if (pathname.endsWith('/cards/collection')) {
+          if (++collectionRequests === 1) return collection;
+          return Promise.resolve(
+            jsonResponse({
+              cards: buildStarterCards().map((card, index) => ({
+                ...card,
+                cardDefinitionId: deck.cards[index]!.cardDefinitionId,
+                name: deck.cards[index]!.name,
+                imageUrl: '/cards/ciphra.webp',
+              })),
+              requestId: 'recovered-card-details',
+            }),
+          );
+        }
+        if (pathname.endsWith('/decks'))
+          return Promise.resolve(deckListResponse([deck]));
+        if (pathname.endsWith('/ranked/queue'))
+          return Promise.resolve(jsonResponse(queueState()));
+        if (pathname.endsWith('/ranked/seasons/current'))
+          return Promise.resolve(jsonResponse({ season: rankedSeason() }));
+        const supplemental = rankedLobbyResponse(pathname);
+        if (supplemental) return Promise.resolve(supplemental);
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }),
+    );
+    const { container } = renderRoute(
+      '/matches/live',
+      <LiveLobbyPage apiBaseUrl={apiBaseUrl} />,
+    );
+    await screen.findByRole('heading', { name: deck.name });
+    const image = container.querySelector('.live-deck-fan__card--1 img');
+    expect(image).toHaveAttribute('src', '/cards/quillip.webp');
+    expect(image).toHaveAttribute('loading', 'eager');
+    expect(image).toHaveAttribute('fetchpriority', 'high');
+    expect(image).toHaveAttribute('srcset', expect.stringContaining('192w'));
+    expect(container.querySelector('.live-deck-fan__card--2 img')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Find battle' })).toBeEnabled();
+    await act(async () =>
+      rejectCollection(new Error('Collection unavailable')),
+    );
+    expect(
+      await screen.findByText('Card details couldn’t load.'),
+    ).toBeVisible();
+    expect(container.querySelector('.live-deck-fan__card--1 img')).toBe(image);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    const card = await screen.findByRole('button', {
+      name: 'View Quillip details, card 1',
+    });
+    expect(card.querySelector('img')).toHaveAttribute(
+      'src',
+      '/cards/ciphra.webp',
+    );
+    fireEvent.click(card);
+    expect(screen.getByRole('dialog', { name: 'Quillip' })).toBeVisible();
+    expect(screen.getByText('91')).toBeVisible();
+  });
+
   it('enters ranked search with only the selected deck and opens private spectator links', async () => {
     const user = userEvent.setup();
     const deck = buildSavedDeck({ isSelected: true, name: 'Braamfontein Set' });
+    const otherDeck = buildSavedDeck({ name: 'Unselected deck' });
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const pathname = new URL(String(input)).pathname;
+      if (pathname.endsWith('/cards/collection')) {
+        return Promise.resolve(
+          jsonResponse({
+            cards: [
+              buildCard(99, {
+                cardDefinitionId: deck.cards[0]!.cardDefinitionId,
+                hp: 999,
+              }),
+              ...buildStarterCards().reverse(),
+            ],
+            requestId: 'active-deck-cards',
+          }),
+        );
+      }
       if (pathname.endsWith('/decks')) {
-        return Promise.resolve(deckListResponse([deck]));
+        return Promise.resolve(deckListResponse([otherDeck, deck]));
       }
       if (pathname.endsWith('/ranked/seasons/current')) {
         return Promise.resolve(
@@ -242,9 +337,46 @@ describe('live lobby and battle experience', () => {
     expect(
       await screen.findByRole('heading', { name: 'Live Ranked' }),
     ).toBeVisible();
-    expect(screen.getByText(/battle for seasonal rating/i)).toBeVisible();
     expect(screen.getByText('Season rating').parentElement).toHaveTextContent(
       /1\s248/,
+    );
+    expect(screen.getByText('7 wins · 3 losses')).toBeVisible();
+    expect(screen.getByRole('heading', { name: deck.name })).toBeVisible();
+    expect(screen.queryByText(otherDeck.name)).not.toBeInTheDocument();
+    const firstCard = await screen.findByRole('button', {
+      name: `View ${deck.cards[0]!.name} details, card 1`,
+    });
+    expect(
+      screen
+        .getAllByRole('button', { name: /^View .* details, card/ })
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(
+      deck.cards.map(
+        (card) => `View ${card.name} details, card ${card.position}`,
+      ),
+    );
+    await user.click(firstCard);
+    expect(
+      screen.getByRole('dialog', { name: deck.cards[0]!.name }),
+    ).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Moves' })).toBeVisible();
+    expect(screen.getByText('91')).toBeVisible();
+    expect(screen.queryByText('999')).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(firstCard).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(
+      screen.getByRole('dialog', { name: deck.cards[0]!.name }),
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole('button', {
+        name: `Close ${deck.cards[0]!.name} details`,
+      }),
+    );
+    expect(screen.getByRole('link', { name: 'Change deck' })).toHaveAttribute(
+      'href',
+      '/collection/decks',
     );
     const playTab = screen.getByRole('tab', { name: 'Play' });
     const standingsTab = screen.getByRole('tab', { name: 'Standings' });
@@ -254,12 +386,13 @@ describe('live lobby and battle experience', () => {
     expect(
       screen.queryByRole('heading', { name: 'Season standings' }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/one minute for each decision/i)).toBeVisible();
-    await user.click(
-      screen.getByRole('button', { name: 'Find ranked battle' }),
-    );
-    expect(await screen.findByText('Searching for an opponent')).toBeVisible();
-    expect(screen.getByText(/rating range to ±100/i)).toBeVisible();
+    expect(screen.queryByText(/one minute per turn/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Find battle' }));
+    expect(await screen.findByText('Finding opponent…')).toBeVisible();
+    expect(screen.queryByText(/rating range/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Change deck' }),
+    ).not.toBeInTheDocument();
     const join = fetchMock.mock.calls.find(
       ([input, init]) =>
         new URL(String(input)).pathname.endsWith('/ranked/queue') &&
@@ -271,6 +404,7 @@ describe('live lobby and battle experience', () => {
 
     await user.click(standingsTab);
     expect(window.location.search).toBe('?tab=standings');
+    expect(screen.getByRole('button', { name: 'Cancel search' })).toBeEnabled();
     expect(
       screen.getByRole('heading', { name: 'Season standings' }),
     ).toBeVisible();
@@ -285,6 +419,39 @@ describe('live lobby and battle experience', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Paste and watch' }));
     expect(window.location.pathname).toBe(`/matches/live/${LIVE_MATCH_ID}`);
+  });
+
+  it('shows deck selection without a pretend hand when no deck is selected', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const pathname = new URL(String(input)).pathname;
+        if (pathname.endsWith('/decks'))
+          return Promise.resolve(deckListResponse([buildSavedDeck()]));
+        if (pathname.endsWith('/ranked/queue'))
+          return Promise.resolve(jsonResponse(queueState()));
+        if (pathname.endsWith('/ranked/seasons/current'))
+          return Promise.resolve(jsonResponse({ season: rankedSeason() }));
+        const supplemental = rankedLobbyResponse(pathname);
+        if (supplemental) return Promise.resolve(supplemental);
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }),
+    );
+    const { container } = renderRoute(
+      '/matches/live',
+      <LiveLobbyPage apiBaseUrl={apiBaseUrl} />,
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'No deck selected' }),
+    ).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Select deck' })).toHaveAttribute(
+      'href',
+      '/collection/decks',
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Find battle' }),
+    ).not.toBeInTheDocument();
+    expect(container.querySelector('.live-deck-fan')).toBeNull();
   });
 
   it('requests a fresh location only after territory contesting is selected', async () => {
@@ -327,7 +494,7 @@ describe('live lobby and battle experience', () => {
     );
 
     const contest = await screen.findByRole('checkbox', {
-      name: /contest my current territory/i,
+      name: /contest territory/i,
     });
     expect(locationClaimProvider).not.toHaveBeenCalled();
     await user.click(contest);
@@ -336,7 +503,7 @@ describe('live lobby and battle experience', () => {
     ).not.toBeInTheDocument();
     await user.click(
       screen.getByRole('button', {
-        name: 'Detect territory and find battle',
+        name: 'Find territory battle',
       }),
     );
 
@@ -400,21 +567,19 @@ describe('live lobby and battle experience', () => {
 
     await user.click(
       await screen.findByRole('checkbox', {
-        name: /contest my current territory/i,
+        name: /contest territory/i,
       }),
     );
     await user.click(
       screen.getByRole('button', {
-        name: 'Detect territory and find battle',
+        name: 'Find territory battle',
       }),
     );
 
-    expect(
-      await screen.findByText('No active territory detected'),
-    ).toBeVisible();
-    expect(
-      screen.getByText(/move farther inside a mapped territory/i),
-    ).toBeVisible();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No active territory found. Move inside one or turn off Contest territory.',
+    );
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(
       fetchMock.mock.calls.some(
         ([input, init]) =>
@@ -457,11 +622,11 @@ describe('live lobby and battle experience', () => {
 
     renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
 
-    expect(await screen.findByText('Your search expired')).toBeVisible();
-    expect(screen.getByText(/your rating did not change/i)).toBeVisible();
     expect(
-      screen.getByRole('button', { name: 'Find ranked battle' }),
-    ).toBeEnabled();
+      await screen.findByText('Search expired', { selector: 'strong' }),
+    ).toBeVisible();
+    expect(screen.getByText(/your rating is unchanged/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Find battle' })).toBeEnabled();
   });
 
   it('keeps recovery guidance visible when matchmaking refresh is interrupted', async () => {
@@ -510,17 +675,18 @@ describe('live lobby and battle experience', () => {
 
     renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
 
-    expect(await screen.findByText('Searching for an opponent')).toBeVisible();
+    expect(await screen.findByText('Finding opponent…')).toBeVisible();
     expect(
-      await screen.findByText('Checking your place in matchmaking', undefined, {
+      await screen.findByText('Reconnecting…', undefined, {
         timeout: 3_500,
       }),
     ).toBeVisible();
-    expect(screen.getByText(/do not need to join again/i)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Check now' })).toBeEnabled();
+    expect(screen.getByText(/keep this page open/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
   });
 
-  it('explains the acceptance window and cooldown before a ranked battle begins', async () => {
+  it('keeps match acceptance reachable across lobby tabs with the real deadline and cooldown', async () => {
+    const user = userEvent.setup();
     const deck = buildSavedDeck({ isSelected: true });
     vi.stubGlobal(
       'fetch',
@@ -562,11 +728,17 @@ describe('live lobby and battle experience', () => {
     expect(
       await screen.findByRole('heading', { name: 'Opponent found' }),
     ).toBeVisible();
-    expect(
-      screen.getByText(/pauses matchmaking for 30 seconds/i),
-    ).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Accept match' })).toBeEnabled();
+    expect(screen.getByText(/adds a 30-second wait/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Decline' })).toBeEnabled();
+    for (const tab of ['Standings', 'Watch']) {
+      await user.click(screen.getByRole('tab', { name: tab }));
+      expect(
+        screen.getByRole('heading', { name: 'Opponent found' }),
+      ).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Decline' })).toBeEnabled();
+    }
   });
 
   it('refreshes every season projection when a new season becomes active', async () => {
@@ -601,29 +773,23 @@ describe('live lobby and battle experience', () => {
     renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
 
     expect(
-      await screen.findByText(
-        'No ranked season is active. Matchmaking will open when the next season begins.',
-      ),
+      await screen.findByText('No active season. Check back later.'),
     ).toBeVisible();
     expect(
-      screen.queryByRole('button', { name: 'Find ranked battle' }),
+      screen.queryByRole('button', { name: 'Find battle' }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('heading', { name: 'Ranked season' }),
     ).toBeVisible();
     expect(
-      screen.getByRole('button', { name: 'Check season again' }),
+      screen.getByRole('button', { name: 'Refresh season' }),
     ).toBeEnabled();
     await user.click(screen.getByRole('tab', { name: 'Standings' }));
-    expect(
-      screen.getByText('Standings open with the next season'),
-    ).toBeVisible();
+    expect(screen.getByText('Standings return next season')).toBeVisible();
 
     hasSeason = true;
     await user.click(screen.getByRole('tab', { name: 'Play' }));
-    await user.click(
-      screen.getByRole('button', { name: 'Check season again' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Refresh season' }));
 
     expect(
       await screen.findByRole('heading', {
@@ -741,19 +907,18 @@ describe('live lobby and battle experience', () => {
 
     expect(screen.getByRole('heading', { name: 'Season B' })).toBeVisible();
     expect(
-      screen.getByText('Your ranked record does not match this season yet.'),
+      screen.getByText('Your record hasn’t updated for this season.'),
     ).toBeVisible();
     expect(screen.queryByText(/1\s111/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/wins ·.*losses/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Standings' }));
     expect(
-      screen.getByText('Standings are updating for this season'),
+      screen.getByText('Standings haven’t updated for this season'),
     ).toBeVisible();
     expect(screen.queryByText('SeasonAPlayer')).not.toBeInTheDocument();
 
     refreshCycle = 2;
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Refresh season record' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh record' }));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -818,7 +983,7 @@ describe('live lobby and battle experience', () => {
 
     renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
     const join = await screen.findByRole('button', {
-      name: 'Find ranked battle',
+      name: 'Find battle',
     });
     await user.click(join);
 

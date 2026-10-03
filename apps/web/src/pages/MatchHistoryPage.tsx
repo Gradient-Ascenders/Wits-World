@@ -2,7 +2,7 @@ import { StateIcon } from '../components/StatusMessage';
 import { PageLoadingState } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 
 import { listCpuMatchHistory, MatchApiError } from '../api/matches';
 import {
@@ -12,9 +12,9 @@ import {
 } from '../api/pvp';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
+import { pvpHistoryNavigationState } from '../components/matches/pvp-history-navigation';
 import {
-  BattleResultColumns,
-  BattleResultSummary,
+  BattleHistoryList,
   mergeBattleHistory,
   type BattleHistoryItem,
 } from '../components/matches/MatchResultSummary';
@@ -38,6 +38,9 @@ export default function MatchHistoryPage({
 }) {
   const getAccessToken = useApiAccessToken();
   const { loginWithRedirect } = useAuth0();
+  const [, navigate] = useLocation();
+  const historyReturn = useRef(pvpHistoryNavigationState()?.pvpHistoryReturn);
+  const historyRestored = useRef(false);
   const [state, setState] = useState<HistoryState>({ status: 'loading' });
   const [revision, setRevision] = useState(0);
   const [reauthFailed, setReauthFailed] = useState(false);
@@ -163,11 +166,40 @@ export default function MatchHistoryPage({
     }
   }
 
+  useEffect(() => {
+    const target = historyReturn.current;
+    if (
+      !target ||
+      target.returnHref !== '/matches/history' ||
+      historyRestored.current ||
+      state.status !== 'ready' ||
+      state.playerPageStatus !== 'idle'
+    )
+      return;
+    if (
+      state.battles.filter((battle) => battle.kind === 'player').length <
+        target.loadedCount &&
+      state.playerNextCursor !== null
+    ) {
+      void loadMorePlayerHistory();
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      historyRestored.current = true;
+      document
+        .getElementById(`battle-history-player-${target.matchId}`)
+        ?.closest('a')
+        ?.focus({ preventScroll: true });
+      window.scrollTo({ top: target.scrollY, behavior: 'instant' });
+    });
+    return () => cancelAnimationFrame(frame);
+  });
+
   if (state.status === 'loading') {
     return (
       <PageLoadingState
         title="Loading your battle history"
-        description="Loading your completed CPU and Player Battles…"
+        description="Loading completed battles…"
       />
     );
   }
@@ -193,22 +225,17 @@ export default function MatchHistoryPage({
   );
 
   return (
-    <div className="matches-page">
+    <div className="matches-page match-history-page">
       <header className="matches-page__header match-history-header">
-        <div>
-          <h1
-            ref={(node) => {
-              resultHeading.current = node;
-            }}
-            tabIndex={-1}
-          >
-            Battle history
-          </h1>
-          <p className="lead">
-            Scan every CPU and Player Battle by result, opponent, and time.
-          </p>
-        </div>
-        <Link className="button" href="/matches">
+        <h1
+          ref={(node) => {
+            resultHeading.current = node;
+          }}
+          tabIndex={-1}
+        >
+          Battle history
+        </h1>
+        <Link className="button button--quiet" href="/matches">
           Back to battles
         </Link>
       </header>
@@ -216,10 +243,7 @@ export default function MatchHistoryPage({
       {state.partial ? (
         <div className="match-inline-alert" role="status">
           <StateIcon tone="info" />
-          <div>
-            <h2>Some history could not load</h2>
-            <p>Showing the battle results that are currently available.</p>
-          </div>
+          <p>Some history could not load.</p>
           <button
             className="button button--quiet"
             onClick={() => setRevision((value) => value + 1)}
@@ -236,29 +260,47 @@ export default function MatchHistoryPage({
           aria-labelledby="empty-history-title"
         >
           <StateIcon tone="empty" />
-          <h2 id="empty-history-title">No completed matches yet</h2>
-          <p>Finish a CPU or Player Battle to see your result here.</p>
+          <h2 id="empty-history-title">No completed battles yet</h2>
+          <p>Finish a battle to see your result here.</p>
         </section>
       ) : (
-        <div className="match-history-results">
-          <BattleResultColumns />
-          <ol aria-label="Completed battles" className="match-history-list">
-            {visibleBattles.map((battle) => (
-              <li key={`${battle.kind}-${battle.match.matchId}`}>
-                <BattleResultSummary battle={battle} />
-              </li>
-            ))}
-          </ol>
-        </div>
+        <BattleHistoryList
+          battles={visibleBattles}
+          label="Completed battles"
+          onViewBattle={(matchId, event) => {
+            if (
+              !event.currentTarget.pathname.startsWith('/matches/pvp/') ||
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            event.preventDefault();
+            const navigationState = {
+              pvpHistoryReturn: {
+                matchId,
+                loadedCount: state.battles.filter(
+                  (battle) => battle.kind === 'player',
+                ).length,
+                scrollY: window.scrollY,
+                returnHref: '/matches/history' as const,
+              },
+            };
+            window.history.replaceState(
+              { ...window.history.state, ...navigationState },
+              '',
+            );
+            navigate(`/matches/pvp/${matchId}`, { state: navigationState });
+          }}
+        />
       )}
 
       {state.playerNextCursor !== null ? (
         <div className="match-history-pagination">
           {state.playerPageStatus === 'error' ? (
-            <p role="alert">
-              More player battles could not load. Your current history is still
-              available.
-            </p>
+            <p role="alert">More player battles could not load.</p>
           ) : null}
           <button
             className="button button--quiet"
@@ -275,8 +317,7 @@ export default function MatchHistoryPage({
         </div>
       ) : state.playerPageStatus === 'error' ? (
         <p className="match-history-pagination" role="alert">
-          More player battles could not be loaded. The results above are still
-          available.
+          More player battles could not load. Refresh to try again.
         </p>
       ) : null}
     </div>

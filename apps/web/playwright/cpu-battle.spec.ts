@@ -1437,6 +1437,7 @@ test('renders recent results and starts from the selected deck dashboard', async
     pvpMatch({
       completedAt: '2026-08-17T12:00:00.000Z',
       matchId: uuid(1605),
+      opponent: { playerName: 'campus_champion_with_a_long_player_name' },
       status: 'completed',
     }),
   );
@@ -1517,13 +1518,13 @@ test('renders recent results and starts from the selected deck dashboard', async
       .getByRole('listitem'),
   ).toHaveCount(5);
   const dashboardBorderColours = await page
-    .locator('.battle-mode-card, .recent-match-list')
+    .locator('.battle-mode-card, .battle-history__list')
     .evaluateAll((surfaces) =>
       surfaces.map((surface) => getComputedStyle(surface).borderTopColor),
     );
   expect(dashboardBorderColours).toHaveLength(4);
   expect(new Set(dashboardBorderColours).size).toBe(1);
-  await expectRecentResultActionsAligned(page, 'start');
+  await expectRecentResultActionsAligned(page);
   await expectNoHorizontalOverflow(page);
 
   await page.setViewportSize({ height: 1024, width: 768 });
@@ -1547,9 +1548,9 @@ test('renders recent results and starts from the selected deck dashboard', async
   expect(practiceBox!.x).toBeGreaterThan(playerBox!.x);
   expect(practiceBox!.y).toBe(playerBox!.y);
   expect(resultsBox!.y).toBeGreaterThan(playerBox!.y + playerBox!.height);
-  await expectRecentResultActionsAligned(page, 'end');
+  await expectRecentResultActionsAligned(page);
 
-  for (const width of [390, 768, 1440]) {
+  for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1024 });
     await page.locator('.matches-page').screenshot({
       path: path.join(screenshotsDirectory, `${width}-match-hub.png`),
@@ -1566,28 +1567,67 @@ test('renders recent results and starts from the selected deck dashboard', async
     page.getByRole('list', { name: 'Completed battles' }).getByRole('listitem'),
   ).toHaveCount(results.length + 1);
 
-  for (const width of [390, 768, 1440]) {
+  for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1024 });
     await expectNoHorizontalOverflow(page);
+    const resultLinks = page
+      .getByRole('list', { name: 'Completed battles' })
+      .getByRole('link', { name: 'View battle' });
+    const firstRowLink = resultLinks.first();
+    const rowBox = await firstRowLink.boundingBox();
+    const listBox = await page.locator('.battle-history__list').boundingBox();
+    expect(rowBox).not.toBeNull();
+    expect(listBox).not.toBeNull();
+    expect(rowBox!.width).toBeCloseTo(listBox!.width, 0);
+    expect(rowBox!.height).toBeGreaterThanOrEqual(44);
+    await firstRowLink.focus();
+    await expect(firstRowLink).toBeFocused();
+    await expect(firstRowLink).toHaveAccessibleDescription(
+      /campus_champion_with_a_long_player_name Won Completed/,
+    );
     if (width >= 768) {
       const firstResult = page
         .getByRole('list', { name: 'Completed battles' })
         .getByRole('listitem')
         .first();
       const completedBox = await firstResult.locator('time').boundingBox();
-      const roundsBox = await firstResult
-        .locator('.match-result-summary__rounds')
+      const opponentBox = await firstResult.getByRole('heading').boundingBox();
+      const resultBox = await firstResult
+        .locator('.battle-history__result')
+        .boundingBox();
+      const actionBox = await firstResult
+        .locator('.battle-history__action')
         .boundingBox();
       expect(completedBox).not.toBeNull();
-      expect(roundsBox).not.toBeNull();
+      expect(opponentBox).not.toBeNull();
+      expect(resultBox).not.toBeNull();
+      expect(actionBox).not.toBeNull();
+      expect(opponentBox!.x + opponentBox!.width).toBeLessThanOrEqual(
+        resultBox!.x,
+      );
+      expect(resultBox!.x + resultBox!.width).toBeLessThanOrEqual(
+        completedBox!.x,
+      );
       expect(completedBox!.x + completedBox!.width).toBeLessThanOrEqual(
-        roundsBox!.x,
+        actionBox!.x,
       );
     }
     await page.locator('.matches-page').screenshot({
       path: path.join(screenshotsDirectory, `${width}-match-history.png`),
     });
   }
+
+  const cpuResultLink = page
+    .getByRole('list', { name: 'Completed battles' })
+    .getByRole('link', { name: 'View battle' })
+    .nth(1);
+  await cpuResultLink.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(`/matches/${results[1]!.matchId}`);
+  await page.goBack();
+  await expect(
+    page.getByRole('heading', { name: 'Battle history' }),
+  ).toBeVisible();
 
   await page.getByRole('link', { name: 'Back to battles' }).click();
   await expect(page).toHaveURL('/matches');
@@ -2001,10 +2041,10 @@ async function expectVerticallySeparated(upper: Locator, lower: Locator) {
   expect(upperBox!.y + upperBox!.height).toBeLessThanOrEqual(lowerBox!.y);
 }
 
-async function expectRecentResultActionsAligned(
-  page: Page,
-  edge: 'start' | 'end',
-) {
+async function expectRecentResultActionsAligned(page: Page) {
+  const historyHeading = await page
+    .getByRole('heading', { name: 'Recent battles', exact: true })
+    .boundingBox();
   const historyAction = await page
     .getByRole('link', { name: 'View history' })
     .boundingBox();
@@ -2018,13 +2058,22 @@ async function expectRecentResultActionsAligned(
       }),
     );
   expect(historyAction).not.toBeNull();
-  const historyEdge =
-    edge === 'start'
-      ? historyAction!.x
-      : historyAction!.x + historyAction!.width;
+  expect(historyHeading).not.toBeNull();
+  expect(historyHeading!.x + historyHeading!.width).toBeLessThanOrEqual(
+    historyAction!.x,
+  );
+  expect(
+    Math.abs(
+      historyHeading!.y +
+        historyHeading!.height / 2 -
+        (historyAction!.y + historyAction!.height / 2),
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(historyAction!.height).toBeGreaterThanOrEqual(44);
+  const firstAction = battleActions[0]!;
   for (const action of battleActions) {
-    const actionEdge = edge === 'start' ? action.left : action.right;
-    expect(Math.abs(actionEdge - historyEdge)).toBeLessThanOrEqual(1);
+    expect(Math.abs(action.left - firstAction.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(action.right - firstAction.right)).toBeLessThanOrEqual(1);
   }
 }
 

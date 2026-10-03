@@ -1,5 +1,6 @@
 import { createAppDateTimeFormatter } from '../../date-time';
 import { Link } from 'wouter';
+import type { MouseEvent } from 'react';
 
 import type { CpuMatchHistoryItem } from '../../api/matches';
 import type { PvpHistorySummary } from '../../api/pvp';
@@ -25,147 +26,122 @@ export function mergeBattleHistory(
   );
 }
 
-export function BattleResultSummary({
-  battle,
-  compact = false,
+export function BattleHistoryList({
+  battles,
+  label,
   headingLevel = 2,
+  onViewBattle,
 }: {
-  battle: BattleHistoryItem;
-  compact?: boolean;
+  battles: BattleHistoryItem[];
+  label: string;
   headingLevel?: 2 | 3;
+  onViewBattle?: (
+    matchId: string,
+    event: MouseEvent<HTMLAnchorElement>,
+  ) => void;
 }) {
-  if (battle.kind === 'cpu') {
-    return (
-      <CpuResultSummary
-        compact={compact}
-        headingLevel={headingLevel}
-        match={battle.match}
-      />
-    );
-  }
-
   return (
-    <PlayerResultSummary
-      compact={compact}
-      headingLevel={headingLevel}
-      match={battle.match}
-    />
-  );
-}
-
-export function BattleResultColumns() {
-  return (
-    <div aria-hidden="true" className="battle-result-columns">
-      <span>Opponent</span>
-      <span>Result</span>
-      <span>Completed</span>
-      <span>Rounds</span>
-      <span>Action</span>
+    <div className="battle-history">
+      <div aria-hidden="true" className="battle-history__columns">
+        <span>Opponent</span>
+        <span>Result</span>
+        <span>Completed</span>
+      </div>
+      <ol aria-label={label} className="battle-history__list">
+        {battles.map((battle) => (
+          <li key={`${battle.kind}-${battle.match.matchId}`}>
+            <BattleResultSummary
+              battle={battle}
+              headingLevel={headingLevel}
+              onViewBattle={onViewBattle}
+            />
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
 
-export function MatchResultSummary({
-  compact = false,
-  headingLevel = 2,
-  match,
-}: {
-  compact?: boolean;
-  headingLevel?: 2 | 3;
-  match: CpuMatchHistoryItem;
-}) {
-  return (
-    <CpuResultSummary
-      compact={compact}
-      headingLevel={headingLevel}
-      match={match}
-    />
-  );
-}
-
-function CpuResultSummary({
-  compact,
+function BattleResultSummary({
+  battle,
   headingLevel,
-  match,
+  onViewBattle,
 }: {
-  compact: boolean;
+  battle: BattleHistoryItem;
   headingLevel: 2 | 3;
-  match: CpuMatchHistoryItem;
+  onViewBattle?: (
+    matchId: string,
+    event: MouseEvent<HTMLAnchorElement>,
+  ) => void;
 }) {
   const Heading = headingLevel === 3 ? 'h3' : 'h2';
-  const playerWon = match.winner === 'player';
+  const { match } = battle;
+  const playerWon =
+    battle.kind === 'cpu'
+      ? battle.match.winner === 'player'
+      : battle.match.outcome === 'win';
+  const opponent =
+    battle.kind === 'cpu' ? 'CPU' : battle.match.opponent.playerName;
+  const detail =
+    battle.kind === 'cpu'
+      ? `${battle.match.rounds.length} ${battle.match.rounds.length === 1 ? 'round' : 'rounds'}`
+      : completionReasonLabel(
+          battle.match.completionReason,
+          battle.match.outcome,
+        );
+  const href =
+    battle.kind === 'cpu'
+      ? `/matches/${match.matchId}`
+      : `/matches/pvp/${match.matchId}`;
+  const headingId = `battle-history-${battle.kind}-${match.matchId}`;
 
   return (
-    <article
-      className={`match-result-summary match-result-summary--${playerWon ? 'victory' : 'defeat'}${compact ? ' match-result-summary--compact' : ''}`}
-    >
-      <div className="match-result-summary__opponent">
-        <span className="match-result-summary__label">Opponent</span>
-        <Heading>CPU</Heading>
-      </div>
-      <div className="match-result-summary__field match-result-summary__result">
-        <span className="match-result-summary__label">Result</span>
-        <strong>{playerWon ? 'Won' : 'Lost'}</strong>
-      </div>
-      <div className="match-result-summary__field match-result-summary__completed">
-        <span className="match-result-summary__label">Completed</span>
-        <time dateTime={match.completedAt}>
-          {formatMatchDate(match.completedAt)}
-        </time>
-      </div>
-      <div className="match-result-summary__field match-result-summary__rounds">
-        <span className="match-result-summary__label">Rounds</span>
-        <strong>{match.rounds.length}</strong>
-      </div>
-      <Link className="button button--quiet" href={`/matches/${match.matchId}`}>
-        View battle
-      </Link>
-    </article>
-  );
-}
-
-function PlayerResultSummary({
-  compact,
-  headingLevel,
-  match,
-}: {
-  compact: boolean;
-  headingLevel: 2 | 3;
-  match: PvpHistorySummary;
-}) {
-  const Heading = headingLevel === 3 ? 'h3' : 'h2';
-  const playerWon = match.outcome === 'win';
-
-  return (
-    <article
-      className={`match-result-summary match-result-summary--${playerWon ? 'victory' : 'defeat'}${compact ? ' match-result-summary--compact' : ''}`}
-    >
-      <div className="match-result-summary__opponent">
-        <span className="match-result-summary__label">Opponent</span>
-        <Heading>{match.opponent.playerName}</Heading>
-      </div>
-      <div className="match-result-summary__field match-result-summary__result">
-        <span className="match-result-summary__label">Result</span>
-        <strong>{playerWon ? 'Won' : 'Lost'}</strong>
-      </div>
-      <div className="match-result-summary__field match-result-summary__completed">
-        <span className="match-result-summary__label">Completed</span>
-        <time dateTime={match.completedAt}>
-          {formatMatchDate(match.completedAt)}
-        </time>
-      </div>
-      <div className="match-result-summary__field match-result-summary__rounds">
-        <span className="match-result-summary__label">Rounds</span>
-        <strong aria-label="Not available">—</strong>
-      </div>
+    <article aria-labelledby={headingId}>
       <Link
-        className="button button--quiet"
-        href={`/matches/pvp/${match.matchId}`}
+        aria-label="View battle"
+        aria-describedby={`${headingId} ${headingId}-result ${headingId}-completed`}
+        className="battle-history__row"
+        href={href}
+        onClick={(event) => onViewBattle?.(match.matchId, event)}
       >
-        View battle
+        <div className="battle-history__opponent">
+          <Heading id={headingId}>{opponent}</Heading>
+          {detail ? <p>{detail}</p> : null}
+        </div>
+        <strong
+          id={`${headingId}-result`}
+          className={`battle-history__result battle-history__result--${playerWon ? 'won' : 'lost'}`}
+        >
+          {playerWon ? 'Won' : 'Lost'}
+        </strong>
+        <time
+          id={`${headingId}-completed`}
+          className="battle-history__completed"
+          dateTime={match.completedAt}
+        >
+          <span className="sr-only">Completed </span>
+          {formatMatchDate(match.completedAt)}
+        </time>
+        <span className="battle-history__action">View battle</span>
       </Link>
     </article>
   );
+}
+
+function completionReasonLabel(
+  reason: PvpHistorySummary['completionReason'],
+  outcome: 'loss' | 'win',
+) {
+  if (reason === 'defeat') return null;
+  if (reason === 'account_deletion_forfeit')
+    return outcome === 'win'
+      ? 'Opponent became unavailable'
+      : 'Account became unavailable';
+  if (reason === 'voluntary_resignation')
+    return outcome === 'win' ? 'Opponent forfeited' : 'You forfeited';
+  return outcome === 'win'
+    ? 'Opponent turn deadline expired'
+    : 'Your turn deadline expired';
 }
 
 export function formatMatchDate(value: string) {

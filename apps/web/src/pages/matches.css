@@ -12,7 +12,6 @@
 }
 
 .match-state-panel,
-.battle-mode-card,
 .match-empty,
 .battle-header,
 .combatant,
@@ -20,7 +19,6 @@
 .battle-actions,
 .outcome-panel,
 .completed-match,
-.match-result-summary,
 .match-inline-alert {
   min-width: 0;
   padding: clamp(var(--space-4), 5vw, var(--space-6));
@@ -45,14 +43,17 @@
   margin-bottom: 0;
 }
 
+.match-dashboard-page .matches-page__header h1 {
+  margin-bottom: 0;
+}
+
 .match-dashboard {
   display: grid;
   min-width: 0;
   gap: var(--space-6);
 }
 
-.recent-results__heading,
-.match-result-summary__heading {
+.recent-results__heading {
   display: flex;
   min-width: 0;
   align-items: flex-start;
@@ -60,9 +61,7 @@
   gap: var(--space-4);
 }
 
-.recent-results h2,
-.match-result-summary h2,
-.match-result-summary h3 {
+.recent-results h2 {
   margin-bottom: 0;
 }
 
@@ -74,19 +73,6 @@
   color: var(--colour-text-secondary);
 }
 
-.match-result-summary__heading > span {
-  flex: 0 0 auto;
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--colour-border-default);
-  border-radius: var(--radius-pill);
-  color: var(--colour-gold-400);
-  background: rgb(5 11 22 / 62%);
-  font-size: var(--text-xs);
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 .battle-mode-grid {
   display: grid;
   min-width: 0;
@@ -95,27 +81,18 @@
 
 .battle-mode-card {
   display: grid;
+  min-width: 0;
   align-content: start;
   gap: var(--space-5);
   padding: clamp(var(--space-4), 4vw, var(--space-5));
-  background:
-    radial-gradient(
-      circle at top right,
-      rgb(42 107 255 / 10%),
-      transparent 18rem
-    ),
-    linear-gradient(145deg, rgb(17 36 64 / 72%), rgb(8 20 38 / 94%));
-  box-shadow: none;
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--colour-surface-default);
 }
 
-.battle-mode-card--active {
-  background:
-    radial-gradient(
-      circle at top right,
-      rgb(42 107 255 / 18%),
-      transparent 20rem
-    ),
-    linear-gradient(145deg, rgb(17 36 64 / 86%), rgb(8 20 38 / 98%));
+.battle-mode-card:not(.battle-mode-card--live) {
+  display: flex;
+  flex-direction: column;
 }
 
 .battle-mode-card__intro h2,
@@ -148,10 +125,6 @@
   font-size: var(--text-sm);
 }
 
-.battle-mode-card__state > span:first-child {
-  color: var(--colour-text-muted);
-}
-
 .battle-mode-card__state strong {
   overflow-wrap: anywhere;
   color: var(--colour-text-primary);
@@ -167,83 +140,139 @@
 }
 
 .pvp-hub {
-  gap: var(--space-4);
+  width: min(100%, 64rem);
+  gap: var(--space-5);
 }
 
 .pvp-lobby-header {
-  display: grid;
-  max-width: none;
-  gap: var(--space-3);
-}
-
-.pvp-lobby-header__back {
-  width: fit-content;
-}
-
-.pvp-lobby-header__main {
   display: flex;
-  min-width: 0;
-  gap: var(--space-5);
-  align-items: start;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-5);
+  align-items: center;
   justify-content: space-between;
 }
 
-.pvp-lobby-header__main > div {
-  max-width: 54rem;
+.pvp-lobby-header h1 {
+  margin: 0;
+  font-size: clamp(var(--text-2xl), 5vw, var(--text-4xl));
+  line-height: 1.15;
 }
 
-.pvp-lobby-header__main .button {
-  flex: 0 0 auto;
+.pvp-lobby-header p {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: var(--space-2) 0 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.pvp-lobby-content {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-6);
+}
+
+.pvp-lobby-content h2 {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-body);
+  font-size: var(--text-xl);
+  line-height: 1.35;
+}
+
+@media (min-width: 60rem) {
+  .pvp-hub .pvp-invitation-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-7);
+  }
+
+  .pvp-hub .pvp-invitation__heading {
+    flex-direction: column;
+  }
+
+  .pvp-challenge-panel:not([hidden]):has(.pvp-challenge-form) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5) var(--space-7);
+    align-items: start;
+  }
+
+  .pvp-challenge-panel .pvp-section-heading {
+    grid-column: 1 / -1;
+  }
+
+  .pvp-challenge-panel:has(.pvp-challenge-form) .pvp-search-form,
+  .pvp-challenge-panel:has(.pvp-challenge-form) .pvp-challenge-form {
+    margin-top: 0;
+  }
+
+  .pvp-challenge-panel:has(.pvp-challenge-form) .pvp-challenge-form {
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+
+.pvp-hub .pvp-invitation,
+.pvp-hub .pvp-match-summary {
+  padding-inline: 0;
+  border-left: 0;
+}
+
+.pvp-hub .pvp-status-label {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.pvp-hub .pvp-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.pvp-hub .pvp-summary-meta > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.pvp-hub .pvp-notice {
+  border-left-width: 1px;
+}
+
+.pvp-hub .match-inline-alert {
+  padding: var(--space-4);
+  background: var(--colour-background-app);
+  box-shadow: none;
+}
+
+.pvp-hub .pvp-search-form small,
+.pvp-hub .pvp-deck-picker small,
+.pvp-hub .pvp-invitation__explanation {
+  color: var(--colour-text-secondary);
+}
+
+.pvp-hub .pvp-deck-picker fieldset {
+  padding: var(--space-3) 0 0;
+  border: 0;
+}
+
+.pvp-hub .pvp-creature-options label {
+  border-color: var(--colour-border-default);
+}
+
+.pvp-hub .pvp-creature-options label:has(input:checked) {
+  border-color: var(--colour-blue-300);
+  background: rgb(42 107 255 / 8%);
+}
+
+.pvp-hub .pvp-creature-options input {
+  accent-color: var(--colour-blue-500);
 }
 
 .pvp-section-tabs {
-  display: flex;
-  min-width: 0;
-  gap: var(--space-1);
-  padding-bottom: var(--space-2);
-  overflow-x: auto;
-  border-bottom: 1px solid var(--colour-border-subtle);
-}
-
-.pvp-section-tabs__tab {
-  display: inline-flex;
-  min-height: var(--touch-target-min);
-  flex: 0 0 auto;
-  gap: var(--space-2);
-  align-items: center;
-  padding: var(--space-2) var(--space-3);
-  border: 0;
-  border-bottom: 0.15rem solid transparent;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  color: var(--colour-text-secondary);
-  background: transparent;
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.pvp-section-tabs__tab:hover {
-  color: var(--colour-text-primary);
-  background: rgb(17 36 64 / 52%);
-}
-
-.pvp-section-tabs__tab[aria-selected='true'] {
-  border-bottom-color: var(--colour-gold-500);
-  color: var(--colour-text-primary);
-  background: rgb(212 175 55 / 6%);
-}
-
-.pvp-section-tabs__tab span {
-  display: inline-flex;
-  min-width: 1.5rem;
-  min-height: 1.5rem;
-  align-items: center;
-  justify-content: center;
-  padding-inline: var(--space-1);
-  border: 1px solid var(--colour-border-default);
-  border-radius: var(--radius-pill);
-  color: var(--colour-gold-400);
-  font-size: var(--text-xs);
+  width: 100%;
 }
 
 .pvp-section-nav {
@@ -317,9 +346,8 @@
 
 .pvp-challenge-panel {
   min-width: 0;
-  padding: var(--space-4);
-  border-block: 1px solid var(--colour-border-subtle);
-  background: rgb(17 36 64 / 38%);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--colour-border-subtle);
 }
 
 .pvp-section-heading,
@@ -357,7 +385,6 @@
 }
 
 .pvp-search-form {
-  max-width: 42rem;
   margin-top: var(--space-4);
 }
 
@@ -403,10 +430,14 @@
 }
 
 .pvp-challenge-form {
-  max-width: 46rem;
   margin-top: var(--space-5);
   padding-top: var(--space-5);
   border-top: 1px solid var(--colour-border-subtle);
+}
+
+.pvp-challenge-form > .button {
+  width: 100%;
+  min-height: 3.5rem;
 }
 
 .pvp-challenge-form > p {
@@ -489,8 +520,7 @@
 }
 
 .pvp-invitation--pending,
-.pvp-match-summary--self,
-.pvp-match-summary--win {
+.pvp-match-summary--self {
   border-left: 0.2rem solid var(--colour-gold-500);
 }
 
@@ -506,7 +536,6 @@
   border-left: 0.2rem solid var(--colour-blue-500);
 }
 
-.pvp-match-summary--loss,
 .pvp-invitation--cancelled {
   border-left: 0.2rem solid var(--colour-status-danger);
 }
@@ -522,11 +551,6 @@
 .pvp-invitation__player {
   display: grid;
   min-width: 0;
-}
-
-.pvp-invitation__player > span {
-  color: var(--colour-text-muted);
-  font-size: var(--text-sm);
 }
 
 .pvp-invitation__actions {
@@ -797,7 +821,6 @@
 .recent-results__heading {
   align-items: center;
   margin-bottom: var(--space-3);
-  padding-inline: var(--space-4);
 }
 
 .recent-results__empty {
@@ -823,106 +846,6 @@
   border-block: 1px solid var(--colour-border-subtle);
   color: var(--colour-text-secondary);
   font-size: var(--text-sm);
-}
-
-.recent-match-list {
-  display: grid;
-  gap: 0;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid var(--colour-border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--colour-surface-default);
-  list-style: none;
-}
-
-.recent-match-list > li,
-.match-history-list > li {
-  min-width: 0;
-}
-
-.match-result-summary {
-  display: grid;
-  gap: var(--space-4);
-}
-
-.match-result-summary--compact {
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.recent-match-list > li + li .match-result-summary--compact {
-  border-top: 1px solid var(--colour-border-subtle);
-}
-
-.match-result-summary--compact.match-result-summary--victory,
-.match-result-summary--compact.match-result-summary--defeat {
-  border-left: 0;
-}
-
-.match-result-summary--compact h3 {
-  font-size: var(--text-lg);
-}
-
-.match-result-summary--victory {
-  border-left: 0.2rem solid var(--colour-status-success);
-}
-
-.match-result-summary--defeat {
-  border-left: 0.2rem solid var(--colour-status-danger);
-}
-
-.match-result-summary__heading > div {
-  min-width: 0;
-}
-
-.match-result-summary__type {
-  margin: 0 0 var(--space-1);
-  color: var(--colour-text-muted);
-  font-size: var(--text-xs);
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.match-result-summary h3 {
-  font-size: var(--text-xl);
-}
-
-.match-result-summary dl {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-  margin: 0;
-}
-
-.match-result-summary dl div {
-  min-width: 0;
-}
-
-.match-result-summary dt {
-  color: var(--colour-text-muted);
-  font-size: var(--text-xs);
-  font-weight: 800;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.match-result-summary dd {
-  margin: var(--space-1) 0 0;
-  overflow-wrap: anywhere;
-  color: var(--colour-text-secondary);
-  font-size: var(--text-sm);
-  font-weight: 700;
-}
-
-.match-result-summary .button {
-  width: fit-content;
 }
 
 .match-page-actions,
@@ -1908,7 +1831,6 @@
 
 .battle-action-list,
 .creature-choice-list,
-.match-history-list,
 .outcome-panel ul {
   margin: 0;
   padding: 0;
@@ -2325,11 +2247,6 @@
   max-width: var(--content-readable);
 }
 
-.match-history-list {
-  display: grid;
-  gap: var(--space-4);
-}
-
 .match-history-pagination {
   display: grid;
   justify-items: center;
@@ -2344,25 +2261,8 @@
 }
 
 @media (min-width: 48rem) {
-  .recent-results {
-    --recent-results-action-width: 10rem;
-  }
-
   .battle-mode-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .match-result-summary--compact {
-    grid-template-columns:
-      minmax(8rem, 0.5fr)
-      minmax(0, 1fr)
-      var(--recent-results-action-width);
-    align-items: center;
-  }
-
-  .recent-results__heading .button,
-  .match-result-summary--compact > .button {
-    inline-size: var(--recent-results-action-width);
   }
 
   .battle-header {
@@ -2466,15 +2366,6 @@
     gap: var(--space-2);
     align-content: start;
     align-items: start;
-  }
-
-  .match-result-summary:not(.match-result-summary--compact) {
-    grid-template-columns: minmax(10rem, 0.5fr) minmax(20rem, 1fr) auto;
-    align-items: center;
-  }
-
-  .match-result-summary:not(.match-result-summary--compact) dl {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -2691,31 +2582,21 @@
 }
 
 @media (max-width: 37.49rem) {
+  .pvp-lobby-header > .button {
+    width: 100%;
+  }
+
   .pvp-resign-card .button,
   .pvp-resign-dialog__actions .button {
     width: 100%;
   }
 
-  .pvp-section-tabs {
-    gap: 0;
-  }
-
-  .pvp-section-tabs__tab {
-    min-width: 0;
-    flex: 1 1 0;
-    justify-content: center;
-    padding-inline: var(--space-2);
-    font-size: var(--text-sm);
-  }
-
-  .pvp-lobby-header__main,
   .pvp-poll-warning {
     align-items: stretch;
     flex-direction: column;
   }
 
   .battle-mode-card__actions .button,
-  .pvp-lobby-header__main .button,
   .pvp-challenge-form > .button,
   .pvp-match-summary > .button,
   .pvp-invitation > .button,
@@ -2812,9 +2693,7 @@
 
 .battle-header,
 .battle-stage,
-.battle-actions,
-.battle-mode-card,
-.match-result-summary {
+.battle-actions {
   background: var(--colour-surface-default);
   box-shadow: none;
 }
@@ -3006,25 +2885,6 @@
 .completed-match > .button {
   margin-top: var(--space-4);
 }
-.pvp-section-tabs__tab[aria-selected='true'] {
-  border-color: var(--colour-focus);
-  color: var(--colour-text-primary);
-}
-.pvp-lobby-header__back {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--touch-target-min);
-}
-.match-history-list {
-  gap: var(--space-3);
-}
-.match-result-summary:not(.match-result-summary--compact) {
-  padding: var(--space-4);
-}
-.match-result-summary--defeat .match-result-summary__heading > span {
-  color: var(--colour-text-secondary);
-}
 
 @media (min-width: 48rem) and (max-width: 63.99rem) {
   .combatant__vitals {
@@ -3039,15 +2899,6 @@
 }
 
 @media (max-width: 47.99rem) {
-  .recent-results__heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .recent-results__heading .button {
-    width: 100%;
-  }
-
   .battle-header {
     padding: var(--space-2) var(--space-3);
   }
@@ -3470,35 +3321,44 @@
   margin-top: 0;
 }
 
-.pvp-lobby-header__actions {
-  display: flex;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  justify-content: flex-end;
-}
-
 .match-history-header {
   display: flex;
   max-width: none;
   flex-wrap: wrap;
   gap: var(--space-4);
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
 }
 
-.match-history-header > div {
-  max-width: var(--content-readable);
+.match-history-header h1 {
+  margin: 0;
 }
 
-.match-result-summary__heading,
-.match-result-summary__heading > div,
+.match-history-header > .button {
+  margin: 0;
+}
+
+.match-history-page .match-inline-alert {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--colour-surface-default);
+  box-shadow: none;
+}
+
+.match-history-page .match-inline-alert > p {
+  flex: 1;
+  margin: 0;
+  color: var(--colour-text-secondary);
+}
+
 .pvp-match-summary__heading > div {
   min-width: 0;
 }
 
-.match-result-summary h2,
-.match-result-summary h3,
 .pvp-match-summary h3 {
   overflow-wrap: anywhere;
 }
@@ -3619,15 +3479,8 @@
     padding: var(--space-4);
   }
 
-  .battle-outcome__actions .button,
-  .pvp-lobby-header__actions,
-  .pvp-lobby-header__actions .button,
-  .match-history-header > .button {
+  .battle-outcome__actions .button {
     width: 100%;
-  }
-
-  .pvp-lobby-header__actions {
-    display: grid;
   }
 }
 
@@ -3651,176 +3504,143 @@
   }
 }
 
-/* Battle results use one stable, scan-first record across hub and history. */
-.battle-result-columns,
-.recent-match-list .match-result-summary,
-.match-history-list .match-result-summary {
-  grid-template-columns:
-    minmax(7rem, 1.2fr)
-    minmax(4.25rem, 0.42fr)
-    minmax(10rem, 0.85fr)
-    minmax(3.5rem, 0.3fr)
-    minmax(8.5rem, 10rem);
-  gap: var(--space-4);
-  align-items: center;
-}
-
-.battle-result-columns {
-  display: none;
-  padding: 0 var(--space-4) var(--space-2);
-  color: var(--colour-text-muted);
-  font-size: var(--text-xs);
-  font-weight: 800;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.match-history-results {
+/* Shared battle history: opponent and detail, result, completion, action. */
+.battle-history {
   min-width: 0;
 }
 
-.recent-match-list,
-.match-history-list {
+.battle-history__columns {
+  display: none;
+}
+
+.battle-history__list {
   display: grid;
   gap: 0;
-  overflow: hidden;
-  border: 1px solid var(--colour-border-subtle);
-  border-radius: var(--radius-lg);
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-top: 1px solid var(--colour-border-subtle);
+  border-radius: 0;
+  background: transparent;
+  list-style: none;
+}
+
+.battle-history__list > li {
+  min-width: 0;
+  border-bottom: 1px solid var(--colour-border-subtle);
+}
+
+.battle-history__row {
+  display: grid;
+  grid-template-areas:
+    'opponent result'
+    'completed action';
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3) var(--space-4);
+  align-items: center;
+  padding: var(--space-4) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--colour-text-primary);
+  text-decoration: none;
+}
+
+.battle-history__row:hover,
+.battle-history__row:focus-visible {
   background: var(--colour-surface-default);
 }
 
-.recent-match-list .match-result-summary,
-.match-history-list .match-result-summary {
-  display: grid;
-  padding: var(--space-3) var(--space-4);
-  border: 0;
-  border-left: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.recent-match-list > li + li .match-result-summary,
-.match-history-list > li + li .match-result-summary {
-  border-top: 1px solid var(--colour-border-subtle);
-}
-
-.match-result-summary__opponent,
-.match-result-summary__field {
+.battle-history__opponent {
   min-width: 0;
+  grid-area: opponent;
 }
 
-.match-result-summary__opponent h2,
-.match-result-summary__opponent h3 {
+.battle-history__opponent h2,
+.battle-history__opponent h3 {
   margin: 0;
-  overflow-wrap: anywhere;
   color: var(--colour-text-primary);
   font-family: var(--font-body);
   font-size: var(--text-lg);
   font-weight: 800;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
-.match-result-summary__label {
-  display: block;
-  margin-bottom: var(--space-1);
-  color: var(--colour-text-muted);
-  font-size: var(--text-xs);
-  font-weight: 800;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.match-result-summary__field time,
-.match-result-summary__field strong {
-  display: block;
+.battle-history__opponent p {
+  margin: var(--space-1) 0 0;
   color: var(--colour-text-secondary);
   font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-  font-weight: 800;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-.match-result-summary__result strong {
-  width: fit-content;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--colour-border-default);
-  border-radius: var(--radius-pill);
-  background: rgb(5 11 22 / 62%);
+.battle-history__result {
+  grid-area: result;
+  justify-self: end;
   color: var(--colour-text-secondary);
-  font-size: var(--text-xs);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: var(--text-sm);
 }
 
-.match-result-summary--victory .match-result-summary__result strong {
+.battle-history__result--won {
   color: var(--colour-status-success);
 }
 
-.recent-match-list .match-result-summary > .button,
-.match-history-list .match-result-summary > .button {
-  width: 100%;
-  margin: 0;
+.battle-history__result--lost {
+  color: var(--colour-status-danger);
+}
+
+.battle-history__completed {
+  min-width: 0;
+  grid-area: completed;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.battle-history__action {
+  grid-area: action;
+  color: var(--colour-blue-300);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-align: right;
+}
+
+.battle-history__row:hover .battle-history__action,
+.battle-history__row:focus-visible .battle-history__action {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 @media (min-width: 48rem) {
-  .battle-result-columns {
+  .battle-history__columns,
+  .battle-history__row {
+    grid-template-columns: minmax(0, 1fr) 4rem 13rem 8.5rem;
+    gap: var(--space-4);
+  }
+
+  .battle-history__columns {
     display: grid;
+    padding: 0 var(--space-3) var(--space-2);
+    color: var(--colour-text-secondary);
+    font-size: var(--text-xs);
+    font-weight: 700;
   }
 
-  .match-result-summary__label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
+  .battle-history__row {
+    grid-template-areas: 'opponent result completed action';
   }
 
-  .match-result-summary__completed time {
-    white-space: nowrap;
+  .battle-history__result {
+    justify-self: start;
   }
 }
 
 @media (min-width: 48rem) and (max-width: 63.99rem) {
-  .match-result-summary__completed time {
-    white-space: normal;
-    line-height: 1.35;
-  }
-}
-
-@media (max-width: 47.99rem) {
-  .recent-match-list .match-result-summary,
-  .match-history-list .match-result-summary {
-    grid-template-areas:
-      'opponent result'
-      'completed rounds'
-      'action action';
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--space-3) var(--space-4);
-  }
-
-  .match-result-summary__opponent {
-    grid-area: opponent;
-  }
-
-  .match-result-summary__result {
-    grid-area: result;
-  }
-
-  .match-result-summary__completed {
-    grid-area: completed;
-  }
-
-  .match-result-summary__rounds {
-    grid-area: rounds;
-    min-width: 3.5rem;
-  }
-
-  .recent-match-list .match-result-summary > .button,
-  .match-history-list .match-result-summary > .button {
-    grid-area: action;
+  .battle-history__columns,
+  .battle-history__row {
+    grid-template-columns: minmax(0, 1fr) 3rem 10rem 8.5rem;
+    gap: var(--space-3);
   }
 }
 
@@ -3831,7 +3651,7 @@
 
 @media (min-width: 64rem) {
   .battle-mode-card--live {
-    grid-template-columns: minmax(0, 1.15fr) minmax(16rem, 0.85fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     column-gap: var(--space-6);
   }
@@ -3846,13 +3666,400 @@
   gap: var(--space-5);
 }
 
-.live-lobby__header {
-  display: grid;
-  max-width: var(--content-readable);
-  gap: var(--space-4);
+@font-face {
+  font-family: 'Old Standard TT';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/old-standard-tt/OldStandard-Bold.ttf')
+    format('truetype');
 }
 
-.live-lobby__header h1,
+.main-content:has(.live-lobby) {
+  padding-top: var(--space-5);
+}
+
+.live-lobby {
+  width: min(100%, 56rem);
+}
+
+.live-lobby__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+}
+
+.live-lobby h2,
+.live-lobby .ranked-season-strip__rating > strong {
+  font-family: 'Old Standard TT', var(--font-heading);
+}
+
+.live-lobby__header h1 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0;
+  color: var(--colour-gold-400);
+}
+
+.live-lobby__stage {
+  --live-stage-padding: clamp(var(--space-4), 3vw, var(--space-6));
+  display: grid;
+  min-width: 0;
+  gap: var(--space-5);
+  padding: var(--live-stage-padding);
+  border: 1px solid var(--colour-gold-400);
+  border-radius: var(--radius-lg);
+  background: var(--colour-background-app);
+}
+
+.live-lobby__deck {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: var(--space-2);
+}
+
+.live-deck-fan {
+  position: relative;
+  width: min(100%, 30rem);
+  margin-bottom: var(--space-4);
+  aspect-ratio: 2.25;
+  isolation: isolate;
+}
+
+.live-deck-fan__card {
+  --fan-x: 0%;
+  --fan-y: -8%;
+  --fan-angle: 0deg;
+  position: absolute;
+  bottom: 12%;
+  left: 50%;
+  width: 25%;
+  aspect-ratio: 2 / 3;
+  transform: translateX(-50%) translate(var(--fan-x), var(--fan-y))
+    rotate(var(--fan-angle));
+  user-select: none;
+  animation: live-deck-deal 550ms var(--ease-standard) both;
+  transition: translate 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.live-deck-fan__card:hover,
+.live-deck-fan__card:focus-within {
+  z-index: 10;
+  translate: 0 -0.5rem;
+}
+
+.live-deck-fan .card-thumbnail__button {
+  transform: rotateX(calc(var(--card-tilt-x) * 0.3))
+    rotateY(calc(var(--card-tilt-y) * 0.3))
+    scale(calc(1 + (var(--card-scale) - 1) * 0.45));
+  transform-style: flat;
+}
+
+/* Settling must not trigger a second stacking or compositor-layer change. */
+.live-deck-fan .card-thumbnail__button[data-tilting] {
+  will-change: auto;
+}
+
+.live-deck-fan .card-thumbnail__button[data-hovered] {
+  box-shadow: 0 0.6rem 1.2rem rgb(0 0 0 / 28%);
+}
+
+.live-deck-fan .card-frame {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  padding: clamp(4px, 4%, 9px);
+  padding-top: clamp(6px, 6%, 12px);
+  border-width: 2px;
+  border-radius: var(--radius-md);
+}
+
+.live-deck-fan .card-frame__window {
+  min-height: 0;
+  flex: 1;
+  aspect-ratio: auto;
+}
+
+.live-deck-fan .collectible-card__artwork {
+  position: absolute;
+  inset: 0;
+  aspect-ratio: auto;
+}
+
+.live-deck-fan .collectible-card__artwork > img {
+  object-fit: cover;
+}
+
+.live-deck-fan .card-frame__rail {
+  min-height: 0;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 4px;
+}
+
+.live-deck-fan .card-frame__name {
+  font-size: clamp(0.65rem, 1.2vw, 0.9rem);
+}
+
+.live-deck-fan .card-frame__rarity {
+  font-size: 0.5rem;
+}
+
+.live-deck-fan .card-thumbnail__button:focus-visible {
+  outline-color: var(--colour-gold-400);
+}
+
+.live-lobby__card-recovery {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.live-deck-fan__card--1 {
+  --fan-x: -150%;
+  --fan-y: 10%;
+  --fan-angle: -13deg;
+  z-index: 1;
+}
+
+.live-deck-fan__card--2 {
+  --fan-x: -75%;
+  --fan-y: 0%;
+  --fan-angle: -6deg;
+  z-index: 2;
+}
+
+.live-deck-fan__card--3 {
+  z-index: 3;
+}
+
+.live-deck-fan__card--4 {
+  --fan-x: 75%;
+  --fan-y: 0%;
+  --fan-angle: 6deg;
+  z-index: 2;
+}
+
+.live-deck-fan__card--5 {
+  --fan-x: 150%;
+  --fan-y: 10%;
+  --fan-angle: 13deg;
+  z-index: 1;
+}
+
+.live-lobby__deck--queued .live-deck-fan {
+  width: min(100%, 24rem);
+}
+
+.live-lobby__deck--queued .live-deck-fan__card {
+  animation: none;
+  transform: translateX(-50%) translate(calc(var(--fan-x) * 0.65), var(--fan-y))
+    rotate(calc(var(--fan-angle) * 0.65));
+}
+
+.live-lobby__deck-info {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.live-lobby__deck-info h2 {
+  max-width: 24ch;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: clamp(1.65rem, 4.5vw, 2.5rem);
+  line-height: 1.15;
+}
+
+.live-lobby__change-deck {
+  margin-top: var(--space-1);
+}
+
+.live-lobby__find {
+  position: relative;
+  justify-content: center;
+  width: 100%;
+  min-height: 3.5rem;
+  padding-inline: var(--space-7);
+  font-size: var(--text-lg);
+  letter-spacing: 0;
+}
+
+.live-lobby__find > svg {
+  position: absolute;
+  right: var(--space-5);
+}
+
+.live-lobby__find:disabled {
+  cursor: wait;
+}
+
+.live-lobby .live-lobby__start,
+.live-lobby .live-spectator-form {
+  max-width: none;
+}
+
+.live-lobby .ranked-territory-option {
+  padding-top: var(--space-2);
+  border-top: 0;
+}
+
+.live-lobby .live-ranked-rules summary {
+  min-height: var(--touch-target-min);
+  align-content: center;
+}
+
+@media (min-width: 48rem) and (max-width: 74.99rem) {
+  .live-deck-fan {
+    width: min(100%, 26rem);
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 74.99rem) and (min-height: 75rem) {
+  .main-content:has(.live-lobby) {
+    padding-top: 5.5rem;
+  }
+
+  .live-lobby {
+    gap: var(--space-7);
+  }
+
+  .live-lobby__stage {
+    gap: var(--space-8);
+    padding: clamp(var(--space-6), 5.5vw, var(--space-7));
+    border-radius: 1.75rem;
+  }
+
+  .live-lobby .ranked-season-strip h2 {
+    font-size: clamp(1.35rem, 3.65vw, 2rem);
+  }
+
+  .live-lobby .ranked-season-strip__record {
+    font-size: 1.625rem;
+  }
+
+  .live-lobby .ranked-season-strip__rating > span {
+    font-size: 1.5rem;
+  }
+
+  .live-lobby .ranked-season-strip__rating > strong {
+    font-size: 3.75rem;
+  }
+
+  .live-deck-fan {
+    width: min(100%, 45rem);
+    aspect-ratio: 2.04;
+  }
+
+  .live-deck-fan__card {
+    width: 28%;
+  }
+
+  .live-deck-fan__card--1 {
+    --fan-x: -130%;
+  }
+  .live-deck-fan__card--2 {
+    --fan-x: -60%;
+  }
+  .live-deck-fan__card--4 {
+    --fan-x: 60%;
+  }
+  .live-deck-fan__card--5 {
+    --fan-x: 130%;
+  }
+
+  .live-lobby__deck-info h2 {
+    font-size: 3.25rem;
+  }
+
+  .live-lobby__change-deck {
+    min-height: 4.25rem;
+    padding-inline: var(--space-7);
+    font-size: 1.625rem;
+  }
+
+  .live-lobby__find {
+    min-height: 7rem;
+    padding-inline: 4rem;
+    border-radius: var(--radius-xl);
+    font-size: 2.5rem;
+  }
+
+  .live-lobby__find > svg {
+    right: var(--space-6);
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .live-lobby .ranked-territory-option__toggle {
+    justify-content: center;
+    font-size: 1.625rem;
+  }
+
+  .live-lobby .ranked-territory-option__toggle input {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .live-lobby .ranked-territory-option__toggle small {
+    font-size: 1.25rem;
+  }
+
+  .live-lobby .live-lobby__start {
+    gap: var(--space-6);
+  }
+
+  .live-lobby .ranked-territory-option {
+    padding-top: var(--space-6);
+  }
+
+  .live-lobby .live-ranked-rules {
+    padding-top: var(--space-7);
+    font-size: 1.5rem;
+  }
+
+  .live-lobby .live-ranked-rules summary {
+    min-height: var(--space-8);
+  }
+}
+
+@keyframes live-deck-deal {
+  from {
+    transform: translateX(-50%)
+      translate(calc(var(--fan-x) * 0.65), var(--fan-y))
+      rotate(calc(var(--fan-angle) * 0.65));
+  }
+  to {
+    transform: translateX(-50%) translate(var(--fan-x), var(--fan-y))
+      rotate(var(--fan-angle));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-deck-fan__card {
+    animation: none;
+    transition: none;
+  }
+
+  .live-deck-fan__card:hover,
+  .live-deck-fan__card:focus-within {
+    translate: none;
+  }
+}
+
 .live-battle-title h1,
 .live-connection-stage h1 {
   max-width: 18ch;
@@ -3862,7 +4069,6 @@
   text-wrap: balance;
 }
 
-.live-lobby__header p,
 .live-battle-title p,
 .live-connection-stage p {
   max-width: 68ch;
@@ -3873,14 +4079,14 @@
 .ranked-season-strip {
   display: grid;
   gap: var(--space-4);
-  padding: var(--space-4) 0;
-  border-block: 1px solid rgb(212 175 55 / 28%);
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0;
+  align-items: start;
 }
 
 .ranked-season-strip__season,
 .ranked-season-strip__profile,
-.ranked-season-strip__rating,
-.ranked-season-strip__placements {
+.ranked-season-strip__rating {
   display: grid;
   align-content: start;
 }
@@ -3903,7 +4109,8 @@
 }
 
 .ranked-season-strip h2 {
-  font-size: var(--text-xl);
+  font-family: var(--font-body);
+  font-size: clamp(1rem, 2.3vw, 1.35rem);
   text-wrap: balance;
 }
 
@@ -3914,7 +4121,16 @@
 }
 
 .ranked-season-strip time {
-  color: var(--colour-text-muted);
+  color: var(--colour-text-secondary);
+}
+
+.ranked-season-strip__record {
+  color: var(--colour-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ranked-season-strip__deadline {
+  font-size: var(--text-xs);
 }
 
 .ranked-season-status {
@@ -3926,11 +4142,6 @@
   font-weight: 800;
 }
 
-.ranked-season-status--active {
-  color: var(--colour-status-success);
-  background: rgb(57 184 121 / 10%);
-}
-
 .ranked-season-status--closing {
   color: var(--colour-status-warning);
   background: rgb(225 169 58 / 10%);
@@ -3938,73 +4149,38 @@
 
 .ranked-season-strip__state {
   display: flex;
+  grid-column: 1 / -1;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
 }
 
 .ranked-season-strip__profile {
-  grid-template-columns: minmax(7rem, 0.65fr) minmax(12rem, 1.35fr);
-  gap: var(--space-4);
+  justify-items: end;
+  text-align: right;
 }
 
-.ranked-season-strip__rating,
-.ranked-season-strip__placements {
-  gap: var(--space-1);
+.ranked-season-strip__rating {
+  gap: var(--space-2);
 }
 
-.ranked-season-strip__rating > span,
-.ranked-season-strip__placements span {
-  color: var(--colour-text-muted);
-  font-size: var(--text-xs);
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.ranked-season-strip__rating > span {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
 }
 
 .ranked-season-strip__rating > strong {
   color: var(--colour-gold-400);
   font-family: var(--font-heading);
-  font-size: var(--text-2xl);
+  font-size: clamp(2rem, 5.5vw, 3.25rem);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .ranked-season-strip__rating small {
+  grid-column: 1 / -1;
   color: var(--colour-text-secondary);
   font-weight: 700;
-}
-
-.ranked-season-strip__placements > div {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.ranked-season-strip__placements progress {
-  width: 100%;
-  height: 0.6rem;
-  overflow: hidden;
-  border: 0;
-  border-radius: var(--radius-pill);
-  accent-color: var(--colour-gold-400);
-  background: var(--colour-background-app);
-}
-
-.ranked-season-strip__placements progress::-webkit-progress-bar {
-  border-radius: var(--radius-pill);
-  background: var(--colour-background-app);
-}
-
-.ranked-season-strip__placements progress::-webkit-progress-value {
-  border-radius: var(--radius-pill);
-  background: var(--colour-gold-400);
-}
-
-.ranked-season-strip__placements progress::-moz-progress-bar {
-  border-radius: var(--radius-pill);
-  background: var(--colour-gold-400);
 }
 
 .live-lobby__active-status,
@@ -4014,36 +4190,7 @@
 }
 
 .live-lobby__tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-bottom: 1px solid var(--colour-border-default);
-}
-
-.live-lobby__tab {
-  min-height: var(--touch-target-min);
-  padding: var(--space-3) var(--space-4);
-  border: 0;
-  border-bottom: 3px solid transparent;
-  color: var(--colour-text-secondary);
-  background: transparent;
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.live-lobby__tab:hover {
-  color: var(--colour-text-primary);
-  background: rgb(255 255 255 / 3%);
-}
-
-.live-lobby__tab[aria-selected='true'] {
-  border-bottom-color: var(--colour-gold-400);
-  color: var(--colour-text-primary);
-}
-
-.live-lobby__tab:focus-visible {
-  outline: 3px solid rgb(84 168 255 / 45%);
-  outline-offset: -3px;
+  max-width: 100%;
 }
 
 .live-lobby__tabpanel {
@@ -4051,10 +4198,7 @@
   min-width: 0;
   align-content: start;
   gap: var(--space-5);
-  padding: clamp(var(--space-4), 4vw, var(--space-6));
-  border: 1px solid var(--colour-border-default);
-  border-radius: var(--radius-md);
-  background: var(--colour-surface-default);
+  padding-block: var(--space-2);
 }
 
 .live-lobby__tabpanel[hidden] {
@@ -4065,19 +4209,10 @@
   display: grid;
   width: 100%;
   gap: var(--space-3);
-  margin: var(--space-2) 0 0;
-  padding: var(--space-4) 0 0;
+  margin: 0;
+  padding: var(--space-3) 0 0;
   border: 0;
   border-top: 1px solid var(--colour-border-subtle);
-}
-
-.ranked-territory-option legend {
-  padding: 0;
-  color: var(--colour-text-muted);
-  font-size: var(--text-xs);
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .ranked-territory-option__toggle {
@@ -4098,7 +4233,6 @@
   gap: var(--space-1);
 }
 
-.ranked-territory-option__toggle small,
 .ranked-territory-option__detection p,
 .ranked-territory-option__state {
   margin: 0;
@@ -4137,7 +4271,7 @@
   align-items: flex-start;
   gap: var(--space-2);
   padding: var(--space-3);
-  border-left: 3px solid var(--colour-blue-300);
+  border-radius: var(--radius-sm);
   color: var(--colour-text-primary);
   background: rgb(84 168 255 / 8%);
 }
@@ -4153,21 +4287,11 @@
 }
 
 .ranked-territory-detection-result--success {
-  border-left-color: var(--colour-status-success);
   background: rgb(57 184 121 / 8%);
 }
 
 .ranked-territory-detection-result--success > svg {
   color: var(--colour-status-success);
-}
-
-.ranked-territory-detection-result--warning {
-  border-left-color: var(--colour-status-warning);
-  background: rgb(225 169 58 / 8%);
-}
-
-.ranked-territory-detection-result--warning > svg {
-  color: var(--colour-status-warning);
 }
 
 .ranked-territory-option__state .button {
@@ -4177,13 +4301,6 @@
 .ranked-standings {
   display: grid;
   min-width: 0;
-  gap: var(--space-4);
-}
-
-.ranked-standings__heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
   gap: var(--space-4);
 }
 
@@ -4203,11 +4320,6 @@
 .ranked-standings__actions p {
   margin-top: var(--space-1);
   color: var(--colour-text-secondary);
-}
-
-.ranked-standings__heading > svg {
-  flex: 0 0 auto;
-  color: var(--colour-gold-400);
 }
 
 .ranked-standing-row {
@@ -4261,10 +4373,6 @@
   gap: var(--space-1);
 }
 
-.ranked-standing-row__record small {
-  color: var(--colour-text-muted);
-}
-
 .ranked-standings__state .button {
   margin-top: var(--space-3);
 }
@@ -4281,20 +4389,6 @@
   gap: var(--space-3);
 }
 
-.live-lobby__lane-heading {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-}
-
-.live-lobby__lane-heading > svg {
-  flex: 0 0 auto;
-  margin-top: 0.2rem;
-  color: var(--colour-gold-400);
-}
-
-.live-lobby__lane-heading h2,
-.live-lobby__lane-heading p,
 .live-proposal h2,
 .live-proposal p,
 .live-searching h2,
@@ -4304,47 +4398,12 @@
   margin: 0;
 }
 
-.live-lobby__lane-heading h2 {
-  font-size: var(--text-2xl);
-}
-
-.live-lobby__lane-heading p,
 .live-proposal p,
 .live-searching p,
 .live-lobby__start p,
 .live-ranked-rules p {
   margin-top: var(--space-2);
   color: var(--colour-text-secondary);
-}
-
-.live-lobby__facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: var(--space-3);
-  margin: 0;
-}
-
-.live-lobby__facts > div {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-1);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--colour-border-subtle);
-}
-
-.live-lobby__facts dt {
-  color: var(--colour-text-muted);
-  font-size: var(--text-xs);
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.live-lobby__facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-  color: var(--colour-text-primary);
-  font-weight: 750;
 }
 
 .live-proposal,
@@ -4375,10 +4434,10 @@
   gap: var(--space-3);
 }
 
-.live-lobby__availability {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-3);
+.live-lobby__start,
+.live-spectator-form {
+  width: 100%;
+  max-width: var(--content-readable);
 }
 
 .live-lobby__actions {
@@ -4776,7 +4835,7 @@
 
 @media (min-width: 64rem) {
   .ranked-season-strip {
-    grid-template-columns: minmax(0, 1.15fr) minmax(26rem, 0.85fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
     gap: var(--space-5);
   }
@@ -4796,14 +4855,14 @@
     gap: var(--space-4);
   }
 
-  .ranked-season-strip {
-    gap: var(--space-3);
-    padding-block: var(--space-3);
+  .live-lobby__stage {
+    /* Move the border outward while preserving the fan's available width. */
+    margin-inline: calc(-1 * var(--space-3));
+    padding-inline: calc(var(--live-stage-padding) + var(--space-3));
   }
 
-  .ranked-season-strip__placements > div {
-    display: grid;
-    grid-template-columns: 1fr;
+  .ranked-season-strip {
+    gap: var(--space-3);
   }
 
   .ranked-standing-row--header {
@@ -4836,10 +4895,6 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     color: var(--colour-text-secondary);
-  }
-
-  .ranked-standing-row__record small::before {
-    content: '· ';
   }
 
   .ranked-territory-option__detection {
@@ -4934,25 +4989,12 @@
   flex: 0 0 auto;
   text-align: left;
 }
-.pvp-section-tabs__tab[aria-selected='true'] {
-  background: var(--colour-background-secondary);
-}
 .pvp-activity h2 {
   color: var(--colour-text-primary);
   font-family: var(--font-body);
 }
 .completed-match--cpu {
   background: var(--colour-surface-default);
-}
-.match-result-summary__heading {
-  align-items: center;
-}
-.match-result-summary h2,
-.match-result-summary h3 {
-  margin: 0;
-}
-.match-result-summary:not(.match-result-summary--compact) dl {
-  grid-template-columns: minmax(0, 1fr) auto;
 }
 .creature-choice-control__hp strong {
   color: var(--colour-text-primary);
@@ -6622,5 +6664,455 @@
 
   .battle-action-control__labels {
     justify-content: flex-start;
+  }
+}
+
+/* Completed Player Battles read as a report, with the outcome before the moves. */
+.main-content:has(.battle-report) {
+  background: color-mix(
+    in srgb,
+    var(--colour-background-app),
+    var(--colour-background-secondary)
+  );
+}
+
+.battle-report {
+  width: min(100%, 76rem);
+  gap: 0;
+}
+
+.battle-report__panel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.58fr) minmax(0, 1fr);
+  gap: 0 var(--space-6);
+  padding: var(--space-6);
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--colour-blue-300) 55%,
+      var(--colour-background-secondary)
+    );
+  border-radius: var(--radius-lg);
+  background: color-mix(
+    in srgb,
+    var(--colour-navy-850) 75%,
+    var(--colour-background-secondary)
+  );
+}
+
+.battle-report__back {
+  display: inline-flex;
+  width: fit-content;
+  min-height: var(--touch-target-min);
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  color: var(--colour-text-secondary);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.battle-report__back:hover {
+  color: var(--colour-blue-300);
+}
+
+.battle-report .battle-report__outcome {
+  align-self: stretch;
+  padding: var(--space-6) var(--space-6) var(--space-6) 0;
+  border: 0;
+  border-right: 1px solid var(--colour-border-default);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.battle-report__result {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.battle-report__result h1 {
+  margin: 0;
+  font-size: clamp(3rem, 5.2vw, 5rem);
+  line-height: 1.1;
+}
+
+.battle-report__result h1:focus {
+  outline: none;
+}
+
+.battle-report__result svg {
+  flex: 0 0 auto;
+  color: var(--colour-status-danger);
+}
+
+.battle-report__outcome[data-outcome='win'] .battle-report__result svg {
+  color: var(--colour-status-success);
+}
+
+.battle-report__opponent {
+  margin: var(--space-2) 0 0;
+  padding-left: 2.75rem;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+
+.battle-report__reason {
+  margin: var(--space-6) 0 0;
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--colour-border-default);
+  color: var(--colour-text-primary);
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+
+.battle-report .battle-report__facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+}
+
+.battle-report .battle-report__facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.battle-report__facts dt,
+.battle-report__facts dd {
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.battle-report__final-turn {
+  min-width: 0;
+  padding-block: var(--space-2) var(--space-5);
+}
+
+.battle-report__combatants {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-5);
+  row-gap: 0;
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--colour-border-default);
+}
+
+.battle-report__combatant {
+  display: grid;
+  grid-row: span 5;
+  grid-template-rows: subgrid;
+  min-width: 0;
+  color: var(--colour-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.battle-report__combatant + .battle-report__combatant {
+  padding-left: var(--space-5);
+  border-left: 1px solid var(--colour-border-default);
+}
+
+.battle-report__combatant h3 {
+  grid-row: 1;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-lg);
+}
+
+.battle-report__creature-name {
+  grid-row: 2;
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-lg);
+}
+
+.battle-report__portrait {
+  grid-row: 4;
+  align-self: start;
+  display: grid;
+  width: min(100%, 9rem);
+  gap: var(--space-3);
+  perspective: 55rem;
+}
+
+.battle-report__portrait .combatant__sigil {
+  width: 100%;
+  height: 100%;
+}
+
+.battle-report__portrait .card-frame__rarity {
+  font-size: 0.6875rem;
+}
+
+.battle-report__portrait .card-frame__rail {
+  padding-inline: var(--space-2);
+}
+
+.battle-report__hp {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.battle-report__hp > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.battle-report__hp strong {
+  color: var(--colour-text-primary);
+}
+
+.battle-report__hp meter {
+  display: block;
+  width: 100%;
+  height: 0.5rem;
+  border: 1px solid var(--colour-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--colour-border-default);
+}
+
+.battle-report__hp meter::-webkit-meter-bar {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--colour-border-default);
+}
+
+.battle-report__hp meter::-webkit-meter-optimum-value {
+  border-radius: var(--radius-sm);
+  background: var(--colour-status-success);
+}
+
+.battle-report__hp meter::-moz-meter-bar {
+  border-radius: var(--radius-sm);
+  background: var(--colour-status-success);
+}
+
+.battle-report__defeated {
+  grid-row: 5;
+  margin: var(--space-2) 0 0;
+  color: var(--colour-status-danger);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.battle-report__combatant > .battle-report__note {
+  grid-row: 3;
+}
+
+.battle-report__section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.battle-report__section-heading h2,
+.battle-report__card-groups h3,
+.battle-report__turns h3 {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+
+.battle-report__section-heading h2 {
+  font-size: 1.25rem;
+}
+
+.battle-report__final-turn .battle-report__events p {
+  font-size: 1.25rem;
+}
+
+.battle-report .battle-report__facts dt,
+.battle-report .battle-report__facts dd {
+  font-size: var(--text-lg);
+}
+
+.battle-report__section-heading > span,
+.battle-report__note {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-md);
+}
+
+.battle-report__note {
+  margin: 0 0 var(--space-3);
+}
+
+.battle-report__events,
+.battle-report__turns,
+.battle-report__cards {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.battle-report__events p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.battle-report__events .battle-report__effect {
+  margin-top: var(--space-1);
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.battle-report__disclosure {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--colour-border-default);
+}
+
+.battle-report__disclosure > summary {
+  display: flex;
+  min-height: var(--touch-target-min);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block: var(--space-4);
+  color: var(--colour-text-primary);
+  font-size: 1.25rem;
+  font-weight: 700;
+  list-style: none;
+  cursor: pointer;
+}
+
+.battle-report__disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.battle-report__disclosure > summary:hover {
+  color: var(--colour-blue-300);
+}
+
+.battle-report__disclosure > summary > svg {
+  flex: 0 0 auto;
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.battle-report__disclosure[open] > summary > svg {
+  transform: rotate(180deg);
+}
+
+.battle-report__turns {
+  gap: var(--space-5);
+  padding-bottom: var(--space-5);
+}
+
+.battle-report__turns h3 {
+  margin-bottom: var(--space-3);
+  color: var(--colour-text-secondary);
+}
+
+.battle-report__card-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-6);
+  padding-block: var(--space-2) var(--space-5);
+}
+
+.battle-report__card-groups h3 {
+  margin-bottom: var(--space-3);
+}
+
+.battle-report__cards li {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  perspective: 55rem;
+}
+
+.battle-report__cards li > div {
+  display: grid;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+
+.battle-report__cards li > div > span {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.battle-report__cards .combatant__sigil {
+  width: 100%;
+  height: 100%;
+}
+
+.battle-report__cards .card-frame__rail {
+  padding-inline: var(--space-1);
+}
+
+.battle-report__cards .card-frame__rarity {
+  gap: var(--space-1);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.battle-report__power-cards {
+  padding-left: var(--space-4);
+  color: var(--colour-text-secondary);
+}
+
+@media (max-width: 63.99rem) {
+  .battle-report__panel {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-5);
+  }
+
+  .battle-report .battle-report__outcome {
+    padding: 0 0 var(--space-5);
+    border-right: 0;
+    border-bottom: 1px solid var(--colour-border-default);
+  }
+
+  .battle-report__final-turn {
+    padding-top: var(--space-5);
+  }
+
+  .battle-report__reason {
+    margin-top: var(--space-5);
+    padding-top: var(--space-5);
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .battle-report__panel {
+    padding: var(--space-4);
+  }
+
+  .battle-report__combatants {
+    column-gap: var(--space-3);
+  }
+
+  .battle-report__combatant h3 {
+    font-size: var(--text-md);
+  }
+
+  .battle-report__combatant:first-child {
+    padding-right: var(--space-3);
+  }
+
+  .battle-report__combatant + .battle-report__combatant {
+    padding-left: var(--space-3);
   }
 }
