@@ -2,6 +2,7 @@ import { createAppDateTimeFormatter } from '../../date-time';
 import {
   ArrowClockwiseIcon,
   ArrowCounterClockwiseIcon,
+  CaretRightIcon,
   CheckCircleIcon,
   CircleIcon,
   LockKeyIcon,
@@ -38,7 +39,6 @@ import { LoadingState } from '../LoadingState';
 import { StatusMessage } from '../StatusMessage';
 import type { MapFactory } from '../exploration/map-provider';
 import { AuthorConfirmationDialog } from './AuthorConfirmationDialog';
-import { authorErrorDetail } from './author-error-copy';
 import { EventPlacementMap } from './EventPlacementMap';
 
 interface EventPlacementWorkspaceProps {
@@ -141,8 +141,8 @@ export function EventPlacementWorkspace({
       if (controller.signal.aborted) return false;
       setHistoryError(
         error instanceof AuthorApiError
-          ? authorErrorDetail(error)
-          : 'Recent placement history could not be loaded.',
+          ? placementErrorDetail(error)
+          : 'History could not load. Try again.',
       );
       setHistoryLoadState('error');
       return false;
@@ -181,8 +181,8 @@ export function EventPlacementWorkspace({
         if (controller.signal.aborted) return null;
         const message =
           error instanceof AuthorApiError
-            ? authorErrorDetail(error)
-            : 'Placement state could not be loaded.';
+            ? placementErrorDetail(error)
+            : 'Placement could not load. Try again.';
         if (stateRef.current === null) {
           setLoadState('error');
           setLoadError(message);
@@ -237,8 +237,8 @@ export function EventPlacementWorkspace({
       }
       setFeedback({
         message: previewWasSuperseded
-          ? 'Live placement refreshed. A newer placement is active, so the old preview was cleared.'
-          : 'Live placement refreshed.',
+          ? 'Placement refreshed. The outdated preview was cleared.'
+          : 'Placement refreshed.',
         tone: previewWasSuperseded ? 'info' : 'success',
       });
     }
@@ -270,9 +270,8 @@ export function EventPlacementWorkspace({
           refreshedState.stateVersion !== nextPlan.stateVersion
         ) {
           setPreviewFeedback({
-            title: 'Placement changed while creating this preview',
-            message:
-              'The live placement and preview could not be synchronized. Create a new preview to review the latest placement.',
+            title: 'Placement changed',
+            message: 'Create a new preview to use the latest placement.',
             tone: 'info',
           });
           return;
@@ -289,11 +288,11 @@ export function EventPlacementWorkspace({
     } catch (error) {
       if (controller.signal.aborted) return;
       setPreviewFeedback({
-        title: 'Preview could not be created',
+        title: 'Preview unavailable',
         message:
           error instanceof AuthorApiError
-            ? authorErrorDetail(error)
-            : 'The preview could not be created. Check your connection and try again.',
+            ? placementErrorDetail(error)
+            : 'Check your connection and try again.',
         tone: 'error',
       });
     } finally {
@@ -311,13 +310,11 @@ export function EventPlacementWorkspace({
           ? state.policy.maximumExclusionHours
           : state.policy.maximumPinHours;
     if (!Number.isInteger(hours) || hours < 1) {
-      setOverrideError('Enter a whole number of hours greater than zero.');
+      setOverrideError('Enter at least 1 whole hour.');
       return;
     }
     if (hours > maximumDuration) {
-      setOverrideError(
-        `This override can last no more than ${maximumDuration} hours.`,
-      );
+      setOverrideError(`Use ${maximumDuration} hours or less.`);
       return;
     }
     setOverrideError('');
@@ -337,7 +334,7 @@ export function EventPlacementWorkspace({
         siteId: overrideSiteId,
       });
     } else {
-      setOverrideError('Choose the event and site required for this override.');
+      setOverrideError('Choose an event and site.');
     }
   }
 
@@ -353,8 +350,7 @@ export function EventPlacementWorkspace({
         setPlan(null);
         setPreviewFeedback(null);
         setFeedback({
-          message:
-            'This preview expired. Create a new preview before applying.',
+          message: 'Preview expired. Create a new preview.',
           tone: 'error',
         });
         return;
@@ -427,7 +423,7 @@ export function EventPlacementWorkspace({
       } else {
         setFeedback({
           message:
-            'The placement operation completed, but the latest live state could not be loaded. Use Refresh live state before making another change.',
+            'Change saved, but live placement could not be loaded. Refresh before making another change.',
           tone: 'error',
         });
       }
@@ -457,12 +453,12 @@ export function EventPlacementWorkspace({
         refreshedState !== null && isPlacementHealthy(refreshedState);
       setFeedback({
         message: reviewedPlanIsLive
-          ? 'Placement was completed while you were reviewing. The latest live assignments are shown; no further action is needed.'
+          ? 'This plan is already live. No further action is needed.'
           : refreshedState && placementIsNowHealthy
-            ? 'Another placement was completed while you were reviewing. The latest live assignments are shown; review them before creating another preview.'
+            ? 'Another plan is now live. Review the updated assignments.'
             : refreshedState
-              ? 'Placement changed while you were reviewing. The latest live state is shown; create a new preview if coverage still needs attention.'
-              : 'Placement changed while you were reviewing it, and the latest state could not be loaded. Use Refresh live state before generating another preview.',
+              ? 'Placement changed. Review the updated assignments and create a new preview if needed.'
+              : 'Placement changed and could not be reloaded. Refresh before creating a preview.',
         tone: reviewedPlanIsLive || placementIsNowHealthy ? 'success' : 'error',
       });
       return;
@@ -470,8 +466,8 @@ export function EventPlacementWorkspace({
     setFeedback({
       message:
         error instanceof AuthorApiError
-          ? authorErrorDetail(error)
-          : 'The placement operation could not be completed. No change was confirmed.',
+          ? placementErrorDetail(error)
+          : 'Change could not be confirmed. Refresh and try again.',
       tone: 'error',
     });
   }
@@ -482,13 +478,12 @@ export function EventPlacementWorkspace({
         <div className="author-workspace__heading">
           <div>
             <h2 id="placement-title">Event placement</h2>
-            <p>Loading live assignments, placement rules, and history.</p>
           </div>
         </div>
         {loadState === 'error' ? (
           <StatusMessage tone="error">
             <div>
-              <strong>Placement workspace unavailable</strong>
+              <strong>Placement unavailable</strong>
               <p>{loadError}</p>
               <button
                 className="button button--quiet"
@@ -514,7 +509,6 @@ export function EventPlacementWorkspace({
         ? state.policy.maximumExclusionHours
         : state.policy.maximumPinHours;
   const planExpired = plan !== null && isExpired(plan.validUntil);
-  const coverageComplete = state.metrics.unservedZoneCount === 0;
   const applyBlocked =
     pendingAction?.kind === 'apply' &&
     (plan === null ||
@@ -534,7 +528,7 @@ export function EventPlacementWorkspace({
       ? 'Preview changes'
       : placementHealthy
         ? 'Current placement'
-        : 'Create a placement plan';
+        : 'Preview placement';
 
   return (
     <section
@@ -544,9 +538,7 @@ export function EventPlacementWorkspace({
       <div className="author-workspace__heading placement-workspace__heading">
         <div>
           <h2 id="placement-title">Event placement</h2>
-          <p>
-            Keep every campus zone covered. Preview changes before they go live.
-          </p>
+          <p>Review placement changes before they go live.</p>
         </div>
         <button
           className="button button--quiet"
@@ -554,7 +546,7 @@ export function EventPlacementWorkspace({
           onClick={() => void refreshWorkspace()}
           type="button"
         >
-          <ArrowClockwiseIcon aria-hidden="true" size={20} /> Refresh live state
+          <ArrowClockwiseIcon aria-hidden="true" size={20} /> Refresh
         </button>
       </div>
 
@@ -595,7 +587,7 @@ export function EventPlacementWorkspace({
                 <QuestMarker className="placement-preview__loader" />
                 <span>
                   <strong>Creating preview</strong>
-                  Checking coverage, separation, and placement rules…
+                  Checking placement rules…
                 </span>
               </div>
             ) : previewFeedback ? (
@@ -620,22 +612,9 @@ export function EventPlacementWorkspace({
             ) : null}
             {plan === null ? (
               <>
-                <p className="placement-preview__lead">
-                  {state.metrics.activeZoneCount === 0
-                    ? 'No active coverage zones are available.'
-                    : placementHealthy
-                      ? 'Placement is live and fully covered.'
-                      : coverageComplete
-                        ? `Coverage is live, but only ${state.metrics.activeAssignmentCount} of ${state.metrics.targetAssignmentCount} events are placed.`
-                        : `${state.metrics.unservedZoneCount} active zone${state.metrics.unservedZoneCount === 1 ? ' needs' : 's need'} coverage.`}
-                </p>
-                <p>
-                  {placementHealthy
-                    ? `All ${state.metrics.activeZoneCount} active zones meet minimum coverage, and ${state.metrics.activeAssignmentCount} of ${state.metrics.targetAssignmentCount} target events are live. No unresolved placement failure remains.`
-                    : state.metrics.activeZoneCount === 0
-                      ? 'A preview cannot place events until at least one coverage zone is active.'
-                      : 'Create a server-checked proposal. Nothing changes for players until you review and apply it.'}
-                </p>
+                {state.metrics.activeZoneCount === 0 ? (
+                  <p>No active coverage zones. Preview unavailable.</p>
+                ) : null}
                 <button
                   className={`button placement-preview__primary${placementHealthy ? ' button--quiet' : ''}`}
                   disabled={
@@ -650,11 +629,11 @@ export function EventPlacementWorkspace({
                       Creating preview…
                     </>
                   ) : previewFeedback?.tone === 'error' ? (
-                    'Try preview again'
+                    'Try again'
                   ) : placementHealthy ? (
                     'Preview another rotation'
                   ) : (
-                    'Create coverage preview'
+                    'Create preview'
                   )}
                 </button>
               </>
@@ -664,13 +643,7 @@ export function EventPlacementWorkspace({
                 <CoverageValidation plan={plan} state={state} />
                 {planExpired ? (
                   <p className="field-error">
-                    This preview expired. Create a new preview before applying.
-                  </p>
-                ) : null}
-                {!planHasChanges && !planExpired ? (
-                  <p className="placement-preview__no-action">
-                    Current assignments already match this preview. There is
-                    nothing to apply.
+                    Preview expired. Create a new preview.
                   </p>
                 ) : null}
                 <div className="placement-preview__actions">
@@ -692,8 +665,7 @@ export function EventPlacementWorkspace({
                     onClick={() => void createPreview()}
                     type="button"
                   >
-                    <ArrowClockwiseIcon aria-hidden="true" size={18} />
-                    Recalculate preview
+                    New preview
                   </button>
                   <button
                     className="button button--quiet"
@@ -705,7 +677,7 @@ export function EventPlacementWorkspace({
                     }}
                     type="button"
                   >
-                    Discard preview
+                    Discard
                   </button>
                 </div>
               </>
@@ -729,10 +701,9 @@ export function EventPlacementWorkspace({
           className="placement-details"
         >
           <div className="placement-details__heading">
-            <div>
-              <h3 id="placement-details-heading">Placement details</h3>
-              <p>Inspect changes or open secondary placement tools.</p>
-            </div>
+            <h3 className="sr-only" id="placement-details-heading">
+              Placement details
+            </h3>
             <PlacementDetailTabs
               activeTab={activeDetailTab}
               onChange={setActiveDetailTab}
@@ -763,7 +734,13 @@ export function EventPlacementWorkspace({
                   selectedSiteId={selectedSiteId}
                   state={state}
                 />
-                <PlacementPolicyDetails state={state} />
+                <details className="placement-policy-disclosure placement-disclosure">
+                  <summary>
+                    <CaretRightIcon aria-hidden="true" size={18} />
+                    Placement rules
+                  </summary>
+                  <PlacementPolicyDetails state={state} />
+                </details>
               </>
             ) : activeDetailTab === 'manual' ? (
               <div className="placement-manual-grid">
@@ -830,12 +807,11 @@ export function EventPlacementWorkspace({
                   <PlacementChangeSummary summary={changeSummary} />
                   {plan.status === 'unserved' ? (
                     <p className="field-error">
-                      This preview leaves an active zone uncovered and cannot be
-                      applied.
+                      A zone is uncovered. This preview cannot be applied.
                     </p>
                   ) : planExpired ? (
                     <p className="field-error">
-                      This preview expired. Close this review and create a new
+                      Preview expired. Close this review and create a new
                       preview.
                     </p>
                   ) : null}
@@ -846,14 +822,14 @@ export function EventPlacementWorkspace({
                   className="field-label"
                   htmlFor="placement-confirmation-reason"
                 >
-                  Reason for this change
+                  Reason
                 </label>
                 <textarea
                   aria-describedby="placement-confirmation-reason-help"
                   id="placement-confirmation-reason"
                   maxLength={1000}
                   onChange={(event) => setReason(event.target.value)}
-                  placeholder="Record why this placement change is necessary."
+                  placeholder="Why is this change needed?"
                   rows={3}
                   value={reason}
                 />
@@ -898,7 +874,7 @@ function PlacementStateRibbon({ state }: { state: AuthorPlacementState }) {
         : belowTarget
           ? `${state.metrics.activeAssignmentCount} of ${state.metrics.targetAssignmentCount} target events are placed.`
           : unresolvedFailure
-            ? 'The latest rotation failed and has not been replaced by a successful plan.'
+            ? 'The latest rotation failed. Create a new preview.'
             : 'Every active zone meets minimum coverage.';
   return (
     <section
@@ -954,7 +930,7 @@ function CoverageValidation({
     plan.validation.separation.blockedSites.length + plan.exceptions.length;
   return (
     <section aria-labelledby="placement-validation-heading">
-      <h4 id="placement-validation-heading">Coverage checks</h4>
+      <h4 id="placement-validation-heading">Coverage</h4>
       <p className="placement-validation__summary">
         {unservedCount > 0
           ? `${unservedCount} active zone${unservedCount === 1 ? '' : 's'} remain uncovered.`
@@ -985,9 +961,10 @@ function CoverageValidation({
           })}
         </ul>
         {detailCount > 0 ? (
-          <details className="placement-validation__details">
+          <details className="placement-validation__details placement-disclosure">
             <summary>
-              {detailCount} separation or policy detail
+              <CaretRightIcon aria-hidden="true" size={18} />
+              {detailCount} placement issue
               {detailCount === 1 ? '' : 's'}
             </summary>
             {plan.validation.separation.blockedSites.length > 0 ? (
@@ -1156,11 +1133,6 @@ function AssignmentComparison({
           <h3 id="placement-comparison-heading">
             {plan ? 'What will change' : 'Current assignments'}
           </h3>
-          <p>
-            {plan
-              ? 'Compare each live assignment with the proposed campus site.'
-              : 'These assignments are currently visible to players.'}
-          </p>
         </div>
         {plan ? (
           <span>Preview expires {formatDateTime(plan.validUntil)}</span>
@@ -1170,22 +1142,24 @@ function AssignmentComparison({
         <StatusMessage tone="empty">
           <p>
             {plan
-              ? 'This preview contains no assignments. Review the coverage checks to see why it cannot be applied.'
-              : 'No events are currently placed. Create a coverage preview to propose assignments.'}
+              ? 'No assignments proposed. Check coverage for details.'
+              : 'No events placed. Create a preview to get started.'}
           </p>
         </StatusMessage>
       ) : (
         <div className="placement-table-scroll">
           <table>
             <caption className="sr-only">
-              Current and proposed event placements
+              {plan
+                ? 'Current and proposed event placements'
+                : 'Current event placements'}
             </caption>
             <thead>
               <tr>
                 <th>Event</th>
                 <th>Current site</th>
-                <th>Proposed site</th>
-                <th>Change</th>
+                {plan ? <th>Proposed site</th> : null}
+                {plan ? <th>Change</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -1204,27 +1178,29 @@ function AssignmentComparison({
                 return (
                   <tr key={eventId}>
                     <th scope="row">
-                      {eventNames.get(eventId) ?? 'Unknown portable event'}
+                      {eventNames.get(eventId) ?? 'Unknown event'}
                     </th>
                     <td data-label="Current site">
                       {current
                         ? (siteNames.get(current.siteId) ?? 'Unknown site')
                         : 'Not assigned'}
                     </td>
-                    <td data-label="Previewed site">
-                      {plan === null
-                        ? 'No preview'
-                        : proposed
+                    {plan ? (
+                      <td data-label="Proposed site">
+                        {proposed
                           ? (siteNames.get(proposed.siteId) ?? 'Unknown site')
                           : 'Not proposed'}
-                    </td>
-                    <td data-label="Change">
-                      <span
-                        className={`placement-change placement-change--${change.tone}`}
-                      >
-                        {change.label}
-                      </span>
-                    </td>
+                      </td>
+                    ) : null}
+                    {plan ? (
+                      <td data-label="Change">
+                        <span
+                          className={`placement-change placement-change--${change.tone}`}
+                        >
+                          {change.label}
+                        </span>
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}
@@ -1255,7 +1231,6 @@ function CoverageAndSites({
       <div className="placement-section-heading">
         <div>
           <h3 id="placement-sites-heading">Coverage and sites</h3>
-          <p>Review every coverage zone and campus placement site.</p>
         </div>
       </div>
       <div className="placement-site-register__grid">
@@ -1297,12 +1272,12 @@ function CoverageAndSites({
         </div>
         <div className="placement-table-scroll">
           <table>
-            <caption>Reviewed candidate sites</caption>
+            <caption>Reviewed sites</caption>
             <thead>
               <tr>
                 <th>Site</th>
                 <th>Zone</th>
-                <th>Placement state</th>
+                <th>Status</th>
                 <th>
                   <span className="sr-only">Map action</span>
                 </th>
@@ -1324,7 +1299,7 @@ function CoverageAndSites({
                     {state.zones.find((zone) => zone.id === site.zoneId)
                       ?.name ?? 'Unknown zone'}
                   </td>
-                  <td data-label="Placement state">
+                  <td data-label="Status">
                     {siteStateLabels(site.id, state, plan).join(', ')}
                   </td>
                   <td data-label="Map action">
@@ -1354,10 +1329,10 @@ function PlacementPolicyDetails({ state }: { state: AuthorPlacementState }) {
     >
       <div className="placement-section-heading">
         <div>
-          <h3 id="placement-rules-heading">Placement rules</h3>
-          <p>Server-owned limits used to create and validate every preview.</p>
+          <h3 className="sr-only" id="placement-rules-heading">
+            Placement rules
+          </h3>
         </div>
-        <span className="status-badge status-badge--info">Server checked</span>
       </div>
       <dl className="placement-policy__values">
         <div>
@@ -1385,8 +1360,11 @@ function PlacementPolicyDetails({ state }: { state: AuthorPlacementState }) {
           <dd>{state.policy.previewTtlMinutes} min</dd>
         </div>
       </dl>
-      <details className="placement-technical-details">
-        <summary>Technical details</summary>
+      <details className="placement-technical-details placement-disclosure">
+        <summary>
+          <CaretRightIcon aria-hidden="true" size={18} />
+          Plan details
+        </summary>
         <dl>
           <div>
             <dt>State version</dt>
@@ -1456,12 +1434,10 @@ function TemporaryOverride({
     >
       <div>
         <h3 id="placement-override-heading">Temporary override</h3>
-        <p>
-          Make a time-limited operational change outside the normal preview.
-        </p>
+        <p>Pause rotation, pin an event, or exclude a site.</p>
       </div>
       <label className="field-label" htmlFor="placement-override-kind">
-        Override type
+        Action
       </label>
       <select
         id="placement-override-kind"
@@ -1477,7 +1453,7 @@ function TemporaryOverride({
           {overrideChoice === 'pin' ? (
             <>
               <label className="field-label" htmlFor="placement-override-event">
-                Portable event
+                Event
               </label>
               <select
                 id="placement-override-event"
@@ -1493,7 +1469,7 @@ function TemporaryOverride({
             </>
           ) : null}
           <label className="field-label" htmlFor="placement-override-site">
-            Reviewed site
+            Site
           </label>
           <select
             id="placement-override-site"
@@ -1511,7 +1487,7 @@ function TemporaryOverride({
         </>
       ) : null}
       <label className="field-label" htmlFor="placement-override-duration">
-        Duration in hours
+        Duration (hours)
       </label>
       <input
         aria-describedby={`${helpId}${error ? ` ${errorId}` : ''}`}
@@ -1524,7 +1500,7 @@ function TemporaryOverride({
         value={durationHours}
       />
       <p className="field-help" id={helpId}>
-        Maximum for this override: {maximumDuration} hours.
+        Up to {maximumDuration} hours.
       </p>
       {error ? (
         <p className="field-error" id={errorId}>
@@ -1624,26 +1600,25 @@ function PlacementHistory({
     >
       <div>
         <h3 id="placement-history-heading">Recent history</h3>
-        <p>Review server-recorded plans and restore a previous placement.</p>
       </div>
       {loadState === 'loading' ? (
-        <LoadingState label="Loading recent placement history…" />
+        <LoadingState label="Loading history…" />
       ) : loadState === 'error' ? (
         <StatusMessage tone="error">
           <div>
-            <strong>Recent history unavailable</strong>
+            <strong>History unavailable</strong>
             <p>{error}</p>
             <button
               className="button button--quiet"
               onClick={onRetry}
               type="button"
             >
-              <ArrowClockwiseIcon aria-hidden="true" size={18} /> Retry history
+              <ArrowClockwiseIcon aria-hidden="true" size={18} /> Retry
             </button>
           </div>
         </StatusMessage>
       ) : history.length === 0 ? (
-        <p>No placement plans have been recorded yet.</p>
+        <p>No placement history yet.</p>
       ) : (
         <ol className="placement-record-list placement-record-list--history">
           {history.map((plan) => (
@@ -1716,27 +1691,22 @@ function confirmationFor(
   if (action === null) return null;
   if (action.kind === 'apply') {
     return {
-      confirmLabel: 'Apply placement plan',
-      description: (
-        <p>
-          This replaces current player-visible assignments with the reviewed,
-          server-checked preview.
-        </p>
-      ),
+      confirmLabel: 'Apply plan',
+      description: <p>Players will see the reviewed placements.</p>,
       title: 'Apply this preview?',
       tone: 'primary' as const,
     };
   }
   if (action.kind === 'rollback') {
     return {
-      confirmLabel: 'Create and apply rollback',
+      confirmLabel: 'Restore placement',
       description: (
         <p>
-          The API will validate the historical plan against the current policy
-          and apply it as a new plan. Historical assignments are not reopened.
+          This placement will be checked against current rules and applied as a
+          new plan.
         </p>
       ),
-      title: 'Roll back to this placement?',
+      title: 'Restore this placement?',
       tone: 'danger' as const,
     };
   }
@@ -1745,24 +1715,24 @@ function confirmationFor(
       confirmLabel: 'End override',
       description: (
         <p>
-          Ending this {overrideLabel(action.override.kind).toLowerCase()} may
-          allow the next authoritative plan to change assignments.
+          Ending this {overrideLabel(action.override.kind).toLowerCase()} allows
+          future plans to change these placements.
         </p>
       ),
-      title: 'End this placement override?',
+      title: 'End this override?',
       tone: 'danger' as const,
     };
   }
   if (action.kind === 'pause') {
     return {
-      confirmLabel: 'Pause automation',
+      confirmLabel: 'Pause rotation',
       description: (
         <p>
-          Automatic placement will pause for {action.durationHours} hours.
-          Current valid assignments remain available.
+          Rotation will pause for {action.durationHours} hours. Current
+          placements stay live.
         </p>
       ),
-      title: 'Pause automatic placement?',
+      title: 'Pause automatic rotation?',
       tone: 'primary' as const,
     };
   }
@@ -1786,10 +1756,10 @@ function confirmationFor(
       <p>
         {eventNames.get(action.eventId) ?? 'This portable event'} will be pinned
         to {siteNames.get(action.siteId) ?? 'the selected site'} for{' '}
-        {action.durationHours} hours, subject to server validation.
+        {action.durationHours} hours if placement rules allow.
       </p>
     ),
-    title: 'Create this placement pin?',
+    title: 'Pin this event?',
     tone: 'primary' as const,
   };
 }
@@ -1799,7 +1769,7 @@ function assignmentChange(
   proposed: AuthorPlacementAssignment | undefined,
   hasPreview: boolean,
 ) {
-  if (!hasPreview) return { label: 'Awaiting preview', tone: 'muted' };
+  if (!hasPreview) return { label: 'Current', tone: 'muted' };
   if (!current && proposed)
     return {
       label: proposed.origin === 'pin' ? 'Pinned addition' : 'Add',
@@ -1874,16 +1844,14 @@ function overrideLabel(kind: AuthorPlacementOverride['kind']): string {
 
 function exceptionLabel(code: string): string {
   const labels: Record<string, string> = {
-    cooldown_floor_exception:
-      'A cooldown exception was required to preserve mandatory zone coverage.',
-    invalid_pin: 'An active pin no longer satisfies placement policy.',
+    cooldown_floor_exception: 'A site was reused early to keep a zone covered.',
+    invalid_pin: 'A pin no longer meets placement rules.',
     no_active_zones: 'No active coverage zones are available.',
-    pin_site_in_cooldown: 'A pinned site is still in its cooldown window.',
-    preferred_coverage_shortfall:
-      'At least one zone is below its preferred assignment count.',
-    target_shortfall: 'The plan could not reach the target assignment count.',
-    too_many_pins: 'Active pins exceed the policy target.',
-    unserved_zone: 'At least one active zone does not meet mandatory coverage.',
+    pin_site_in_cooldown: 'A pinned site is not ready for reuse.',
+    preferred_coverage_shortfall: 'A zone has fewer events than its goal.',
+    target_shortfall: 'Fewer events than the placement target.',
+    too_many_pins: 'Too many pinned events.',
+    unserved_zone: 'An active zone is uncovered.',
   };
   return labels[code] ?? code.replaceAll('_', ' ');
 }
@@ -1897,14 +1865,12 @@ function formatList(items: string[]): string {
 
 function successMessage(kind: PendingAction['kind']): string {
   return {
-    apply:
-      'Placement plan applied. The reviewed assignments are now live for players.',
-    end_override: 'Placement override ended. The latest live state is shown.',
-    exclude: 'Site exclusion created. The latest live state is shown.',
-    pause: 'Automatic placement paused. The latest live state is shown.',
-    pin: 'Placement pin created. The latest live state is shown.',
-    rollback:
-      'Rollback plan created and applied. The latest live state is shown.',
+    apply: 'Placement plan applied. Assignments are now live.',
+    end_override: 'Override ended.',
+    exclude: 'Site excluded.',
+    pause: 'Automatic rotation paused.',
+    pin: 'Event pinned.',
+    rollback: 'Previous placement restored.',
   }[kind];
 }
 
@@ -1915,16 +1881,14 @@ function previewMessage(
   if (plan.status === 'unserved') {
     return {
       title: 'No safe plan found',
-      message:
-        'No changes can be applied. Review the failed coverage checks and policy details below.',
+      message: 'Check coverage and placement issues before trying again.',
       tone: 'error',
     };
   }
   if (!previewHasChanges(summary)) {
     return {
       title: 'No changes proposed',
-      message:
-        'Current assignments already match the server-checked plan. Nothing has changed for players.',
+      message: 'Current assignments already match this preview.',
       tone: 'info',
     };
   }
@@ -1932,14 +1896,14 @@ function previewMessage(
     return {
       title: 'Plan needs review',
       message:
-        'Minimum coverage is met, but the plan includes policy exceptions. Nothing has changed for players.',
+        'Minimum coverage met. Review the placement issues before applying.',
       tone: 'warning',
     };
   }
   const changeCount = summary.add + summary.move + summary.remove;
   return {
     title: 'Plan ready to review',
-    message: `${changeCount} placement change${changeCount === 1 ? '' : 's'} proposed. Nothing has changed for players.`,
+    message: `${changeCount} change${changeCount === 1 ? '' : 's'} proposed. Apply to make them live.`,
     tone: 'success',
   };
 }
@@ -1997,4 +1961,10 @@ function formatDateTime(value: string): string {
   } catch {
     return 'Time unavailable';
   }
+}
+
+function placementErrorDetail(error: AuthorApiError): string {
+  return error.failure === 'unavailable'
+    ? 'Placement is unavailable. Check your connection and try again.'
+    : error.detail;
 }

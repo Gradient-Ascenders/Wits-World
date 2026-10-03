@@ -1798,6 +1798,10 @@ test('placement workspace stages preview, campus map, and secondary details acro
   const authorState = await installAuthorApi(page);
   const consoleErrors = monitorConsoleErrors(page);
 
+  await page.route('**/api/v1/author/event-placement', async (route) => {
+    await json(route, { ...placementStateFixture(), overrides: [] });
+  });
+
   await page.setViewportSize({ height: 1000, width: 1440 });
   await page.goto('/author/placement');
   await expect(
@@ -1818,7 +1822,7 @@ test('placement workspace stages preview, campus map, and secondary details acro
     page.getByRole('button', { name: 'Reset map bearing and pitch' }),
   ).toBeHidden();
   await expect(
-    page.getByRole('table', { name: 'Current and proposed event placements' }),
+    page.getByRole('table', { name: 'Current event placements' }),
   ).toBeVisible();
   await expect(page.getByRole('table', { name: 'Coverage zones' })).toHaveCount(
     0,
@@ -1827,11 +1831,78 @@ test('placement workspace stages preview, campus map, and secondary details acro
   await expect(
     page.getByRole('table', { name: 'Coverage zones' }),
   ).toBeVisible();
+  const coverageTable = page.getByRole('table', { name: 'Coverage zones' });
+  const coverageLayout = await coverageTable.evaluate((table) => {
+    const container = table.closest('.placement-table-scroll')!;
+    return {
+      containerHeight: container.getBoundingClientRect().height,
+      containerWidth: container.clientWidth,
+      scrollWidth: container.scrollWidth,
+      tableHeight: table.getBoundingClientRect().height,
+    };
+  });
+  expect(coverageLayout.scrollWidth).toBeLessThanOrEqual(
+    coverageLayout.containerWidth + 1,
+  );
+  expect(coverageLayout.containerHeight).toBeLessThanOrEqual(
+    coverageLayout.tableHeight + 1,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath('placement-coverage-desktop.png'),
+    fullPage: true,
+  });
+  const placementRules = page.locator('.placement-policy-disclosure > summary');
+  await expect(
+    page.getByText('Minimum separation', { exact: true }),
+  ).toBeHidden();
+  await placementRules.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByText('Minimum separation', { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('placement-rules-open-desktop.png'),
+    fullPage: true,
+  });
+  const planDetails = page.locator('.placement-technical-details > summary');
+  await expect(page.getByText('State version', { exact: true })).toBeHidden();
+  await planDetails.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('State version', { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('placement-plan-details-open-desktop.png'),
+    fullPage: true,
+  });
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('State version', { exact: true })).toBeHidden();
+  await placementRules.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByText('Minimum separation', { exact: true }),
+  ).toBeHidden();
+  await page.getByRole('tab', { name: 'Manual controls' }).click();
+  const overridesHeading = (await page
+    .getByRole('heading', { name: 'Active overrides' })
+    .boundingBox())!;
+  const overridesMessage = (await page
+    .getByText('No active pauses, pins, or site exclusions.', { exact: true })
+    .boundingBox())!;
+  expect(
+    overridesMessage.y - overridesHeading.y - overridesHeading.height,
+  ).toBeLessThanOrEqual(16);
+  await page.screenshot({
+    path: testInfo.outputPath('placement-manual-empty-desktop.png'),
+    fullPage: true,
+  });
   await page.getByRole('tab', { name: 'Changes' }).click();
+  await page.screenshot({
+    path: testInfo.outputPath('placement-current-desktop.png'),
+    fullPage: true,
+  });
   await expectNoHorizontalOverflow(page);
 
   const preview = page.getByRole('button', {
-    name: 'Create coverage preview',
+    name: 'Create preview',
   });
   authorState.placementPreviewDelayMs = 800;
   await preview.focus();
@@ -1846,7 +1917,7 @@ test('placement workspace stages preview, campus map, and secondary details acro
   await expect(
     page.getByRole('button', { name: 'Review and apply' }),
   ).toBeFocused();
-  const policyDetails = page.getByText(/separation or policy details/u);
+  const policyDetails = page.getByText(/^\d+ placement issues$/u);
   await expect(policyDetails).toBeVisible();
   await policyDetails.click();
   const blockedSites = page.getByRole('list', {
@@ -1915,9 +1986,9 @@ test('placement workspace stages preview, campus map, and secondary details acro
   expect(controls.y).toBeLessThan(map.y);
   expect(map.y).toBeLessThan(details.y);
   await expect(
-    page.getByRole('button', { name: 'Create coverage preview' }),
+    page.getByRole('button', { name: 'Create preview' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Create coverage preview' }).click();
+  await page.getByRole('button', { name: 'Create preview' }).click();
   await expect(page.getByText('Plan needs review')).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Review and apply' }),

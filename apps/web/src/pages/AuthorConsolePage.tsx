@@ -131,6 +131,7 @@ export default function AuthorConsolePage({
           'review',
           'playerReview',
           'analytics',
+          'placement',
         ].includes(route.section) ? (
           <h1 id="author-console-title" className="sr-only">
             Author console

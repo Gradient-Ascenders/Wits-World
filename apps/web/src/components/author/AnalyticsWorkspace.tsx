@@ -134,6 +134,23 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
       <header className="analytics-header">
         <div>
           <h2 id="analytics-title">Analytics</h2>
+          <nav className="analytics-tabs" aria-label="Analytics reports">
+            {(Object.keys(reportNames) as AnalyticsReport[]).map((tab) => (
+              <Link
+                key={tab}
+                href={authorPaths.analyticsReport(tab)}
+                aria-current={tab === report ? 'page' : undefined}
+                onFocus={(event) =>
+                  event.currentTarget.scrollIntoView?.({
+                    block: 'nearest',
+                    inline: 'nearest',
+                  })
+                }
+              >
+                {reportNames[tab]}
+              </Link>
+            ))}
+          </nav>
         </div>
         <div className="analytics-period">
           <SelectField
@@ -203,23 +220,6 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
           )}
         </form>
       )}
-      <nav className="analytics-tabs" aria-label="Analytics reports">
-        {(Object.keys(reportNames) as AnalyticsReport[]).map((tab) => (
-          <Link
-            key={tab}
-            href={authorPaths.analyticsReport(tab)}
-            aria-current={tab === report ? 'page' : undefined}
-            onFocus={(event) =>
-              event.currentTarget.scrollIntoView?.({
-                block: 'nearest',
-                inline: 'nearest',
-              })
-            }
-          >
-            {reportNames[tab]}
-          </Link>
-        ))}
-      </nav>
       {mounted.map((tab) => (
         <div key={tab} hidden={report !== tab}>
           {tab === 'overview' ? (
