@@ -25,6 +25,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 - Publish only selected card presentation, earned achievements and aggregate daily activity; exclude provider identity, inventory, owned-copy identifiers and exact activity timestamps.
 - Loading, retry, expired authentication, empty collection, unavailable profiles, ownership changes and save conflicts have visible recovery.
 - Avatar uploads are cropped locally and decoded, resized and re-encoded by the API. Keyboard editing, focus restoration, touch targets, reduced motion and keyboard-accessible activity dates and counts are required.
+- Picture controls use a wrapping action row with space between Choose picture and Remove picture. After upload, a large circular crop window dims the image outside the saved area. Mouse and touch dragging or arrow keys reposition the image; one zoom slider, zoom buttons and Reset replace the position sliders. Crop bounds prevent empty edges. The editor header and save footer remain reachable while the form scrolls.
 - The GitHub-inspired activity calendar uses Sunday-first weeks, month and weekday labels, blue count intensity, and hover/focus/touch tooltips. Inline date captions are omitted. The calendar is the sole activity view; each date exposes its count to screen readers and supports arrow-key navigation. Scroll padding keeps edge cells and their focus outlines inside the graph.
 - Achievement badges open a focused dialog with enlarged artwork and the supplied requirement; unearned badges show actual progress. Earned badges show the player who earned them, without invented tiers, dates or history. Escape, outside click and the close button dismiss the dialog and restore focus.
 - The bio is edited in Edit profile; no separate bio prompt or owner preview link appears in the header.
+
+The profile picture editor behavior was documented with assistance from Codex[GPT-6].

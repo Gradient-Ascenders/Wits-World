@@ -20,6 +20,7 @@ import { CardThumbnail } from '../cards/CollectibleCard';
 import { CardPresentationDialog } from '../cards/CardPresentationDialog';
 import { ProfileAvatar } from './PlayerShowcase';
 import { StatusEmojiPicker } from './StatusEmojiPicker';
+import { AvatarCrop } from './AvatarCrop';
 
 function editFromProfile(profile: PlayerProfile): ProfileEdit {
   return {
@@ -155,51 +156,56 @@ export function ProfileEditor({
                       avatarDataUrl: edit.avatarDataUrl,
                     }}
                   />
-                  <div>
-                    <label className="button button--quiet profile-photo-upload">
-                      Choose picture
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (!file) return;
-                          event.target.value = '';
-                          if (
-                            !['image/jpeg', 'image/png', 'image/webp'].includes(
-                              file.type,
-                            ) ||
-                            file.size > 8 * 1024 * 1024
-                          ) {
-                            setPhotoError(
-                              'Choose a JPEG, PNG or WebP image under 8 MB.',
-                            );
-                            return;
-                          }
-                          setPhotoError('');
-                          setPhotoBusy(true);
-                          setPhoto(file);
-                        }}
-                      />
-                    </label>
-                    {edit.avatarDataUrl ? (
-                      <button
-                        type="button"
-                        className="showcase-text-action"
-                        onClick={() => {
-                          setPhoto(null);
-                          change('avatarDataUrl', null);
-                        }}
-                      >
-                        Remove picture
-                      </button>
-                    ) : null}
+                  <div className="profile-photo-details">
+                    <div className="profile-photo-actions">
+                      <label className="button button--quiet profile-photo-upload">
+                        Choose picture
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (!file) return;
+                            event.target.value = '';
+                            if (
+                              ![
+                                'image/jpeg',
+                                'image/png',
+                                'image/webp',
+                              ].includes(file.type) ||
+                              file.size > 8 * 1024 * 1024
+                            ) {
+                              setPhotoError(
+                                'Choose a JPEG, PNG or WebP image under 8 MB.',
+                              );
+                              return;
+                            }
+                            setPhotoError('');
+                            setPhotoBusy(true);
+                            setPhoto(file);
+                          }}
+                        />
+                      </label>
+                      {edit.avatarDataUrl ? (
+                        <button
+                          type="button"
+                          className="showcase-text-action"
+                          onClick={() => {
+                            setPhoto(null);
+                            change('avatarDataUrl', null);
+                          }}
+                        >
+                          Remove picture
+                        </button>
+                      ) : null}
+                    </div>
                     <p>JPEG, PNG or WebP · up to 8 MB</p>
                   </div>
                 </div>
                 {photo ? (
                   <AvatarCrop
                     file={photo}
+                    disabled={busy}
                     onReady={(data) => {
                       change('avatarDataUrl', data);
                       setPhotoBusy(false);
@@ -393,112 +399,6 @@ export function ProfileEditor({
       </section>
     </div>,
     document.body,
-  );
-}
-
-function AvatarCrop({
-  file,
-  onReady,
-  onError,
-}: {
-  file: File;
-  onReady: (data: string) => void;
-  onError: () => void;
-}) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [zoom, setZoom] = useState(1);
-  const [horizontal, setHorizontal] = useState(50);
-  const [vertical, setVertical] = useState(50);
-  const readyRef = useRef(onReady);
-  readyRef.current = onReady;
-  const errorRef = useRef(onError);
-  errorRef.current = onError;
-  useEffect(() => {
-    let active = true;
-    setImage(null);
-    setZoom(1);
-    setHorizontal(50);
-    setVertical(50);
-    const source = URL.createObjectURL(file);
-    const photo = new Image();
-    photo.onload = () => {
-      if (active) setImage(photo);
-    };
-    photo.onerror = () => {
-      if (active) errorRef.current();
-    };
-    photo.src = source;
-    return () => {
-      active = false;
-      URL.revokeObjectURL(source);
-    };
-  }, [file]);
-  useEffect(() => {
-    if (!image || !canvas.current) return;
-    const context = canvas.current.getContext('2d');
-    if (!context) {
-      errorRef.current();
-      return;
-    }
-    const size = Math.min(image.naturalWidth, image.naturalHeight) / zoom;
-    context.fillStyle = '#0d1b31';
-    context.fillRect(0, 0, 256, 256);
-    context.drawImage(
-      image,
-      ((image.naturalWidth - size) * horizontal) / 100,
-      ((image.naturalHeight - size) * vertical) / 100,
-      size,
-      size,
-      0,
-      0,
-      256,
-      256,
-    );
-    readyRef.current(canvas.current.toDataURL('image/jpeg', 0.82));
-  }, [image, zoom, horizontal, vertical]);
-  return (
-    <div className="avatar-crop">
-      <canvas
-        ref={canvas}
-        width={256}
-        height={256}
-        aria-label="Profile picture crop preview"
-      />
-      <div>
-        <label>
-          Zoom
-          <input
-            type="range"
-            min={1}
-            max={3}
-            step={0.05}
-            value={zoom}
-            onChange={(event) => setZoom(Number(event.target.value))}
-          />
-        </label>
-        <label>
-          Horizontal position
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={horizontal}
-            onChange={(event) => setHorizontal(Number(event.target.value))}
-          />
-        </label>
-        <label>
-          Vertical position
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={vertical}
-            onChange={(event) => setVertical(Number(event.target.value))}
-          />
-        </label>
-      </div>
-    </div>
   );
 }
 

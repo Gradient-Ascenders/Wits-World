@@ -79,6 +79,182 @@ const achievements = [
   description: description as string,
 }));
 
+test.describe('profile picture crop', () => {
+  test.use({ hasTouch: true });
+
+  test('supports dragging, keyboard positioning, zoom, reset and removal across sizes', async ({
+    page,
+  }) => {
+    let profile = buildPlayerProfile({ isPublic: true, version: 1 });
+    let saved: ProfileEdit | null = null;
+    await page.route('http://127.0.0.1:3999/api/v1/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/auth/me'))
+        return route.fulfill({
+          json: {
+            connectionStrategy: 'auth0',
+            id: '17300000-0000-4000-8000-000000000001',
+            lifecycleStatus: 'active',
+            playerName: profile.playerName,
+            playerNameSetupRequired: false,
+            role: 'player',
+            requestId: 'crop-owner',
+          },
+        });
+      if (path.endsWith('/profiles/me')) {
+        if (route.request().method() === 'PUT') {
+          saved = route.request().postDataJSON() as ProfileEdit;
+          profile = {
+            ...profile,
+            avatarDataUrl: saved.avatarDataUrl,
+            version: (profile.version ?? 0) + 1,
+          };
+        }
+        return route.fulfill({
+          json: { ...profile, requestId: 'crop-profile' },
+        });
+      }
+      return route.fulfill({
+        status: 404,
+        json: { detail: 'Fixture route unavailable' },
+      });
+    });
+    await page.goto('/profile');
+    const fixture = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 320;
+      const context = canvas.getContext('2d')!;
+      const gradient = context.createLinearGradient(0, 0, 640, 320);
+      gradient.addColorStop(0, '#e0c46c');
+      gradient.addColorStop(1, '#2a6bff');
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, 640, 320);
+      return canvas.toDataURL('image/png').split(',')[1]!;
+    });
+    for (const width of [1440, 768, 390, 320]) {
+      await page.setViewportSize({ width, height: width === 320 ? 568 : 1000 });
+      await page
+        .getByRole('button', { name: 'Edit profile', exact: true })
+        .click();
+      await page.getByLabel('Choose picture').setInputFiles({
+        name: 'landscape.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from(fixture, 'base64'),
+      });
+      const stage = page.getByRole('button', { name: 'Move profile picture' });
+      await expect(stage).toBeEnabled();
+      await stage.scrollIntoViewIfNeeded();
+      await expect(page.getByLabel('Horizontal position')).toHaveCount(0);
+      const preview = page.locator('.profile-photo-field img');
+      const initial = await preview.getAttribute('src');
+      const box = (await stage.boundingBox())!;
+      expect(box.width).toBeGreaterThan(240);
+      expect(box.height).toBeGreaterThan(180);
+      const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      await page.mouse.move(center.x, center.y);
+      await page.mouse.down();
+      await page.mouse.move(center.x + 35, center.y, { steps: 5 });
+      await page.mouse.up();
+      await expect(preview).not.toHaveAttribute('src', initial!);
+      await page.getByRole('button', { name: 'Reset crop' }).click();
+      await expect(preview).toHaveAttribute('src', initial!);
+      await page.getByLabel('Zoom', { exact: true }).fill('1.5');
+      await expect(preview).not.toHaveAttribute('src', initial!);
+      const zoomed = await preview.getAttribute('src');
+      await stage.focus();
+      await page.keyboard.press('ArrowDown');
+      await expect(stage).toBeFocused();
+      await expect(preview).not.toHaveAttribute('src', zoomed!);
+      await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+      await expect(page.getByLabel('Zoom', { exact: true })).toHaveValue('1.6');
+      await page.getByRole('button', { name: 'Zoom out', exact: true }).click();
+      await expect(page.getByLabel('Zoom', { exact: true })).toHaveValue('1.5');
+      if (width <= 390) {
+        await stage.scrollIntoViewIfNeeded();
+        const touchBox = (await stage.boundingBox())!;
+        const x = touchBox.x + touchBox.width / 2;
+        const y = touchBox.y + touchBox.height / 2;
+        const beforeTouch = await preview.getAttribute('src');
+        const session = await page.context().newCDPSession(page);
+        await session.send('Input.dispatchTouchEvent', {
+          type: 'touchStart',
+          touchPoints: [{ x, y }],
+        });
+        await session.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: x - 30, y: y - 20 }],
+        });
+        await session.send('Input.dispatchTouchEvent', {
+          type: 'touchEnd',
+          touchPoints: [],
+        });
+        await session.detach();
+        await expect(preview).not.toHaveAttribute('src', beforeTouch!);
+        await expect(stage).not.toHaveClass(/is-dragging/);
+      }
+      // Clamp an extreme drag so no empty background enters the saved crop.
+      await stage.focus();
+      for (let index = 0; index < 20; index++)
+        await page.keyboard.press('Shift+ArrowRight');
+      expect(
+        await page
+          .locator('.avatar-crop canvas')
+          .evaluate((canvas: HTMLCanvasElement) => {
+            const pixel = canvas
+              .getContext('2d')!
+              .getImageData(0, 0, 1, 1).data;
+            return pixel[0]! + pixel[1]! + pixel[2]!;
+          }),
+      ).toBeGreaterThan(100);
+      await expectNoOverflow(page);
+      await page.getByRole('button', { name: 'Reset crop' }).click();
+      await expect(preview).toHaveAttribute('src', initial!);
+      await stage.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `/tmp/profile-crop-${width}.png` });
+      const close = (await page
+        .getByRole('button', { name: 'Close profile editor' })
+        .boundingBox())!;
+      expect(close.y).toBeGreaterThanOrEqual(0);
+      // Footer stays visible while the taller editor scrolls.
+      const save = page.getByRole('button', { name: 'Save changes' });
+      const footer = (await save.boundingBox())!;
+      expect(footer.y + footer.height).toBeLessThanOrEqual(
+        width === 320 ? 568 : 1000,
+      );
+      const upload = await page.getByLabel('Choose picture').boundingBox();
+      const remove = await page
+        .getByRole('button', { name: 'Remove picture' })
+        .boundingBox();
+      if (Math.abs(upload!.y - remove!.y) < 10)
+        expect(remove!.x - upload!.x - upload!.width).toBeGreaterThanOrEqual(
+          16,
+        );
+      await save.click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      expect((saved as ProfileEdit | null)?.avatarDataUrl).toBe(initial);
+    }
+    await page
+      .getByRole('button', { name: 'Edit profile', exact: true })
+      .click();
+    await page.getByRole('button', { name: 'Remove picture' }).click();
+    await expect(page.locator('.avatar-crop')).toHaveCount(0);
+    await page.getByLabel('Choose picture').setInputFiles({
+      name: 'unreadable.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from('invalid image'),
+    });
+    await expect(page.getByRole('alert')).toContainText(
+      'This image could not be read',
+    );
+    await expect(
+      page.getByRole('button', { name: 'Save changes' }),
+    ).toBeEnabled();
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    expect((saved as ProfileEdit | null)?.avatarDataUrl).toBeNull();
+  });
+});
+
 test('player showcase, editor and visitor view work across screen sizes', async ({
   page,
 }) => {
@@ -313,14 +489,27 @@ test('player showcase, editor and visitor view work across screen sizes', async 
       new URL('../public/cards/quillip.webp', import.meta.url),
     ),
   });
-  await expect(page.getByLabel('Zoom')).toBeVisible();
+  await expect(page.getByLabel('Zoom', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Save changes' }),
   ).toBeEnabled();
-  await page.getByLabel('Zoom').fill('1.5');
+  await page.getByLabel('Zoom', { exact: true }).fill('1.5');
+  const croppedAvatar = await page
+    .locator('.profile-photo-field img')
+    .getAttribute('src');
+  for (const width of [1440, 768, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+    await page
+      .getByRole('dialog', { name: 'Edit profile' })
+      .evaluate((dialog) => {
+        dialog.scrollTop = 0;
+      });
+    await page.screenshot({ path: `/tmp/profile-editor-picture-${width}.png` });
+  }
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(profile.avatarDataUrl).toMatch(/^data:image\/jpeg;base64,/);
+  expect(profile.avatarDataUrl).toBe(croppedAvatar);
   await expect(page.locator('.showcase-avatar img')).toBeVisible();
   await page.getByRole('button', { name: 'Edit showcase' }).click();
   const pickerInspection = page.getByRole('button', {
