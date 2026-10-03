@@ -21,8 +21,7 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
 import {
-  BattleResultColumns,
-  BattleResultSummary,
+  BattleHistoryList,
   formatMatchDate,
   mergeBattleHistory,
   type BattleHistoryItem,
@@ -458,14 +457,11 @@ function RecentResults({ state }: { state: RecentResultsState }) {
               Some recent results are unavailable.
             </p>
           ) : null}
-          <BattleResultColumns />
-          <ol aria-label="Recent battle results" className="recent-match-list">
-            {state.battles.map((battle) => (
-              <li key={`${battle.kind}-${battle.match.matchId}`}>
-                <BattleResultSummary battle={battle} compact headingLevel={3} />
-              </li>
-            ))}
-          </ol>
+          <BattleHistoryList
+            battles={state.battles}
+            headingLevel={3}
+            label="Recent battle results"
+          />
         </>
       )}
     </section>

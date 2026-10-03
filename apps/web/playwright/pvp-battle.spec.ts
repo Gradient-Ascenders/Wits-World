@@ -144,6 +144,9 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   );
 
   await routeCurrentPlayer(page);
+  await page.route('**/api/v1/events', (route) =>
+    json(route, { events: [], requestId: 'pvp-browser-events' }),
+  );
   await page.route('**/api/v1/decks', (route) =>
     json(route, { decks: [deck], requestId: 'pvp-browser-decks' }),
   );
@@ -433,12 +436,25 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     ).toBeVisible();
     await expect(page.getByText('Won', { exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page);
-    if (viewport.label === '1440') {
-      await page.locator('.pvp-hub').screenshot({
-        path: path.join(screenshotsDirectory, '1440-pvp-history.png'),
-        style: '.skip-link, .primary-navigation { display: none !important; }',
-      });
-    }
+    const history = page.getByRole('list', {
+      name: 'Completed player battles',
+    });
+    await expect(history.getByText('Won', { exact: true })).toBeVisible();
+    await expect(
+      history.getByRole('link', { name: 'View battle' }),
+    ).toHaveAttribute('href', `/matches/pvp/${pvpHistorySummary().matchId}`);
+    await expect(
+      history.getByRole('link', { name: 'View battle' }),
+    ).toHaveAccessibleDescription(
+      new RegExp(pvpHistorySummary().opponent.playerName),
+    );
+    await page.locator('.pvp-hub').screenshot({
+      path: path.join(
+        screenshotsDirectory,
+        `${viewport.label}-pvp-history.png`,
+      ),
+      style: '.skip-link, .primary-navigation { display: none !important; }',
+    });
 
     await page.getByRole('tab', { name: 'Active 1' }).click();
     await expect(

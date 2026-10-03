@@ -402,7 +402,7 @@ describe('asynchronous player battle lobby', () => {
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
     await user.click(await screen.findByRole('tab', { name: 'History 4' }));
 
-    expect(screen.getByText('Won in battle')).toBeVisible();
+    expect(screen.getAllByText('Won')).toHaveLength(3);
     expect(screen.getByText('You forfeited')).toBeVisible();
     expect(screen.getByText('Opponent turn deadline expired')).toBeVisible();
     expect(screen.getByText('Opponent became unavailable')).toBeVisible();

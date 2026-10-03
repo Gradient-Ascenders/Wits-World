@@ -36,6 +36,7 @@ import {
   type PvpMatchSummary,
   type PvpPage,
 } from '../api/pvp';
+import { BattleHistoryList } from '../components/matches/MatchResultSummary';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
 import './matches.css';
@@ -879,16 +880,11 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               Your results will appear here.
             </EmptyState>
           ) : (
-            <ol
-              aria-label="Completed player battles"
-              className="pvp-match-list"
-            >
-              {data.history.map((match) => (
-                <li key={match.matchId}>
-                  <HistoryPvpSummary match={match} />
-                </li>
-              ))}
-            </ol>
+            <BattleHistoryList
+              battles={data.history.map((match) => ({ kind: 'player', match }))}
+              headingLevel={3}
+              label="Completed player battles"
+            />
           )}
           {data.historyNextCursor ? (
             <LoadMoreButton
@@ -1296,31 +1292,6 @@ function ActivePvpSummary({ match }: { match: PvpMatchSummary }) {
   );
 }
 
-function HistoryPvpSummary({ match }: { match: PvpHistorySummary }) {
-  return (
-    <article
-      className={`pvp-match-summary pvp-match-summary--${match.outcome}`}
-    >
-      <div className="pvp-match-summary__heading">
-        <div>
-          <h3>{match.opponent.playerName}</h3>
-          <p>{completionReasonLabel(match.completionReason, match.outcome)}</p>
-        </div>
-        <span className="pvp-status-label">
-          {match.outcome === 'win' ? 'Won' : 'Lost'}
-        </span>
-      </div>
-      <time dateTime={match.completedAt}>{formatDate(match.completedAt)}</time>
-      <Link
-        className="button button--quiet"
-        href={`/matches/pvp/${match.matchId}`}
-      >
-        View battle
-      </Link>
-    </article>
-  );
-}
-
 function EmptyState({ children, title }: { children: string; title: string }) {
   return (
     <div className="pvp-empty-state">
@@ -1491,23 +1462,6 @@ function cancellationReconciliationMessage(invitation: PvpInvitation) {
   if (invitation.status === 'invalidated')
     return 'The challenge became unavailable before cancellation completed.';
   return 'Challenge status updated.';
-}
-
-function completionReasonLabel(
-  reason: PvpHistorySummary['completionReason'],
-  outcome: 'loss' | 'win',
-) {
-  if (reason === 'defeat')
-    return outcome === 'win' ? 'Won in battle' : 'Lost in battle';
-  if (reason === 'account_deletion_forfeit')
-    return outcome === 'win'
-      ? 'Opponent became unavailable'
-      : 'Account became unavailable';
-  if (reason === 'voluntary_resignation')
-    return outcome === 'win' ? 'Opponent forfeited' : 'You forfeited';
-  return outcome === 'win'
-    ? 'Opponent turn deadline expired'
-    : 'Your turn deadline expired';
 }
 
 function errorMessage(

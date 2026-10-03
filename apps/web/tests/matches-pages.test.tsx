@@ -341,7 +341,7 @@ describe('CPU match entry and history', () => {
       <MatchHistoryPage apiBaseUrl={apiBaseUrl} />,
     );
     expect(
-      await screen.findByRole('heading', { name: 'No completed matches yet' }),
+      await screen.findByRole('heading', { name: 'No completed battles yet' }),
     ).toBeVisible();
   });
 
@@ -414,7 +414,7 @@ describe('CPU match entry and history', () => {
     expect(await screen.findByRole('heading', { name: 'CPU' })).toBeVisible();
     expect(screen.getByText('Won')).toBeVisible();
     expect(
-      within(screen.getByRole('listitem')).getByText('Rounds'),
+      within(screen.getByRole('listitem')).getByText('1 round'),
     ).toBeVisible();
     expect(screen.getByRole('link', { name: 'View battle' })).toHaveAttribute(
       'href',
@@ -571,9 +571,6 @@ describe('CPU match entry and history', () => {
       }),
     ).toBeVisible();
     expect(within(newestResult).getByText('Won')).toBeVisible();
-    expect(
-      within(newestResult).getByLabelText('Not available'),
-    ).toHaveTextContent('—');
     const resultLinks = within(recent).getAllByRole('link', {
       name: 'View battle',
     });
