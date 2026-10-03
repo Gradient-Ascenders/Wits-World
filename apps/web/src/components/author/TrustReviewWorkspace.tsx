@@ -48,7 +48,7 @@ import {
   type WritableTrustRestrictionScope,
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
-import { LoadingState } from '../LoadingState';
+import { AuthorLoadingState } from './AuthorLoadingState';
 import { StateIcon, StatusMessage } from '../StatusMessage';
 import { AuthorConfirmationDialog } from './AuthorConfirmationDialog';
 import { authorErrorDetail } from './author-error-copy';
@@ -502,7 +502,7 @@ export function TrustReviewWorkspace({
             Back to case queue
           </Link>
           {detailState === 'loading' ? (
-            <LoadingState label="Loading case details…" />
+            <AuthorLoadingState label="Loading case details…" />
           ) : null}
           {detailState === 'error' ? (
             <CaseError error={detailError} onReload={() => void loadDetail()} />
@@ -560,7 +560,8 @@ function QueueContents({
   onOpen: (caseId: string) => void;
   state: LoadState;
 }) {
-  if (state === 'loading') return <LoadingState label="Loading case queue…" />;
+  if (state === 'loading')
+    return <AuthorLoadingState label="Loading case queue…" />;
   if (state === 'error') {
     return (
       <section
@@ -1477,14 +1478,7 @@ function CollectionFeedback<T>({
         {collection.announcement}
       </p>
       {collection.state === 'loading' ? (
-        <div
-          aria-label={`Loading complete ${label}s`}
-          className="trust-collection-loading"
-          role="status"
-        >
-          <span />
-          <span />
-        </div>
+        <AuthorLoadingState label={`Loading complete ${label}s…`} />
       ) : null}
       {collection.state === 'error' ? (
         <StatusMessage tone="error">

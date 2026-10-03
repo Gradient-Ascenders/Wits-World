@@ -1,0 +1,55 @@
+.author-loading-state.state-message.state-message {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+  min-height: 6.5rem;
+  max-width: calc(100vw - 2 * var(--space-4));
+  padding: var(--space-5);
+  text-align: start;
+}
+
+.author-loading-state > .author-loading-state__marker {
+  grid-column: 1;
+  grid-row: 1;
+  width: 2.25rem;
+  height: 3rem;
+}
+
+.author-loading-state.state-message > .author-loading-state__label {
+  grid-column: 2;
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: 1.4;
+}
+
+.author-loading-state.state-message > .author-loading-state__description {
+  grid-column: 2;
+  margin: 0;
+}
+
+.author-loading-state:has(> .author-loading-state__description)
+  > .author-loading-state__label {
+  align-self: end;
+}
+
+.author-loading-state:has(> .author-loading-state__description)
+  > .author-loading-state__marker {
+  grid-row: 1 / span 2;
+}
+
+.author-loading-state__description {
+  align-self: start;
+}
+
+.author-artwork-preview > .author-loading-state {
+  width: 100%;
+  border: 0;
+}
+
+@media (max-width: 30rem) {
+  .author-loading-state.state-message.state-message {
+    column-gap: var(--space-3);
+    padding: var(--space-4);
+  }
+}

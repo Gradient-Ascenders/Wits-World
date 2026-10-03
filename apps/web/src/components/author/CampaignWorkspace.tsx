@@ -11,7 +11,7 @@ import {
 } from '../../date-time';
 import { authorErrorDetail } from './author-error-copy';
 import { StateIcon } from '../StatusMessage';
-import { LoadingState } from '../LoadingState';
+import { AuthorLoadingState } from './AuthorLoadingState';
 import { ArrowLeftIcon, CaretRightIcon, XIcon } from '@phosphor-icons/react';
 import { AuthorSaveBar } from './AuthorSaveBar';
 import { AuthorDateTimePicker } from './AuthorDateTimePicker';
@@ -180,7 +180,9 @@ export function CampaignWorkspace({
   }
 
   if (state === 'loading') {
-    return <LoadingState label="Loading campaigns and available members…" />;
+    return (
+      <AuthorLoadingState label="Loading campaigns and available members…" />
+    );
   }
 
   if (state === 'error') {

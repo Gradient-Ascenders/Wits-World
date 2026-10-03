@@ -1,7 +1,7 @@
 import { createAppDateTimeFormatter } from '../../date-time';
 import { authorErrorDetail } from './author-error-copy';
 import { StateIcon } from '../StatusMessage';
-import { LoadingState } from '../LoadingState';
+import { AuthorLoadingState } from './AuthorLoadingState';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
@@ -91,7 +91,7 @@ export function AuthorHistoryPanel({
       <summary>Review history</summary>
       <div className="author-history__body">
         {state === 'loading' ? (
-          <LoadingState label="Loading review history…" />
+          <AuthorLoadingState label="Loading review history…" />
         ) : null}
         {state === 'error' ? (
           <div

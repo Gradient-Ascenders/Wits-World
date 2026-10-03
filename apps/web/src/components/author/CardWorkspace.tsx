@@ -7,7 +7,7 @@ import { SelectField } from '../fields/SelectField';
 import { SearchField } from '../fields/SearchField';
 import { createAppDateTimeFormatter } from '../../date-time';
 import { StateIcon } from '../StatusMessage';
-import { LoadingState } from '../LoadingState';
+import { AuthorLoadingState } from './AuthorLoadingState';
 import { ArrowLeftIcon, CaretDownIcon, ImageIcon } from '@phosphor-icons/react';
 import { AuthorSaveBar } from './AuthorSaveBar';
 import {
@@ -239,7 +239,7 @@ export function CardWorkspace({
       ) : null}
 
       {state === 'loading' ? (
-        <LoadingState label="Loading card definitions…" />
+        <AuthorLoadingState label="Loading card definitions…" />
       ) : null}
       {state === 'error' ? (
         <div
@@ -1498,13 +1498,13 @@ function ArtworkPreview({
           src={url}
         />
       ) : null}
-      {status !== 'ready' ? (
+      {url && (status === 'waiting' || status === 'loading') ? (
+        <AuthorLoadingState label="Loading artwork preview…" />
+      ) : status !== 'ready' ? (
         <p role="status">
           {!url
             ? 'Enter an http(s) URL or /cards/ path to preview it.'
-            : status === 'error'
-              ? 'Image could not load. Check the URL.'
-              : 'Loading artwork preview…'}
+            : 'Image could not load. Check the URL.'}
         </p>
       ) : null}
     </div>

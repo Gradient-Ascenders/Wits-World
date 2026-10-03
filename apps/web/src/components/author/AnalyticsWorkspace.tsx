@@ -26,6 +26,7 @@ import {
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import { SelectField } from '../fields/SelectField';
+import { AuthorLoadingState } from './AuthorLoadingState';
 import { AnalyticsComparisonChart } from './AnalyticsCharts';
 import {
   authorPaths,
@@ -301,18 +302,7 @@ type ReportState = {
 };
 function ReportFeedback({ state, error, retry }: ReportState) {
   if (state === 'loading')
-    return (
-      <div
-        className="analytics-loading"
-        role="status"
-        aria-label="Loading report"
-      >
-        <div />
-        <div />
-        <div />
-        <span className="sr-only">Loading report…</span>
-      </div>
-    );
+    return <AuthorLoadingState label="Loading report…" />;
   if (state === 'error')
     return (
       <div

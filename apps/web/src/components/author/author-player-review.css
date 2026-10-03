@@ -288,28 +288,6 @@ details.trust-signal-summary {
   color: var(--colour-text-muted);
 }
 
-.trust-collection-loading {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.trust-collection-loading span {
-  height: 0.75rem;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(
-    90deg,
-    rgb(127 139 157 / 12%),
-    rgb(84 168 255 / 22%),
-    rgb(127 139 157 / 12%)
-  );
-  background-size: 200% 100%;
-  animation: trust-loading-shift 1.2s ease-in-out infinite;
-}
-
-.trust-collection-loading span:last-child {
-  width: 68%;
-}
-
 .trust-collection-more {
   width: fit-content;
 }
@@ -404,21 +382,6 @@ details.trust-signal-summary {
 
 .trust-decision__confirmation-state ul {
   padding-inline-start: var(--space-4);
-}
-
-@keyframes trust-loading-shift {
-  from {
-    background-position: 100% 0;
-  }
-  to {
-    background-position: -100% 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .trust-collection-loading span {
-    animation: none;
-  }
 }
 
 .trust-review,

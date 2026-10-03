@@ -8,7 +8,7 @@ import { SelectField } from '../fields/SelectField';
 import { createAppDateTimeFormatter } from '../../date-time';
 import { authorErrorDetail } from './author-error-copy';
 import { StateIcon } from '../StatusMessage';
-import { LoadingState } from '../LoadingState';
+import { AuthorLoadingState } from './AuthorLoadingState';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 
@@ -128,7 +128,7 @@ export function ReviewWorkspace({
       </header>
 
       {state === 'loading' ? (
-        <LoadingState label="Loading submissions…" />
+        <AuthorLoadingState label="Loading submissions…" />
       ) : null}
       {state === 'error' ? (
         <section

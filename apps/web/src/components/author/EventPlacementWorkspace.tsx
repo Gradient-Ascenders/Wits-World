@@ -35,7 +35,7 @@ import {
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import { QuestMarker } from '../branding/QuestMarker';
-import { LoadingState } from '../LoadingState';
+import { AuthorLoadingState } from './AuthorLoadingState';
 import { StatusMessage } from '../StatusMessage';
 import type { MapFactory } from '../exploration/map-provider';
 import { AuthorConfirmationDialog } from './AuthorConfirmationDialog';
@@ -495,7 +495,7 @@ export function EventPlacementWorkspace({
             </div>
           </StatusMessage>
         ) : (
-          <LoadingState label="Loading event placement…" />
+          <AuthorLoadingState label="Loading event placement…" />
         )}
       </section>
     );
@@ -1602,7 +1602,7 @@ function PlacementHistory({
         <h3 id="placement-history-heading">Recent history</h3>
       </div>
       {loadState === 'loading' ? (
-        <LoadingState label="Loading history…" />
+        <AuthorLoadingState label="Loading history…" />
       ) : loadState === 'error' ? (
         <StatusMessage tone="error">
           <div>

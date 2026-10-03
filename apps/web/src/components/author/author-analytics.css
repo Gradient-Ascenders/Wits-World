@@ -350,19 +350,6 @@
   margin: 0;
   color: var(--colour-text-secondary);
 }
-.analytics-loading {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-5) 0;
-}
-.analytics-loading > div {
-  height: 2.5rem;
-  background: var(--colour-surface-elevated);
-  border-radius: var(--radius-sm);
-}
-.analytics-loading > div:first-child {
-  width: 60%;
-}
 .analytics-workspace ::selection {
   background: var(--colour-blue-700);
   color: var(--colour-text-primary);

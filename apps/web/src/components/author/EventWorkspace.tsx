@@ -12,7 +12,7 @@ import {
 } from '../../date-time';
 import { authorErrorDetail } from './author-error-copy';
 import { StateIcon } from '../StatusMessage';
-import { LoadingState } from '../LoadingState';
+import { AuthorLoadingState } from './AuthorLoadingState';
 import {
   ArrowLeftIcon,
   CaretRightIcon,
@@ -336,7 +336,7 @@ export function EventWorkspace({
       <AuthorFeedback message={message} refObject={feedbackRef} />
 
       {state === 'loading' ? (
-        <LoadingState label="Loading authored events…" />
+        <AuthorLoadingState label="Loading authored events…" />
       ) : null}
 
       {state === 'error' ? (
@@ -1833,7 +1833,7 @@ function ChallengeWorkspace({
           ) : null}
         </header>
         {state === 'loading' ? (
-          <LoadingState label="Loading challenge…" />
+          <AuthorLoadingState label="Loading challenge…" />
         ) : null}
         {state === 'error' ? (
           <div className="author-state author-state--error" role="alert">
@@ -1876,7 +1876,7 @@ function ChallengeWorkspace({
         ) : null}
 
         {selected && questionsState === 'loading' ? (
-          <LoadingState label="Loading questions…" />
+          <AuthorLoadingState label="Loading questions…" />
         ) : null}
         {selected && questionsState === 'error' ? (
           <div className="author-state author-state--error" role="alert">
