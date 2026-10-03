@@ -821,7 +821,11 @@ export function BattleBench({
   );
 }
 
-function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
+export function CreatureDetailsPicture({
+  creature,
+}: {
+  creature: MatchCreature;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
   const titleId = useId();

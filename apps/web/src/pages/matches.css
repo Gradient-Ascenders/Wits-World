@@ -6676,3 +6676,453 @@
     justify-content: flex-start;
   }
 }
+
+/* Completed Player Battles read as a report, with the outcome before the moves. */
+.main-content:has(.battle-report) {
+  background: color-mix(
+    in srgb,
+    var(--colour-background-app),
+    var(--colour-background-secondary)
+  );
+}
+
+.battle-report {
+  width: min(100%, 76rem);
+  gap: 0;
+}
+
+.battle-report__panel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.58fr) minmax(0, 1fr);
+  gap: 0 var(--space-6);
+  padding: var(--space-6);
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--colour-blue-300) 55%,
+      var(--colour-background-secondary)
+    );
+  border-radius: var(--radius-lg);
+  background: color-mix(
+    in srgb,
+    var(--colour-navy-850) 75%,
+    var(--colour-background-secondary)
+  );
+}
+
+.battle-report__back {
+  display: inline-flex;
+  width: fit-content;
+  min-height: var(--touch-target-min);
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  color: var(--colour-text-secondary);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.battle-report__back:hover {
+  color: var(--colour-blue-300);
+}
+
+.battle-report .battle-report__outcome {
+  align-self: stretch;
+  padding: var(--space-6) var(--space-6) var(--space-6) 0;
+  border: 0;
+  border-right: 1px solid var(--colour-border-default);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.battle-report__result {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.battle-report__result h1 {
+  margin: 0;
+  font-size: clamp(3rem, 5.2vw, 5rem);
+  line-height: 1.1;
+}
+
+.battle-report__result h1:focus {
+  outline: none;
+}
+
+.battle-report__result svg {
+  flex: 0 0 auto;
+  color: var(--colour-status-danger);
+}
+
+.battle-report__outcome[data-outcome='win'] .battle-report__result svg {
+  color: var(--colour-status-success);
+}
+
+.battle-report__opponent {
+  margin: var(--space-2) 0 0;
+  padding-left: 2.75rem;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+
+.battle-report__reason {
+  margin: var(--space-6) 0 0;
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--colour-border-default);
+  color: var(--colour-text-primary);
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+
+.battle-report .battle-report__facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+}
+
+.battle-report .battle-report__facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.battle-report__facts dt,
+.battle-report__facts dd {
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.battle-report__final-turn {
+  min-width: 0;
+  padding-block: var(--space-2) var(--space-5);
+}
+
+.battle-report__combatants {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-5);
+  row-gap: 0;
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--colour-border-default);
+}
+
+.battle-report__combatant {
+  display: grid;
+  grid-row: span 5;
+  grid-template-rows: subgrid;
+  min-width: 0;
+  color: var(--colour-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.battle-report__combatant + .battle-report__combatant {
+  padding-left: var(--space-5);
+  border-left: 1px solid var(--colour-border-default);
+}
+
+.battle-report__combatant h3 {
+  grid-row: 1;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-lg);
+}
+
+.battle-report__creature-name {
+  grid-row: 2;
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-lg);
+}
+
+.battle-report__portrait {
+  grid-row: 4;
+  align-self: start;
+  display: grid;
+  width: min(100%, 9rem);
+  gap: var(--space-3);
+  perspective: 55rem;
+}
+
+.battle-report__portrait .combatant__sigil {
+  width: 100%;
+  height: 100%;
+}
+
+.battle-report__portrait .card-frame__rarity {
+  font-size: 0.6875rem;
+}
+
+.battle-report__portrait .card-frame__rail {
+  padding-inline: var(--space-2);
+}
+
+.battle-report__hp {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.battle-report__hp > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.battle-report__hp strong {
+  color: var(--colour-text-primary);
+}
+
+.battle-report__hp meter {
+  display: block;
+  width: 100%;
+  height: 0.5rem;
+  border: 1px solid var(--colour-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--colour-border-default);
+}
+
+.battle-report__hp meter::-webkit-meter-bar {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--colour-border-default);
+}
+
+.battle-report__hp meter::-webkit-meter-optimum-value {
+  border-radius: var(--radius-sm);
+  background: var(--colour-status-success);
+}
+
+.battle-report__hp meter::-moz-meter-bar {
+  border-radius: var(--radius-sm);
+  background: var(--colour-status-success);
+}
+
+.battle-report__defeated {
+  grid-row: 5;
+  margin: var(--space-2) 0 0;
+  color: var(--colour-status-danger);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.battle-report__combatant > .battle-report__note {
+  grid-row: 3;
+}
+
+.battle-report__section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.battle-report__section-heading h2,
+.battle-report__card-groups h3,
+.battle-report__turns h3 {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+
+.battle-report__section-heading h2 {
+  font-size: 1.25rem;
+}
+
+.battle-report__final-turn .battle-report__events p {
+  font-size: 1.25rem;
+}
+
+.battle-report .battle-report__facts dt,
+.battle-report .battle-report__facts dd {
+  font-size: var(--text-lg);
+}
+
+.battle-report__section-heading > span,
+.battle-report__note {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-md);
+}
+
+.battle-report__note {
+  margin: 0 0 var(--space-3);
+}
+
+.battle-report__events,
+.battle-report__turns,
+.battle-report__cards {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.battle-report__events p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.battle-report__events .battle-report__effect {
+  margin-top: var(--space-1);
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.battle-report__disclosure {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--colour-border-default);
+}
+
+.battle-report__disclosure > summary {
+  display: flex;
+  min-height: var(--touch-target-min);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block: var(--space-4);
+  color: var(--colour-text-primary);
+  font-size: 1.25rem;
+  font-weight: 700;
+  list-style: none;
+  cursor: pointer;
+}
+
+.battle-report__disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.battle-report__disclosure > summary:hover {
+  color: var(--colour-blue-300);
+}
+
+.battle-report__disclosure > summary > svg {
+  flex: 0 0 auto;
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.battle-report__disclosure[open] > summary > svg {
+  transform: rotate(180deg);
+}
+
+.battle-report__turns {
+  gap: var(--space-5);
+  padding-bottom: var(--space-5);
+}
+
+.battle-report__turns h3 {
+  margin-bottom: var(--space-3);
+  color: var(--colour-text-secondary);
+}
+
+.battle-report__card-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-6);
+  padding-block: var(--space-2) var(--space-5);
+}
+
+.battle-report__card-groups h3 {
+  margin-bottom: var(--space-3);
+}
+
+.battle-report__cards li {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  perspective: 55rem;
+}
+
+.battle-report__cards li > div {
+  display: grid;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+
+.battle-report__cards li > div > span {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.battle-report__cards .combatant__sigil {
+  width: 100%;
+  height: 100%;
+}
+
+.battle-report__cards .card-frame__rail {
+  padding-inline: var(--space-1);
+}
+
+.battle-report__cards .card-frame__rarity {
+  gap: var(--space-1);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.battle-report__power-cards {
+  padding-left: var(--space-4);
+  color: var(--colour-text-secondary);
+}
+
+@media (max-width: 63.99rem) {
+  .battle-report__panel {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-5);
+  }
+
+  .battle-report .battle-report__outcome {
+    padding: 0 0 var(--space-5);
+    border-right: 0;
+    border-bottom: 1px solid var(--colour-border-default);
+  }
+
+  .battle-report__final-turn {
+    padding-top: var(--space-5);
+  }
+
+  .battle-report__reason {
+    margin-top: var(--space-5);
+    padding-top: var(--space-5);
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .battle-report__panel {
+    padding: var(--space-4);
+  }
+
+  .battle-report__combatants {
+    column-gap: var(--space-3);
+  }
+
+  .battle-report__combatant h3 {
+    font-size: var(--text-md);
+  }
+
+  .battle-report__combatant:first-child {
+    padding-right: var(--space-3);
+  }
+
+  .battle-report__combatant + .battle-report__combatant {
+    padding-left: var(--space-3);
+  }
+}

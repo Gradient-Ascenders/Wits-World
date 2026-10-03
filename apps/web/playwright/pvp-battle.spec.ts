@@ -8,7 +8,7 @@ import {
   pvpInvitation,
   pvpMatch,
 } from '../tests/fixtures/pvp';
-import { uuid } from '../tests/fixtures/matches';
+import { historyItem, uuid } from '../tests/fixtures/matches';
 
 const screenshotsDirectory = path.resolve(
   process.cwd(),
@@ -541,12 +541,8 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   await expect(
     page.getByRole('button', { name: 'Forfeiting…' }),
   ).toBeDisabled();
-  await expect(
-    page.getByRole('heading', { name: 'Battle complete' }),
-  ).toBeFocused();
-  await expect(
-    page.getByText('You forfeited this battle.', { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Defeat' })).toBeFocused();
+  await expect(page.getByText('You forfeited.', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Forfeit battle' }),
   ).toHaveCount(0);
@@ -687,6 +683,253 @@ async function routeCurrentPlayer(page: Page) {
     }),
   );
 }
+
+test('reviews a completed battle and returns to its paginated history position', async ({
+  page,
+}) => {
+  await routeCurrentPlayer(page);
+  const initial = pvpMatch();
+  const result = {
+    action: initial.legalActions[0]!,
+    defeatedCreatureId: null,
+    effects: [
+      {
+        amount: 12,
+        damageMultiplier: 1,
+        effectId: uuid(2900),
+        effectType: 'damage' as const,
+        modifier: null,
+        targetCreatureId: initial.state.opponent.activeCreature!.id,
+        targetSide: 'opponent' as const,
+      },
+    ],
+    side: 'self' as const,
+    turnEnded: true,
+    winner: null,
+  };
+  let completed = pvpMatch({
+    status: 'completed',
+    outcome: 'loss',
+    completionReason: 'turn_forfeit',
+    state: {
+      opponent: {
+        ...initial.state.opponent,
+        activeCreature: {
+          ...initial.state.opponent.activeCreature!,
+          currentHp: 88,
+        },
+      },
+    },
+    history: [
+      { createdAt: initial.startedAt, sequence: 1, turnNumber: 1, result },
+      { createdAt: initial.startedAt, sequence: 2, turnNumber: 3, result },
+    ],
+  });
+  const summaries = Array.from({ length: 10 }, (_, index) =>
+    pvpHistorySummary(
+      pvpMatch({ status: 'completed', matchId: uuid(2910 + index) }),
+    ),
+  );
+  summaries[9] = pvpHistorySummary(completed);
+  let historyPages = 0;
+  let mutations = 0;
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.route('**/api/v1/matches/history', (route) =>
+    json(route, { matches: [historyItem()], requestId: 'report-cpu-history' }),
+  );
+  await page.route('**/api/v1/decks', (route) =>
+    json(route, { decks: [buildSavedDeck()], requestId: 'report-decks' }),
+  );
+  await page.route(/\/api\/v1\/matches\/pvp(?:\/|\?|$)/, async (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() !== 'GET') mutations += 1;
+    if (url.pathname.endsWith('/history')) {
+      historyPages += 1;
+      const next = url.searchParams.has('cursor');
+      await json(route, {
+        matches: next ? summaries.slice(8) : summaries.slice(0, 8),
+        nextCursor: next ? null : 'report-page-2',
+        requestId: 'report-history',
+      });
+    } else if (url.pathname.endsWith('/invitations')) {
+      await json(route, {
+        invitations: [],
+        nextCursor: null,
+        requestId: 'report-invitations',
+      });
+    } else if (url.pathname.endsWith('/matches/pvp')) {
+      await json(route, {
+        matches: [],
+        nextCursor: null,
+        requestId: 'report-active',
+      });
+    } else {
+      await json(route, { ...completed, requestId: 'report-match' });
+    }
+  });
+
+  for (const width of [390, 768, 1536]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1024 });
+    await page.goto(`/matches/pvp/${completed.matchId}`);
+    const heading = page.getByRole('heading', { name: 'Defeat', exact: true });
+    await expect(heading).toBeFocused();
+    await expect(heading).toBeInViewport();
+    await expect(page.locator('.battle-report__reason')).toBeInViewport();
+    await expect(
+      page.getByRole('region', { name: 'Current battlefield' }),
+    ).toHaveCount(0);
+    await expect(page.locator('.battle-report__final-turn')).toContainText(
+      'took 12 damage',
+    );
+    await expect(page.locator('.battle-report__disclosure[open]')).toHaveCount(
+      0,
+    );
+    const opponentHp = page.getByRole('meter', {
+      name: 'wits_wanderer: Grit Creature HP',
+    });
+    await expect(opponentHp).toHaveAttribute('value', '88');
+    for (const combatant of await page
+      .locator('.battle-report__combatant')
+      .all()) {
+      const card = await combatant
+        .locator('.battle-picture-button')
+        .boundingBox();
+      const hp = await combatant.locator('.battle-report__hp').boundingBox();
+      expect(card).not.toBeNull();
+      expect(hp).not.toBeNull();
+      expect(hp!.y).toBeGreaterThanOrEqual(card!.y + card!.height);
+      expect(hp!.x).toBeCloseTo(card!.x, 0);
+      expect(hp!.width).toBeCloseTo(card!.width, 0);
+    }
+    const outcomeBox = await page
+      .locator('.battle-report__outcome')
+      .boundingBox();
+    const recapBox = await page
+      .locator('.battle-report__final-turn')
+      .boundingBox();
+    if (width >= 1024) {
+      expect(recapBox!.x).toBeGreaterThan(outcomeBox!.x + outcomeBox!.width);
+      expect(recapBox!.y).toBeCloseTo(outcomeBox!.y, 0);
+    } else {
+      expect(recapBox!.y).toBeGreaterThanOrEqual(
+        outcomeBox!.y + outcomeBox!.height,
+      );
+    }
+    await expectNoHorizontalOverflow(page);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({
+      fullPage: true,
+      path: path.join(screenshotsDirectory, `${width}-pvp-report.png`),
+    });
+    await page
+      .locator('.battle-report__disclosure > summary')
+      .filter({ hasText: 'Turn history' })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Turn 1', exact: true }),
+    ).toBeVisible();
+    await page.getByText('Cards', { exact: true }).click();
+    await page
+      .getByRole('region', { name: 'Revealed opponent cards' })
+      .getByRole('button', { name: 'View Grit Creature details' })
+      .click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('button', { name: 'Close Creature details' }).click();
+    await expectNoHorizontalOverflow(page);
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const historyHref of [
+    '/matches/pvp?section=history',
+    '/matches/history',
+  ]) {
+    await page.goto(historyHref);
+    if (historyHref.includes('pvp')) {
+      await expect(page.getByRole('tab', { name: /^History/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect(
+        page.getByRole('button', { name: 'Close challenge' }),
+      ).toHaveCount(0);
+    }
+    await page
+      .getByRole('button', { name: /Load more (match history|battles)/i })
+      .click();
+    const row = page.locator(`a[href='/matches/pvp/${completed.matchId}']`);
+    await row.evaluate((element) =>
+      element.scrollIntoView({ block: 'center', behavior: 'instant' }),
+    );
+    const previousScroll = await page.evaluate(() => window.scrollY);
+    await row.click();
+    await expect(
+      page.getByRole('heading', { name: 'Defeat', exact: true }),
+    ).toBeFocused();
+    const requestsBeforeReturn = historyPages;
+    const back = page.getByRole('link', {
+      name: 'Battle history',
+      exact: true,
+    });
+    await expect(back).toHaveAttribute('href', historyHref);
+    await back.click();
+    await expect(row).toBeFocused();
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeCloseTo(previousScroll, 0);
+    expect(historyPages - requestsBeforeReturn).toBe(2);
+    await row.click();
+    await expect(
+      page.getByRole('heading', { name: 'Defeat', exact: true }),
+    ).toBeVisible();
+    await page.goBack();
+    await expect(row).toBeFocused();
+  }
+
+  completed = pvpMatch({ status: 'completed', outcome: 'win' });
+  await page.goto(`/matches/pvp/${completed.matchId}`);
+  await expect(
+    page.getByRole('heading', { name: 'Victory', exact: true }),
+  ).toBeFocused();
+  await expect(page.locator('.battle-report__final-turn')).toContainText(
+    'No moves recorded.',
+  );
+  completed = {
+    ...completed,
+    opponent: { playerName: 'campus_scholar_2026' },
+    state: {
+      ...completed.state,
+      opponent: {
+        ...completed.state.opponent,
+        playerName: 'campus_scholar_2026',
+      },
+      self: {
+        ...completed.state.self,
+        creatures: completed.state.self.creatures.map((creature, index) =>
+          index === 0
+            ? { ...creature, name: 'Wit Creature with a longer name' }
+            : creature,
+        ),
+      },
+    },
+  };
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.reload();
+    await expect(
+      page.getByRole('heading', { name: 'Victory', exact: true }),
+    ).toBeVisible();
+    const cards = await page
+      .locator('.battle-report__combatants .battle-picture-button')
+      .all();
+    const first = await cards[0]!.boundingBox();
+    const second = await cards[1]!.boundingBox();
+    expect(first!.y).toBeCloseTo(second!.y, 0);
+    await expectNoHorizontalOverflow(page);
+  }
+  expect(mutations).toBe(0);
+  expect(errors).toEqual([]);
+});
 
 async function expectNoHorizontalOverflow(page: Page) {
   await expect

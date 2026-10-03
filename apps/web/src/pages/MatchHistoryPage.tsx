@@ -2,7 +2,7 @@ import { StateIcon } from '../components/StatusMessage';
 import { PageLoadingState } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 
 import { listCpuMatchHistory, MatchApiError } from '../api/matches';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../api/pvp';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
+import { pvpHistoryNavigationState } from '../components/matches/pvp-history-navigation';
 import {
   BattleHistoryList,
   mergeBattleHistory,
@@ -37,6 +38,9 @@ export default function MatchHistoryPage({
 }) {
   const getAccessToken = useApiAccessToken();
   const { loginWithRedirect } = useAuth0();
+  const [, navigate] = useLocation();
+  const historyReturn = useRef(pvpHistoryNavigationState()?.pvpHistoryReturn);
+  const historyRestored = useRef(false);
   const [state, setState] = useState<HistoryState>({ status: 'loading' });
   const [revision, setRevision] = useState(0);
   const [reauthFailed, setReauthFailed] = useState(false);
@@ -162,6 +166,35 @@ export default function MatchHistoryPage({
     }
   }
 
+  useEffect(() => {
+    const target = historyReturn.current;
+    if (
+      !target ||
+      target.returnHref !== '/matches/history' ||
+      historyRestored.current ||
+      state.status !== 'ready' ||
+      state.playerPageStatus !== 'idle'
+    )
+      return;
+    if (
+      state.battles.filter((battle) => battle.kind === 'player').length <
+        target.loadedCount &&
+      state.playerNextCursor !== null
+    ) {
+      void loadMorePlayerHistory();
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      historyRestored.current = true;
+      document
+        .getElementById(`battle-history-player-${target.matchId}`)
+        ?.closest('a')
+        ?.focus({ preventScroll: true });
+      window.scrollTo({ top: target.scrollY, behavior: 'instant' });
+    });
+    return () => cancelAnimationFrame(frame);
+  });
+
   if (state.status === 'loading') {
     return (
       <PageLoadingState
@@ -231,7 +264,37 @@ export default function MatchHistoryPage({
           <p>Finish a battle to see your result here.</p>
         </section>
       ) : (
-        <BattleHistoryList battles={visibleBattles} label="Completed battles" />
+        <BattleHistoryList
+          battles={visibleBattles}
+          label="Completed battles"
+          onViewBattle={(matchId, event) => {
+            if (
+              !event.currentTarget.pathname.startsWith('/matches/pvp/') ||
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            event.preventDefault();
+            const navigationState = {
+              pvpHistoryReturn: {
+                matchId,
+                loadedCount: state.battles.filter(
+                  (battle) => battle.kind === 'player',
+                ).length,
+                scrollY: window.scrollY,
+                returnHref: '/matches/history' as const,
+              },
+            };
+            window.history.replaceState(
+              { ...window.history.state, ...navigationState },
+              '',
+            );
+            navigate(`/matches/pvp/${matchId}`, { state: navigationState });
+          }}
+        />
       )}
 
       {state.playerNextCursor !== null ? (

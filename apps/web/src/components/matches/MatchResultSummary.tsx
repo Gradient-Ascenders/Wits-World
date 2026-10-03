@@ -1,5 +1,6 @@
 import { createAppDateTimeFormatter } from '../../date-time';
 import { Link } from 'wouter';
+import type { MouseEvent } from 'react';
 
 import type { CpuMatchHistoryItem } from '../../api/matches';
 import type { PvpHistorySummary } from '../../api/pvp';
@@ -29,10 +30,15 @@ export function BattleHistoryList({
   battles,
   label,
   headingLevel = 2,
+  onViewBattle,
 }: {
   battles: BattleHistoryItem[];
   label: string;
   headingLevel?: 2 | 3;
+  onViewBattle?: (
+    matchId: string,
+    event: MouseEvent<HTMLAnchorElement>,
+  ) => void;
 }) {
   return (
     <div className="battle-history">
@@ -44,7 +50,11 @@ export function BattleHistoryList({
       <ol aria-label={label} className="battle-history__list">
         {battles.map((battle) => (
           <li key={`${battle.kind}-${battle.match.matchId}`}>
-            <BattleResultSummary battle={battle} headingLevel={headingLevel} />
+            <BattleResultSummary
+              battle={battle}
+              headingLevel={headingLevel}
+              onViewBattle={onViewBattle}
+            />
           </li>
         ))}
       </ol>
@@ -55,9 +65,14 @@ export function BattleHistoryList({
 function BattleResultSummary({
   battle,
   headingLevel,
+  onViewBattle,
 }: {
   battle: BattleHistoryItem;
   headingLevel: 2 | 3;
+  onViewBattle?: (
+    matchId: string,
+    event: MouseEvent<HTMLAnchorElement>,
+  ) => void;
 }) {
   const Heading = headingLevel === 3 ? 'h3' : 'h2';
   const { match } = battle;
@@ -87,6 +102,7 @@ function BattleResultSummary({
         aria-describedby={`${headingId} ${headingId}-result ${headingId}-completed`}
         className="battle-history__row"
         href={href}
+        onClick={(event) => onViewBattle?.(match.matchId, event)}
       >
         <div className="battle-history__opponent">
           <Heading id={headingId}>{opponent}</Heading>

@@ -17,7 +17,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import { Link, useLocation } from 'wouter';
+import { Link, useLocation, useSearch } from 'wouter';
 
 import { DeckApiError, listSavedDecks, type SavedDeck } from '../api/decks';
 import {
@@ -37,6 +37,7 @@ import {
   type PvpPage,
 } from '../api/pvp';
 import { BattleHistoryList } from '../components/matches/MatchResultSummary';
+import { pvpHistoryNavigationState } from '../components/matches/pvp-history-navigation';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
 import './matches.css';
@@ -85,6 +86,10 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const getAccessToken = useApiAccessToken();
   const { loginWithRedirect } = useAuth0();
   const [, navigate] = useLocation();
+  const search = useSearch();
+  const requestedSection = new URLSearchParams(search).get('section');
+  const historyReturn = useRef(pvpHistoryNavigationState()?.pvpHistoryReturn);
+  const historyRestored = useRef(false);
   const [state, setState] = useState<HubState>({ status: 'loading' });
   const [revision, setRevision] = useState(0);
   const [pollWarning, setPollWarning] = useState(false);
@@ -172,9 +177,14 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         if (!controller.signal.aborted) {
           setState({ data, status: 'ready' });
           if (!hasChosenInitialSection.current) {
-            setSelectedSection(priorityPlayerBattleSection(data));
+            setSelectedSection(
+              requestedSection === 'history'
+                ? 'history'
+                : priorityPlayerBattleSection(data),
+            );
             setChallengeOpen(
-              data.active.length === 0 &&
+              requestedSection !== 'history' &&
+                data.active.length === 0 &&
                 !data.incoming.some(isPending) &&
                 !data.outgoing.some(isPending),
             );
@@ -188,7 +198,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         }
       });
     return () => controller.abort();
-  }, [loadHub, revision]);
+  }, [loadHub, revision, requestedSection]);
 
   const pollHub = useCallback(
     async (force = false): Promise<HubCollections | null> => {
@@ -316,6 +326,35 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       }
     }
   }
+
+  useEffect(() => {
+    const target = historyReturn.current;
+    if (
+      !target ||
+      historyRestored.current ||
+      selectedSection !== 'history' ||
+      state.status !== 'ready' ||
+      loadingMore ||
+      actionError
+    )
+      return;
+    if (
+      state.data.history.length < target.loadedCount &&
+      state.data.historyNextCursor
+    ) {
+      void loadMore('history');
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      historyRestored.current = true;
+      document
+        .getElementById(`battle-history-player-${target.matchId}`)
+        ?.closest('a')
+        ?.focus({ preventScroll: true });
+      window.scrollTo({ top: target.scrollY, behavior: 'instant' });
+    });
+    return () => cancelAnimationFrame(frame);
+  });
 
   function resetFeedback() {
     setActionError(null);
@@ -884,6 +923,31 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               battles={data.history.map((match) => ({ kind: 'player', match }))}
               headingLevel={3}
               label="Completed player battles"
+              onViewBattle={(matchId, event) => {
+                if (
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                )
+                  return;
+                event.preventDefault();
+                const navigationState = {
+                  pvpHistoryReturn: {
+                    matchId,
+                    loadedCount: data.history.length,
+                    scrollY: window.scrollY,
+                    returnHref: '/matches/pvp?section=history' as const,
+                  },
+                };
+                window.history.replaceState(
+                  { ...window.history.state, ...navigationState },
+                  '',
+                  '/matches/pvp?section=history',
+                );
+                navigate(`/matches/pvp/${matchId}`, { state: navigationState });
+              }}
             />
           )}
           {data.historyNextCursor ? (
