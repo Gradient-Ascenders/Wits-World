@@ -989,14 +989,6 @@ html:has(.home-page) {
   box-shadow: inset 0 0 0 1px rgb(84 168 255 / 22%);
 }
 
-.home-challenge-demo__choices input {
-  flex: 0 0 auto;
-  width: 1.2rem;
-  height: 1.2rem;
-  margin: 0;
-  accent-color: var(--colour-blue-300);
-}
-
 .home-challenge-demo__choices input:focus-visible {
   outline: 2px solid var(--colour-focus);
   outline-offset: 3px;

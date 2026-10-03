@@ -388,13 +388,6 @@
   background: var(--colour-surface-elevated);
 }
 
-.campaign-picker__list input {
-  width: 1.125rem;
-  height: 1.125rem;
-  flex-shrink: 0;
-  accent-color: var(--colour-focus);
-}
-
 .campaign-picker__identity {
   display: grid;
   flex: 1;

@@ -1,0 +1,128 @@
+/* Keep native inputs for labels, form submission, and keyboard interaction.
+   Starter cards already expose selection and focus on their card surfaces. */
+input:is([type='radio'], [type='checkbox']):not(
+    :where(.starter-option > input)
+  ) {
+  appearance: none;
+  display: inline-grid;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 1.25rem;
+  place-content: center;
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--colour-text-muted);
+  border-radius: 0.25rem;
+  color: var(--colour-focus);
+  background: transparent;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+input[type='radio']:not(:where(.starter-option > input)) {
+  border-radius: 50%;
+}
+
+input[type='radio']:not(:where(.starter-option > input))::before {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+  transform: scale(0);
+}
+
+input[type='checkbox']::before {
+  width: 0.3rem;
+  height: 0.55rem;
+  margin-top: -0.125rem;
+  border: solid var(--colour-text-inverse);
+  border-width: 0 2px 2px 0;
+  content: '';
+  transform: rotate(45deg) scale(0);
+}
+
+input:is([type='radio'], [type='checkbox']):checked {
+  border-color: var(--colour-focus);
+}
+
+input[type='radio']:checked::before {
+  transform: scale(1);
+}
+
+input[type='checkbox']:checked {
+  background: var(--colour-focus);
+}
+
+input[type='checkbox']:checked::before {
+  transform: rotate(45deg) scale(1);
+}
+
+input[type='checkbox']:indeterminate {
+  border-color: var(--colour-focus);
+  background: var(--colour-focus);
+}
+
+input[type='checkbox']:indeterminate::before {
+  width: 0.625rem;
+  height: 0;
+  margin: 0;
+  border-width: 0 0 2px;
+  transform: none;
+}
+
+input:is([type='radio'], [type='checkbox']):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Low-specificity geometry preserves existing cards, grids, and map layouts. */
+:where(label:has(> input:is([type='radio'], [type='checkbox']))) {
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+label:has(
+    > input:is([type='radio'], [type='checkbox']):enabled:not(:checked)
+  ):hover {
+  background: rgb(247 243 231 / 4%);
+}
+
+label:has(> input:is([type='radio'], [type='checkbox']):checked) {
+  border-color: var(--colour-focus);
+  background: rgb(84 168 255 / 10%);
+}
+
+label:has(> input:is([type='radio'], [type='checkbox']):focus-visible) {
+  outline: 2px solid var(--colour-focus);
+  outline-offset: 2px;
+}
+
+label > input:is([type='radio'], [type='checkbox']):focus-visible {
+  outline: none;
+}
+
+label:has(> input:is([type='radio'], [type='checkbox']):disabled) {
+  color: var(--colour-text-secondary);
+  cursor: not-allowed;
+}
+
+html[data-contrast='high']
+  label:has(> input:is([type='radio'], [type='checkbox']):focus-visible) {
+  outline-width: 0.25rem;
+}
+
+@media (forced-colors: active) {
+  input:is([type='radio'], [type='checkbox']):not(
+      :where(.starter-option > input)
+    ) {
+    appearance: auto;
+    accent-color: auto;
+  }
+
+  input:is([type='radio'], [type='checkbox'])::before {
+    display: none;
+  }
+}

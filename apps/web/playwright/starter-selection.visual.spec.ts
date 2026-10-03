@@ -84,7 +84,7 @@ test('renders and confirms the server starter flow at mobile and desktop widths'
   const sparkOption = page.locator('.starter-option').filter({
     has: spark,
   });
-  await sparkOption.getByText('View exact package').click();
+  await sparkOption.getByText('View cards', { exact: true }).click();
   await expect(sparkOption.getByText('spark Creature 1')).toBeVisible();
   await expectNoHorizontalOverflow(page);
 

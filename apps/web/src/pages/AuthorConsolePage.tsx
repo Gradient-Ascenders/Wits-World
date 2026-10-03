@@ -124,7 +124,9 @@ export default function AuthorConsolePage({
         aria-labelledby="author-console-title"
         className="author-console"
       >
-        {['events', 'cards', 'campaigns', 'review'].includes(route.section) ? (
+        {['events', 'cards', 'campaigns', 'review', 'playerReview'].includes(
+          route.section,
+        ) ? (
           <h1 id="author-console-title" className="sr-only">
             Author console
           </h1>

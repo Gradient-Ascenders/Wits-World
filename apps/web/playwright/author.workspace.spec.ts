@@ -1084,112 +1084,271 @@ test('existing Event location focuses its saved point, supports dragging, and ha
   expect(consoleErrors).toEqual([]);
 });
 
-test('Player review uses a responsive, privacy-safe master-detail workflow', async ({
+for (const width of [1280, 1440, 1556, 1920]) {
+  test(`desktop Player review preserves queue context and focused decisions at ${width}px`, async ({
+    page,
+  }) => {
+    const caseId = uuid('a', 1);
+    const detail = trustCaseFixture(caseId);
+    const api = await installTrustReviewApi(page, detail);
+    const consoleErrors = monitorConsoleErrors(page);
+    await page.setViewportSize({ height: 950, width });
+    const capture = async (kind: string) => {
+      if (
+        process.env.PLAYER_REVIEW_CAPTURE &&
+        process.env.PLAYER_REVIEW_CAPTURE !== kind
+      )
+        return;
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+      await page.screenshot({
+        fullPage: true,
+        path: `.impeccable/review/player-review-${kind}-${width}.png`,
+      });
+    };
+    await page.goto('/author/player-review');
+    await expect(page.getByRole('table')).toBeVisible();
+    await expect(page.getByRole('main')).toHaveCount(1);
+    await expect(page.getByText('Select a case to begin review.')).toHaveCount(
+      0,
+    );
+    await expectNoHorizontalOverflow(page);
+    await mkdir('.impeccable/review', { recursive: true });
+    await capture('queue');
+
+    await page.getByRole('searchbox', { name: 'Search cases' }).fill('Casey');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.getByText('Page 2 of 2')).toBeVisible();
+    const open = page.getByRole('link', {
+      name: `Review ${detail.playerName}, case ${caseId}`,
+      exact: true,
+    });
+    await open.scrollIntoViewIfNeeded();
+    const queueScroll = await page.evaluate(() => window.scrollY);
+    expect(queueScroll).toBeGreaterThan(0);
+    await open.click();
+    await expect(page).toHaveURL(`/author/player-review/${caseId}`);
+    await expect(
+      page.getByRole('heading', { name: detail.playerName }),
+    ).toBeFocused();
+    await expect(page.getByLabel('Trust case queue')).toHaveCount(0);
+    await expect(
+      page.getByText('Review priority is not proof of misconduct.'),
+    ).toBeVisible();
+    const signals = page.getByRole('region', { name: 'Signals' });
+    await expect(signals.getByText('Impossible movement')).toBeVisible();
+    await expect(signals.getByText('High severity')).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await capture('case');
+
+    const reason = page.getByRole('textbox', { name: /Reason and context/u });
+    await reason.fill(
+      'Consider the retained evidence before making a decision.',
+    );
+    await page.getByRole('tab', { name: 'Review', exact: true }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(
+      page.getByRole('tab', { name: /Restrictions/u }),
+    ).toBeFocused();
+    await expect(
+      page.getByRole('region', { name: 'Restriction history' }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('1 active restriction', { exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await capture('restrictions');
+    await page.getByRole('tab', { name: /Restrictions/u }).focus();
+    await page.keyboard.press('End');
+    await expect(page.getByRole('tab', { name: 'History' })).toBeFocused();
+    await expect(
+      page.getByRole('region', { name: 'Decision and audit history' }),
+    ).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await capture('history');
+    await page.getByRole('link', { name: uuid('b', 1).slice(0, 8) }).click();
+    await expect(
+      page.getByRole('tab', { name: 'Review', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator(`#signal-${uuid('b', 1)}`)).toHaveAttribute(
+      'open',
+      '',
+    );
+    await expect(reason).toHaveValue(
+      'Consider the retained evidence before making a decision.',
+    );
+    await signals.getByText('Opponent concentration', { exact: true }).click();
+    await signals.getByText('View aggregate basis').click();
+    await expect(signals.getByText(/87.5%/u)).toBeVisible();
+    await expect(signals.getByText(/policy threshold/iu)).toHaveCount(0);
+    await page.getByText('Score breakdown').click();
+    await expect(page.getByText('Server final').locator('..')).toContainText(
+      '79',
+    );
+    await expectNoHorizontalOverflow(page);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await capture('evidence');
+
+    await page.getByLabel('Apply temporary restriction').check();
+    await page.getByLabel('Require online verification').check();
+    await selectOption(page.getByLabel('Duration', { exact: true }), '72');
+    await capture('decision-options');
+    await page.getByRole('button', { name: 'Review restriction' }).click();
+    const dialog = page.getByRole('dialog', {
+      name: `Apply temporary restrictions to ${detail.playerName}?`,
+    });
+    await expect(
+      dialog.getByRole('heading', { name: 'Current state' }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByText('Pause new competitive matches'),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole('heading', { name: 'Proposed restriction' }),
+    ).toBeVisible();
+    await expect(dialog.getByText('Require online verification')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Go back' })).toBeFocused();
+    expect(api.decisions).toHaveLength(0);
+    await capture('confirmation');
+    await expect(dialog.getByRole('button', { name: 'Go back' })).toBeFocused();
+    const skipLinkBottom = await page
+      .locator('.skip-link')
+      .evaluate((element) => element.getBoundingClientRect().bottom);
+    expect(skipLinkBottom).toBeLessThanOrEqual(0);
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('button', { name: 'Review restriction' }),
+    ).toBeFocused();
+    await page.getByRole('link', { name: 'Back to case queue' }).click();
+    await expect(open).toBeFocused();
+    await expect(
+      page.getByRole('searchbox', { name: 'Search cases' }),
+    ).toHaveValue('Casey');
+    await expect(page.getByText('Page 2 of 2')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeCloseTo(queueScroll, 0);
+    await page.goBack();
+    await expect(
+      page.getByRole('heading', { name: detail.playerName }),
+    ).toBeFocused();
+    await page.goForward();
+    await expect(page.getByText('Page 2 of 2')).toBeVisible();
+    await expect(open).toBeFocused();
+
+    // Remove the last page while the reviewer is investigating; the returning
+    // queue must fetch the last valid page and use heading focus if the row left.
+    await open.click();
+    await expect(
+      page.getByRole('heading', { name: detail.playerName }),
+    ).toBeVisible();
+    api.queue.totalItems = 20;
+    await page.getByLabel('Dismiss case').check();
+    await page
+      .getByRole('textbox', { name: /Reason and context/u })
+      .fill('Evidence does not support further review.');
+    await page
+      .getByRole('button', { name: 'Record decision', exact: true })
+      .click();
+    await expect(
+      page.getByText('Decision recorded in the audit history.'),
+    ).toBeVisible();
+    expect(api.decisions).toHaveLength(1);
+    await expect(
+      page.getByText('Decision controls are unavailable.'),
+    ).toBeVisible();
+    await page.getByRole('link', { name: 'Back to case queue' }).click();
+    await expect(page.getByText('20 matching cases')).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Player review', exact: true }),
+    ).toBeFocused();
+    await expect(
+      page.getByRole('button', { name: 'Next', exact: true }),
+    ).toHaveCount(0);
+
+    await page
+      .getByRole('searchbox', { name: 'Search cases' })
+      .fill('No matching player');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await expect(page.getByText('No cases match these filters.')).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await capture('empty');
+    await page.locator('.trust-review__advanced-filters > summary').click();
+    await selectOption(
+      page.getByLabel('Signal type', { exact: true }),
+      'impossible_movement',
+    );
+    await expect(page.getByLabel('1 active filter')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await capture('filters');
+    await page.locator('.trust-review__advanced-filters > summary').click();
+    await page.getByRole('button', { name: 'Reset filters' }).click();
+    await expect(page.getByRole('table')).toBeVisible();
+    await expect(
+      page.getByRole('searchbox', { name: 'Search cases' }),
+    ).toHaveValue('');
+    expect(consoleErrors).toEqual([]);
+  });
+}
+
+test('desktop Player review opens paged audit references and explains unavailable retained signals', async ({
   page,
-}, testInfo) => {
+}) => {
   const caseId = uuid('a', 1);
   const detail = trustCaseFixture(caseId);
-  await installTrustReviewApi(page, detail);
-  const consoleErrors = monitorConsoleErrors(page);
-
-  await page.setViewportSize({ height: 950, width: 1440 });
+  const api = await installTrustReviewApi(page, detail, {
+    pagedEvidence: true,
+  });
+  await page.setViewportSize({ width: 1440, height: 950 });
   await page.goto(`/author/player-review/${caseId}`);
   await expect(
     page.getByRole('heading', { name: detail.playerName }),
   ).toBeVisible();
-  await expect(page.getByLabel('Trust case queue')).toBeVisible();
   await expect(
-    page.getByText('Review priority, not proof of misconduct.'),
-  ).toBeVisible();
-  const signals = page.getByRole('region', { name: 'Signals' });
-  await expect(signals.getByText('Impossible movement')).toBeVisible();
-  await expect(signals.getByText('High severity')).toBeVisible();
-  await signals.getByText('View aggregate basis').click();
-  await expect(signals.getByText(/87.5%/u)).toBeVisible();
-  await expect(signals.getByText(/policy threshold/iu)).toHaveCount(0);
-  const queueToggle = page.getByRole('button', { name: 'Collapse case queue' });
-  await queueToggle.click();
+    page.getByText('Opponent concentration', { exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('tab', { name: 'History' }).click();
+  await page.getByRole('link', { name: uuid('b', 2).slice(0, 8) }).click();
+  const referenced = page.locator(`#signal-${uuid('b', 2)}`);
+  await expect(referenced).toHaveAttribute('open', '');
+  await expect(referenced.locator(':scope > summary')).toBeFocused();
   await expect(
-    page.getByRole('button', { name: 'Expand case queue' }),
-  ).toHaveAttribute('aria-expanded', 'false');
-  await page.getByRole('button', { name: 'Expand case queue' }).click();
-  const decisionLink = page
-    .getByRole('navigation', { name: 'Case investigation' })
-    .getByRole('link', { name: 'Decision' });
-  await decisionLink.focus();
-  await expect(decisionLink).toBeFocused();
-  await expect(
-    page.getByRole('textbox', { name: /Reason and context/u }),
-  ).toBeVisible();
-  await page.getByLabel('Apply temporary restriction').check();
-  await page.getByLabel('Require online verification').check();
-  await selectOption(page.getByLabel('Duration', { exact: true }), '72');
-  await page
-    .getByRole('textbox', { name: /Reason and context/u })
-    .fill('Temporarily pause new matches while this case is reviewed.');
-  await page.getByRole('button', { name: 'Review restriction' }).click();
-  const desktopDialog = page.getByRole('dialog', {
-    name: `Apply temporary restrictions to ${detail.playerName}?`,
-  });
-  await expect(
-    desktopDialog.getByRole('heading', { name: 'Current state' }),
-  ).toBeVisible();
-  await expect(
-    desktopDialog.getByText('Pause new competitive matches'),
-  ).toBeVisible();
-  await expect(
-    desktopDialog.getByRole('heading', { name: 'Proposed restriction' }),
-  ).toBeVisible();
-  await expect(
-    desktopDialog.getByText('Require online verification'),
-  ).toBeVisible();
-  await page.screenshot({
-    fullPage: true,
-    path: testInfo.outputPath('player-review-confirmation-desktop.png'),
-  });
-  await page.keyboard.press('Escape');
+    page.getByRole('tab', { name: 'Review', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   await expectNoHorizontalOverflow(page);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     fullPage: true,
-    path: testInfo.outputPath('player-review-desktop.png'),
+    path: '.impeccable/review/player-review-audit-reference-1440.png',
   });
-
-  await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto('/author/player-review');
-  await expect(page.getByLabel('Trust case queue')).toBeVisible();
-  await expect(page.getByText('Select a case to begin review.')).toBeVisible();
-  await page.getByRole('link', { name: /Casey Reviewer/u }).click();
-  await expect(page).toHaveURL(`/author/player-review/${caseId}`);
-  await expect(page.getByLabel('Trust case queue')).toBeHidden();
+  api.queue.missingReference = true;
+  await page.reload();
+  await page.getByRole('tab', { name: 'History' }).click();
+  await page.getByRole('link', { name: uuid('b', 99).slice(0, 8) }).click();
   await expect(
-    page.getByRole('link', { name: 'Back to case queue' }),
+    page.getByText(
+      'The referenced signal was not found in the retained evidence.',
+    ),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: detail.playerName }),
-  ).toBeVisible();
-  await page.getByLabel('Apply temporary restriction').check();
-  await page.getByLabel('Require online verification').check();
-  await page
-    .getByRole('textbox', { name: /Reason and context/u })
-    .fill('Require a short verification step while this case is reviewed.');
-  await page.getByRole('button', { name: 'Review restriction' }).click();
-  const mobileDialog = page.getByRole('dialog', {
-    name: `Apply temporary restrictions to ${detail.playerName}?`,
-  });
-  await expect(
-    mobileDialog.getByRole('heading', { name: 'Current state' }),
+    page.getByRole('button', { name: 'Retry reference' }),
   ).toBeVisible();
   await expect(
-    mobileDialog.getByRole('heading', { name: 'Proposed restriction' }),
+    page.getByRole('heading', { name: 'Record decision' }),
   ).toBeVisible();
-  await expectNoHorizontalOverflow(page);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     fullPage: true,
-    path: testInfo.outputPath('player-review-confirmation-mobile.png'),
+    path: '.impeccable/review/player-review-missing-reference-1440.png',
   });
-  await page.keyboard.press('Escape');
-
-  expect(consoleErrors).toEqual([]);
+  await page.getByRole('button', { name: 'Retry reference' }).click();
+  await expect(
+    page.getByText(
+      'The referenced signal was not found in the retained evidence.',
+    ),
+  ).toBeVisible();
+  expect(api.decisions).toHaveLength(0);
 });
 
 test('Card editor previews unsaved artwork and metadata beside the form on desktop', async ({
@@ -1934,7 +2093,12 @@ interface AuthorApiState {
 async function installTrustReviewApi(
   page: Page,
   detail: ReturnType<typeof trustCaseFixture>,
+  { pagedEvidence = false }: { pagedEvidence?: boolean } = {},
 ) {
+  const queue = { totalItems: 40, missingReference: false };
+  const decisions: unknown[] = [];
+  let version: number = detail.version;
+  let resolved = false;
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const method = request.method();
@@ -1956,24 +2120,58 @@ async function installTrustReviewApi(
       return;
     }
     if (path === '/author/trust-cases' && method === 'GET') {
+      const url = new URL(request.url());
+      const pageNumber = Number(url.searchParams.get('page') ?? 1);
+      const search = (url.searchParams.get('search') ?? '').toLowerCase();
+      const items = Array.from({ length: queue.totalItems }, (_, index) => ({
+        ...detail,
+        caseId: index === 39 ? detail.caseId : uuid('a', index + 2),
+        playerName:
+          index === 39
+            ? detail.playerName
+            : `Casey Reviewer ${String(index + 1).padStart(2, '0')}`,
+        canReview: index % 5 !== 0,
+        signalTypes: ['impossible_movement', 'opponent_concentration'],
+      })).filter((item) => item.playerName.toLowerCase().includes(search));
       await json(route, {
-        items: [
-          {
-            ...detail,
-            activeRestrictionScopes: ['new_competitive_match_hold'],
-            signalTypes: ['impossible_movement', 'opponent_concentration'],
-          },
-        ],
-        page: 1,
+        items: items.slice((pageNumber - 1) * 20, pageNumber * 20),
+        page: pageNumber,
         pageSize: 20,
         requestId: 'request-trust-cases',
-        totalItems: 1,
-        totalPages: 1,
+        totalItems: items.length,
+        totalPages: Math.ceil(items.length / 20),
+      });
+      return;
+    }
+    if (
+      path === `/author/trust-cases/${detail.caseId}/decisions` &&
+      method === 'POST'
+    ) {
+      const decision = request.postDataJSON();
+      decisions.push(decision);
+      resolved = decision.action === 'dismiss';
+      version += 1;
+      await json(route, {
+        case: {
+          ...detail,
+          version,
+          status: resolved ? 'resolved' : detail.status,
+          canReview: !resolved && detail.canReview,
+        },
+        requestId: 'request-trust-decision',
       });
       return;
     }
     if (path === `/author/trust-cases/${detail.caseId}` && method === 'GET') {
-      await json(route, { case: detail, requestId: 'request-trust-case' });
+      await json(route, {
+        case: {
+          ...detail,
+          version,
+          status: resolved ? 'resolved' : detail.status,
+          canReview: !resolved && detail.canReview,
+        },
+        requestId: 'request-trust-case',
+      });
       return;
     }
     if (
@@ -1981,12 +2179,20 @@ async function installTrustReviewApi(
       method === 'GET'
     ) {
       await json(route, {
-        items: detail.evidence,
-        page: 1,
+        items: pagedEvidence
+          ? [
+              detail.evidence[
+                Number(new URL(request.url()).searchParams.get('page') ?? 1) - 1
+              ],
+            ]
+          : detail.evidence,
+        page: pagedEvidence
+          ? Number(new URL(request.url()).searchParams.get('page') ?? 1)
+          : 1,
         pageSize: 20,
         requestId: 'request-trust-evidence',
         totalItems: detail.evidenceTotalItems,
-        totalPages: 1,
+        totalPages: pagedEvidence ? 2 : 1,
       });
       return;
     }
@@ -2009,7 +2215,12 @@ async function installTrustReviewApi(
       method === 'GET'
     ) {
       await json(route, {
-        items: detail.history,
+        items: pagedEvidence
+          ? detail.history.map((item) => ({
+              ...item,
+              evidenceIds: [uuid('b', queue.missingReference ? 99 : 2)],
+            }))
+          : detail.history,
         page: 1,
         pageSize: 20,
         requestId: 'request-trust-history',
@@ -2031,6 +2242,7 @@ async function installTrustReviewApi(
       404,
     );
   });
+  return { queue, decisions };
 }
 
 function trustCaseFixture(caseId: string) {

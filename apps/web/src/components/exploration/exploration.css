@@ -1791,13 +1791,6 @@
     cursor: pointer;
   }
 
-  .map-layers-control__panel input {
-    width: 1.125rem;
-    height: 1.125rem;
-    margin: 0;
-    accent-color: var(--colour-action-primary);
-  }
-
   .map-layers-control__panel p {
     margin: var(--space-3) 0 var(--space-5);
     color: var(--colour-text-secondary);
