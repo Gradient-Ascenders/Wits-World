@@ -1,3 +1,6 @@
+export type AnalyticsReport =
+  'overview' | 'locations' | 'questions' | 'rewards';
+
 export type AuthorWorkspaceRoute =
   | { mode: 'list'; section: 'events' }
   | { mode: 'new'; section: 'events' }
@@ -31,7 +34,7 @@ export type AuthorWorkspaceRoute =
     }
   | { mode: 'list'; section: 'review' }
   | { caseId?: string; mode: 'detail' | 'list'; section: 'playerReview' }
-  | { mode: 'list'; section: 'analytics' }
+  | { mode: 'list'; section: 'analytics'; report?: AnalyticsReport }
   | { mode: 'list'; section: 'placement' }
   | { mode: 'list' | 'new'; section: 'campaigns' }
   | {
@@ -63,7 +66,15 @@ export function parseAuthorWorkspaceRoute(
   }
 
   if (segments[0] === 'analytics') {
-    return { mode: 'list', section: 'analytics' };
+    const report = segments[1];
+    return {
+      mode: 'list',
+      section: 'analytics',
+      report:
+        report === 'locations' || report === 'questions' || report === 'rewards'
+          ? report
+          : 'overview',
+    };
   }
 
   if (segments[0] === 'placement') {
@@ -184,6 +195,10 @@ export function parseAuthorWorkspaceRoute(
 export const authorPaths = {
   campaigns: `${AUTHOR_ROOT}/campaigns`,
   analytics: `${AUTHOR_ROOT}/analytics`,
+  analyticsReport: (report: AnalyticsReport) =>
+    report === 'overview'
+      ? `${AUTHOR_ROOT}/analytics`
+      : `${AUTHOR_ROOT}/analytics/${report}`,
   placement: `${AUTHOR_ROOT}/placement`,
   campaign: (campaignId: string) =>
     `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}`,

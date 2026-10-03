@@ -43,8 +43,31 @@ let listQuestions: ReturnType<
 let listCardIssuance: ReturnType<
   typeof vi.fn<AuthorAnalyticsService['listCardIssuance']>
 >;
+let listAttention: ReturnType<
+  typeof vi.fn<AuthorAnalyticsService['listAttention']>
+>;
 
 beforeEach(async () => {
+  listAttention = vi
+    .fn<AuthorAnalyticsService['listAttention']>()
+    .mockResolvedValue({
+      items: [
+        {
+          eventId: EVENT_ID,
+          eventTitle: 'Great Hall',
+          ignoredLocationCount: 2,
+          easyQuestionCount: 0,
+          hardQuestionCount: 1,
+          questionId: QUESTION_ID,
+          challengeId: CHALLENGE_ID,
+        },
+      ],
+      page: 1,
+      pageSize: 25,
+      totalItems: 1,
+      totalPages: 1,
+      minimumSampleSize: 10,
+    });
   listEventLocations = vi
     .fn<AuthorAnalyticsService['listEventLocations']>()
     .mockResolvedValue({
@@ -157,6 +180,7 @@ beforeEach(async () => {
     logger: false,
     authorContentServices: {
       analytics: {
+        listAttention,
         listEventLocations,
         listQuestions,
         listCardIssuance,
@@ -168,6 +192,33 @@ beforeEach(async () => {
 afterEach(async () => app.close());
 
 describe('advanced author analytics API', () => {
+  it('protects the attention report and forwards bounded filters without leaking identities', async () => {
+    const url = '/api/v1/author/analytics/attention';
+    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(401);
+    resolve.mockResolvedValue({ ...author, role: 'player' });
+    expect((await request(url)).statusCode).toBe(403);
+    expect(listAttention).not.toHaveBeenCalled();
+    resolve.mockResolvedValue(author);
+    expect((await request(`${url}?pageSize=101`)).statusCode).toBe(400);
+    const response = await request(
+      `${url}?fromDate=2026-09-01&toDate=2026-10-01&page=2&pageSize=10`,
+    );
+    expect(response.statusCode).toBe(200);
+    expect(listAttention).toHaveBeenCalledWith({
+      fromDate: '2026-09-01',
+      toDate: '2026-10-01',
+      page: 2,
+      pageSize: 10,
+    });
+    expect(response.json().items[0]).toMatchObject({
+      eventId: EVENT_ID,
+      ignoredLocationCount: 2,
+      hardQuestionCount: 1,
+    });
+    expect(JSON.stringify(response.json())).not.toMatch(
+      /playerId|auth0|latitude|longitude|selectedChoice/i,
+    );
+  });
   it('requires authentication and Author role', async () => {
     expect(
       (

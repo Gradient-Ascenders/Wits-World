@@ -1,6 +1,7 @@
 import type pg from 'pg';
 
 import {
+  QUESTION_PERFORMANCE_CTES,
   QUESTION_PERFORMANCE_INCORRECT_RATE_THRESHOLD,
   QUESTION_PERFORMANCE_MINIMUM_SAMPLE_SIZE,
   type QuestionPerformanceService,
@@ -116,7 +117,27 @@ export interface CardIssuanceAnalyticsPage {
   minimumSampleSize: number;
 }
 
+export interface EventAttentionItem {
+  eventId: string;
+  eventTitle: string;
+  ignoredLocationCount: number;
+  easyQuestionCount: number;
+  hardQuestionCount: number;
+  questionId: string | null;
+  challengeId: string | null;
+}
+
+export interface EventAttentionPage {
+  items: EventAttentionItem[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  minimumSampleSize: number;
+}
+
 export interface AuthorAnalyticsService {
+  listAttention(filters: AnalyticsDatePageFilters): Promise<EventAttentionPage>;
   listEventLocations(
     filters: EventLocationAnalyticsFilters,
   ): Promise<EventLocationAnalyticsPage>;
@@ -182,6 +203,54 @@ export function createAuthorAnalyticsService(
   questionPerformance: QuestionPerformanceService,
 ): AuthorAnalyticsService {
   return {
+    async listAttention(filters) {
+      const range = validateCommonFilters(filters);
+      const result = await database.query<{
+        event_id: string | null;
+        event_title: string;
+        ignored_location_count: number;
+        easy_question_count: number;
+        hard_question_count: number;
+        question_id: string | null;
+        challenge_id: string | null;
+        total_items: number;
+      }>(EVENT_ATTENTION_QUERY, [
+        null,
+        null,
+        null,
+        null,
+        range.from,
+        range.to,
+        ADVANCED_ANALYTICS_MINIMUM_SAMPLE_SIZE,
+        ADVANCED_ANALYTICS_EASY_CORRECT_RATE_THRESHOLD,
+        filters.pageSize,
+        (filters.page - 1) * filters.pageSize,
+      ]);
+      const totalItems = result.rows[0]?.total_items ?? 0;
+      return {
+        items: result.rows.flatMap((row) =>
+          row.event_id === null
+            ? []
+            : [
+                {
+                  eventId: row.event_id,
+                  eventTitle: row.event_title,
+                  ignoredLocationCount: row.ignored_location_count,
+                  easyQuestionCount: row.easy_question_count,
+                  hardQuestionCount: row.hard_question_count,
+                  questionId: row.question_id,
+                  challengeId: row.challenge_id,
+                },
+              ],
+        ),
+        page: filters.page,
+        pageSize: filters.pageSize,
+        totalItems,
+        totalPages: Math.ceil(totalItems / filters.pageSize),
+        minimumSampleSize: ADVANCED_ANALYTICS_MINIMUM_SAMPLE_SIZE,
+      };
+    },
+
     async listEventLocations(filters) {
       const range = validateCommonFilters(filters);
       if (!['all', 'popular', 'ignored'].includes(filters.mode)) {
@@ -455,7 +524,11 @@ function parseUtcDate(value: string, field: string): Date {
   return parsed;
 }
 
-const EVENT_LOCATION_ANALYTICS_QUERY = `
+function eventLocationAnalyticsCtes(
+  fromParameter: string,
+  toParameter: string,
+) {
+  return `
   with product as (
     select aggregate.event_id,
            case when aggregate.placement_assignment_id is null
@@ -467,8 +540,8 @@ const EVENT_LOCATION_ANALYTICS_QUERY = `
       left join public.event_placement_assignments assignment
         on assignment.id = aggregate.placement_assignment_id
        and assignment.event_id = aggregate.event_id
-     where ($1::timestamptz is null or aggregate.bucket_start >= $1::timestamptz)
-       and ($2::timestamptz is null or aggregate.bucket_start < $2::timestamptz)
+     where (${fromParameter}::timestamptz is null or aggregate.bucket_start >= ${fromParameter}::timestamptz)
+       and (${toParameter}::timestamptz is null or aggregate.bucket_start < ${toParameter}::timestamptz)
      group by aggregate.event_id,
               case when aggregate.placement_assignment_id is null
                    then 'authored' else 'placement_site' end,
@@ -483,8 +556,8 @@ const EVENT_LOCATION_ANALYTICS_QUERY = `
       left join public.event_placement_assignments assignment
         on assignment.id = attempt.placement_assignment_id
        and assignment.event_id = attempt.event_id
-     where ($1::timestamptz is null or attempt.started_at >= $1::timestamptz)
-       and ($2::timestamptz is null or attempt.started_at < $2::timestamptz)
+     where (${fromParameter}::timestamptz is null or attempt.started_at >= ${fromParameter}::timestamptz)
+       and (${toParameter}::timestamptz is null or attempt.started_at < ${toParameter}::timestamptz)
      group by attempt.event_id,
               case when attempt.placement_assignment_id is null
                    then 'authored' else 'placement_site' end,
@@ -500,8 +573,8 @@ const EVENT_LOCATION_ANALYTICS_QUERY = `
       left join public.event_placement_assignments assignment
         on assignment.id = attempt.placement_assignment_id
        and assignment.event_id = completion.event_id
-     where ($1::timestamptz is null or completion.completed_at >= $1::timestamptz)
-       and ($2::timestamptz is null or completion.completed_at < $2::timestamptz)
+     where (${fromParameter}::timestamptz is null or completion.completed_at >= ${fromParameter}::timestamptz)
+       and (${toParameter}::timestamptz is null or completion.completed_at < ${toParameter}::timestamptz)
      group by completion.event_id,
               case when attempt.placement_assignment_id is null
                    then 'authored' else 'placement_site' end,
@@ -531,7 +604,12 @@ const EVENT_LOCATION_ANALYTICS_QUERY = `
       left join product using (event_id, location_kind, location_id)
       left join starts using (event_id, location_kind, location_id)
       left join completions using (event_id, location_kind, location_id)
-  ), filtered as (
+  )
+`;
+}
+
+const EVENT_LOCATION_ANALYTICS_QUERY = `
+  ${eventLocationAnalyticsCtes('$1', '$2')}  , filtered as (
     select *
       from identified
      where $3::text = 'all'
@@ -681,4 +759,39 @@ const CARD_RARITY_ANALYTICS_QUERY = `
     left join issued using (rarity)
     cross join total_completions
    order by array_position(array['common', 'rare', 'epic', 'legendary'], rarities.rarity)
+`;
+
+// Group the complete disclosed signal set before ordering or paging events.
+const EVENT_ATTENTION_QUERY = `
+  with ignored as (
+    ${eventLocationAnalyticsCtes('$5', '$6')}
+    select event_id::text, event_title, count(*)::int as ignored_location_count
+    from identified
+    where view_count >= $7::integer and eligible_count = 0
+      and start_count = 0 and completion_count = 0
+    group by event_id, event_title
+  ), question_signals as (
+    ${QUESTION_PERFORMANCE_CTES}
+    select * from identified
+    where has_sufficient_sample and (is_problematic or correct_rate >= $8::numeric)
+  ), questions as (
+    select event_id, event_title,
+      count(distinct question_id) filter (where correct_rate >= $8::numeric)::int as easy_question_count,
+      count(distinct question_id) filter (where is_problematic)::int as hard_question_count,
+      (array_agg(question_id order by is_problematic desc, question_id))[1] as question_id,
+      (array_agg(challenge_id order by is_problematic desc, question_id))[1] as challenge_id
+    from question_signals group by event_id, event_title
+  ), combined as (
+    select coalesce(ignored.event_id, questions.event_id) as event_id,
+      coalesce(ignored.event_title, questions.event_title) as event_title,
+      coalesce(ignored.ignored_location_count, 0) as ignored_location_count,
+      coalesce(questions.easy_question_count, 0) as easy_question_count,
+      coalesce(questions.hard_question_count, 0) as hard_question_count,
+      questions.question_id, questions.challenge_id
+    from ignored full join questions using (event_id)
+  ), page as (
+    select * from combined order by event_title, event_id limit $9 offset $10
+  ), metadata as (select count(*)::int as total_items from combined)
+  select page.*, metadata.total_items from metadata left join page on true
+  order by page.event_title nulls last, page.event_id nulls last
 `;

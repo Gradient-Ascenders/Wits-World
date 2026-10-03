@@ -15,6 +15,7 @@ All routes require the normal authenticated, active-player, Author guards:
 - `GET /api/v1/author/analytics/event-locations`
 - `GET /api/v1/author/analytics/questions`
 - `GET /api/v1/author/analytics/card-issuance`
+- `GET /api/v1/author/analytics/attention`
 
 The routes accept `page` (default `1`) and `pageSize` (default `25`, maximum
 `100`). `fromDate` and `toDate` are optional UTC calendar dates in `YYYY-MM-DD`
@@ -82,6 +83,24 @@ The `0.90` easy threshold is the issue `#278` operational policy. It does not
 modify challenge marking, question publication, or the issue `#184` problematic
 question rule.
 
+## Event attention
+
+`GET /api/v1/author/analytics/attention` groups the complete reportable location
+and question signal set by event before applying pagination. It shares the
+existing authoritative SQL outcome and location projections. Ignored locations
+have at least ten views and exactly zero reachable decisions, starts, and
+completions. Question signals require at least ten outcomes and reuse the easy
+and problematic thresholds above. Small-sample questions do not contribute.
+
+Each row returns `eventId`, `eventTitle`, `ignoredLocationCount`,
+`easyQuestionCount`, and `hardQuestionCount`. These count locations and distinct
+questions in each signal category, rather than players or outcomes. Historical
+difficulty cohorts can give one question signals in both categories. A paired
+`questionId` and `challengeId` link to a representative flagged question,
+preferring a problematic question; both are null for location-only attention.
+The response includes the standard pagination and minimum-sample metadata.
+Events are ordered by title and identifier, without an invented severity score.
+
 ## Card issuance analytics
 
 `GET /api/v1/author/analytics/card-issuance` reads historical issuance from the
@@ -107,6 +126,19 @@ Its end-date control is inclusive for Authors and is converted to the following
 UTC calendar date before it is sent as the API's exclusive `toDate`. The browser
 mirrors paired-date and 366-day validation for usability; this does not replace
 the API validation above.
+
+The desktop console now opens on the event-attention overview and separates
+Locations, Questions, and Rewards at `/author/analytics/locations`,
+`/author/analytics/questions`, and `/author/analytics/rewards`. The shared period
+offers all-time, seven-day, thirty-day, and custom UTC windows. Visited reports
+retain their controls and recover independently; other reports load on demand.
+Bar charts compare location counts and historical rarity issuance. The question
+dot plot displays returned correctness rates with threshold reference lines.
+Timeouts already contribute to incorrect outcomes and are not a third stacked
+outcome category. Charts explicitly distinguish page-scoped comparisons from
+period-wide rarity summaries. Hidden, zero, no-outcome, and unavailable values
+have separate labels; hidden values have no plotted magnitude. Full labels and
+values are accessible by chart-row focus and equivalent data tables.
 
 Location rows are requested with the server `mode` value and are not reclassified
 in the browser. The console displays the four independent funnel stages and does
@@ -161,3 +193,6 @@ latency SLA and not a general load-test claim.
 
 The preceding document was generated and edited with the assistance of:
 ChatGPT-Web[GPT-5.6 Sol].
+
+The desktop analytics and event-attention sections were edited with assistance
+from Codex[GPT-6].

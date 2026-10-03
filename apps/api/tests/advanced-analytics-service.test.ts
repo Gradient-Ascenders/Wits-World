@@ -13,6 +13,63 @@ const CHALLENGE_ID = '40000000-0000-4000-8000-000000000001';
 const CARD_ID = '50000000-0000-4000-8000-000000000001';
 
 describe('advanced analytics service', () => {
+  it('projects complete server-grouped attention pages with paired content links and date bounds', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          event_id: EVENT_ID,
+          event_title: 'Great Hall',
+          ignored_location_count: 2,
+          easy_question_count: 1,
+          hard_question_count: 3,
+          question_id: QUESTION_ID,
+          challenge_id: CHALLENGE_ID,
+          total_items: 26,
+        },
+      ],
+    });
+    const service = createAuthorAnalyticsService(
+      { query },
+      questionPerformanceFixture([]),
+    );
+    const result = await service.listAttention({
+      fromDate: '2026-09-01',
+      toDate: '2026-10-01',
+      page: 2,
+      pageSize: 25,
+    });
+    expect(result).toMatchObject({
+      page: 2,
+      totalItems: 26,
+      totalPages: 2,
+      items: [
+        {
+          eventId: EVENT_ID,
+          ignoredLocationCount: 2,
+          easyQuestionCount: 1,
+          hardQuestionCount: 3,
+          questionId: QUESTION_ID,
+          challengeId: CHALLENGE_ID,
+        },
+      ],
+    });
+    expect(query.mock.calls[0]?.[1]).toEqual([
+      null,
+      null,
+      null,
+      null,
+      '2026-09-01T00:00:00.000Z',
+      '2026-10-01T00:00:00.000Z',
+      10,
+      0.9,
+      25,
+      25,
+    ]);
+    await expect(
+      service.listAttention({ page: 1, pageSize: 101 }),
+    ).rejects.toThrow(InvalidAdvancedAnalyticsFiltersError);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
   it('suppresses narrow event-location stage counts and composes bounded filters', async () => {
     const query = vi.fn().mockResolvedValue({
       rows: [

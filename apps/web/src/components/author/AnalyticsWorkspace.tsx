@@ -1,210 +1,270 @@
-import { SelectField } from '../fields/SelectField';
-import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { Link } from 'wouter';
-
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
+import { Link, useLocation } from 'wouter';
 import {
   AuthorApiError,
   listAuthorAdvancedQuestionAnalytics,
   listAuthorCardIssuanceAnalytics,
   listAuthorChallenges,
+  listAuthorEventAttention,
   listAuthorEventLocationAnalytics,
   listAuthorEvents,
   type AuthorAdvancedQuestionAnalyticsItem,
   type AuthorAdvancedQuestionAnalyticsPage,
   type AuthorAnalyticsLocationMode,
-  type AuthorCardIssuanceAnalyticsPage,
   type AuthorChallenge,
   type AuthorEvent,
-  type AuthorEventLocationAnalyticsPage,
+  type AuthorEventAttentionPage,
+  type AuthorEventLocationAnalyticsItem,
+  type AuthorPage,
   type ChallengeFormat,
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
-import { LoadingState } from '../LoadingState';
-import { StateIcon } from '../StatusMessage';
-import { AnalyticsBarChart } from './AnalyticsCharts';
-import { authorErrorDetail } from './author-error-copy';
-import { authorPaths } from './author-routing';
+import { SelectField } from '../fields/SelectField';
+import { AnalyticsComparisonChart } from './AnalyticsCharts';
+import {
+  authorPaths,
+  parseAuthorWorkspaceRoute,
+  type AnalyticsReport,
+} from './author-routing';
+import './author-analytics.css';
 
 interface Props {
   apiBaseUrl: string;
   getAccessToken: ApiAccessTokenProvider;
 }
-
-interface DateDraft {
-  start: string;
-  end: string;
-}
-
 interface DateRange {
   fromDate?: string;
   toDate?: string;
 }
-
+interface DateDraft {
+  start: string;
+  end: string;
+}
 interface QuestionFilters {
   eventId: string;
   challengeId: string;
   format: '' | ChallengeFormat;
   difficulty: '' | '1' | '2' | '3';
 }
-
-type LoadState = 'loading' | 'ready' | 'error';
-
-const emptyDateDraft: DateDraft = { start: '', end: '' };
-const emptyQuestionFilters: QuestionFilters = {
+const emptyFilters: QuestionFilters = {
   eventId: '',
   challengeId: '',
   format: '',
   difficulty: '',
 };
+const reportNames: Record<AnalyticsReport, string> = {
+  overview: 'Overview',
+  locations: 'Locations',
+  questions: 'Questions',
+  rewards: 'Rewards',
+};
 const dayMilliseconds = 86_400_000;
-const maximumDateRangeDays = 366;
 
 export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
-  const [dateDraft, setDateDraft] = useState<DateDraft>(emptyDateDraft);
+  const [pathname] = useLocation();
+  const route = parseAuthorWorkspaceRoute(pathname);
+  const report =
+    route.section === 'analytics' ? (route.report ?? 'overview') : 'overview';
+  const [visited, setVisited] = useState<AnalyticsReport[]>([report]);
   const [dateRange, setDateRange] = useState<DateRange>({});
+  const [dateDraft, setDateDraft] = useState<DateDraft>({ start: '', end: '' });
+  const [period, setPeriod] = useState('all');
+  const [customOpen, setCustomOpen] = useState(false);
   const [dateError, setDateError] = useState('');
-  const [dateVersion, setDateVersion] = useState(0);
+  useEffect(
+    () =>
+      setVisited((current) =>
+        current.includes(report) ? current : [...current, report],
+      ),
+    [report],
+  );
 
-  function applyDateRange(event: FormEvent) {
+  function selectPeriod(value: string) {
+    setPeriod(value);
+    setDateError('');
+    setCustomOpen(value === 'custom');
+    if (value === 'custom') return;
+    if (value === 'all') {
+      setDateRange({});
+      setDateDraft({ start: '', end: '' });
+      return;
+    }
+    const today = new Date();
+    const end = Date.UTC(
+      today.getUTCFullYear(),
+      today.getUTCMonth(),
+      today.getUTCDate(),
+    );
+    const start = end - (Number(value) - 1) * dayMilliseconds;
+    const draft = {
+      start: new Date(start).toISOString().slice(0, 10),
+      end: new Date(end).toISOString().slice(0, 10),
+    };
+    setDateDraft(draft);
+    setDateRange({
+      fromDate: draft.start,
+      toDate: new Date(end + dayMilliseconds).toISOString().slice(0, 10),
+    });
+  }
+  function applyDates(event: FormEvent) {
     event.preventDefault();
     const validation = validateDateDraft(dateDraft);
     if ('error' in validation) {
       setDateError(validation.error);
       return;
     }
-
     setDateError('');
     setDateRange(validation.range);
-    setDateVersion((value) => value + 1);
+    setCustomOpen(false);
   }
-
-  function clearDateRange() {
-    setDateDraft(emptyDateDraft);
-    setDateError('');
-    setDateRange({});
-    setDateVersion((value) => value + 1);
-  }
+  const props = { apiBaseUrl, getAccessToken, dateRange };
+  const mounted = visited.includes(report) ? visited : [...visited, report];
 
   return (
     <section
-      aria-labelledby="advanced-analytics-title"
-      className="author-panel analytics-workspace"
+      className="author-workspace analytics-workspace"
+      aria-labelledby="analytics-title"
     >
-      <header>
-        <p className="eyebrow">Privacy-safe operational reporting</p>
-        <h2 id="advanced-analytics-title">Advanced analytics</h2>
-        <p className="author-panel__intro">
-          Compare location activity, question difficulty, and historical card
-          issuance using server-authoritative aggregate data. Positive samples
-          below the reporting threshold are intentionally hidden rather than
-          estimated.
-        </p>
-      </header>
-
-      <form
-        className="author-filters analytics-filters analytics-date-filters"
-        onSubmit={applyDateRange}
-      >
-        <div className="analytics-filters__heading">
-          <h3>Reporting period</h3>
-          <p>Dates use UTC. The selected end date includes that full day.</p>
+      <header className="analytics-header">
+        <div>
+          <h2 id="analytics-title">Analytics</h2>
         </div>
-        <label className="author-filter">
-          <span>Start date</span>
-          <input
-            type="date"
-            value={dateDraft.start}
-            onChange={(event) =>
-              setDateDraft({ ...dateDraft, start: event.target.value })
-            }
+        <div className="analytics-period">
+          <SelectField
+            label="Reporting period"
+            value={period}
+            onChange={selectPeriod}
+            options={[
+              { value: 'all', label: 'All time' },
+              { value: '7', label: 'Last 7 days' },
+              { value: '30', label: 'Last 30 days' },
+              { value: 'custom', label: 'Custom dates' },
+            ]}
           />
-        </label>
-        <label className="author-filter">
-          <span>End date</span>
-          <input
-            type="date"
-            value={dateDraft.end}
-            onChange={(event) =>
-              setDateDraft({ ...dateDraft, end: event.target.value })
-            }
-          />
-        </label>
-        <div className="author-actions analytics-filters__actions">
+          <span className="analytics-period__caption">
+            {dateRange.fromDate ? `${periodDescription(dateRange)} · ` : ''}UTC
+          </span>
+          {period === 'custom' && !customOpen && (
+            <button
+              type="button"
+              className="analytics-text-button"
+              onClick={() => setCustomOpen(true)}
+            >
+              Edit dates
+            </button>
+          )}
+        </div>
+      </header>
+      {customOpen && (
+        <form className="analytics-custom-period" onSubmit={applyDates}>
+          <label className="author-filter">
+            <span>Start date</span>
+            <input
+              type="date"
+              value={dateDraft.start}
+              onChange={(event) =>
+                setDateDraft({ ...dateDraft, start: event.target.value })
+              }
+            />
+          </label>
+          <label className="author-filter">
+            <span>End date</span>
+            <input
+              type="date"
+              value={dateDraft.end}
+              onChange={(event) =>
+                setDateDraft({ ...dateDraft, end: event.target.value })
+              }
+            />
+          </label>
           <button className="button button--primary" type="submit">
             Apply period
           </button>
           <button
             className="button button--quiet"
             type="button"
-            onClick={clearDateRange}
+            onClick={() => selectPeriod('all')}
           >
             Clear period
           </button>
-        </div>
-        {dateError ? (
-          <p className="analytics-filter-error" role="alert">
-            {dateError}
+          <p className="analytics-custom-period__note">
+            End date included · up to 366 days
           </p>
-        ) : null}
-      </form>
-
-      <LocationAnalyticsSection
-        apiBaseUrl={apiBaseUrl}
-        dateRange={dateRange}
-        dateVersion={dateVersion}
-        getAccessToken={getAccessToken}
-      />
-      <QuestionAnalyticsSection
-        apiBaseUrl={apiBaseUrl}
-        dateRange={dateRange}
-        dateVersion={dateVersion}
-        getAccessToken={getAccessToken}
-      />
-      <CardIssuanceAnalyticsSection
-        apiBaseUrl={apiBaseUrl}
-        dateRange={dateRange}
-        dateVersion={dateVersion}
-        getAccessToken={getAccessToken}
-      />
+          {dateError && (
+            <p className="analytics-filter-error" role="alert">
+              {dateError}
+            </p>
+          )}
+        </form>
+      )}
+      <nav className="analytics-tabs" aria-label="Analytics reports">
+        {(Object.keys(reportNames) as AnalyticsReport[]).map((tab) => (
+          <Link
+            key={tab}
+            href={authorPaths.analyticsReport(tab)}
+            aria-current={tab === report ? 'page' : undefined}
+            onFocus={(event) =>
+              event.currentTarget.scrollIntoView?.({
+                block: 'nearest',
+                inline: 'nearest',
+              })
+            }
+          >
+            {reportNames[tab]}
+          </Link>
+        ))}
+      </nav>
+      {mounted.map((tab) => (
+        <div key={tab} hidden={report !== tab}>
+          {tab === 'overview' ? (
+            <AttentionReport {...props} />
+          ) : tab === 'locations' ? (
+            <LocationReport {...props} />
+          ) : tab === 'questions' ? (
+            <QuestionReport {...props} />
+          ) : (
+            <RewardReport {...props} />
+          )}
+        </div>
+      ))}
     </section>
   );
 }
 
-function LocationAnalyticsSection({
-  apiBaseUrl,
-  dateRange,
-  dateVersion,
-  getAccessToken,
-}: Props & { dateRange: DateRange; dateVersion: number }) {
-  const [mode, setMode] = useState<AuthorAnalyticsLocationMode>('all');
-  const [page, setPage] = useState(1);
-  const [result, setResult] = useState<AuthorEventLocationAnalyticsPage | null>(
-    null,
-  );
-  const [state, setState] = useState<LoadState>('loading');
+type ReportProps = Props & { dateRange: DateRange };
+
+/** Changing filters resets the effective page before requesting; aborted reads never replace a newer report. */
+function useReport<T extends AuthorPage<unknown>>(
+  load: (page: number, signal: AbortSignal) => Promise<T>,
+  resetKey: string,
+) {
+  const [pagination, setPagination] = useState({ key: resetKey, page: 1 });
+  const page = pagination.key === resetKey ? pagination.page : 1;
+  const [result, setResult] = useState<T | null>(null);
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState('');
   const [retryVersion, setRetryVersion] = useState(0);
-
-  useEffect(() => setPage(1), [dateVersion]);
-
+  const setPage = useCallback(
+    (next: number) => setPagination({ key: resetKey, page: next }),
+    [resetKey],
+  );
   useEffect(() => {
     const controller = new AbortController();
     setState('loading');
-    void listAuthorEventLocationAnalytics({
-      apiBaseUrl,
-      getAccessToken,
-      signal: controller.signal,
-      ...dateRange,
-      mode,
-      page,
-    })
+    void load(page, controller.signal)
       .then((next) => {
         if (controller.signal.aborted) return;
         if (
           next.totalItems > 0 &&
           next.items.length === 0 &&
-          next.totalPages > 0 &&
-          page > next.totalPages
+          page > next.totalPages &&
+          next.totalPages > 0
         ) {
           setPage(next.totalPages);
           return;
@@ -216,189 +276,426 @@ function LocationAnalyticsSection({
       .catch((caught: unknown) => {
         if (controller.signal.aborted) return;
         setError(
-          analyticsErrorDetail(
-            caught,
-            'Location analytics could not be loaded.',
-          ),
+          caught instanceof AuthorApiError && caught.failure !== 'unavailable'
+            ? caught.detail
+            : 'Couldn’t load this report. Check your connection.',
         );
         setState('error');
       });
     return () => controller.abort();
-  }, [apiBaseUrl, dateRange, getAccessToken, mode, page, retryVersion]);
+  }, [load, page, retryVersion, setPage]);
+  return {
+    result,
+    state,
+    error,
+    page,
+    setPage,
+    retry: () => setRetryVersion((value) => value + 1),
+  };
+}
 
-  const chartItems = result?.items.slice(0, 6) ?? [];
-
+type ReportState = {
+  state: 'loading' | 'ready' | 'error';
+  error: string;
+  retry: () => void;
+};
+function ReportFeedback({ state, error, retry }: ReportState) {
+  if (state === 'loading')
+    return (
+      <div
+        className="analytics-loading"
+        role="status"
+        aria-label="Loading report"
+      >
+        <div />
+        <div />
+        <div />
+        <span className="sr-only">Loading report…</span>
+      </div>
+    );
+  if (state === 'error')
+    return (
+      <div
+        className="author-feedback state-message state-message--error"
+        role="alert"
+      >
+        <p>{error}</p>
+        <button className="button button--quiet" type="button" onClick={retry}>
+          Try again
+        </button>
+      </div>
+    );
+  return null;
+}
+function ReportHeader({ title }: { title: string }) {
   return (
-    <section
-      aria-labelledby="location-analytics-title"
-      className="analytics-section"
+    <header className="analytics-report-header">
+      <h3>{title}</h3>
+    </header>
+  );
+}
+function AboutReport({ children }: { children: ReactNode }) {
+  return (
+    <details className="analytics-about">
+      <summary>About this report</summary>
+      <div>{children}</div>
+    </details>
+  );
+}
+function EmptyReport({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="analytics-empty">
+      <h4>{title}</h4>
+      <p>{children}</p>
+    </div>
+  );
+}
+function TableRegion({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="analytics-table-wrap"
+      role="region"
+      aria-label={label}
+      tabIndex={0}
     >
-      <div className="analytics-section__heading">
-        <div>
-          <p className="eyebrow">Location activity</p>
-          <h3 id="location-analytics-title">Popular and ignored locations</h3>
-          <p>
-            These are independent aggregate stages, not player-level conversion
-            cohorts. A start can therefore exist without a view in the same
-            reporting window.
-          </p>
-        </div>
+      {children}
+    </div>
+  );
+}
+function Pagination({
+  report,
+  label,
+}: {
+  report: {
+    result: AuthorPage<unknown> | null;
+    page: number;
+    setPage: (page: number) => void;
+  };
+  label: string;
+}) {
+  if (!report.result || report.result.totalPages <= 1) return null;
+  return (
+    <nav className="author-actions author-pagination" aria-label={label}>
+      <button
+        className="button button--quiet"
+        type="button"
+        disabled={report.page <= 1}
+        onClick={() => report.setPage(report.page - 1)}
+      >
+        Previous
+      </button>
+      <span>
+        Page {report.result.page} of {report.result.totalPages}
+      </span>
+      <button
+        className="button button--quiet"
+        type="button"
+        disabled={report.page >= report.result.totalPages}
+        onClick={() => report.setPage(report.page + 1)}
+      >
+        Next
+      </button>
+    </nav>
+  );
+}
+function PageScope({
+  result,
+  noun,
+}: {
+  result: AuthorPage<unknown>;
+  noun: string;
+}) {
+  const first = (result.page - 1) * result.pageSize + 1;
+  return (
+    <p className="analytics-results">
+      {result.totalItems === 0
+        ? `0 ${noun}`
+        : `${first}–${first + result.items.length - 1} of ${result.totalItems} ${noun}`}
+    </p>
+  );
+}
+
+function AttentionReport({
+  apiBaseUrl,
+  getAccessToken,
+  dateRange,
+}: ReportProps) {
+  const load = useCallback(
+    (page: number, signal: AbortSignal) =>
+      listAuthorEventAttention({
+        apiBaseUrl,
+        getAccessToken,
+        ...dateRange,
+        page,
+        signal,
+      }),
+    [apiBaseUrl, getAccessToken, dateRange],
+  );
+  const report = useReport<AuthorEventAttentionPage>(
+    load,
+    JSON.stringify(dateRange),
+  );
+  const result = report.result;
+  const chartItems = result?.items.slice(0, 6) ?? [];
+  return (
+    <section className="analytics-report" aria-label="Overview report">
+      <ReportHeader title="Events needing attention" />
+      <AboutReport>
+        <p>
+          Events are listed when viewed locations have no onward activity or
+          questions may be too easy or hard. Location signals need at least 10
+          views; question signals need at least 10 outcomes. Signals suggest
+          what to review. Events are sorted by title.
+        </p>
+      </AboutReport>
+      <ReportFeedback {...report} />
+      {report.state === 'ready' &&
+        result &&
+        (result.totalItems === 0 ? (
+          <EmptyReport title="No attention signals">
+            Try another period or open a detailed report. Small samples are
+            hidden.
+          </EmptyReport>
+        ) : (
+          <>
+            <PageScope result={result} noun="events" />
+            <div className="analytics-overview-plots">
+              <AnalyticsComparisonChart
+                title="Locations with no onward activity"
+                unit="Locations"
+                scope={`First ${chartItems.length} events on this page`}
+                rows={chartItems.map((item) => ({
+                  key: item.eventId,
+                  label: item.eventTitle,
+                  value: item.ignoredLocationCount,
+                  displayValue: String(item.ignoredLocationCount),
+                  detail:
+                    'Reportable views; no reachable decisions, starts, or completions',
+                }))}
+              />
+              <AnalyticsComparisonChart
+                title="Question signals"
+                unit="Question signals"
+                scope={`First ${chartItems.length} events on this page`}
+                rows={chartItems.map((item) => ({
+                  key: item.eventId,
+                  label: item.eventTitle,
+                  value: item.hardQuestionCount + item.easyQuestionCount,
+                  displayValue: String(
+                    item.hardQuestionCount + item.easyQuestionCount,
+                  ),
+                  detail: `${item.hardQuestionCount} may be too hard · ${item.easyQuestionCount} may be too easy`,
+                }))}
+              />
+            </div>
+            <TableRegion label="Event attention results">
+              <table className="analytics-table">
+                <caption className="sr-only">
+                  Server-provided event attention signals for the reporting
+                  period
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Event</th>
+                    <th scope="col">Ignored locations</th>
+                    <th scope="col">May be too hard</th>
+                    <th scope="col">May be too easy</th>
+                    <th scope="col">Review</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.items.map((item) => (
+                    <tr key={item.eventId}>
+                      <th scope="row">
+                        <Link href={authorPaths.event(item.eventId)}>
+                          {item.eventTitle}
+                        </Link>
+                      </th>
+                      <td>{item.ignoredLocationCount}</td>
+                      <td>{item.hardQuestionCount}</td>
+                      <td>{item.easyQuestionCount}</td>
+                      <td>
+                        {item.questionId && item.challengeId ? (
+                          <Link
+                            href={authorPaths.question(
+                              item.eventId,
+                              item.challengeId,
+                              item.questionId,
+                            )}
+                          >
+                            Review question
+                          </Link>
+                        ) : (
+                          <Link href={authorPaths.event(item.eventId)}>
+                            Open event
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableRegion>
+            <Pagination report={report} label="Event attention pages" />
+          </>
+        ))}
+    </section>
+  );
+}
+
+const locationMetrics = {
+  viewCount: 'Views',
+  eligibleCount: 'Reachable',
+  startCount: 'Starts',
+  completionCount: 'Completions',
+} as const;
+function LocationReport({
+  apiBaseUrl,
+  getAccessToken,
+  dateRange,
+}: ReportProps) {
+  const [mode, setMode] = useState<AuthorAnalyticsLocationMode>('all');
+  const [metric, setMetric] =
+    useState<keyof typeof locationMetrics>('viewCount');
+  const load = useCallback(
+    (page: number, signal: AbortSignal) =>
+      listAuthorEventLocationAnalytics({
+        apiBaseUrl,
+        getAccessToken,
+        ...dateRange,
+        mode,
+        page,
+        signal,
+      }),
+    [apiBaseUrl, getAccessToken, dateRange, mode],
+  );
+  const report = useReport(load, JSON.stringify([dateRange, mode]));
+  const result = report.result;
+  return (
+    <section className="analytics-report" aria-label="Locations report">
+      <ReportHeader title="Location activity" />
+      <div className="analytics-toolbar">
         <SelectField
           label="Location view"
-          className="author-filter analytics-section__mode"
           value={mode}
-          onChange={(value) => {
-            setMode(value as AuthorAnalyticsLocationMode);
-            setPage(1);
-          }}
+          onChange={(value) => setMode(value as AuthorAnalyticsLocationMode)}
           options={[
             { value: 'all', label: 'All locations' },
             { value: 'popular', label: 'Popular locations' },
             { value: 'ignored', label: 'Ignored locations' },
           ]}
         />
+        <SelectField
+          label="Chart metric"
+          value={metric}
+          onChange={(value) => setMetric(value as keyof typeof locationMetrics)}
+          options={Object.entries(locationMetrics).map(([value, label]) => ({
+            value,
+            label,
+          }))}
+        />
       </div>
-      <p className="analytics-policy">{locationModeDescription(mode)}</p>
-
-      {state === 'loading' ? (
-        <LoadingState label="Loading location analytics…" />
-      ) : null}
-      {state === 'error' ? (
-        <AnalyticsError
-          error={error}
-          onRetry={() => setRetryVersion((value) => value + 1)}
-        />
-      ) : null}
-      {state === 'ready' && result?.totalItems === 0 ? (
-        <AnalyticsEmpty
-          heading="No location activity"
-          message="Try a wider reporting period or choose another location view."
-        />
-      ) : null}
-      {state === 'ready' && result && result.items.length > 0 ? (
-        <>
-          <AnalyticsBarChart
-            title={`Activity stages for the first ${chartItems.length} location${chartItems.length === 1 ? '' : 's'} on this page`}
-            groups={chartItems.map((item) => ({
-              key: `${item.locationKind}:${item.locationId}`,
-              label: item.locationName,
-              metrics: [
-                analyticsMetric('Views', item.viewCount, item.suppressed),
-                analyticsMetric(
-                  'Reachable',
-                  item.eligibleCount,
-                  item.suppressed,
-                ),
-                analyticsMetric('Starts', item.startCount, item.suppressed),
-                analyticsMetric(
-                  'Completions',
-                  item.completionCount,
-                  item.suppressed,
-                ),
-              ],
-            }))}
-          />
-          <AnalyticsTableHint id="location-analytics-table-hint" />
-          <div
-            aria-describedby="location-analytics-table-hint"
-            aria-label="Location analytics results"
-            className="analytics-table-wrap"
-            role="region"
-            tabIndex={0}
-          >
-            <table className="analytics-table">
-              <caption className="sr-only">
-                Aggregate location views, reachable decisions, challenge starts,
-                and event completions
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Location</th>
-                  <th scope="col">Views</th>
-                  <th scope="col">Reachable</th>
-                  <th scope="col">Starts</th>
-                  <th scope="col">Completions</th>
-                  <th scope="col">Privacy</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.items.map((item) => (
-                  <tr key={`${item.locationKind}:${item.locationId}`}>
-                    <th scope="row">
-                      <span>{item.locationName}</span>
-                      <small>
-                        {item.eventTitle} ·{' '}
-                        {item.locationKind === 'authored'
-                          ? 'Authored location'
-                          : 'Placement site'}
-                      </small>
-                    </th>
-                    <td>
-                      {formatCount(item.viewCount, result.minimumSampleSize)}
-                    </td>
-                    <td>
-                      {formatCount(
-                        item.eligibleCount,
-                        result.minimumSampleSize,
-                      )}
-                    </td>
-                    <td>
-                      {formatCount(item.startCount, result.minimumSampleSize)}
-                    </td>
-                    <td>
-                      {formatCount(
-                        item.completionCount,
-                        result.minimumSampleSize,
-                      )}
-                    </td>
-                    <td>
-                      <span
-                        className={`analytics-signal analytics-signal--${item.suppressed ? 'insufficient' : 'clear'}`}
-                      >
-                        {item.suppressed
-                          ? `Some values suppressed (<${result.minimumSampleSize})`
-                          : 'Reportable'}
-                      </span>
-                    </td>
+      <AboutReport>
+        <p>
+          Counts are independent: a start may have no view in this period.
+          Popular and ignored locations follow the reporting rules.
+        </p>
+      </AboutReport>
+      <ReportFeedback {...report} />
+      {report.state === 'ready' &&
+        result &&
+        (result.totalItems === 0 ? (
+          <EmptyReport title="No location activity">
+            Try a wider period or another location view.
+          </EmptyReport>
+        ) : (
+          <>
+            <PageScope result={result} noun="locations" />
+            <AnalyticsComparisonChart
+              title={`${locationMetrics[metric]} by location`}
+              unit={locationMetrics[metric]}
+              scope={`First ${Math.min(result.items.length, 8)} locations on this page`}
+              rows={result.items.slice(0, 8).map((item) => ({
+                key: locationKey(item),
+                label: item.locationName,
+                value: item[metric],
+                displayValue: count(item[metric]),
+                detail: `${item.eventTitle} · ${item.locationKind === 'authored' ? 'Authored location' : 'Placement site'}`,
+              }))}
+            />
+            <TableRegion label="Location analytics results">
+              <table className="analytics-table">
+                <caption className="sr-only">
+                  Disclosed aggregate activity by location
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Location</th>
+                    <th scope="col">Views</th>
+                    <th scope="col">Reachable</th>
+                    <th scope="col">Starts</th>
+                    <th scope="col">Completions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <AnalyticsPagination
-            label="Location analytics pages"
-            page={page}
-            resultPage={result.page}
-            totalPages={result.totalPages}
-            onPageChange={setPage}
-          />
-        </>
-      ) : null}
+                </thead>
+                <tbody>
+                  {result.items.map((item) => (
+                    <tr key={locationKey(item)}>
+                      <th scope="row">
+                        <Link href={authorPaths.event(item.eventId)}>
+                          {item.locationName}
+                        </Link>
+                        <small>
+                          {item.eventTitle} ·{' '}
+                          {item.locationKind === 'authored'
+                            ? 'Authored location'
+                            : 'Placement site'}
+                        </small>
+                      </th>
+                      <td>{count(item.viewCount)}</td>
+                      <td>{count(item.eligibleCount)}</td>
+                      <td>{count(item.startCount)}</td>
+                      <td>{count(item.completionCount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableRegion>
+            <p className="analytics-footnote">
+              Hidden: 1–9 observations. Counts are independent.
+            </p>
+            <Pagination report={report} label="Location analytics pages" />
+          </>
+        ))}
     </section>
   );
 }
+function locationKey(item: AuthorEventLocationAnalyticsItem) {
+  return `${item.eventId}:${item.locationKind}:${item.locationId}`;
+}
 
-function QuestionAnalyticsSection({
+function QuestionReport({
   apiBaseUrl,
-  dateRange,
-  dateVersion,
   getAccessToken,
-}: Props & { dateRange: DateRange; dateVersion: number }) {
-  const [draft, setDraft] = useState<QuestionFilters>(emptyQuestionFilters);
-  const [filters, setFilters] = useState<QuestionFilters>(emptyQuestionFilters);
+  dateRange,
+}: ReportProps) {
+  const [draft, setDraft] = useState<QuestionFilters>(emptyFilters);
+  const [filters, setFilters] = useState<QuestionFilters>(emptyFilters);
   const [events, setEvents] = useState<AuthorEvent[]>([]);
   const [challenges, setChallenges] = useState<AuthorChallenge[]>([]);
-  const [eventOptionsError, setEventOptionsError] = useState('');
-  const [challengeOptionsError, setChallengeOptionsError] = useState('');
-  const [page, setPage] = useState(1);
-  const [result, setResult] =
-    useState<AuthorAdvancedQuestionAnalyticsPage | null>(null);
-  const [state, setState] = useState<LoadState>('loading');
-  const [error, setError] = useState('');
-  const [retryVersion, setRetryVersion] = useState(0);
-
-  useEffect(() => setPage(1), [dateVersion]);
-
+  const [optionsError, setOptionsError] = useState('');
+  const [challengeError, setChallengeError] = useState('');
   useEffect(() => {
     const controller = new AbortController();
     void listAuthorEvents({
@@ -409,141 +706,83 @@ function QuestionAnalyticsSection({
       .then((next) => {
         if (!controller.signal.aborted) {
           setEvents(next);
-          setEventOptionsError('');
+          setOptionsError('');
         }
       })
       .catch(() => {
-        if (!controller.signal.aborted) {
-          setEventOptionsError(
-            'Event filter options could not be loaded. The unfiltered report is still available.',
+        if (!controller.signal.aborted)
+          setOptionsError(
+            'Couldn’t load event filters. You can still view all questions.',
           );
-        }
       });
     return () => controller.abort();
   }, [apiBaseUrl, getAccessToken]);
-
   useEffect(() => {
     const controller = new AbortController();
-    if (!draft.eventId) {
-      setChallenges([]);
-      setChallengeOptionsError('');
-      return () => controller.abort();
-    }
-    void listAuthorChallenges({
-      apiBaseUrl,
-      eventId: draft.eventId,
-      getAccessToken,
-      signal: controller.signal,
-    })
-      .then((next) => {
-        if (!controller.signal.aborted) {
-          setChallenges(next);
-          setChallengeOptionsError('');
-        }
+    setChallenges([]);
+    setChallengeError('');
+    if (draft.eventId)
+      void listAuthorChallenges({
+        apiBaseUrl,
+        getAccessToken,
+        eventId: draft.eventId,
+        signal: controller.signal,
       })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setChallenges([]);
-          setChallengeOptionsError(
-            'Challenge filter options could not be loaded. Clear the event filter to continue without them.',
-          );
-        }
-      });
-    return () => controller.abort();
-  }, [apiBaseUrl, draft.eventId, getAccessToken]);
-
-  const load = useCallback(
-    async (signal: AbortSignal) => {
-      setState('loading');
-      try {
-        const next = await listAuthorAdvancedQuestionAnalytics({
-          apiBaseUrl,
-          getAccessToken,
-          signal,
-          ...dateRange,
-          page,
-          eventId: filters.eventId || undefined,
-          challengeId: filters.challengeId || undefined,
-          format: filters.format || undefined,
-          difficulty: filters.difficulty
-            ? (Number(filters.difficulty) as 1 | 2 | 3)
-            : undefined,
+        .then((next) => {
+          if (!controller.signal.aborted) setChallenges(next);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted)
+            setChallengeError(
+              'Couldn’t load challenges. Clear the event filter to continue.',
+            );
         });
-        if (signal.aborted) return;
-        if (
-          next.totalItems > 0 &&
-          next.items.length === 0 &&
-          next.totalPages > 0 &&
-          page > next.totalPages
-        ) {
-          setPage(next.totalPages);
-          return;
-        }
-        setResult(next);
-        setError('');
-        setState('ready');
-      } catch (caught) {
-        if (signal.aborted) return;
-        setError(
-          analyticsErrorDetail(
-            caught,
-            'Question analytics could not be loaded.',
-          ),
-        );
-        setState('error');
-      }
-    },
-    [apiBaseUrl, dateRange, filters, getAccessToken, page],
-  );
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
     return () => controller.abort();
-  }, [load, retryVersion]);
-
-  function applyFilters(event: FormEvent) {
-    event.preventDefault();
-    setPage(1);
-    setFilters(draft);
-  }
-
-  function clearFilters() {
-    setDraft(emptyQuestionFilters);
-    setFilters(emptyQuestionFilters);
-    setPage(1);
-  }
-
+  }, [apiBaseUrl, getAccessToken, draft.eventId]);
+  const load = useCallback(
+    (page: number, signal: AbortSignal) =>
+      listAuthorAdvancedQuestionAnalytics({
+        apiBaseUrl,
+        getAccessToken,
+        ...dateRange,
+        ...(filters.eventId ? { eventId: filters.eventId } : {}),
+        ...(filters.challengeId ? { challengeId: filters.challengeId } : {}),
+        ...(filters.format ? { format: filters.format } : {}),
+        ...(filters.difficulty
+          ? { difficulty: Number(filters.difficulty) as 1 | 2 | 3 }
+          : {}),
+        page,
+        signal,
+      }),
+    [apiBaseUrl, getAccessToken, dateRange, filters],
+  );
+  const report = useReport<AuthorAdvancedQuestionAnalyticsPage>(
+    load,
+    JSON.stringify([dateRange, filters]),
+  );
+  const result = report.result;
+  const activeSecondary = [
+    filters.challengeId,
+    filters.format,
+    filters.difficulty,
+  ].filter(Boolean).length;
+  const hasFilters =
+    Object.values(draft).some(Boolean) || Object.values(filters).some(Boolean);
   return (
-    <section
-      aria-labelledby="question-analytics-title"
-      className="analytics-section"
-    >
-      <div className="analytics-section__heading">
-        <div>
-          <p className="eyebrow">Question difficulty</p>
-          <h3 id="question-analytics-title">Question response signals</h3>
-          <p>
-            Signals are classified by the API. The browser does not recalculate
-            difficulty thresholds or reveal small positive samples.
-          </p>
-        </div>
-      </div>
-
+    <section className="analytics-report" aria-label="Questions report">
+      <ReportHeader title="Question performance" />
       <form
-        className="author-filters analytics-filters analytics-question-filters"
-        onSubmit={applyFilters}
+        className="analytics-question-toolbar"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setFilters({ ...draft });
+        }}
       >
         <SelectField
           label="Event"
-          className="author-filter"
           value={draft.eventId}
           onChange={(value) =>
-            setDraft({
-              ...draft,
-              eventId: value,
-              challengeId: '',
-            })
+            setDraft({ ...draft, eventId: value, challengeId: '' })
           }
           options={[
             { value: '', label: 'All events' },
@@ -553,361 +792,313 @@ function QuestionAnalyticsSection({
             })),
           ]}
         />
-        <SelectField
-          label="Challenge"
-          className="author-filter"
-          disabled={!draft.eventId || Boolean(challengeOptionsError)}
-          value={draft.challengeId}
-          onChange={(value) => setDraft({ ...draft, challengeId: value })}
-          options={[
-            { value: '', label: 'All challenges' },
-            ...challenges.map((challenge, index) => ({
-              value: challenge.challengeId,
-              label: `${challenge.format === 'ordering' ? 'Ordering' : 'MCQ'} challenge ${index + 1}`,
-            })),
-          ]}
-        />
-        <SelectField
-          label="Format"
-          className="author-filter"
-          value={draft.format}
-          onChange={(value) =>
-            setDraft({
-              ...draft,
-              format: value as QuestionFilters['format'],
-            })
-          }
-          options={[
-            { value: '', label: 'All formats' },
-            { value: 'multiple_choice', label: 'Multiple choice' },
-            { value: 'ordering', label: 'Ordering' },
-          ]}
-        />
-        <SelectField
-          label="Difficulty"
-          className="author-filter"
-          value={draft.difficulty}
-          onChange={(value) =>
-            setDraft({
-              ...draft,
-              difficulty: value as QuestionFilters['difficulty'],
-            })
-          }
-          options={[
-            { value: '', label: 'All difficulties' },
-            { value: '1', label: '1' },
-            { value: '2', label: '2' },
-            { value: '3', label: '3' },
-          ]}
-        />
-        <div className="author-actions analytics-filters__actions">
-          <button className="button button--primary" type="submit">
-            Apply question filters
-          </button>
+        <details className="analytics-more-filters">
+          <summary>
+            More filters{activeSecondary > 0 ? ` (${activeSecondary})` : ''}
+          </summary>
+          <div>
+            <SelectField
+              label="Challenge"
+              value={draft.challengeId}
+              disabled={!draft.eventId || Boolean(challengeError)}
+              onChange={(value) => setDraft({ ...draft, challengeId: value })}
+              options={[
+                { value: '', label: 'All challenges' },
+                ...challenges.map((challenge, index) => ({
+                  value: challenge.challengeId,
+                  label: `${challenge.format === 'ordering' ? 'Ordering' : 'MCQ'} challenge ${index + 1}`,
+                })),
+              ]}
+            />
+            <SelectField
+              label="Format"
+              value={draft.format}
+              onChange={(value) =>
+                setDraft({
+                  ...draft,
+                  format: value as QuestionFilters['format'],
+                })
+              }
+              options={[
+                { value: '', label: 'All formats' },
+                { value: 'multiple_choice', label: 'Multiple choice' },
+                { value: 'ordering', label: 'Ordering' },
+              ]}
+            />
+            <SelectField
+              label="Difficulty"
+              value={draft.difficulty}
+              onChange={(value) =>
+                setDraft({
+                  ...draft,
+                  difficulty: value as QuestionFilters['difficulty'],
+                })
+              }
+              options={[
+                { value: '', label: 'All difficulties' },
+                ...['1', '2', '3'].map((value) => ({ value, label: value })),
+              ]}
+            />
+          </div>
+        </details>
+        <button className="button button--primary" type="submit">
+          Apply filters
+        </button>
+        {hasFilters && (
           <button
             className="button button--quiet"
             type="button"
-            onClick={clearFilters}
+            onClick={() => {
+              setDraft(emptyFilters);
+              setFilters(emptyFilters);
+            }}
           >
-            Clear question filters
+            Clear filters
           </button>
-        </div>
-        {eventOptionsError ? (
+        )}
+        {optionsError && (
           <p className="analytics-filter-note" role="status">
-            {eventOptionsError}
+            {optionsError}
           </p>
-        ) : null}
-        {challengeOptionsError ? (
+        )}
+        {challengeError && (
           <p className="analytics-filter-note" role="status">
-            {challengeOptionsError}
+            {challengeError}
           </p>
-        ) : null}
+        )}
       </form>
-
-      {state === 'loading' ? (
-        <LoadingState label="Loading question analytics…" />
-      ) : null}
-      {state === 'error' ? (
-        <AnalyticsError
-          error={error}
-          onRetry={() => setRetryVersion((value) => value + 1)}
-        />
-      ) : null}
-      {state === 'ready' && result?.totalItems === 0 ? (
-        <AnalyticsEmpty
-          heading="No completed question outcomes"
-          message="Try a wider reporting period or remove a question filter."
-        />
-      ) : null}
-      {state === 'ready' && result && result.items.length > 0 ? (
-        <>
-          <p className="analytics-policy">
-            Potentially too easy means at least{' '}
-            {formatRate(result.easyCorrectRate)} correct. Potentially too hard
-            means at least {formatRate(result.problematicIncorrectRate)}
-            incorrect. Positive samples below {result.minimumSampleSize} are
-            suppressed.
-          </p>
-          <AnalyticsTableHint id="question-analytics-table-hint" />
-          <div
-            aria-describedby="question-analytics-table-hint"
-            aria-label="Question analytics results"
-            className="analytics-table-wrap"
-            role="region"
-            tabIndex={0}
-          >
-            <table className="analytics-table">
-              <caption className="sr-only">
-                Privacy-safe aggregate question outcomes and server-classified
-                difficulty signals
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Question</th>
-                  <th scope="col">Format</th>
-                  <th scope="col">Outcomes</th>
-                  <th scope="col">Correct</th>
-                  <th scope="col">Incorrect</th>
-                  <th scope="col">Timeouts</th>
-                  <th scope="col">Signal</th>
-                  <th scope="col">Content</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.items.map((item) => (
-                  <tr className={questionRowClass(item)} key={item.questionId}>
-                    <th scope="row">
-                      <span>{item.prompt}</span>
-                      <small>
-                        {item.eventTitle} · Difficulty {item.difficulty} ·{' '}
-                        {formatAuthoringStatus(item.status)}
-                      </small>
-                    </th>
-                    <td>
-                      {item.format === 'multiple_choice' ? 'MCQ' : 'Ordering'}
-                    </td>
-                    <td>
-                      {formatCount(item.answerCount, result.minimumSampleSize)}
-                    </td>
-                    <td>
-                      {formatCountWithRate(
-                        item.correctCount,
-                        item.correctRate,
-                        result.minimumSampleSize,
-                      )}
-                    </td>
-                    <td>
-                      {formatCountWithRate(
-                        item.incorrectCount,
-                        item.incorrectRate,
-                        result.minimumSampleSize,
-                      )}
-                    </td>
-                    <td>
-                      {formatCount(item.timeoutCount, result.minimumSampleSize)}
-                    </td>
-                    <td>
-                      {renderQuestionSignal(item, result.minimumSampleSize)}
-                    </td>
-                    <td>
-                      <Link
-                        className="button button--quiet"
-                        href={authorPaths.question(
-                          item.eventId,
-                          item.challengeId,
-                          item.questionId,
-                        )}
-                      >
-                        Open question
-                      </Link>
-                    </td>
+      <AboutReport>
+        <p>
+          Questions need at least 10 outcomes. May be too easy means at least{' '}
+          {result ? rate(result.easyCorrectRate) : '90%'} correct; may be too
+          hard means at least{' '}
+          {result ? rate(result.problematicIncorrectRate) : '70%'} incorrect.
+        </p>
+      </AboutReport>
+      <ReportFeedback {...report} />
+      {report.state === 'ready' &&
+        result &&
+        (result.totalItems === 0 ? (
+          <EmptyReport title="No question outcomes">
+            Try a wider period or clear filters.
+          </EmptyReport>
+        ) : (
+          <>
+            <PageScope result={result} noun="questions" />
+            <AnalyticsComparisonChart
+              title="Correctness by question"
+              unit="Correct outcomes (%)"
+              kind="dot"
+              scope={`First ${Math.min(result.items.length, 8)} questions on this page`}
+              references={[
+                {
+                  value: (1 - result.problematicIncorrectRate) * 100,
+                  label: 'Hard reference',
+                },
+                {
+                  value: result.easyCorrectRate * 100,
+                  label: 'Easy reference',
+                },
+              ]}
+              rows={result.items.slice(0, 8).map((item) => ({
+                key: item.questionId,
+                label: item.prompt,
+                value:
+                  item.answerCount === 0 || item.correctRate === null
+                    ? null
+                    : item.correctRate * 100,
+                displayValue: item.suppressed
+                  ? 'Hidden'
+                  : item.answerCount === 0
+                    ? 'No outcomes'
+                    : rate(item.correctRate),
+                detail: `${item.eventTitle} · ${questionSignal(item)}`,
+                tone:
+                  item.classification === 'problematic'
+                    ? 'danger'
+                    : item.classification === 'easy'
+                      ? 'warning'
+                      : 'blue',
+              }))}
+            />
+            <TableRegion label="Question analytics results">
+              <table className="analytics-table analytics-table--questions">
+                <caption className="sr-only">
+                  Disclosed question outcomes and server-classified signals
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Question</th>
+                    <th scope="col">Outcomes</th>
+                    <th scope="col">Correct</th>
+                    <th scope="col">Incorrect</th>
+                    <th scope="col">Timeouts</th>
+                    <th scope="col">Signal</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <AnalyticsPagination
-            label="Question analytics pages"
-            page={page}
-            resultPage={result.page}
-            totalPages={result.totalPages}
-            onPageChange={setPage}
-          />
-        </>
-      ) : null}
+                </thead>
+                <tbody>
+                  {result.items.map((item) => (
+                    <tr key={item.questionId}>
+                      <th scope="row">
+                        <Link
+                          href={authorPaths.question(
+                            item.eventId,
+                            item.challengeId,
+                            item.questionId,
+                          )}
+                        >
+                          {item.prompt}
+                        </Link>
+                        <small>
+                          {item.eventTitle} ·{' '}
+                          {item.format === 'multiple_choice'
+                            ? 'MCQ'
+                            : 'Ordering'}{' '}
+                          · Difficulty {item.difficulty} ·{' '}
+                          {capitalize(item.status.replaceAll('_', ' '))}
+                        </small>
+                      </th>
+                      <td>{count(item.answerCount)}</td>
+                      <td>
+                        {countWithRate(item.correctCount, item.correctRate)}
+                      </td>
+                      <td>
+                        {countWithRate(item.incorrectCount, item.incorrectRate)}
+                      </td>
+                      <td>{count(item.timeoutCount)}</td>
+                      <td>
+                        <span
+                          className={`analytics-signal analytics-signal--${item.classification === 'problematic' ? 'problem' : item.classification === 'easy' ? 'easy' : 'insufficient'}`}
+                        >
+                          {questionSignal(item)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableRegion>
+            <p className="analytics-footnote">
+              Hidden: 1–9 outcomes. Timeouts count as incorrect.
+            </p>
+            <Pagination report={report} label="Question analytics pages" />
+          </>
+        ))}
     </section>
   );
 }
 
-function CardIssuanceAnalyticsSection({
-  apiBaseUrl,
-  dateRange,
-  dateVersion,
-  getAccessToken,
-}: Props & { dateRange: DateRange; dateVersion: number }) {
-  const [page, setPage] = useState(1);
-  const [result, setResult] = useState<AuthorCardIssuanceAnalyticsPage | null>(
-    null,
+function RewardReport({ apiBaseUrl, getAccessToken, dateRange }: ReportProps) {
+  const [metric, setMetric] = useState('rate');
+  const load = useCallback(
+    (page: number, signal: AbortSignal) =>
+      listAuthorCardIssuanceAnalytics({
+        apiBaseUrl,
+        getAccessToken,
+        ...dateRange,
+        page,
+        signal,
+      }),
+    [apiBaseUrl, getAccessToken, dateRange],
   );
-  const [state, setState] = useState<LoadState>('loading');
-  const [error, setError] = useState('');
-  const [retryVersion, setRetryVersion] = useState(0);
-
-  useEffect(() => setPage(1), [dateVersion]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setState('loading');
-    void listAuthorCardIssuanceAnalytics({
-      apiBaseUrl,
-      getAccessToken,
-      signal: controller.signal,
-      ...dateRange,
-      page,
-    })
-      .then((next) => {
-        if (controller.signal.aborted) return;
-        if (
-          next.totalItems > 0 &&
-          next.items.length === 0 &&
-          next.totalPages > 0 &&
-          page > next.totalPages
-        ) {
-          setPage(next.totalPages);
-          return;
-        }
-        setResult(next);
-        setError('');
-        setState('ready');
-      })
-      .catch((caught: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(
-          analyticsErrorDetail(
-            caught,
-            'Card issuance analytics could not be loaded.',
-          ),
-        );
-        setState('error');
-      });
-    return () => controller.abort();
-  }, [apiBaseUrl, dateRange, getAccessToken, page, retryVersion]);
-
+  const report = useReport(load, JSON.stringify(dateRange));
+  const result = report.result;
   return (
-    <section
-      aria-labelledby="card-analytics-title"
-      className="analytics-section"
-    >
-      <div className="analytics-section__heading">
-        <div>
-          <p className="eyebrow">Reward balance</p>
-          <h3 id="card-analytics-title">Card issuance and rarity balance</h3>
-          <p>
-            Historical issuance comes from the immutable completion-reward
-            ledger. Rarity totals are used exactly as returned by the API so a
-            suppressed card cannot be reconstructed from sibling totals.
-          </p>
-        </div>
-      </div>
-
-      {state === 'loading' ? (
-        <LoadingState label="Loading card issuance analytics…" />
-      ) : null}
-      {state === 'error' ? (
-        <AnalyticsError
-          error={error}
-          onRetry={() => setRetryVersion((value) => value + 1)}
+    <section className="analytics-report" aria-label="Rewards report">
+      <ReportHeader title="Card rewards" />
+      <div className="analytics-toolbar">
+        <SelectField
+          label="Chart metric"
+          value={metric}
+          onChange={setMetric}
+          options={[
+            { value: 'rate', label: 'Per 100 completions' },
+            { value: 'count', label: 'Cards issued' },
+          ]}
         />
-      ) : null}
-      {state === 'ready' && result ? (
+      </div>
+      <AboutReport>
+        <p>
+          Counts cover cards awarded for completions, not current ownership.
+          Rarity totals cover the whole period. Rates are cards per 100
+          completions and can exceed 100. Some totals are hidden to protect
+          small samples.
+        </p>
+      </AboutReport>
+      <ReportFeedback {...report} />
+      {report.state === 'ready' && result && (
         <>
-          <AnalyticsBarChart
-            title="Issuances per 100 completions by rarity"
-            groups={result.rarities.map((item) => ({
+          <AnalyticsComparisonChart
+            title={
+              metric === 'rate'
+                ? 'Cards per 100 completions by rarity'
+                : 'Cards issued by rarity'
+            }
+            unit={
+              metric === 'rate' ? 'Cards per 100 completions' : 'Cards issued'
+            }
+            scope="Entire reporting period"
+            rows={result.rarities.map((item) => ({
               key: item.rarity,
               label: capitalize(item.rarity),
-              metrics: [
-                {
-                  label: 'Per 100 completions',
-                  value: item.issuancesPer100Completions,
-                  displayValue: formatPer100(
-                    item.issuancesPer100Completions,
-                    item.suppressed,
-                    result.minimumSampleSize,
-                  ),
-                },
-              ],
+              value:
+                metric === 'rate'
+                  ? item.issuancesPer100Completions
+                  : item.issuanceCount,
+              displayValue: rewardValue(
+                metric === 'rate'
+                  ? item.issuancesPer100Completions
+                  : item.issuanceCount,
+                item.suppressed,
+                metric === 'rate',
+              ),
+              detail: item.suppressed
+                ? 'Hidden to protect small samples'
+                : 'Historical reward issuance',
             }))}
           />
-
-          <AnalyticsTableHint id="rarity-analytics-table-hint" />
-          <div
-            aria-describedby="rarity-analytics-table-hint"
-            aria-label="Rarity issuance summary"
-            className="analytics-table-wrap analytics-table-wrap--compact"
-            role="region"
-            tabIndex={0}
-          >
-            <table className="analytics-table analytics-table--compact">
-              <caption className="sr-only">
-                Server-provided historical card issuance summaries by rarity
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Rarity</th>
-                  <th scope="col">Issued</th>
-                  <th scope="col">Per 100 completions</th>
-                  <th scope="col">Privacy</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.rarities.map((item) => (
-                  <tr key={item.rarity}>
-                    <th scope="row">{capitalize(item.rarity)}</th>
-                    <td>
-                      {formatSuppressedNumber(
-                        item.issuanceCount,
-                        item.suppressed,
-                        result.minimumSampleSize,
-                      )}
-                    </td>
-                    <td>
-                      {formatPer100(
-                        item.issuancesPer100Completions,
-                        item.suppressed,
-                        result.minimumSampleSize,
-                      )}
-                    </td>
-                    <td>
-                      <span
-                        className={`analytics-signal analytics-signal--${item.suppressed ? 'insufficient' : 'clear'}`}
-                      >
-                        {item.suppressed
-                          ? `Suppressed (<${result.minimumSampleSize})`
-                          : 'Reportable'}
-                      </span>
-                    </td>
+          <details className="analytics-rarity-table">
+            <summary>Rarity values</summary>
+            <TableRegion label="Rarity issuance summary">
+              <table className="analytics-table">
+                <caption className="sr-only">
+                  Server-provided rarity summaries for the entire period
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Rarity</th>
+                    <th scope="col">Issued</th>
+                    <th scope="col">Per 100 completions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
+                </thead>
+                <tbody>
+                  {result.rarities.map((item) => (
+                    <tr key={item.rarity}>
+                      <th scope="row">{capitalize(item.rarity)}</th>
+                      <td>
+                        {rewardValue(item.issuanceCount, item.suppressed)}
+                      </td>
+                      <td>
+                        {rewardValue(
+                          item.issuancesPer100Completions,
+                          item.suppressed,
+                          true,
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableRegion>
+          </details>
           {result.totalItems === 0 ? (
-            <AnalyticsEmpty
-              heading="No card issuance rows"
-              message="There are no eligible or historically issued card definitions for this report."
-            />
-          ) : result.items.length > 0 ? (
+            <EmptyReport title="No card rewards">
+              No reward-eligible or previously awarded cards were found.
+            </EmptyReport>
+          ) : (
             <>
-              <AnalyticsTableHint id="card-analytics-table-hint" />
-              <div
-                aria-describedby="card-analytics-table-hint"
-                aria-label="Card issuance results"
-                className="analytics-table-wrap"
-                role="region"
-                tabIndex={0}
-              >
+              <PageScope result={result} noun="cards" />
+              <TableRegion label="Card issuance results">
                 <table className="analytics-table">
                   <caption className="sr-only">
                     Historical issuance by card definition
@@ -919,312 +1110,128 @@ function CardIssuanceAnalyticsSection({
                       <th scope="col">Reward status</th>
                       <th scope="col">Issued</th>
                       <th scope="col">Per 100 completions</th>
-                      <th scope="col">Privacy</th>
                     </tr>
                   </thead>
                   <tbody>
                     {result.items.map((item) => (
                       <tr key={item.cardDefinitionId}>
-                        <th scope="row">{item.cardName}</th>
+                        <th scope="row">
+                          <Link href={authorPaths.card(item.cardDefinitionId)}>
+                            {item.cardName}
+                          </Link>
+                        </th>
                         <td>{capitalize(item.rarity)}</td>
                         <td>
                           {item.rewardEligible
-                            ? 'Currently reward eligible'
+                            ? 'Reward eligible'
                             : 'Historical only'}
                         </td>
                         <td>
-                          {formatSuppressedNumber(
-                            item.issuanceCount,
-                            item.suppressed,
-                            result.minimumSampleSize,
-                          )}
+                          {rewardValue(item.issuanceCount, item.suppressed)}
                         </td>
                         <td>
-                          {formatPer100(
+                          {rewardValue(
                             item.issuancesPer100Completions,
                             item.suppressed,
-                            result.minimumSampleSize,
+                            true,
                           )}
-                        </td>
-                        <td>
-                          <span
-                            className={`analytics-signal analytics-signal--${item.suppressed ? 'insufficient' : 'clear'}`}
-                          >
-                            {item.suppressed
-                              ? `Suppressed (<${result.minimumSampleSize})`
-                              : 'Reportable'}
-                          </span>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
-              <AnalyticsPagination
+              </TableRegion>
+              <Pagination
+                report={report}
                 label="Card issuance analytics pages"
-                page={page}
-                resultPage={result.page}
-                totalPages={result.totalPages}
-                onPageChange={setPage}
               />
             </>
-          ) : null}
+          )}
+          <p className="analytics-footnote">
+            Hidden: small samples or protected totals. Unavailable: no
+            completions.
+          </p>
         </>
-      ) : null}
+      )}
     </section>
   );
 }
 
-function AnalyticsPagination({
-  label,
-  page,
-  resultPage,
-  totalPages,
-  onPageChange,
-}: {
-  label: string;
-  page: number;
-  resultPage: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-}) {
-  return (
-    <nav className="author-actions author-pagination" aria-label={label}>
-      <button
-        className="button button--quiet"
-        disabled={page <= 1}
-        onClick={() => onPageChange(page - 1)}
-        type="button"
-      >
-        Previous
-      </button>
-      <span>
-        Page {resultPage} of {Math.max(totalPages, 1)}
-      </span>
-      <button
-        className="button button--quiet"
-        disabled={page >= totalPages}
-        onClick={() => onPageChange(page + 1)}
-        type="button"
-      >
-        Next
-      </button>
-    </nav>
-  );
+function count(value: number | null) {
+  return value === null ? 'Hidden' : value.toLocaleString('en-ZA');
 }
-
-function AnalyticsTableHint({ id }: { id: string }) {
-  return (
-    <p className="analytics-table-hint" id={id}>
-      On narrow screens, focus the table and scroll horizontally to see every
-      column.
-    </p>
-  );
+function rate(value: number | null) {
+  return value === null ? 'Hidden' : `${(value * 100).toFixed(1)}%`;
 }
-
-function AnalyticsError({
-  error,
-  onRetry,
-}: {
-  error: string;
-  onRetry: () => void;
-}) {
-  return (
-    <div
-      className="author-feedback state-message state-message--error"
-      role="alert"
-    >
-      <p>{error}</p>
-      <button className="button button--quiet" type="button" onClick={onRetry}>
-        Try again
-      </button>
-    </div>
-  );
+function countWithRate(value: number | null, fraction: number | null) {
+  return value === null || fraction === null
+    ? 'Hidden'
+    : `${count(value)} (${rate(fraction)})`;
 }
-
-function AnalyticsEmpty({
-  heading,
-  message,
-}: {
-  heading: string;
-  message: string;
-}) {
-  return (
-    <div className="author-empty-state state-message state-message--empty">
-      <StateIcon tone="empty" />
-      <h4>{heading}</h4>
-      <p>{message}</p>
-    </div>
-  );
-}
-
-function renderQuestionSignal(
-  item: AuthorAdvancedQuestionAnalyticsItem,
-  minimumSampleSize: number,
-) {
-  if (item.classification === 'suppressed') {
-    return (
-      <span className="analytics-signal analytics-signal--insufficient">
-        Suppressed (&lt;{minimumSampleSize})
-      </span>
-    );
-  }
-  if (item.classification === 'easy') {
-    return (
-      <span className="analytics-signal analytics-signal--easy">
-        Potentially too easy
-      </span>
-    );
-  }
-  if (item.classification === 'problematic') {
-    return (
-      <span className="analytics-signal analytics-signal--problem">
-        Potentially too hard
-      </span>
-    );
-  }
-  if (item.answerCount === 0) {
-    return (
-      <span className="analytics-signal analytics-signal--insufficient">
-        No outcomes
-      </span>
-    );
-  }
-  return (
-    <span className="analytics-signal analytics-signal--clear">
-      In expected range
-    </span>
-  );
-}
-
-function questionRowClass(item: AuthorAdvancedQuestionAnalyticsItem) {
-  if (item.classification === 'problematic') {
-    return 'analytics-table__problematic';
-  }
-  if (item.classification === 'easy') return 'analytics-table__easy';
-  return undefined;
-}
-
-function locationModeDescription(mode: AuthorAnalyticsLocationMode) {
-  if (mode === 'popular') {
-    return 'Popular is the API view of locations with a reportable view or reachable sample, ordered by activity.';
-  }
-  if (mode === 'ignored') {
-    return 'Ignored is the API view of locations with reportable views but zero reachable decisions, starts, and completions.';
-  }
-  return 'All locations includes any location with activity in at least one reported stage.';
-}
-
-function analyticsMetric(
-  label: string,
+function rewardValue(
   value: number | null,
   suppressed: boolean,
+  decimal = false,
 ) {
-  return {
-    label,
-    value,
-    displayValue:
-      value === null && suppressed ? 'Suppressed' : String(value ?? '—'),
-  };
+  return suppressed
+    ? 'Hidden'
+    : value === null
+      ? 'Unavailable'
+      : value.toLocaleString('en-ZA', {
+          maximumFractionDigits: decimal ? 1 : 0,
+          minimumFractionDigits: decimal ? 1 : 0,
+        });
 }
-
-function analyticsErrorDetail(caught: unknown, fallback: string) {
-  return caught instanceof AuthorApiError
-    ? authorErrorDetail(caught)
-    : fallback;
+function questionSignal(item: AuthorAdvancedQuestionAnalyticsItem) {
+  return item.classification === 'suppressed'
+    ? 'Hidden (<10)'
+    : item.classification === 'easy'
+      ? 'May be too easy'
+      : item.classification === 'problematic'
+        ? 'May be too hard'
+        : item.answerCount === 0
+          ? 'No outcomes'
+          : 'No flag';
 }
-
-function formatCount(value: number | null, minimumSampleSize: number) {
-  return value === null ? `Suppressed (<${minimumSampleSize})` : String(value);
-}
-
-function formatCountWithRate(
-  count: number | null,
-  rate: number | null,
-  minimumSampleSize: number,
-) {
-  if (count === null || rate === null) {
-    return `Suppressed (<${minimumSampleSize})`;
-  }
-  return `${count} (${formatRate(rate)})`;
-}
-
-function formatSuppressedNumber(
-  value: number | null,
-  suppressed: boolean,
-  minimumSampleSize: number,
-) {
-  if (suppressed) return `Suppressed (<${minimumSampleSize})`;
-  return value === null ? 'Not available' : String(value);
-}
-
-function formatPer100(
-  value: number | null,
-  suppressed: boolean,
-  minimumSampleSize: number,
-) {
-  if (suppressed) return `Suppressed (<${minimumSampleSize})`;
-  return value === null ? 'Not available' : value.toFixed(1);
-}
-
-function formatRate(rate: number) {
-  return `${(rate * 100).toFixed(1)}%`;
-}
-
-function formatAuthoringStatus(status: string) {
-  return status
-    .split('_')
-    .map((part) => capitalize(part))
-    .join(' ');
-}
-
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
-
+function periodDescription(range: DateRange) {
+  if (!range.fromDate || !range.toDate) return 'All time';
+  const end = new Date(`${range.toDate}T00:00:00Z`).getTime() - dayMilliseconds;
+  const format = (value: Date) =>
+    value.toLocaleDateString('en-ZA', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
+  return `${format(new Date(`${range.fromDate}T00:00:00Z`))} – ${format(new Date(end))}`;
+}
 function validateDateDraft(
   draft: DateDraft,
 ): { range: DateRange } | { error: string } {
   if (!draft.start && !draft.end) return { range: {} };
-  if (!draft.start || !draft.end) {
-    return { error: 'Choose both a start date and an end date.' };
-  }
-
-  const start = parseUtcCalendarDate(draft.start);
-  const end = parseUtcCalendarDate(draft.end);
-  if (!start || !end) {
-    return { error: 'Choose valid calendar dates.' };
-  }
-  if (end.getTime() < start.getTime()) {
-    return { error: 'The end date cannot be earlier than the start date.' };
-  }
-
-  const inclusiveDays =
-    Math.round((end.getTime() - start.getTime()) / dayMilliseconds) + 1;
-  if (inclusiveDays > maximumDateRangeDays) {
-    return {
-      error: `The reporting period cannot exceed ${maximumDateRangeDays} days.`,
-    };
-  }
-
+  if (!draft.start || !draft.end)
+    return { error: 'Choose a start and end date.' };
+  const start = parseDate(draft.start);
+  const end = parseDate(draft.end);
+  if (start === null || end === null) return { error: 'Enter valid dates.' };
+  if (end < start) return { error: 'End date must be on or after start date.' };
+  if ((end - start) / dayMilliseconds + 1 > 366)
+    return { error: 'Choose a period of 366 days or less.' };
   return {
     range: {
       fromDate: draft.start,
-      toDate: new Date(end.getTime() + dayMilliseconds)
-        .toISOString()
-        .slice(0, 10),
+      toDate: new Date(end + dayMilliseconds).toISOString().slice(0, 10),
     },
   };
 }
-
-function parseUtcCalendarDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (
-    !Number.isFinite(parsed.getTime()) ||
-    parsed.toISOString().slice(0, 10) !== value
-  ) {
-    return null;
-  }
-  return parsed;
+function parseDate(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    Number.isFinite(date.getTime()) &&
+    date.toISOString().slice(0, 10) === value
+    ? date.getTime()
+    : null;
 }

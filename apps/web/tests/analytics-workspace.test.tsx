@@ -8,7 +8,7 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
+import { Router } from 'wouter';
 import { AnalyticsWorkspace } from '../src/components/author/AnalyticsWorkspace';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
@@ -23,23 +23,62 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
+function renderWorkspace(path = '/author/analytics') {
+  window.history.replaceState({}, '', path);
+  return render(
+    <Router>
+      <AnalyticsWorkspace
+        apiBaseUrl={apiBaseUrl}
+        getAccessToken={getAccessToken}
+      />
+    </Router>,
+  );
+}
 
-describe('advanced analytics workspace', () => {
-  it('renders privacy-safe location, question, and card analytics with textual chart equivalents', async () => {
+describe('desktop analytics workspace', () => {
+  it('opens on server-grouped attention signals and loads other reports only when visited', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installApi();
+    renderWorkspace();
+    const table = await screen.findByRole('region', {
+      name: 'Event attention results',
+    });
+    expect(
+      within(table).getByRole('link', { name: 'Great Hall' }),
+    ).toHaveAttribute('href', `/author/events/${eventId}`);
+    expect(
+      within(table).getByRole('link', { name: 'Review question' }),
+    ).toHaveAttribute(
+      'href',
+      `/author/events/${eventId}/challenges/${challengeId}/questions/${questionId}`,
+    );
+    expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(analyticsCallCount(fetchMock)).toBe(1);
+    expect(
+      screen.queryByRole('navigation', { name: 'Event attention pages' }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Locations' }));
+    expect(
+      await screen.findByRole('region', { name: 'Location analytics results' }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('region', { name: 'Event attention results' }),
+    ).not.toBeInTheDocument();
+    expect(analyticsCallCount(fetchMock)).toBe(2);
+  });
+
+  it('keeps hidden values distinct from zero in comparison charts and textual tables', async () => {
+    const user = userEvent.setup();
     installApi({
       locations: [
-        locationItem({
-          eligibleCount: 0,
-          startCount: 0,
-          completionCount: 0,
-        }),
+        locationItem({ eligibleCount: 0 }),
         locationItem({
           locationId: '40000000-0000-4000-8000-000000000002',
           locationName: 'Library lawns',
           viewCount: null,
-          eligibleCount: 0,
-          startCount: 0,
-          completionCount: 0,
           suppressed: true,
         }),
       ],
@@ -47,17 +86,6 @@ describe('advanced analytics workspace', () => {
         questionItem(),
         questionItem({
           questionId: '30000000-0000-4000-8000-000000000002',
-          prompt: 'Which year was Wits founded?',
-          answerCount: 20,
-          correctCount: 19,
-          incorrectCount: 1,
-          timeoutCount: 0,
-          correctRate: 0.95,
-          incorrectRate: 0.05,
-          classification: 'easy',
-        }),
-        questionItem({
-          questionId: '30000000-0000-4000-8000-000000000003',
           prompt: 'Small sample question',
           answerCount: null,
           correctCount: null,
@@ -69,7 +97,7 @@ describe('advanced analytics workspace', () => {
           suppressed: true,
         }),
         questionItem({
-          questionId: '30000000-0000-4000-8000-000000000004',
+          questionId: '30000000-0000-4000-8000-000000000003',
           prompt: 'Unattempted question',
           answerCount: 0,
           correctCount: 0,
@@ -81,79 +109,65 @@ describe('advanced analytics workspace', () => {
         }),
       ],
     });
-
-    render(
-      <AnalyticsWorkspace
-        apiBaseUrl={apiBaseUrl}
-        getAccessToken={getAccessToken}
-      />,
-    );
-
+    renderWorkspace('/author/analytics/locations');
+    const table = await screen.findByRole('region', {
+      name: 'Location analytics results',
+    });
+    expect(within(table).getByText('Hidden')).toBeVisible();
+    expect(within(table).getAllByText('0').length).toBeGreaterThan(0);
+    const hiddenRow = screen.getByRole('img', {
+      name: /Library lawns: Hidden/,
+    });
+    expect(hiddenRow.querySelector('.analytics-plot__mark')).toBeNull();
+    await user.click(screen.getByRole('link', { name: 'Questions' }));
+    const questions = await screen.findByRole('region', {
+      name: 'Question analytics results',
+    });
+    expect(within(questions).getByText('May be too hard')).toBeVisible();
+    expect(within(questions).getByText('Hidden (<10)')).toBeVisible();
+    expect(within(questions).getByText('No outcomes')).toBeVisible();
     expect(
-      (await screen.findAllByText('Great Hall main site')).length,
-    ).toBeGreaterThan(0);
-    expect(screen.getAllByText('Library lawns').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('0').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Suppressed \(<10\)/).length).toBeGreaterThan(0);
-
+      screen
+        .getByRole('img', { name: /Unattempted question: No outcomes/ })
+        .querySelector('.analytics-plot__mark'),
+    ).toBeNull();
     expect(
-      screen.getByRole('heading', {
-        name: /Activity stages for the first 2 locations/i,
-      }),
-    ).toBeVisible();
-
-    expect(await screen.findByText('Where is the Great Hall?')).toBeVisible();
-    expect(screen.getByText('Potentially too hard')).toBeVisible();
-    expect(screen.getByText('Potentially too easy')).toBeVisible();
-    expect(screen.getByText('No outcomes')).toBeVisible();
-    expect(
-      screen.getAllByRole('link', { name: 'Open question' }).at(0),
+      within(questions).getByRole('link', { name: 'Where is the Great Hall?' }),
     ).toHaveAttribute(
       'href',
       `/author/events/${eventId}/challenges/${challengeId}/questions/${questionId}`,
     );
-
-    expect(await screen.findByText('Campus Owl')).toBeVisible();
-    expect(screen.getAllByText('12.5').length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('link', { name: 'Rewards' }));
+    const cards = await screen.findByRole('region', {
+      name: 'Card issuance results',
+    });
     expect(
-      screen.getByRole('heading', {
-        name: 'Issuances per 100 completions by rarity',
-      }),
-    ).toBeVisible();
+      within(cards).getByRole('link', { name: 'Campus Owl' }),
+    ).toHaveAttribute('href', `/author/cards/${cardId}`);
+    expect(
+      screen
+        .getByRole('img', { name: /Rare: Hidden/ })
+        .querySelector('.analytics-plot__mark'),
+    ).toBeNull();
+    await user.click(screen.getByText('Rarity values', { exact: true }));
     expect(
       screen.getByRole('region', { name: 'Rarity issuance summary' }),
     ).toBeVisible();
     expect(
-      screen.getByRole('region', { name: 'Card issuance results' }),
-    ).toBeVisible();
-
-    for (const name of [
-      'Location analytics results',
-      'Question analytics results',
-      'Rarity issuance summary',
-      'Card issuance results',
-    ]) {
-      const region = screen.getByRole('region', { name });
-      expect(region).toHaveAttribute('tabindex', '0');
-      expect(region).toHaveAccessibleDescription(/scroll horizontally/i);
-    }
-
-    expect(
-      screen.queryByText(/selected answer|latitude|longitude|player identity/i),
+      screen.queryByText(/player identity|latitude|longitude/i),
     ).not.toBeInTheDocument();
   });
 
-  it('sends an inclusive human-facing date range as the API exclusive upper bound', async () => {
+  it('shares an inclusive UTC period across report navigation and resets pages before fetching', async () => {
     const user = userEvent.setup();
     const fetchMock = installApi();
-    render(
-      <AnalyticsWorkspace
-        apiBaseUrl={apiBaseUrl}
-        getAccessToken={getAccessToken}
-      />,
+    renderWorkspace();
+    await screen.findByRole('region', { name: 'Event attention results' });
+    await selectOption(
+      user,
+      screen.getByLabelText('Reporting period'),
+      'custom',
     );
-
-    await screen.findByText('Campus Owl');
     fireEvent.change(screen.getByLabelText('Start date'), {
       target: { value: '2026-09-01' },
     });
@@ -161,67 +175,52 @@ describe('advanced analytics workspace', () => {
       target: { value: '2026-09-01' },
     });
     await user.click(screen.getByRole('button', { name: 'Apply period' }));
-
-    await waitFor(() => {
-      const analyticsCalls = fetchMock.mock.calls.filter(([input]) =>
-        String(input).includes('/author/analytics/'),
-      );
-      const latestByPath = new Map<string, URL>();
-      for (const [input] of analyticsCalls) {
-        const url = new URL(String(input));
-        latestByPath.set(url.pathname, url);
-      }
-      expect(latestByPath.size).toBe(3);
-      for (const url of latestByPath.values()) {
-        expect(url.searchParams.get('fromDate')).toBe('2026-09-01');
-        expect(url.searchParams.get('toDate')).toBe('2026-09-02');
-      }
-    });
+    await user.click(screen.getByRole('link', { name: 'Locations' }));
+    await screen.findByRole('region', { name: 'Location analytics results' });
+    const requests = fetchMock.mock.calls
+      .filter(([input]) => String(input).includes('/author/analytics/'))
+      .map(([input]) => new URL(String(input)));
+    for (const request of requests.slice(1)) {
+      expect(request.searchParams.get('fromDate')).toBe('2026-09-01');
+      expect(request.searchParams.get('toDate')).toBe('2026-09-02');
+      expect(request.searchParams.get('page')).toBe('1');
+    }
+    expect(screen.getByRole('button', { name: /Custom dates/ })).toBeVisible();
   });
 
-  it('rejects incomplete and overlong date ranges before changing the report', async () => {
+  it('rejects incomplete and overlong dates without changing the applied report', async () => {
     const user = userEvent.setup();
     const fetchMock = installApi();
-    render(
-      <AnalyticsWorkspace
-        apiBaseUrl={apiBaseUrl}
-        getAccessToken={getAccessToken}
-      />,
+    renderWorkspace();
+    await screen.findByRole('region', { name: 'Event attention results' });
+    const initial = analyticsCallCount(fetchMock);
+    await selectOption(
+      user,
+      screen.getByLabelText('Reporting period'),
+      'custom',
     );
-    await screen.findByText('Campus Owl');
-    const initialAnalyticsCalls = analyticsCallCount(fetchMock);
-
     fireEvent.change(screen.getByLabelText('Start date'), {
       target: { value: '2026-09-01' },
     });
     await user.click(screen.getByRole('button', { name: 'Apply period' }));
-    expect(
-      screen.getByText('Choose both a start date and an end date.'),
-    ).toBeVisible();
-    expect(analyticsCallCount(fetchMock)).toBe(initialAnalyticsCalls);
-
+    expect(screen.getByText('Choose a start and end date.')).toBeVisible();
     fireEvent.change(screen.getByLabelText('End date'), {
       target: { value: '2027-09-03' },
     });
     await user.click(screen.getByRole('button', { name: 'Apply period' }));
     expect(
-      screen.getByText('The reporting period cannot exceed 366 days.'),
+      screen.getByText('Choose a period of 366 days or less.'),
     ).toBeVisible();
-    expect(analyticsCallCount(fetchMock)).toBe(initialAnalyticsCalls);
+    expect(analyticsCallCount(fetchMock)).toBe(initial);
   });
 
-  it('composes question content filters without applying them to other reports', async () => {
+  it('retains question filters across report switches and does not send them to other reports', async () => {
     const user = userEvent.setup();
     const fetchMock = installApi();
-    render(
-      <AnalyticsWorkspace
-        apiBaseUrl={apiBaseUrl}
-        getAccessToken={getAccessToken}
-      />,
-    );
-    await screen.findByText('Where is the Great Hall?');
-
+    renderWorkspace('/author/analytics/questions');
+    await screen.findByRole('region', { name: 'Question analytics results' });
     await selectOption(user, screen.getByLabelText('Event'), eventId);
+    await user.click(screen.getByText('More filters', { exact: true }));
     await selectOption(user, screen.getByLabelText('Challenge'), challengeId);
     await selectOption(
       user,
@@ -229,167 +228,128 @@ describe('advanced analytics workspace', () => {
       'multiple_choice',
     );
     await selectOption(user, screen.getByLabelText('Difficulty'), '2');
-    await user.click(
-      screen.getByRole('button', { name: 'Apply question filters' }),
-    );
-
+    await user.click(screen.getByRole('button', { name: 'Apply filters' }));
     await waitFor(() => {
-      const questionCalls = fetchMock.mock.calls.filter(([input]) =>
-        String(input).includes('/author/analytics/questions?'),
+      const latest = new URL(
+        String(
+          fetchMock.mock.calls
+            .filter(([input]) =>
+              String(input).includes('/analytics/questions?'),
+            )
+            .at(-1)?.[0],
+        ),
       );
-      const latest = new URL(String(questionCalls.at(-1)?.[0]));
       expect(latest.searchParams.get('eventId')).toBe(eventId);
       expect(latest.searchParams.get('challengeId')).toBe(challengeId);
       expect(latest.searchParams.get('format')).toBe('multiple_choice');
       expect(latest.searchParams.get('difficulty')).toBe('2');
     });
-
-    const locationCalls = fetchMock.mock.calls.filter(([input]) =>
-      String(input).includes('/author/analytics/event-locations?'),
-    );
-    const cardCalls = fetchMock.mock.calls.filter(([input]) =>
-      String(input).includes('/author/analytics/card-issuance?'),
-    );
-    expect(String(locationCalls.at(-1)?.[0])).not.toContain('eventId=');
-    expect(String(cardCalls.at(-1)?.[0])).not.toContain('eventId=');
+    await user.click(screen.getByRole('link', { name: 'Locations' }));
+    await screen.findByRole('region', { name: 'Location analytics results' });
+    expect(
+      String(
+        fetchMock.mock.calls
+          .filter(([input]) =>
+            String(input).includes('/analytics/event-locations?'),
+          )
+          .at(-1)?.[0],
+      ),
+    ).not.toContain('eventId=');
+    await user.click(screen.getByRole('link', { name: 'Questions' }));
+    expect(screen.getByLabelText('Event')).toHaveTextContent('Great Hall');
+    expect(screen.getByLabelText('Difficulty')).toHaveTextContent('2');
   });
 
-  it('uses the server location mode and keeps other analytics usable when that report fails', async () => {
+  it('keeps failed reports independently recoverable with their filters', async () => {
     const user = userEvent.setup();
     let popularAttempts = 0;
     installApi({
       handleRequest(url) {
         if (
-          url.pathname.endsWith('/author/analytics/event-locations') &&
-          url.searchParams.get('mode') === 'popular'
-        ) {
-          popularAttempts += 1;
-          if (popularAttempts === 1) {
-            return problemResponse(
-              503,
-              'INTERNAL_ERROR',
-              'Location analytics are temporarily unavailable.',
-            );
-          }
-        }
+          url.pathname.endsWith('/analytics/event-locations') &&
+          url.searchParams.get('mode') === 'popular' &&
+          ++popularAttempts === 1
+        )
+          return problemResponse(
+            503,
+            'INTERNAL_ERROR',
+            'Location analytics temporarily unavailable.',
+          );
         return undefined;
       },
     });
-    render(
-      <AnalyticsWorkspace
-        apiBaseUrl={apiBaseUrl}
-        getAccessToken={getAccessToken}
-      />,
-    );
-    await screen.findByText('Campus Owl');
-
+    renderWorkspace('/author/analytics/locations');
+    await screen.findByRole('region', { name: 'Location analytics results' });
     await selectOption(user, screen.getByLabelText('Location view'), 'popular');
+    await screen.findByRole('alert');
+    await user.click(screen.getByRole('link', { name: 'Rewards' }));
     expect(
-      await screen.findByText(
-        'The service could not complete this request. Check your connection and try again. No content change was confirmed.',
-      ),
+      await screen.findByRole('region', { name: 'Card issuance results' }),
     ).toBeVisible();
-    expect(screen.getByText('Where is the Great Hall?')).toBeVisible();
-    expect(screen.getByText('Campus Owl')).toBeVisible();
-
+    await user.click(screen.getByRole('link', { name: 'Locations' }));
+    expect(screen.getByLabelText('Location view')).toHaveTextContent(
+      'Popular locations',
+    );
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(
-      (await screen.findAllByText('Great Hall main site')).length,
-    ).toBeGreaterThan(0);
+      await screen.findByRole('region', { name: 'Location analytics results' }),
+    ).toBeVisible();
     expect(popularAttempts).toBe(2);
   });
 
-  it('recovers question pagination to the last valid page when filtered results shrink', async () => {
+  it('recovers pagination when results shrink and hides single-page navigation', async () => {
     const user = userEvent.setup();
-    let filteredPageOneRequests = 0;
+    let requests = 0;
     const fetchMock = installApi({
       handleRequest(url) {
-        if (!url.pathname.endsWith('/author/analytics/questions'))
-          return undefined;
-        const page = Number(url.searchParams.get('page'));
-        const isFiltered = url.searchParams.get('format') === 'multiple_choice';
-        if (!isFiltered) return undefined;
-        if (page === 2) {
-          return jsonResponse(
-            analyticsPage([], {
-              minimumSampleSize: 10,
-              easyCorrectRate: 0.9,
-              problematicIncorrectRate: 0.7,
-              page: 2,
-              totalItems: 1,
-              totalPages: 1,
-            }),
-          );
-        }
-        filteredPageOneRequests += 1;
+        if (!url.pathname.endsWith('/analytics/questions')) return undefined;
+        requests += 1;
         return jsonResponse(
-          analyticsPage([questionItem()], {
+          analyticsPage(requests === 2 ? [] : [questionItem()], {
             minimumSampleSize: 10,
             easyCorrectRate: 0.9,
             problematicIncorrectRate: 0.7,
-            totalItems: filteredPageOneRequests === 1 ? 26 : 1,
-            totalPages: filteredPageOneRequests === 1 ? 2 : 1,
+            page: requests === 2 ? 2 : 1,
+            totalItems: requests === 1 ? 26 : 1,
+            totalPages: requests === 1 ? 2 : 1,
           }),
         );
       },
     });
-    render(
-      <AnalyticsWorkspace
-        apiBaseUrl={apiBaseUrl}
-        getAccessToken={getAccessToken}
-      />,
-    );
-    await screen.findByText('Where is the Great Hall?');
-
-    await selectOption(
-      user,
-      screen.getByLabelText('Format'),
-      'multiple_choice',
-    );
-    await user.click(
-      screen.getByRole('button', { name: 'Apply question filters' }),
-    );
-    const pagination = await screen.findByRole('navigation', {
+    renderWorkspace('/author/analytics/questions');
+    const navigation = await screen.findByRole('navigation', {
       name: 'Question analytics pages',
     });
-    expect(within(pagination).getByText('Page 1 of 2')).toBeVisible();
-    await user.click(within(pagination).getByRole('button', { name: 'Next' }));
-
-    await waitFor(() => {
+    await user.click(within(navigation).getByRole('button', { name: 'Next' }));
+    await waitFor(() =>
       expect(
-        within(
-          screen.getByRole('navigation', { name: 'Question analytics pages' }),
-        ).getByText('Page 1 of 1'),
-      ).toBeVisible();
-    });
-    const questionCalls = fetchMock.mock.calls.filter(([input]) =>
-      String(input).includes('/author/analytics/questions?'),
+        screen.queryByRole('navigation', { name: 'Question analytics pages' }),
+      ).not.toBeInTheDocument(),
     );
     expect(
-      questionCalls.map(([input]) =>
-        new URL(String(input)).searchParams.get('page'),
-      ),
-    ).toEqual(['1', '1', '2', '1']);
+      await screen.findByRole('region', { name: 'Question analytics results' }),
+    ).toBeVisible();
+    expect(
+      fetchMock.mock.calls
+        .filter(([input]) => String(input).includes('/analytics/questions?'))
+        .map(([input]) => new URL(String(input)).searchParams.get('page')),
+    ).toEqual(['1', '2', '1']);
   });
 
-  it('shows independent empty states for location and question reports', async () => {
-    installApi({ locations: [], questions: [] });
-    render(
-      <AnalyticsWorkspace
-        apiBaseUrl={apiBaseUrl}
-        getAccessToken={getAccessToken}
-      />,
-    );
-
+  it('distinguishes empty reports from a lack of reportable attention signals', async () => {
+    const user = userEvent.setup();
+    installApi({ attention: [], locations: [], questions: [] });
+    renderWorkspace();
+    expect(await screen.findByText('No attention signals')).toBeVisible();
+    await user.click(screen.getByRole('link', { name: 'Locations' }));
     expect(await screen.findByText('No location activity')).toBeVisible();
-    expect(
-      await screen.findByText('No completed question outcomes'),
-    ).toBeVisible();
-    expect(screen.getByText('Campus Owl')).toBeVisible();
+    await user.click(screen.getByRole('link', { name: 'Questions' }));
+    expect(await screen.findByText('No question outcomes')).toBeVisible();
   });
 });
 
 interface InstallOptions {
+  attention?: object[];
   locations?: object[];
   questions?: object[];
   cards?: object[];
@@ -402,6 +362,24 @@ function installApi(options: InstallOptions = {}) {
     const overridden = options.handleRequest?.(url);
     if (overridden) return overridden;
 
+    if (url.pathname.endsWith('/author/analytics/attention')) {
+      return jsonResponse(
+        analyticsPage(
+          options.attention ?? [
+            {
+              eventId,
+              eventTitle: 'Great Hall',
+              ignoredLocationCount: 1,
+              easyQuestionCount: 0,
+              hardQuestionCount: 1,
+              questionId,
+              challengeId,
+            },
+          ],
+          { minimumSampleSize: 10 },
+        ),
+      );
+    }
     if (url.pathname.endsWith('/author/events')) {
       return jsonResponse({ events: [event()], requestId: 'events' });
     }
