@@ -999,7 +999,7 @@ describe('Basic author console', () => {
     ).toBeVisible();
     expect(preview.querySelector('.card-frame--legendary')).not.toBeNull();
     expect(within(preview).getByText('120')).toBeVisible();
-    await user.type(artwork, 'not-an-image-url');
+    await pasteFieldValue(user, artwork, 'not-an-image-url');
     expect(
       screen.getByText('Enter an http(s) URL or /cards/ path to preview it.'),
     ).toBeVisible();
@@ -1008,8 +1008,7 @@ describe('Basic author console', () => {
       screen.getByText('Use an http(s) URL or a /cards/ artwork path.'),
     ).toBeVisible();
 
-    await user.clear(artwork);
-    await user.type(artwork, '/cards/quillip.webp');
+    await pasteFieldValue(user, artwork, '/cards/quillip.webp');
     const localImage = await screen.findByAltText(
       'Library Fox artwork preview',
     );
@@ -1018,8 +1017,11 @@ describe('Basic author console', () => {
       screen.queryByText('Use an http(s) URL or a /cards/ artwork path.'),
     ).not.toBeInTheDocument();
 
-    await user.clear(artwork);
-    await user.type(artwork, 'https://example.test/cards/broken.png');
+    await pasteFieldValue(
+      user,
+      artwork,
+      'https://example.test/cards/broken.png',
+    );
     const brokenImage = await screen.findByAltText(
       'Library Fox artwork preview',
     );
@@ -1028,8 +1030,11 @@ describe('Basic author console', () => {
       screen.getByText('Image could not load. Check the URL.'),
     ).toBeVisible();
 
-    await user.clear(artwork);
-    await user.type(artwork, 'https://example.test/cards/working.png');
+    await pasteFieldValue(
+      user,
+      artwork,
+      'https://example.test/cards/working.png',
+    );
     const workingImage = await screen.findByAltText(
       'Library Fox artwork preview',
     );
@@ -1100,9 +1105,13 @@ describe('Basic author console', () => {
     const moveName = screen.getByLabelText('Move name');
 
     await user.type(name, 'edge');
-    await user.type(description, 'Preserve this complete draft.');
-    await user.type(artwork, 'https://example.test/cards/edge-draft.png');
-    await user.type(moveName, 'Careful Step');
+    await pasteFieldValue(user, description, 'Preserve this complete draft.');
+    await pasteFieldValue(
+      user,
+      artwork,
+      'https://example.test/cards/edge-draft.png',
+    );
+    await pasteFieldValue(user, moveName, 'Careful Step');
     await user.click(screen.getByRole('button', { name: 'Create draft card' }));
 
     expect(
@@ -1115,8 +1124,7 @@ describe('Basic author console', () => {
     expect(artwork).toHaveValue('https://example.test/cards/edge-draft.png');
     expect(moveName).toHaveValue('Careful Step');
 
-    await user.clear(name);
-    await user.type(name, 'Unique Edge Successor');
+    await pasteFieldValue(user, name, 'Unique Edge Successor');
     expect(
       screen.queryByText('This card name is already in use.'),
     ).not.toBeInTheDocument();
@@ -2477,7 +2485,8 @@ describe('Basic author console', () => {
     installAuthorApi({ cards: [] });
     renderAuthorRoute(authorPaths.newCard);
 
-    await user.type(
+    await pasteFieldValue(
+      user,
       await screen.findByLabelText('Card name'),
       'Validation card',
     );
@@ -2497,7 +2506,7 @@ describe('Basic author console', () => {
       screen.getByLabelText('Effect value (optional)'),
     ).toHaveAccessibleDescription('Enter a non-negative whole number.');
 
-    await user.type(screen.getByLabelText('Move name'), 'Study');
+    await pasteFieldValue(user, screen.getByLabelText('Move name'), 'Study');
     await user.clear(screen.getByLabelText('Power cost'));
     await user.type(screen.getByLabelText('Power cost'), '0');
     await user.clear(screen.getByLabelText('Effect value (optional)'));
@@ -2577,6 +2586,16 @@ interface RequestDetails {
   init?: RequestInit;
   method: string;
   path: string;
+}
+
+// Paste fixture text through real input events without rendering every character.
+async function pasteFieldValue(
+  user: ReturnType<typeof userEvent.setup>,
+  control: HTMLElement,
+  value: string,
+) {
+  await user.clear(control);
+  await user.paste(value);
 }
 
 function installAuthorApi(options: ApiOptions = {}) {
