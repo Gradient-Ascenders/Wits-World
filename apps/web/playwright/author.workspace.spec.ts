@@ -334,9 +334,13 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
   await expect(
     page.getByRole('heading', { level: 5, name: 'Where is the Great Hall?' }),
   ).toBeVisible();
-  await expect(
-    page.getByText('Accepted answer', { exact: true }),
-  ).toBeVisible();
+  const correctAnswer = page
+    .locator('.question-answer-summary')
+    .getByRole('listitem')
+    .filter({ has: page.getByText('Correct', { exact: true }) });
+  await expect(correctAnswer).toHaveCount(1);
+  await expect(correctAnswer).toBeVisible();
+  await expect(correctAnswer).toContainText('Answer 2');
   await page.getByRole('link', { name: 'Edit question' }).click();
   await page
     .getByLabel('Question prompt')
@@ -452,12 +456,13 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   await page.getByLabel('Question prompt').fill('Order these campus eras.');
   await page.getByRole('button', { name: 'Create draft question' }).click();
   await expect(page.getByLabel('Correct position 1')).toBeFocused();
-  for (const [index, value] of [
+  const correctOrder = [
     'Founding',
     'Expansion',
     'Transformation',
     'Present day',
-  ].entries()) {
+  ];
+  for (const [index, value] of correctOrder.entries()) {
     await page.getByLabel(`Correct position ${index + 1}`).fill(value);
   }
   await page
@@ -466,8 +471,12 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   await page.getByRole('button', { name: 'Create draft question' }).click();
   await expect(page.getByText('Draft question created.')).toBeFocused();
   await expect(
-    page.getByRole('heading', { name: 'Correct sequence' }),
+    page.getByRole('heading', { name: 'Correct order', exact: true }),
   ).toBeVisible();
+  const authoredItems = page
+    .locator('.question-answer-summary')
+    .getByRole('listitem');
+  await expect(authoredItems).toHaveText(correctOrder);
   await expectNoHorizontalOverflow(page);
   await testInfo.attach('ordering-author-desktop.png', {
     body: await page.screenshot({ fullPage: true }),
@@ -476,8 +485,9 @@ test('ordering authoring and player reordering work at desktop and mobile widths
 
   await page.setViewportSize({ height: 844, width: 390 });
   await expect(
-    page.getByRole('heading', { name: 'Correct sequence' }),
+    page.getByRole('heading', { name: 'Correct order', exact: true }),
   ).toBeVisible();
+  await expect(authoredItems).toHaveText(correctOrder);
   await expectNoHorizontalOverflow(page);
   await page.goto(`/challenge-attempts/${ORDERING_ATTEMPT}`);
   const currentOrder = page.getByRole('list', { name: 'Current order' });
@@ -914,7 +924,7 @@ for (const viewport of [
 
 test('Question workspace preserves focused mobile and tablet navigation', async ({
   page,
-}) => {
+}, testInfo) => {
   await installAuthorApi(page);
   const consoleErrors = monitorConsoleErrors(page);
 
@@ -950,6 +960,10 @@ test('Question workspace preserves focused mobile and tablet navigation', async 
       );
     expect(metadataColumnCount).toBe(viewport.width === 390 ? 1 : 2);
     await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`question-detail-${viewport.width}.png`),
+      fullPage: true,
+    });
   }
 
   expect(consoleErrors).toEqual([]);

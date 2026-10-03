@@ -278,6 +278,10 @@
   display: block;
 }
 
+.author-workspace--events .question-record-view {
+  container-type: inline-size;
+}
+
 .question-table tbody th {
   width: 72%;
 }
