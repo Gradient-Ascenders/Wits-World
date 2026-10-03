@@ -3,13 +3,11 @@
 }
 
 html {
-  min-width: 20rem;
   min-height: 100%;
   background: var(--colour-background-app);
 }
 
 body {
-  min-width: 20rem;
   min-height: 100vh;
   margin: 0;
   color: var(--colour-text-primary);
@@ -490,6 +488,22 @@ a:hover {
 
 .site-frame--product-navigation .product-name__tagline {
   display: none;
+}
+
+@media (max-width: 23rem) {
+  .site-frame--product-navigation .product-name__mark {
+    width: 2.5rem;
+  }
+  .site-frame--product-navigation .account-disclosure__trigger {
+    max-width: 40vw;
+  }
+  .primary-navigation--mobile {
+    padding-inline: var(--space-2);
+  }
+  .primary-navigation--mobile .primary-navigation__link {
+    font-size: 0.6875rem;
+    letter-spacing: 0;
+  }
 }
 
 .site-header__navigation-cluster {

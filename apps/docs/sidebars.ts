@@ -149,6 +149,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'design/profile-showcase',
+              label: 'Player profile showcase and editing',
+            },
+            {
+              type: 'doc',
               id: 'design/basic-card-roster',
               label: 'Complete card catalogue',
             },
@@ -279,6 +284,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'architecture/api-overview',
               label: 'API overview and endpoint reference',
+            },
+            {
+              type: 'doc',
+              id: 'architecture/player-profile-api-contract',
+              label: 'Player profile API',
             },
             {
               type: 'doc',

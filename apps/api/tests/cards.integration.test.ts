@@ -283,6 +283,26 @@ describe('starter selection API', () => {
 });
 
 describe('card collection API', () => {
+  it('requests unique definitions for the authenticated owner', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cards/collection?unique=true',
+      headers: { authorization: 'Bearer test-access-token' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(listOwnedCards).toHaveBeenCalledWith(activeLocalPlayer.id, true);
+  });
+
+  it('rejects an invalid unique option', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cards/collection?unique=invalid',
+      headers: { authorization: 'Bearer test-access-token' },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(listOwnedCards).not.toHaveBeenCalled();
+  });
+
   it('requires authentication', async () => {
     const response = await app.inject({
       method: 'GET',

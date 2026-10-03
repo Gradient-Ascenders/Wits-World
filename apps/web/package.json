@@ -37,6 +37,7 @@
     "@internationalized/date": "3.12.4",
     "@phosphor-icons/react": "^2.1.10",
     "@wits-world/account-policy": "0.0.0",
+    "emojilib": "2.4.0",
     "idb": "8.0.3",
     "mapbox-gl": "3.28.1",
     "react": "19.2.8",

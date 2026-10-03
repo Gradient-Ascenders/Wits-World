@@ -37,6 +37,7 @@ import {
 } from './security/rate-protection.js';
 import { createProgressionPersistence } from './progression/progression-persistence.js';
 import { createProgressionReadService } from './progression/progression-read-service.js';
+import { createPlayerProfileService } from './players/player-profile.js';
 import { createAuthorTrailService } from './trails/author-trail-service.js';
 import { createPlayerTrailService } from './trails/player-trail-service.js';
 import { createAuthorCampaignService } from './campaigns/author-campaign-service.js';
@@ -245,6 +246,7 @@ async function startServer(): Promise<void> {
     ranked: { service: rankedService, reads: rankedReadService },
     territory: { reads: territoryReadService },
     progressionReadService,
+    playerProfileService: createPlayerProfileService(database),
 
     accountDeletionServices: {
       reauthenticationVerifier,
