@@ -36,6 +36,74 @@ const CARD_RETIRED_CREATURE = '50000000-0000-4000-8000-000000000099';
 const CAMPAIGN_A = '70000000-0000-4000-8000-000000000001';
 const TRAIL_A = '80000000-0000-4000-8000-000000000001';
 
+test('Author sidebar collapses without losing edits and supports keyboard navigation', async ({
+  page,
+}, testInfo) => {
+  await installAuthorApi(page);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto('/author/events');
+
+  const navigation = page.getByRole('navigation', { name: 'Author sections' });
+  const toggle = page.getByRole('button', { name: /Author navigation/ });
+  const workspace = page.locator('.author-console__workspace');
+  await expect(navigation).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  const expandedWidth = (await workspace.boundingBox())!.width;
+  await page.screenshot({ path: testInfo.outputPath('sidebar-expanded.png') });
+
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await expect(navigation).toBeHidden();
+  await expect(toggle).toHaveAccessibleName('Expand Author navigation');
+  expect((await workspace.boundingBox())!.width).toBeGreaterThan(
+    expandedWidth + 100,
+  );
+  await expect(toggle).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('sidebar-collapsed.png') });
+
+  await page.getByRole('link', { name: 'New event' }).click();
+  await expect(navigation).toBeHidden();
+  await page.getByLabel('Event title').fill('Sidebar preserves this draft');
+  await toggle.click();
+  await navigation.getByRole('link', { name: 'Events', exact: true }).focus();
+  await page.keyboard.press('Escape');
+  await expect(navigation).toBeHidden();
+  await expect(toggle).toBeFocused();
+  await expect(page.getByLabel('Event title')).toHaveValue(
+    'Sidebar preserves this draft',
+  );
+
+  await toggle.click();
+  await navigation.getByRole('link', { name: 'Cards', exact: true }).click();
+  await expect(
+    page.getByRole('dialog', { name: 'Discard unsaved changes?' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(page).toHaveURL('/author/cards');
+  await expect(
+    navigation.getByRole('link', { name: 'Cards', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+
+  for (const width of [390, 768]) {
+    await page.setViewportSize({ height: 844, width });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(navigation).toBeHidden();
+    await toggle.click();
+    await expect(navigation).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`sidebar-${width}.png`),
+    });
+    await navigation.getByRole('link', { name: 'Events', exact: true }).click();
+    await expect(page).toHaveURL('/author/events');
+    await expect(navigation).toBeHidden();
+    // Reset below the breakpoint before the next viewport iteration.
+    await page.setViewportSize({ height: 900, width: 1440 });
+    await expect(navigation).toBeVisible();
+  }
+});
+
 test('desktop Event workspace keeps discovery, detail, editing and readiness focused', async ({
   page,
 }) => {
@@ -232,7 +300,7 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
   await expect(page.getByRole('main')).toHaveCount(1);
   await expect(page.getByRole('navigation', { name: 'Player' })).toBeVisible();
   await expect(
-    page.getByRole('button', { name: /Navigation/ }),
+    page.getByRole('button', { name: /Author navigation/ }),
   ).toHaveAttribute('aria-expanded', 'false');
   const listHeight = await documentHeight(page);
 
@@ -3623,7 +3691,7 @@ async function expectNoHorizontalOverflow(page: Page) {
 }
 
 async function openAuthorNavigation(page: Page) {
-  const toggle = page.getByRole('button', { name: /Navigation/ });
+  const toggle = page.getByRole('button', { name: /Author navigation/ });
   if (
     (await toggle.isVisible()) &&
     (await toggle.getAttribute('aria-expanded')) === 'false'
