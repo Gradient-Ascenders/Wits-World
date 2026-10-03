@@ -37,18 +37,24 @@ describe('author event-placement workspace', () => {
     ).toBeVisible();
     expect(
       screen.getByRole('table', {
-        name: 'Current and proposed event placements',
+        name: 'Current event placements',
       }),
     ).toBeVisible();
     expect(
       screen.queryByRole('table', { name: 'Coverage zones' }),
     ).not.toBeInTheDocument();
 
+    expect(
+      screen.queryByRole('columnheader', { name: 'Proposed site' }),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole('tab', { name: 'Coverage & sites' }));
     expect(screen.getByRole('table', { name: 'Coverage zones' })).toBeVisible();
-    expect(
-      screen.getByRole('table', { name: 'Reviewed candidate sites' }),
-    ).toBeVisible();
+    expect(screen.getByRole('table', { name: 'Reviewed sites' })).toBeVisible();
+    expect(screen.getByText('Minimum separation')).not.toBeVisible();
+    await user.click(
+      screen.getByText('Placement rules', { selector: 'summary' }),
+    );
+    expect(screen.getByText('Minimum separation')).toBeVisible();
     await user.click(screen.getAllByRole('button', { name: 'Locate' })[1]!);
     await waitFor(() => expect(controller.focusPoint).toHaveBeenCalled());
     await waitFor(() =>
@@ -59,9 +65,7 @@ describe('author event-placement workspace', () => {
       ),
     );
 
-    await user.click(
-      screen.getByRole('button', { name: 'Create coverage preview' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Create preview' }));
     expect(await screen.findByText('Review exceptions')).toBeVisible();
     expect(
       screen.getByText('Every active zone meets minimum coverage.'),
@@ -94,9 +98,7 @@ describe('author event-placement workspace', () => {
     renderWorkspace();
     await screen.findByText('Placement needs attention');
 
-    await user.click(
-      screen.getByRole('button', { name: 'Create coverage preview' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Create preview' }));
     await screen.findByText('Review exceptions');
     await user.click(screen.getByRole('button', { name: 'Review and apply' }));
     expect(postedPaths(fetchMock)).not.toContain(
@@ -104,32 +106,32 @@ describe('author event-placement workspace', () => {
     );
     let dialog = screen.getByRole('dialog');
     await user.type(
-      within(dialog).getByLabelText('Reason for this change'),
+      within(dialog).getByLabelText('Reason'),
       'Reviewed operational change',
     );
     await user.click(
-      within(dialog).getByRole('button', { name: 'Apply placement plan' }),
+      within(dialog).getByRole('button', { name: 'Apply plan' }),
     );
     await screen.findByText(/Placement plan applied/u);
 
     await user.click(screen.getByRole('tab', { name: 'Manual controls' }));
     await user.click(screen.getByRole('button', { name: 'Review override' }));
     dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveTextContent('Pause automatic placement?');
+    expect(dialog).toHaveTextContent('Pause automatic rotation?');
     await confirmDialog(
       user,
       dialog,
       'Temporary operations window',
-      'Pause automation',
+      'Pause rotation',
     );
 
-    await user.selectOptions(screen.getByLabelText('Override type'), 'pin');
+    await user.selectOptions(screen.getByLabelText('Action'), 'pin');
     await user.click(screen.getByRole('button', { name: 'Review override' }));
     dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveTextContent('Create this placement pin?');
+    expect(dialog).toHaveTextContent('Pin this event?');
     await confirmDialog(user, dialog, 'Pin review', 'Pin event');
 
-    await user.selectOptions(screen.getByLabelText('Override type'), 'exclude');
+    await user.selectOptions(screen.getByLabelText('Action'), 'exclude');
     await user.click(screen.getByRole('button', { name: 'Review override' }));
     dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('Exclude this site?');
@@ -137,18 +139,18 @@ describe('author event-placement workspace', () => {
 
     await user.click(screen.getByRole('button', { name: 'End override' }));
     dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveTextContent('End this placement override?');
+    expect(dialog).toHaveTextContent('End this override?');
     await confirmDialog(user, dialog, 'End reviewed pin', 'End override');
 
     await user.click(screen.getByRole('tab', { name: 'Recent history' }));
     await user.click(screen.getByRole('button', { name: /Roll back/u }));
     dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveTextContent('Roll back to this placement?');
+    expect(dialog).toHaveTextContent('Restore this placement?');
     await confirmDialog(
       user,
       dialog,
       'Restore prior plan',
-      'Create and apply rollback',
+      'Restore placement',
     );
 
     await waitFor(() => {
@@ -188,15 +190,11 @@ describe('author event-placement workspace', () => {
     renderWorkspace();
     await screen.findByText('Placement needs attention');
 
-    await user.click(
-      screen.getByRole('button', { name: 'Create coverage preview' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Create preview' }));
 
     expect(await screen.findByText('No changes proposed')).toBeVisible();
     expect(
-      screen.getByText(
-        'Current assignments already match the server-checked plan. Nothing has changed for players.',
-      ),
+      screen.getByText('Current assignments already match this preview.'),
     ).toBeVisible();
     expect(stateLoads).toBe(2);
     expect(
@@ -214,10 +212,8 @@ describe('author event-placement workspace', () => {
     renderWorkspace();
     await screen.findByText('Placement needs attention');
 
-    await user.click(
-      screen.getByRole('button', { name: 'Create coverage preview' }),
-    );
-    await user.click(await screen.findByText('2 separation or policy details'));
+    await user.click(screen.getByRole('button', { name: 'Create preview' }));
+    await user.click(await screen.findByText('2 placement issues'));
 
     const blockedSites = screen.getByRole('list', {
       name: 'Blocked candidate sites',
@@ -245,32 +241,31 @@ describe('author event-placement workspace', () => {
     });
     renderWorkspace();
     await screen.findByText('Placement needs attention');
-    await user.click(
-      screen.getByRole('button', { name: 'Create coverage preview' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Create preview' }));
     await screen.findByText('Review exceptions');
     await user.click(screen.getByRole('button', { name: 'Review and apply' }));
     await confirmDialog(
       user,
       screen.getByRole('dialog'),
       'Reviewed apply',
-      'Apply placement plan',
+      'Apply plan',
     );
 
-    expect(
-      await screen.findByText(/Placement changed while you were reviewing/u),
-    ).toBeVisible();
+    expect(await screen.findByText(/Placement changed\./u)).toBeVisible();
     await user.click(screen.getByRole('tab', { name: 'Coverage & sites' }));
-    await user.click(screen.getByText('Technical details'));
+    await user.click(
+      screen.getByText('Placement rules', { selector: 'summary' }),
+    );
+    await user.click(screen.getByText('Plan details'));
     const technicalDetails = screen
-      .getByText('Technical details')
+      .getByText('Plan details')
       .closest('details')!;
     expect(within(technicalDetails).getByText('5')).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Review and apply' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Create coverage preview' }),
+      screen.getByRole('button', { name: 'Create preview' }),
     ).toBeVisible();
     expect(
       fetchMock.mock.calls.filter(([input]) =>
@@ -298,20 +293,18 @@ describe('author event-placement workspace', () => {
     });
     renderWorkspace();
     await screen.findByText('Placement needs attention');
-    await user.click(
-      screen.getByRole('button', { name: 'Create coverage preview' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Create preview' }));
     await user.click(screen.getByRole('button', { name: 'Review and apply' }));
     await confirmDialog(
       user,
       screen.getByRole('dialog'),
       'Reviewed apply',
-      'Apply placement plan',
+      'Apply plan',
     );
 
     expect(
       await screen.findByText(
-        'Placement was completed while you were reviewing. The latest live assignments are shown; no further action is needed.',
+        'This plan is already live. No further action is needed.',
       ),
     ).toBeVisible();
     expect(screen.getByText('Placement healthy')).toBeVisible();
@@ -334,24 +327,18 @@ describe('author event-placement workspace', () => {
       state: () => uncoveredPlacementState(),
     });
     renderWorkspace();
-    await screen.findByRole('button', { name: 'Create coverage preview' });
-    await user.click(
-      screen.getByRole('button', { name: 'Create coverage preview' }),
-    );
+    await screen.findByRole('button', { name: 'Create preview' });
+    await user.click(screen.getByRole('button', { name: 'Create preview' }));
 
     expect(await screen.findByText('No safe plan found')).toBeVisible();
     expect(screen.getByText('Cannot apply')).toBeVisible();
     expect(
-      screen.getByText(
-        'This preview contains no assignments. Review the coverage checks to see why it cannot be applied.',
-      ),
+      screen.getByText('No assignments proposed. Check coverage for details.'),
     ).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Review and apply' }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Recalculate preview' }),
-    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'New preview' })).toBeEnabled();
   });
 
   it('treats an older failed rotation as resolved after a healthy apply', async () => {
@@ -360,12 +347,10 @@ describe('author event-placement workspace', () => {
 
     expect(await screen.findByText('Placement healthy')).toBeVisible();
     expect(
-      screen.getByText('Placement is live and fully covered.'),
+      screen.getByRole('heading', { name: 'Current placement' }),
     ).toBeVisible();
     expect(
-      screen.getByText(
-        'All 2 active zones meet minimum coverage, and 2 of 2 target events are live. No unresolved placement failure remains.',
-      ),
+      screen.getByText('Every active zone meets minimum coverage.'),
     ).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Preview another rotation' }),
@@ -396,7 +381,7 @@ describe('author event-placement workspace', () => {
       user,
       screen.getByRole('dialog'),
       'Operations pause',
-      'Pause automation',
+      'Pause rotation',
     );
 
     expect(await screen.findByText(/could not be loaded/u)).toBeVisible();
@@ -428,30 +413,24 @@ describe('author event-placement workspace', () => {
     );
 
     expect(screen.getByText('Loading event placement…')).toBeVisible();
-    expect(
-      await screen.findByText('Placement workspace unavailable'),
-    ).toBeVisible();
+    expect(await screen.findByText('Placement unavailable')).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect(
       await screen.findByText(
-        'No events are currently placed. Create a coverage preview to propose assignments.',
+        'No events placed. Create a preview to get started.',
       ),
     ).toBeVisible();
     expect(await screen.findByText('The map could not load.')).toBeVisible();
     await user.click(screen.getByRole('tab', { name: 'Recent history' }));
-    expect(
-      screen.getByText('No placement plans have been recorded yet.'),
-    ).toBeVisible();
+    expect(screen.getByText('No placement history yet.')).toBeVisible();
     await user.click(screen.getByRole('tab', { name: 'Coverage & sites' }));
     expect(screen.getByRole('table', { name: 'Coverage zones' })).toBeVisible();
 
     expect(
-      screen.getByText(
-        'A preview cannot place events until at least one coverage zone is active.',
-      ),
+      screen.getByText('No active coverage zones. Preview unavailable.'),
     ).toBeVisible();
     expect(
-      screen.getByRole('button', { name: 'Create coverage preview' }),
+      screen.getByRole('button', { name: 'Create preview' }),
     ).toBeDisabled();
   });
 
@@ -465,21 +444,17 @@ describe('author event-placement workspace', () => {
 
     expect(await screen.findByText('Placement needs attention')).toBeVisible();
     expect(
-      screen.getByRole('button', { name: 'Create coverage preview' }),
+      screen.getByRole('button', { name: 'Create preview' }),
     ).toBeEnabled();
     await user.click(screen.getByRole('tab', { name: 'Recent history' }));
-    expect(await screen.findByText('Recent history unavailable')).toBeVisible();
-    expect(
-      screen.getByText(/The service could not complete this request/u),
-    ).toBeVisible();
+    expect(await screen.findByText('History unavailable')).toBeVisible();
+    expect(screen.getByText(/Placement is unavailable/u)).toBeVisible();
 
     await user.click(screen.getByRole('tab', { name: 'Manual controls' }));
-    await user.clear(screen.getByLabelText('Duration in hours'));
-    await user.type(screen.getByLabelText('Duration in hours'), '169');
+    await user.clear(screen.getByLabelText('Duration (hours)'));
+    await user.type(screen.getByLabelText('Duration (hours)'), '169');
     await user.click(screen.getByRole('button', { name: 'Review override' }));
-    expect(
-      screen.getByText('This override can last no more than 168 hours.'),
-    ).toBeVisible();
+    expect(screen.getByText('Use 168 hours or less.')).toBeVisible();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
@@ -509,30 +484,22 @@ describe('author event-placement workspace', () => {
     renderWorkspace();
     await screen.findByText('Placement needs attention');
 
-    await user.click(
-      screen.getByRole('button', { name: 'Create coverage preview' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Create preview' }));
     expect(screen.getByText('Creating preview')).toBeVisible();
-    expect(
-      screen.getByText(/Checking coverage, separation, and placement rules/u),
-    ).toBeVisible();
+    expect(screen.getByText(/Checking placement rules/u)).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Creating preview…' }),
     ).toBeDisabled();
 
     releasePreview?.();
-    expect(
-      await screen.findByText('Preview could not be created'),
-    ).toBeVisible();
-    expect(
-      screen.getByRole('button', { name: 'Try preview again' }),
-    ).toBeEnabled();
+    expect(await screen.findByText('Preview unavailable')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
 
-    await user.click(screen.getByRole('button', { name: 'Try preview again' }));
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Plan needs review')).toBeVisible();
     expect(
       screen.getByText(
-        'Minimum coverage is met, but the plan includes policy exceptions. Nothing has changed for players.',
+        'Minimum coverage met. Review the placement issues before applying.',
       ),
     ).toBeVisible();
   });
@@ -544,10 +511,7 @@ async function confirmDialog(
   reason: string,
   confirmLabel: string,
 ) {
-  await user.type(
-    within(dialog).getByLabelText('Reason for this change'),
-    reason,
-  );
+  await user.type(within(dialog).getByLabelText('Reason'), reason);
   await user.click(within(dialog).getByRole('button', { name: confirmLabel }));
 }
 

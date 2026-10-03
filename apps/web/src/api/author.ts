@@ -52,6 +52,20 @@ export interface AuthorEventLocationAnalyticsPage extends AuthorPage<AuthorEvent
   minimumSampleSize: 10;
 }
 
+export interface AuthorEventAttentionItem {
+  eventId: string;
+  eventTitle: string;
+  ignoredLocationCount: number;
+  easyQuestionCount: number;
+  hardQuestionCount: number;
+  questionId: string | null;
+  challengeId: string | null;
+}
+
+export interface AuthorEventAttentionPage extends AuthorPage<AuthorEventAttentionItem> {
+  minimumSampleSize: 10;
+}
+
 export interface AuthorAdvancedQuestionAnalyticsItem {
   questionId: string;
   challengeId: string;
@@ -1046,6 +1060,56 @@ export async function listAuthorQuestionPerformance(
     totalPages: payload.totalPages,
     minimumSampleSize: 10,
     problematicIncorrectRate: 0.7,
+  };
+}
+
+export async function listAuthorEventAttention(
+  options: RequestBase & {
+    fromDate?: string;
+    toDate?: string;
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<AuthorEventAttentionPage> {
+  const payload = await listAdvancedAnalyticsPage(
+    options,
+    '/author/analytics/attention',
+    {
+      fromDate: options.fromDate,
+      toDate: options.toDate,
+      page: options.page ?? 1,
+      pageSize: options.pageSize ?? 25,
+    },
+  );
+  if (payload.minimumSampleSize !== 10) throw unavailableResponse();
+  return {
+    ...parseAnalyticsPage(payload, (value): AuthorEventAttentionItem => {
+      if (
+        !isRecord(value) ||
+        !isUuid(value.eventId) ||
+        !isNonBlank(value.eventTitle) ||
+        !isNonNegativeInteger(value.ignoredLocationCount) ||
+        !isNonNegativeInteger(value.easyQuestionCount) ||
+        !isNonNegativeInteger(value.hardQuestionCount) ||
+        !(value.questionId === null || isUuid(value.questionId)) ||
+        !(value.challengeId === null || isUuid(value.challengeId))
+      )
+        throw unavailableResponse();
+      const hasQuestions =
+        Number(value.easyQuestionCount) + Number(value.hardQuestionCount) > 0;
+      if (
+        hasQuestions !==
+          (value.questionId !== null && value.challengeId !== null) ||
+        (value.questionId === null) !== (value.challengeId === null) ||
+        Number(value.ignoredLocationCount) +
+          Number(value.easyQuestionCount) +
+          Number(value.hardQuestionCount) ===
+          0
+      )
+        throw unavailableResponse();
+      return value as unknown as AuthorEventAttentionItem;
+    }),
+    minimumSampleSize: 10,
   };
 }
 

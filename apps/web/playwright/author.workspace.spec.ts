@@ -1,4 +1,12 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { selectOption } from './select-option';
+import { mkdir } from 'node:fs/promises';
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type Route,
+} from '@playwright/test';
 
 import type {
   AuthorCard,
@@ -9,6 +17,7 @@ import type {
   AuthorEventInput,
   AuthorQuestion,
   AuthorQuestionInput,
+  AuthorReviewQueueItem,
   AuthorTrail,
 } from '../src/api/author';
 
@@ -27,6 +36,74 @@ const CARD_RETIRED_CREATURE = '50000000-0000-4000-8000-000000000099';
 const CAMPAIGN_A = '70000000-0000-4000-8000-000000000001';
 const TRAIL_A = '80000000-0000-4000-8000-000000000001';
 
+test('Author sidebar collapses without losing edits and supports keyboard navigation', async ({
+  page,
+}, testInfo) => {
+  await installAuthorApi(page);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto('/author/events');
+
+  const navigation = page.getByRole('navigation', { name: 'Author sections' });
+  const toggle = page.getByRole('button', { name: /Author navigation/ });
+  const workspace = page.locator('.author-console__workspace');
+  await expect(navigation).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  const expandedWidth = (await workspace.boundingBox())!.width;
+  await page.screenshot({ path: testInfo.outputPath('sidebar-expanded.png') });
+
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await expect(navigation).toBeHidden();
+  await expect(toggle).toHaveAccessibleName('Expand Author navigation');
+  expect((await workspace.boundingBox())!.width).toBeGreaterThan(
+    expandedWidth + 100,
+  );
+  await expect(toggle).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('sidebar-collapsed.png') });
+
+  await page.getByRole('link', { name: 'New event' }).click();
+  await expect(navigation).toBeHidden();
+  await page.getByLabel('Event title').fill('Sidebar preserves this draft');
+  await toggle.click();
+  await navigation.getByRole('link', { name: 'Events', exact: true }).focus();
+  await page.keyboard.press('Escape');
+  await expect(navigation).toBeHidden();
+  await expect(toggle).toBeFocused();
+  await expect(page.getByLabel('Event title')).toHaveValue(
+    'Sidebar preserves this draft',
+  );
+
+  await toggle.click();
+  await navigation.getByRole('link', { name: 'Cards', exact: true }).click();
+  await expect(
+    page.getByRole('dialog', { name: 'Discard unsaved changes?' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(page).toHaveURL('/author/cards');
+  await expect(
+    navigation.getByRole('link', { name: 'Cards', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+
+  for (const width of [390, 768]) {
+    await page.setViewportSize({ height: 844, width });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(navigation).toBeHidden();
+    await toggle.click();
+    await expect(navigation).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`sidebar-${width}.png`),
+    });
+    await navigation.getByRole('link', { name: 'Events', exact: true }).click();
+    await expect(page).toHaveURL('/author/events');
+    await expect(navigation).toBeHidden();
+    // Reset below the breakpoint before the next viewport iteration.
+    await page.setViewportSize({ height: 900, width: 1440 });
+    await expect(navigation).toBeVisible();
+  }
+});
+
 test('desktop Event workspace keeps discovery, detail, editing and readiness focused', async ({
   page,
 }) => {
@@ -37,14 +114,14 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
 
   await expect(
     page.getByRole('heading', { name: 'Author console' }),
-  ).toBeVisible();
+  ).toBeAttached();
   await expect(page.getByRole('main')).toHaveCount(1);
   await expect(
     page.getByRole('complementary', { name: 'Authored events' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'Select an event' }),
-  ).toBeVisible();
+    page.getByRole('region', { name: 'Event workspace detail' }),
+  ).toBeHidden();
   await expectNoHorizontalOverflow(page);
 
   const eventSearch = page.getByRole('searchbox', { name: 'Search' });
@@ -54,16 +131,26 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
     page.getByRole('link', { name: /Great Hall Discovery/u }),
   ).toHaveCount(0);
   await eventSearch.fill('');
-  await page.getByLabel('Lifecycle').selectOption('draft');
+  await selectOption(page.getByLabel('Lifecycle', { exact: true }), 'draft');
   await expect(
     page.getByRole('link', { name: /Great Hall Discovery/u }),
   ).toBeVisible();
   await expect(page.getByRole('link', { name: /MSL Open Day/u })).toHaveCount(
     0,
   );
-  await page.getByLabel('Lifecycle').selectOption('all');
+  await selectOption(page.getByLabel('Lifecycle', { exact: true }), 'all');
+  await expect(page.getByRole('link', { name: 'New event' })).toHaveCount(1);
+  await expect(page.getByLabel('Schedule', { exact: true })).toBeVisible();
+  await selectOption(page.getByLabel('Schedule', { exact: true }), 'upcoming');
+  await expect(
+    page.getByText('No events match', { exact: true }),
+  ).toBeVisible();
+  await selectOption(page.getByLabel('Schedule', { exact: true }), 'all');
 
-  await page.getByRole('link', { name: /Great Hall Discovery/u }).click();
+  await eventSearch.fill('Great Hall');
+  await openCatalogueRow(
+    page.getByRole('row', { name: /Great Hall Discovery/u }),
+  );
   await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
   await expect(page.locator('.author-record-view')).toBeFocused();
   await expect(
@@ -82,7 +169,7 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   ).toBeVisible();
   await page.getByLabel('Event title').fill('Great Hall Discovery revised');
 
-  await page.getByRole('link', { name: /MSL Open Day/u }).click();
+  await page.getByRole('link', { name: 'Events', exact: true }).first().click();
   const dirtyDialog = page.getByRole('dialog', {
     name: 'Discard unsaved changes?',
   });
@@ -106,6 +193,12 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   await expect(page.getByText('Event changes saved.')).toBeFocused();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
 
+  await page.getByRole('link', { name: 'Events', exact: true }).first().click();
+  await expect(eventSearch).toHaveValue('Great Hall');
+  await page
+    .getByRole('link', { name: /Great Hall Discovery revised/ })
+    .click();
+
   const savedEvent = state.events.find((event) => event.eventId === EVENT_A)!;
   replaceById(
     state.events,
@@ -123,8 +216,11 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   await page.reload();
 
   await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
-  await expect(page.getByRole('heading', { name: 'Challenge' })).toBeVisible();
-  await expect(page.getByText(/Reward ready/)).toBeVisible();
+  await expect(page.getByText('Multiple choice · draft')).toBeVisible();
+  await page.getByRole('link', { name: 'Review', exact: true }).click();
+  await expect(
+    page.getByText('Published Common reward available'),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Publish event package' }).click();
   const publicationError = page.getByText(
@@ -150,17 +246,24 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
 
   state.rejectEventPublication = false;
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Challenge' })).toBeVisible();
+  await expect(page.getByText('Multiple choice · draft')).toBeVisible();
   await page.getByRole('button', { name: 'Publish event package' }).click();
   await expect(
     page.getByText(
       'Event published and available to the player API according to its active times.',
     ),
   ).toBeFocused();
+  await page.getByRole('link', { name: 'Details', exact: true }).click();
+  await expect(page).toHaveURL(`/author/events/${EVENT_A}/details`);
   await page.goBack();
-  await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
+  await expect(
+    page.getByRole('link', { name: 'Review', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
   await page.goForward();
-  await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
+  await expect(
+    page.getByRole('link', { name: 'Details', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+  await page.getByRole('link', { name: 'Review', exact: true }).click();
 
   const retireButton = page.getByRole('button', { name: 'Retire event' });
   await retireButton.click();
@@ -197,7 +300,7 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
   await expect(page.getByRole('main')).toHaveCount(1);
   await expect(page.getByRole('navigation', { name: 'Player' })).toBeVisible();
   await expect(
-    page.getByRole('button', { name: /Navigation/ }),
+    page.getByRole('button', { name: /Author navigation/ }),
   ).toHaveAttribute('aria-expanded', 'false');
   const listHeight = await documentHeight(page);
 
@@ -231,9 +334,13 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
   await expect(
     page.getByRole('heading', { level: 5, name: 'Where is the Great Hall?' }),
   ).toBeVisible();
-  await expect(
-    page.getByText('Accepted answer', { exact: true }),
-  ).toBeVisible();
+  const correctAnswer = page
+    .locator('.question-answer-summary')
+    .getByRole('listitem')
+    .filter({ has: page.getByText('Correct', { exact: true }) });
+  await expect(correctAnswer).toHaveCount(1);
+  await expect(correctAnswer).toBeVisible();
+  await expect(correctAnswer).toContainText('Answer 2');
   await page.getByRole('link', { name: 'Edit question' }).click();
   await page
     .getByLabel('Question prompt')
@@ -296,15 +403,15 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
   });
   await automaticPlacement.check();
   await expect(
-    page.getByText('Location will be assigned automatically'),
+    page.getByText(/Assign a campus site at publication/u),
   ).toBeVisible();
   await expect(page.getByText('Event location')).toHaveCount(0);
   await automaticPlacement.uncheck();
   await page.getByLabel('Latitude').fill('-26.1908');
   await page.getByLabel('Longitude').fill('28.0305');
   await page.getByLabel('Radius (metres)').fill('60');
-  await page.getByLabel('Starts at').fill('2026-09-01T10:00');
-  await page.getByLabel('Ends at').fill('2026-09-01T12:00');
+  await enterEventDateTime(page, 'Starts at', '2026-09-01T10:00');
+  await enterEventDateTime(page, 'Ends at', '2026-09-01T12:00');
   await page.getByRole('button', { name: 'Create draft event' }).click();
   await expect(page).toHaveURL(`/author/events/${EVENT_NEW}`);
   await expect(page.getByText('Draft event created.')).toBeFocused();
@@ -339,7 +446,7 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   state.challenges = [];
   state.questions = [];
   await page.goto(`/author/events/${EVENT_A}`);
-  await page.getByLabel('Format').selectOption('ordering');
+  await selectOption(page.getByLabel('Format', { exact: true }), 'ordering');
   await page.getByRole('button', { name: 'Create challenge' }).click();
   await expect(
     page.getByText('Draft ordering challenge associated with this event.'),
@@ -349,12 +456,13 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   await page.getByLabel('Question prompt').fill('Order these campus eras.');
   await page.getByRole('button', { name: 'Create draft question' }).click();
   await expect(page.getByLabel('Correct position 1')).toBeFocused();
-  for (const [index, value] of [
+  const correctOrder = [
     'Founding',
     'Expansion',
     'Transformation',
     'Present day',
-  ].entries()) {
+  ];
+  for (const [index, value] of correctOrder.entries()) {
     await page.getByLabel(`Correct position ${index + 1}`).fill(value);
   }
   await page
@@ -363,8 +471,12 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   await page.getByRole('button', { name: 'Create draft question' }).click();
   await expect(page.getByText('Draft question created.')).toBeFocused();
   await expect(
-    page.getByRole('heading', { name: 'Correct sequence' }),
+    page.getByRole('heading', { name: 'Correct order', exact: true }),
   ).toBeVisible();
+  const authoredItems = page
+    .locator('.question-answer-summary')
+    .getByRole('listitem');
+  await expect(authoredItems).toHaveText(correctOrder);
   await expectNoHorizontalOverflow(page);
   await testInfo.attach('ordering-author-desktop.png', {
     body: await page.screenshot({ fullPage: true }),
@@ -373,8 +485,9 @@ test('ordering authoring and player reordering work at desktop and mobile widths
 
   await page.setViewportSize({ height: 844, width: 390 });
   await expect(
-    page.getByRole('heading', { name: 'Correct sequence' }),
+    page.getByRole('heading', { name: 'Correct order', exact: true }),
   ).toBeVisible();
+  await expect(authoredItems).toHaveText(correctOrder);
   await expectNoHorizontalOverflow(page);
   await page.goto(`/challenge-attempts/${ORDERING_ATTEMPT}`);
   const currentOrder = page.getByRole('list', { name: 'Current order' });
@@ -471,6 +584,151 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   expect(consoleErrors).toEqual([]);
 });
 
+test.describe('desktop campaign workspace', () => {
+  test.use({ timezoneId: 'America/New_York' });
+
+  test('campaign catalogue, editor, content picker and record tabs stay focused', async ({
+    page,
+  }, info) => {
+    const state = await installAuthorApi(page);
+    const errors = monitorConsoleErrors(page);
+    await mkdir('.impeccable/review', { recursive: true });
+    const capture = async (name: string, width: number) => {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: `.impeccable/review/campaign-${name}-${width}.png`,
+        fullPage: true,
+      });
+      await expectNoHorizontalOverflow(page);
+    };
+    for (const width of [1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/author/campaigns');
+      await expect(
+        page.getByRole('heading', { name: 'Campaigns' }),
+      ).toBeVisible();
+      await capture('catalogue', width);
+      await page.getByRole('link', { name: 'New campaign' }).click();
+      await expect(
+        page.getByRole('heading', { name: 'New campaign' }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('complementary', { name: 'Campaign catalogue' }),
+      ).toHaveCount(0);
+      await capture('new', width);
+
+      await page.getByRole('button', { name: 'Create draft campaign' }).click();
+      await expect(page.getByLabel('Campaign title')).toBeFocused();
+      await page.getByLabel('Campaign title').fill(`Open Day ${width}`);
+      await enterEventDateTime(page, 'Starts at', '2026-09-10T08:00');
+      await enterEventDateTime(page, 'Ends at', '2026-09-10T17:00');
+      const add = page.getByRole('button', { name: 'Add content' });
+      await add.click();
+      const picker = page.getByRole('dialog', { name: 'Add content' });
+      await expect(
+        page.getByRole('button', { name: 'Close content picker' }),
+      ).toBeFocused();
+      await expect(
+        page.getByRole('checkbox', { name: /MSL Open Day/ }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('checkbox', { name: /Great Hall Discovery/ }),
+      ).toHaveCount(0);
+      await selectOption(picker.getByLabel('Lifecycle'), 'all');
+      await page
+        .getByRole('checkbox', { name: /Great Hall Discovery/ })
+        .check();
+      // Escape dismisses only the nested menu before dismissing the picker.
+      await picker.getByLabel('Lifecycle').click();
+      await page.keyboard.press('Escape');
+      await expect(picker).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(picker).toBeHidden();
+      await expect(add).toBeFocused();
+      await expect(page.getByText('No content added.')).toBeVisible();
+      await add.click();
+      await page.getByRole('checkbox', { name: /MSL Open Day/ }).check();
+      const trails = page.getByRole('tab', { name: /Trails/ });
+      await trails.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect(page.getByRole('tab', { name: /Events/ })).toBeFocused();
+      await trails.click();
+      await page
+        .getByRole('checkbox', { name: /Campus orientation trail/ })
+        .check();
+      await page.getByRole('tab', { name: /Events/ }).click();
+      await expect(
+        page.getByRole('checkbox', { name: /MSL Open Day/ }),
+      ).toBeChecked();
+      await capture('picker', width);
+      await page.getByRole('button', { name: 'Apply selection' }).focus();
+      await page.keyboard.press('Tab');
+      await expect(
+        page.getByRole('button', { name: 'Close content picker' }),
+      ).toBeFocused();
+      await page.getByRole('button', { name: 'Apply selection' }).click();
+      await expect(add).toBeFocused();
+      await expect(
+        page.getByRole('button', { name: 'Remove event: MSL Open Day' }),
+      ).toBeVisible();
+      await page
+        .getByRole('button', { name: 'Remove trail: Campus orientation trail' })
+        .click();
+      await expect(
+        page.getByRole('button', { name: /Remove trail/ }),
+      ).toHaveCount(0);
+      await capture('filled', width);
+      await page.getByRole('button', { name: 'Create draft campaign' }).click();
+      await expect(page.getByText('Campaign draft created.')).toBeFocused();
+      const saved = state.campaigns[0]!;
+      expect(saved.startsAt).toBe('2026-09-10T06:00:00.000Z');
+      expect(saved.endsAt).toBe('2026-09-10T15:00:00.000Z');
+      expect(saved.events.map((event) => event.eventId)).toEqual([EVENT_B]);
+      await capture('details', width);
+      await page.getByRole('link', { name: 'Review', exact: true }).click();
+      await expect(page).toHaveURL(
+        `/author/campaigns/${saved.campaignId}/review`,
+      );
+      await expect(
+        page.getByRole('button', { name: 'Submit for review' }),
+      ).toBeVisible();
+      await capture('review', width);
+      await page.getByRole('link', { name: 'History', exact: true }).click();
+      await expect(
+        page.getByText('Approve: in review to approved'),
+      ).toBeVisible();
+      await capture('history', width);
+      await page.getByRole('link', { name: 'Edit campaign' }).click();
+      await expect(page.getByLabel('Campaign title')).toHaveValue(
+        `Open Day ${width}`,
+      );
+      await capture('edit', width);
+      await page.getByLabel('Campaign title').fill(`Open Day revised ${width}`);
+      await page.getByRole('button', { name: 'Save campaign' }).click();
+      await expect(page.getByText('Campaign changes saved.')).toBeFocused();
+      expect(
+        state.campaigns.find((item) => item.campaignId === saved.campaignId)
+          ?.version,
+      ).toBe(1);
+      const current = state.campaigns.find(
+        (item) => item.campaignId === saved.campaignId,
+      )!;
+      current.status = 'approved';
+      await page.goto(`/author/campaigns/${saved.campaignId}/edit`);
+      await expect(
+        page.getByText('This campaign is no longer editable.'),
+      ).toBeVisible();
+      await expect(page.getByLabel('Campaign title')).toHaveCount(0);
+      await capture('unavailable', width);
+    }
+    expect(errors).toEqual([]);
+    await info.attach('campaign-desktop-evidence', {
+      body: 'Captured catalogue, new, picker, filled, detail, review, history and edit at 1280, 1440 and 1920px.',
+      contentType: 'text/plain',
+    });
+  });
+});
+
 test('Review and campaign workspaces preserve lifecycle, keyboard and responsive states', async ({
   page,
 }) => {
@@ -487,18 +745,22 @@ test('Review and campaign workspaces preserve lifecycle, keyboard and responsive
   await page.setViewportSize({ height: 800, width: 1280 });
   await page.goto('/author/review');
   await expect(
-    page.getByRole('heading', { name: 'Review queue' }),
+    page.getByRole('heading', { name: 'Content review' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('link', { name: 'Review question' }),
+    page.getByRole('link', {
+      name: 'Review question: Where is the Great Hall?',
+    }),
   ).toHaveAttribute(
     'href',
     `/author/events/${EVENT_A}/challenges/${CHALLENGE_A}/questions/${QUESTION_A}`,
   );
-  await expect(page.getByText('In review', { exact: true })).toBeVisible();
-  await page.getByRole('link', { name: 'Review question' }).click();
+  await expect(page.getByText('In review', { exact: true })).toHaveCount(0);
+  await page
+    .getByRole('link', { name: 'Review question: Where is the Great Hall?' })
+    .click();
   await page.getByRole('button', { name: 'Approve question' }).click();
-  await expect(page.getByText('Question approved.')).toBeFocused();
+  await expect(page.getByText('Approved.')).toBeFocused();
   const questionDetail = page.getByRole('article', {
     name: 'Where is the Great Hall?',
   });
@@ -514,27 +776,32 @@ test('Review and campaign workspaces preserve lifecycle, keyboard and responsive
   await expect(
     page.getByRole('link', { name: /Orientation Week/u }),
   ).toBeVisible();
-  await page.getByRole('link', { name: /Orientation Week/u }).click();
+  await openCatalogueRow(page.getByRole('row', { name: /Orientation Week/u }));
   await expect(
     page.getByRole('heading', { name: 'Orientation Week' }),
   ).toBeVisible();
-  await expect(page.getByText('1 events · 1 trails')).toBeVisible();
+  await expect(
+    page.getByText('1 event · 1 trail', { exact: false }),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
-  await page.setViewportSize({ height: 844, width: 390 });
+  await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto('/author/campaigns/new');
   await expect(
-    page.getByRole('heading', { name: 'Create campaign' }),
+    page.getByRole('heading', { name: 'New campaign' }),
   ).toBeVisible();
-  await page.getByLabel('Title').fill('Open Day Schedule');
-  await page.getByLabel('Starts').fill('2026-09-10T08:00');
-  await page.getByLabel('Ends').fill('2026-09-10T17:00');
+  await page.getByLabel('Campaign title').fill('Open Day Schedule');
+  await enterEventDateTime(page, 'Starts at', '2026-09-10T08:00');
+  await enterEventDateTime(page, 'Ends at', '2026-09-10T17:00');
+  await page.getByRole('button', { name: 'Add content' }).click();
   await page.getByRole('checkbox', { name: /MSL Open Day/u }).check();
-  await page.getByRole('button', { name: 'Create campaign' }).click();
+  await page.getByRole('button', { name: 'Apply selection' }).click();
+  await page.getByRole('button', { name: 'Create draft campaign' }).click();
   await expect(page.getByText('Campaign draft created.')).toBeFocused();
   await expect(
     page.getByRole('heading', { name: 'Open Day Schedule' }),
   ).toBeVisible();
+  await page.getByRole('link', { name: 'Review', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Submit for review' }),
   ).toBeVisible();
@@ -544,75 +811,112 @@ test('Review and campaign workspaces preserve lifecycle, keyboard and responsive
 
 for (const viewport of [
   { height: 800, width: 1280 },
-  { height: 900, width: 1600 },
+  { height: 900, width: 1440 },
+  { height: 1261, width: 1694 },
 ]) {
-  test(`wide Question workspace uses available width at ${viewport.width}px`, async ({
+  test(`desktop event authoring has focused pages at ${viewport.width}px`, async ({
     page,
   }) => {
-    await installAuthorApi(page);
+    const state = await installAuthorApi(page);
     const consoleErrors = monitorConsoleErrors(page);
     await page.setViewportSize(viewport);
-    await page.goto(
-      `/author/events/${EVENT_A}/challenges/${CHALLENGE_A}/questions`,
-    );
-
-    const catalogue = page.getByRole('complementary', {
-      name: 'Challenge questions',
-    });
-    const detail = page.getByRole('region', {
-      name: 'Question workspace detail',
-    });
-    const events = page.getByRole('complementary', { name: 'Authored events' });
-    await expect(events).toBeVisible();
-    await expect(catalogue).toBeVisible();
-    if (viewport.width === 1280) {
-      await expect(detail).toBeHidden();
-      await page
-        .getByRole('link', { name: /Where is the Great Hall/u })
-        .click();
-      await expect(events).toBeVisible();
-      await expect(catalogue).toBeHidden();
-      await expect(detail).toBeVisible();
-      await expectNoHorizontalOverflow(page);
-      await events.getByRole('link', { name: /MSL Open Day/u }).click();
-      await expect(page).toHaveURL(`/author/events/${EVENT_B}`);
-      expect(consoleErrors).toEqual([]);
-      return;
-    }
-    await expect(detail).toBeVisible();
+    // Long real-content patterns exercise both wrapping and catalogue density.
+    state.events[0]!.title = 'Ordering Wits: Science and Discovery';
+    state.questions[0]!.prompt =
+      'Arrange Wits timeline set 16 (1962–1968) from earliest to latest.';
+    await mkdir('.impeccable/review', { recursive: true });
+    const capture = async (name: string) => {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: `.impeccable/review/${name}-${viewport.width}.png`,
+        fullPage: true,
+      });
+    };
+    await page.goto('/author/events');
     await expect(
-      detail.getByRole('heading', { name: 'Select a question' }),
+      page.getByRole('table', { name: 'Authored events', exact: true }),
     ).toBeVisible();
-
-    const listMetrics = await questionWorkspaceMetrics(page);
-    expectWideQuestionWorkspace(listMetrics);
-    expect(listMetrics.welcomeWidth).not.toBeNull();
-    expect(listMetrics.welcomeWidth ?? 0).toBeGreaterThan(320);
-    expect(
-      listMetrics.welcomeWidth ?? Number.POSITIVE_INFINITY,
-    ).toBeLessThanOrEqual(listMetrics.detailWidth);
-    expect(
-      (listMetrics.welcomeWidth ?? 0) / listMetrics.detailWidth,
-    ).toBeGreaterThan(0.4);
     await expectNoHorizontalOverflow(page);
-
-    await page.getByRole('link', { name: /Where is the Great Hall/u }).click();
-    await expect(page).toHaveURL(
-      `/author/events/${EVENT_A}/challenges/${CHALLENGE_A}/questions/${QUESTION_A}`,
-    );
-    await expect(catalogue).toBeVisible();
-    await expect(detail).toBeVisible();
+    await capture('catalogue');
+    await page.getByRole('link', { name: /Ordering Wits/ }).click();
     await expect(
-      detail.getByRole('heading', { name: 'Where is the Great Hall?' }),
+      page.getByRole('complementary', { name: 'Authored events' }),
+    ).toHaveCount(0);
+    const questions = page.getByRole('table', {
+      name: 'Questions',
+      exact: true,
+    });
+    await expect(questions).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'Question workspace detail' }),
+    ).toBeHidden();
+    await expect(
+      page.getByText('Select a question', { exact: true }),
+    ).toHaveCount(0);
+    const widths = await questions.evaluate((table) => ({
+      table: table.getBoundingClientRect().width,
+      workspace: document
+        .querySelector('.author-console__workspace')!
+        .getBoundingClientRect().width,
+    }));
+    expect(widths.table / widths.workspace).toBeGreaterThan(0.95);
+    await expectNoHorizontalOverflow(page);
+    await capture('questions');
+    await page.getByRole('link', { name: /Arrange Wits timeline/ }).click();
+    await expect(
+      page.getByRole('complementary', { name: 'Challenge questions' }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', { name: /Arrange Wits timeline/ }),
     ).toBeVisible();
-
-    const detailMetrics = await questionWorkspaceMetrics(page);
-    expectWideQuestionWorkspace(detailMetrics);
-    expect(detailMetrics.updatedLineRects).toBe(1);
-    expect(detailMetrics.updatedWidth ?? 0).toBeGreaterThan(120);
-    expect(
-      detailMetrics.updatedHeight ?? Number.POSITIVE_INFINITY,
-    ).toBeLessThan(30);
+    await expect(
+      page.getByRole('link', { name: 'Next', exact: true }),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page
+      .getByRole('link', { name: 'Edit question', exact: true })
+      .click();
+    await expect(page.getByLabel('Question prompt')).toBeVisible();
+    await capture('question-editor');
+    await page.getByLabel('Question prompt').fill('Unsaved question change');
+    await page.getByRole('link', { name: 'Next', exact: true }).click();
+    const guard = page.getByRole('dialog', {
+      name: 'Discard unsaved changes?',
+    });
+    await expect(guard).toBeVisible();
+    await guard.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(page.getByLabel('Question prompt')).toHaveValue(
+      'Unsaved question change',
+    );
+    await page
+      .getByRole('button', { name: 'Save question', exact: true })
+      .click();
+    await expect(page.getByText('Question changes saved.')).toBeFocused();
+    await page.getByRole('link', { name: 'Details', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Event details', exact: true }),
+    ).toBeVisible();
+    await capture('details');
+    await page.getByRole('link', { name: 'Review', exact: true }).click();
+    await expect(
+      page.getByText('Published Common reward available'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Submit event and questions' }),
+    ).toBeEnabled();
+    await expectNoHorizontalOverflow(page);
+    await capture('review');
+    await page.reload();
+    await expect(
+      page.getByRole('link', { name: 'Review', exact: true }),
+    ).toHaveAttribute('aria-current', 'page');
+    await page.getByRole('link', { name: 'History', exact: true }).click();
+    await expect(
+      page.getByText('Review history', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Approve: in review to approved'),
+    ).toBeVisible();
     await expectNoHorizontalOverflow(page);
     expect(consoleErrors).toEqual([]);
   });
@@ -620,7 +924,7 @@ for (const viewport of [
 
 test('Question workspace preserves focused mobile and tablet navigation', async ({
   page,
-}) => {
+}, testInfo) => {
   await installAuthorApi(page);
   const consoleErrors = monitorConsoleErrors(page);
 
@@ -656,6 +960,10 @@ test('Question workspace preserves focused mobile and tablet navigation', async 
       );
     expect(metadataColumnCount).toBe(viewport.width === 390 ? 1 : 2);
     await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`question-detail-${viewport.width}.png`),
+      fullPage: true,
+    });
   }
 
   expect(consoleErrors).toEqual([]);
@@ -858,115 +1166,340 @@ test('existing Event location focuses its saved point, supports dragging, and ha
   expect(consoleErrors).toEqual([]);
 });
 
-test('Player review uses a responsive, privacy-safe master-detail workflow', async ({
+for (const width of [1280, 1440, 1556, 1920]) {
+  test(`desktop Player review preserves queue context and focused decisions at ${width}px`, async ({
+    page,
+  }) => {
+    const caseId = uuid('a', 1);
+    const detail = trustCaseFixture(caseId);
+    const api = await installTrustReviewApi(page, detail);
+    const consoleErrors = monitorConsoleErrors(page);
+    await page.setViewportSize({ height: 950, width });
+    const capture = async (kind: string) => {
+      if (
+        process.env.PLAYER_REVIEW_CAPTURE &&
+        process.env.PLAYER_REVIEW_CAPTURE !== kind
+      )
+        return;
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+      await page.screenshot({
+        fullPage: true,
+        path: `.impeccable/review/player-review-${kind}-${width}.png`,
+      });
+    };
+    await page.goto('/author/player-review');
+    await expect(page.getByRole('table')).toBeVisible();
+    await expect(page.getByRole('main')).toHaveCount(1);
+    await expect(page.getByText('Select a case to begin review.')).toHaveCount(
+      0,
+    );
+    await expectNoHorizontalOverflow(page);
+    await mkdir('.impeccable/review', { recursive: true });
+    await capture('queue');
+
+    await page.getByRole('searchbox', { name: 'Search cases' }).fill('Casey');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.getByText('Page 2 of 2')).toBeVisible();
+    const open = page.getByRole('link', {
+      name: `Review ${detail.playerName}, case ${caseId}`,
+      exact: true,
+    });
+    await open.scrollIntoViewIfNeeded();
+    const queueScroll = await page.evaluate(() => window.scrollY);
+    expect(queueScroll).toBeGreaterThan(0);
+    await open.click();
+    await expect(page).toHaveURL(`/author/player-review/${caseId}`);
+    await expect(
+      page.getByRole('heading', { name: detail.playerName }),
+    ).toBeFocused();
+    await expect(page.getByLabel('Trust case queue')).toHaveCount(0);
+    await expect(
+      page.getByText('Review priority is not proof of misconduct.'),
+    ).toBeVisible();
+    const signals = page.getByRole('region', { name: 'Signals' });
+    await expect(signals.getByText('Impossible movement')).toBeVisible();
+    await expect(signals.getByText('High severity')).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await capture('case');
+
+    const reason = page.getByRole('textbox', { name: /Reason and context/u });
+    await reason.fill(
+      'Consider the retained evidence before making a decision.',
+    );
+    await page.getByRole('tab', { name: 'Review', exact: true }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(
+      page.getByRole('tab', { name: /Restrictions/u }),
+    ).toBeFocused();
+    await expect(
+      page.getByRole('region', { name: 'Restriction history' }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('1 active restriction', { exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await capture('restrictions');
+    await page.getByRole('tab', { name: /Restrictions/u }).focus();
+    await page.keyboard.press('End');
+    await expect(page.getByRole('tab', { name: 'History' })).toBeFocused();
+    await expect(
+      page.getByRole('region', { name: 'Decision and audit history' }),
+    ).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await capture('history');
+    await page.getByRole('link', { name: uuid('b', 1).slice(0, 8) }).click();
+    await expect(
+      page.getByRole('tab', { name: 'Review', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator(`#signal-${uuid('b', 1)}`)).toHaveAttribute(
+      'open',
+      '',
+    );
+    await expect(reason).toHaveValue(
+      'Consider the retained evidence before making a decision.',
+    );
+    await signals.getByText('Opponent concentration', { exact: true }).click();
+    await signals.getByText('View aggregate basis').click();
+    await expect(signals.getByText(/87.5%/u)).toBeVisible();
+    await expect(signals.getByText(/policy threshold/iu)).toHaveCount(0);
+    await page.getByText('Score breakdown').click();
+    await expect(page.getByText('Server final').locator('..')).toContainText(
+      '79',
+    );
+    await expectNoHorizontalOverflow(page);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await capture('evidence');
+
+    await page.getByLabel('Apply temporary restriction').check();
+    await page.getByLabel('Require online verification').check();
+    await selectOption(page.getByLabel('Duration', { exact: true }), '72');
+    await capture('decision-options');
+    await page.getByRole('button', { name: 'Review restriction' }).click();
+    const dialog = page.getByRole('dialog', {
+      name: `Apply temporary restrictions to ${detail.playerName}?`,
+    });
+    await expect(
+      dialog.getByRole('heading', { name: 'Current state' }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByText('Pause new competitive matches'),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole('heading', { name: 'Proposed restriction' }),
+    ).toBeVisible();
+    await expect(dialog.getByText('Require online verification')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Go back' })).toBeFocused();
+    expect(api.decisions).toHaveLength(0);
+    await capture('confirmation');
+    await expect(dialog.getByRole('button', { name: 'Go back' })).toBeFocused();
+    const skipLinkBottom = await page
+      .locator('.skip-link')
+      .evaluate((element) => element.getBoundingClientRect().bottom);
+    expect(skipLinkBottom).toBeLessThanOrEqual(0);
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('button', { name: 'Review restriction' }),
+    ).toBeFocused();
+    await page.getByRole('link', { name: 'Back to case queue' }).click();
+    await expect(open).toBeFocused();
+    await expect(
+      page.getByRole('searchbox', { name: 'Search cases' }),
+    ).toHaveValue('Casey');
+    await expect(page.getByText('Page 2 of 2')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeCloseTo(queueScroll, 0);
+    await page.goBack();
+    await expect(
+      page.getByRole('heading', { name: detail.playerName }),
+    ).toBeFocused();
+    await page.goForward();
+    await expect(page.getByText('Page 2 of 2')).toBeVisible();
+    await expect(open).toBeFocused();
+
+    // Remove the last page while the reviewer is investigating; the returning
+    // queue must fetch the last valid page and use heading focus if the row left.
+    await open.click();
+    await expect(
+      page.getByRole('heading', { name: detail.playerName }),
+    ).toBeVisible();
+    api.queue.totalItems = 20;
+    await page.getByLabel('Dismiss case').check();
+    await page
+      .getByRole('textbox', { name: /Reason and context/u })
+      .fill('Evidence does not support further review.');
+    await page
+      .getByRole('button', { name: 'Record decision', exact: true })
+      .click();
+    await expect(
+      page.getByText('Decision recorded in the audit history.'),
+    ).toBeVisible();
+    expect(api.decisions).toHaveLength(1);
+    await expect(
+      page.getByText('Decision controls are unavailable.'),
+    ).toBeVisible();
+    await page.getByRole('link', { name: 'Back to case queue' }).click();
+    await expect(page.getByText('20 matching cases')).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Player review', exact: true }),
+    ).toBeFocused();
+    await expect(
+      page.getByRole('button', { name: 'Next', exact: true }),
+    ).toHaveCount(0);
+
+    await page
+      .getByRole('searchbox', { name: 'Search cases' })
+      .fill('No matching player');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await expect(page.getByText('No cases match these filters.')).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await capture('empty');
+    await page.locator('.trust-review__advanced-filters > summary').click();
+    await selectOption(
+      page.getByLabel('Signal type', { exact: true }),
+      'impossible_movement',
+    );
+    await expect(page.getByLabel('1 active filter')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await capture('filters');
+    await page.locator('.trust-review__advanced-filters > summary').click();
+    await page.getByRole('button', { name: 'Reset filters' }).click();
+    await expect(page.getByRole('table')).toBeVisible();
+    await expect(
+      page.getByRole('searchbox', { name: 'Search cases' }),
+    ).toHaveValue('');
+    expect(consoleErrors).toEqual([]);
+  });
+}
+
+test('desktop Player review opens paged audit references and explains unavailable retained signals', async ({
   page,
-}, testInfo) => {
+}) => {
   const caseId = uuid('a', 1);
   const detail = trustCaseFixture(caseId);
-  await installTrustReviewApi(page, detail);
-  const consoleErrors = monitorConsoleErrors(page);
-
-  await page.setViewportSize({ height: 950, width: 1440 });
+  const api = await installTrustReviewApi(page, detail, {
+    pagedEvidence: true,
+  });
+  await page.setViewportSize({ width: 1440, height: 950 });
   await page.goto(`/author/player-review/${caseId}`);
   await expect(
     page.getByRole('heading', { name: detail.playerName }),
   ).toBeVisible();
-  await expect(page.getByLabel('Trust case queue')).toBeVisible();
   await expect(
-    page.getByText('Review priority, not proof of misconduct.'),
-  ).toBeVisible();
-  const signals = page.getByRole('region', { name: 'Signals' });
-  await expect(signals.getByText('Impossible movement')).toBeVisible();
-  await expect(signals.getByText('High severity')).toBeVisible();
-  await signals.getByText('View aggregate basis').click();
-  await expect(signals.getByText(/87.5%/u)).toBeVisible();
-  await expect(signals.getByText(/policy threshold/iu)).toHaveCount(0);
-  const queueToggle = page.getByRole('button', { name: 'Collapse case queue' });
-  await queueToggle.click();
+    page.getByText('Opponent concentration', { exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('tab', { name: 'History' }).click();
+  await page.getByRole('link', { name: uuid('b', 2).slice(0, 8) }).click();
+  const referenced = page.locator(`#signal-${uuid('b', 2)}`);
+  await expect(referenced).toHaveAttribute('open', '');
+  await expect(referenced.locator(':scope > summary')).toBeFocused();
   await expect(
-    page.getByRole('button', { name: 'Expand case queue' }),
-  ).toHaveAttribute('aria-expanded', 'false');
-  await page.getByRole('button', { name: 'Expand case queue' }).click();
-  const decisionLink = page
-    .getByRole('navigation', { name: 'Case investigation' })
-    .getByRole('link', { name: 'Decision' });
-  await decisionLink.focus();
-  await expect(decisionLink).toBeFocused();
-  await expect(
-    page.getByRole('textbox', { name: /Reason and context/u }),
-  ).toBeVisible();
-  await page.getByLabel('Apply temporary restriction').check();
-  await page.getByLabel('Require online verification').check();
-  await page.getByLabel('Duration').selectOption('72');
-  await page
-    .getByRole('textbox', { name: /Reason and context/u })
-    .fill('Temporarily pause new matches while this case is reviewed.');
-  await page.getByRole('button', { name: 'Review restriction' }).click();
-  const desktopDialog = page.getByRole('dialog', {
-    name: `Apply temporary restrictions to ${detail.playerName}?`,
-  });
-  await expect(
-    desktopDialog.getByRole('heading', { name: 'Current state' }),
-  ).toBeVisible();
-  await expect(
-    desktopDialog.getByText('Pause new competitive matches'),
-  ).toBeVisible();
-  await expect(
-    desktopDialog.getByRole('heading', { name: 'Proposed restriction' }),
-  ).toBeVisible();
-  await expect(
-    desktopDialog.getByText('Require online verification'),
-  ).toBeVisible();
-  await page.screenshot({
-    fullPage: true,
-    path: testInfo.outputPath('player-review-confirmation-desktop.png'),
-  });
-  await page.keyboard.press('Escape');
+    page.getByRole('tab', { name: 'Review', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   await expectNoHorizontalOverflow(page);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     fullPage: true,
-    path: testInfo.outputPath('player-review-desktop.png'),
+    path: '.impeccable/review/player-review-audit-reference-1440.png',
   });
-
-  await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto('/author/player-review');
-  await expect(page.getByLabel('Trust case queue')).toBeVisible();
-  await expect(page.getByText('Select a case to begin review.')).toBeVisible();
-  await page.getByRole('link', { name: /Casey Reviewer/u }).click();
-  await expect(page).toHaveURL(`/author/player-review/${caseId}`);
-  await expect(page.getByLabel('Trust case queue')).toBeHidden();
+  api.queue.missingReference = true;
+  await page.reload();
+  await page.getByRole('tab', { name: 'History' }).click();
+  await page.getByRole('link', { name: uuid('b', 99).slice(0, 8) }).click();
   await expect(
-    page.getByRole('link', { name: 'Back to case queue' }),
+    page.getByText(
+      'The referenced signal was not found in the retained evidence.',
+    ),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: detail.playerName }),
-  ).toBeVisible();
-  await page.getByLabel('Apply temporary restriction').check();
-  await page.getByLabel('Require online verification').check();
-  await page
-    .getByRole('textbox', { name: /Reason and context/u })
-    .fill('Require a short verification step while this case is reviewed.');
-  await page.getByRole('button', { name: 'Review restriction' }).click();
-  const mobileDialog = page.getByRole('dialog', {
-    name: `Apply temporary restrictions to ${detail.playerName}?`,
-  });
-  await expect(
-    mobileDialog.getByRole('heading', { name: 'Current state' }),
+    page.getByRole('button', { name: 'Retry reference' }),
   ).toBeVisible();
   await expect(
-    mobileDialog.getByRole('heading', { name: 'Proposed restriction' }),
+    page.getByRole('heading', { name: 'Record decision' }),
   ).toBeVisible();
-  await expectNoHorizontalOverflow(page);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     fullPage: true,
-    path: testInfo.outputPath('player-review-confirmation-mobile.png'),
+    path: '.impeccable/review/player-review-missing-reference-1440.png',
   });
-  await page.keyboard.press('Escape');
-
-  expect(consoleErrors).toEqual([]);
+  await page.getByRole('button', { name: 'Retry reference' }).click();
+  await expect(
+    page.getByText(
+      'The referenced signal was not found in the retained evidence.',
+    ),
+  ).toBeVisible();
+  expect(api.decisions).toHaveLength(0);
 });
 
-test('Card catalogue uses filtered master detail and concise real-card read-only views', async ({
+test('Card editor previews unsaved artwork and metadata beside the form on desktop', async ({
+  page,
+}) => {
+  await installAuthorApi(page);
+  await page.setViewportSize({ height: 900, width: 1715 });
+  await page.goto('/author/cards/new');
+  const preview = page.getByRole('complementary', {
+    name: 'Live card preview',
+  });
+  await expect(preview).toBeVisible();
+  await expect(
+    page.getByRole('complementary', { name: 'Card definitions' }),
+  ).toBeHidden();
+  await page.getByLabel('Card name').fill('Library Fox');
+  await selectOption(page.locator('#card-rarity'), 'legendary');
+  await page.getByLabel('Hit points (HP)').fill('120');
+  await page.getByLabel('Starting Power').fill('25');
+  await page.getByLabel('Artwork URL (optional)').fill('/cards/quillip.webp');
+  const image = preview.getByAltText('Library Fox artwork preview');
+  await expect(image).toBeVisible();
+  await expect(preview.locator('.card-frame--legendary')).toBeVisible();
+  await expect(
+    preview.getByRole('heading', { name: 'Library Fox' }),
+  ).toBeVisible();
+  await expect(preview.getByText('120', { exact: true })).toBeVisible();
+  await expect(preview.getByText('25', { exact: true })).toBeVisible();
+  await mkdir('/tmp/author-card-preview', { recursive: true });
+  for (const width of [1715, 1280]) {
+    await page.setViewportSize({ height: 900, width });
+    const fieldsBox = await page
+      .locator('.author-card-editor__fields')
+      .boundingBox();
+    const previewBox = await preview.boundingBox();
+    expect(fieldsBox).not.toBeNull();
+    expect(previewBox).not.toBeNull();
+    expect(previewBox!.x).toBeGreaterThan(fieldsBox!.x + fieldsBox!.width);
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: `/tmp/author-card-preview/desktop-${width}.png`,
+      fullPage: true,
+    });
+  }
+  await page
+    .getByLabel('Artwork URL (optional)')
+    .fill('/cards/missing-preview.webp');
+  await expect(
+    preview.getByText('Image could not load. Check the URL.'),
+  ).toBeVisible();
+  await page.getByLabel('Artwork URL (optional)').fill('/cards/quillip.webp');
+  await expect(image).toBeVisible();
+  await page.getByLabel('Move name').fill('Quiet Step');
+  await page.getByRole('button', { name: 'Add move', exact: true }).click();
+  await expect(page.locator('#move-1-name')).toBeVisible();
+  await expect(page.locator('#move-0-name')).toBeHidden();
+  await page.getByRole('button', { name: /^Quiet Step / }).click();
+  await page.getByRole('button', { name: 'Create draft card' }).click();
+  await expect(page.locator('#move-1-name')).toBeFocused();
+  await expect(page.locator('#move-1-name')).toBeVisible();
+  await expect(page.locator('#move-0-name')).toBeHidden();
+  await selectOption(page.locator('#card-category'), 'power');
+  await expect(preview.getByText('Power · Typeless')).toBeVisible();
+  await expect(preview.getByLabel('Preview creature attributes')).toHaveCount(
+    0,
+  );
+});
+
+test('Card catalogue and dedicated detail pages preserve filtering, review and lifecycle actions', async ({
   page,
 }, testInfo) => {
   const state = await installAuthorApi(page);
@@ -1067,17 +1600,20 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   );
   await search.fill('');
   await page.locator('.author-filter-menu > summary').click();
-  await page.getByLabel('Lifecycle').selectOption('published');
-  await page.getByLabel('Category').selectOption('creature');
-  await page.getByLabel('Affinity').selectOption('grit');
-  await page.getByLabel('Rarity').selectOption('rare');
+  await selectOption(
+    page.getByLabel('Lifecycle', { exact: true }),
+    'published',
+  );
+  await selectOption(page.getByLabel('Category', { exact: true }), 'creature');
+  await selectOption(page.getByLabel('Affinity', { exact: true }), 'grit');
+  await selectOption(page.getByLabel('Rarity', { exact: true }), 'rare');
   await page.locator('.author-filter-menu > summary').click();
   await expect(
     page.getByRole('link', { name: /Four Move Ibex/u }),
   ).toBeVisible();
   await expect(page.getByRole('link', { name: /Campus Owl/u })).toHaveCount(0);
 
-  await page.getByRole('link', { name: /^Four Move Ibex/u }).click();
+  await openCatalogueRow(page.getByRole('row', { name: /^Four Move Ibex/u }));
   await expect(page).toHaveURL(`/author/cards/${CARD_CREATURE}`);
   await expect(page.locator('.author-record-view')).toBeFocused();
   await expect(
@@ -1100,9 +1636,9 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
 
   await page.getByRole('link', { name: 'Card catalogue' }).click();
   await page.locator('.author-filter-menu > summary').click();
-  await page.getByLabel('Category').selectOption('power');
-  await page.getByLabel('Affinity').selectOption('wit');
-  await page.getByLabel('Rarity').selectOption('common');
+  await selectOption(page.getByLabel('Category', { exact: true }), 'power');
+  await selectOption(page.getByLabel('Affinity', { exact: true }), 'wit');
+  await selectOption(page.getByLabel('Rarity', { exact: true }), 'common');
   await page.locator('.author-filter-menu > summary').click();
   await page.getByRole('link', { name: /Archive Insight/u }).click();
   await expect(page).toHaveURL(`/author/cards/${CARD_POWER}`);
@@ -1113,38 +1649,55 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   await expect(page.getByLabel('Effect type')).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Card catalogue' }).click();
-  await page.getByLabel('Lifecycle').selectOption('draft');
+  await selectOption(page.getByLabel('Lifecycle', { exact: true }), 'draft');
   await page.locator('.author-filter-menu > summary').click();
-  await page.getByLabel('Category').selectOption('creature');
-  await page.getByLabel('Affinity').selectOption('wit');
-  await page.getByLabel('Rarity').selectOption('common');
+  await selectOption(page.getByLabel('Category', { exact: true }), 'creature');
+  await selectOption(page.getByLabel('Affinity', { exact: true }), 'wit');
+  await selectOption(page.getByLabel('Rarity', { exact: true }), 'common');
   await page.locator('.author-filter-menu > summary').click();
   await page.getByRole('link', { name: /Campus Owl/u }).click();
   await page.getByRole('link', { name: 'Edit card' }).click();
   await page.getByLabel('Card name').fill('Campus Owl revised');
-  const cardCatalogue = page.getByRole('complementary', {
-    name: 'Card definitions',
-  });
-  await cardCatalogue.getByLabel('Lifecycle').selectOption('all');
-  await cardCatalogue.locator('.author-filter-menu > summary').click();
-  await cardCatalogue.getByLabel('Category').selectOption('all');
-  await cardCatalogue.getByLabel('Affinity').selectOption('all');
-  await cardCatalogue.getByLabel('Rarity').selectOption('all');
-  await cardCatalogue.locator('.author-filter-menu > summary').click();
-  await page.getByRole('link', { name: /^Four Move Ibex/u }).click();
+  await expect(
+    page.getByRole('complementary', { name: 'Card definitions' }),
+  ).toBeHidden();
+  await page.getByRole('link', { name: 'Cards', exact: true }).first().click();
   const dirtyDialog = page.getByRole('dialog', {
     name: 'Discard unsaved changes?',
   });
   await expect(dirtyDialog).toContainText('unsaved card draft changes');
   await dirtyDialog.getByRole('button', { name: 'Discard changes' }).click();
+  const cardCatalogue = page.getByRole('complementary', {
+    name: 'Card definitions',
+  });
+  await selectOption(
+    cardCatalogue.getByLabel('Lifecycle', { exact: true }),
+    'all',
+  );
+  await cardCatalogue.locator('.author-filter-menu > summary').click();
+  await selectOption(
+    cardCatalogue.getByLabel('Category', { exact: true }),
+    'all',
+  );
+  await selectOption(
+    cardCatalogue.getByLabel('Affinity', { exact: true }),
+    'all',
+  );
+  await selectOption(
+    cardCatalogue.getByLabel('Rarity', { exact: true }),
+    'all',
+  );
+  await cardCatalogue.locator('.author-filter-menu > summary').click();
+  await page.getByRole('link', { name: /^Four Move Ibex/u }).click();
   await expect(page.getByLabel('Card name')).toHaveCount(0);
   await expect(page.locator('.collectible-card')).toBeVisible();
 
+  await page.getByRole('link', { name: 'Card catalogue' }).click();
   await page.getByRole('link', { name: 'New card' }).first().click();
-  await page
-    .locator('.author-form')
-    .getByLabel('Category', { exact: true })
-    .selectOption('power');
+  await selectOption(
+    page.locator('.author-form').getByLabel('Category', { exact: true }),
+    'power',
+  );
   await expect(page.getByLabel('Move name')).toHaveCount(0);
   await expect(page.getByLabel('Effect type')).toBeVisible();
   await page.getByLabel('Card name').fill('New Insight');
@@ -1158,12 +1711,14 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   );
   await expect(lifecycleNotice).toBeFocused();
   const noticeBox = await lifecycleNotice.boundingBox();
-  const lifecycleHeaderBox = await page
-    .locator('.author-card-detail__lifecycle')
+  const lifecycleDecisionsBox = await page
+    .locator('.author-card-detail__decisions')
     .boundingBox();
   expect(noticeBox).not.toBeNull();
-  expect(lifecycleHeaderBox).not.toBeNull();
-  expect((noticeBox?.y ?? 0) - (lifecycleHeaderBox?.y ?? 0)).toBeLessThan(150);
+  expect(lifecycleDecisionsBox).not.toBeNull();
+  expect((noticeBox?.y ?? 0) - (lifecycleDecisionsBox?.y ?? 0)).toBeLessThan(
+    150,
+  );
 
   await page.setViewportSize({ height: 1024, width: 768 });
   await page.goto(`/author/cards/${CARD_CREATURE}`);
@@ -1189,62 +1744,61 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   ).toBeHidden();
   await expectNoHorizontalOverflow(page);
   const creatureEditorHeight = await documentHeight(page);
-  expect(mobilePublishedCreatureHeight).toBeLessThan(creatureEditorHeight);
 
   await page.setViewportSize({ height: 1000, width: 1600 });
-  await page.goto(`/author/cards/${CARD_CREATURE}`);
-  await expect(page.locator('.collectible-card')).toBeVisible();
-  await expectNoHorizontalOverflow(page);
+  await page.goto('/author/cards');
   await expect(
-    page.getByRole('link', {
-      name: /A Deliberately Long Card Name for the Great Hall Archive Catalogue/u,
-    }),
+    page.getByRole('table', { name: 'Card definitions' }),
   ).toBeVisible();
-  const catalogueScroll = await page
-    .locator('.author-catalogue__list')
-    .evaluate((element) => ({
-      clientHeight: element.clientHeight,
-      overflowY: getComputedStyle(element).overflowY,
-      scrollHeight: element.scrollHeight,
-    }));
-  expect(catalogueScroll.overflowY).toBe('auto');
-  expect(catalogueScroll.scrollHeight).toBeGreaterThan(
-    catalogueScroll.clientHeight,
-  );
+  await expect(
+    page.getByRole('region', { name: 'Card workspace detail' }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole('link', { name: /A Deliberately Long Card Name/ }),
+  ).toBeVisible();
+  await mkdir('/tmp/author-cards-redesign', { recursive: true });
+  await page.screenshot({
+    path: '/tmp/author-cards-redesign/catalogue-1600.png',
+    fullPage: true,
+  });
   const deepLinkedCardId = uuid('5', 128);
-  await page.goto(`/author/cards/${deepLinkedCardId}`);
-  const deepLinkedRow = page.getByRole('link', {
-    name: /Catalogue specimen 29/u,
+  await page.getByRole('link', { name: /Catalogue specimen 29/u }).click();
+  await expect(page).toHaveURL(`/author/cards/${deepLinkedCardId}`);
+  await expect(
+    page.getByRole('complementary', { name: 'Card definitions' }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole('heading', { level: 3, name: 'Catalogue specimen 29' }),
+  ).toBeVisible();
+  await page.goto(`/author/cards/${CARD_CREATURE}`);
+  await expect(
+    page.getByRole('heading', { level: 3, name: 'Four Move Ibex' }),
+  ).toBeVisible();
+  await expect(
+    page.locator('.author-card-detail__layout .collectible-card'),
+  ).toBeVisible();
+  await page.screenshot({
+    path: '/tmp/author-cards-redesign/detail-1600.png',
+    fullPage: true,
   });
-  await expect(deepLinkedRow).toHaveAttribute('aria-current', 'true');
-  await expect
-    .poll(() =>
-      page
-        .locator('.author-catalogue__list')
-        .evaluate((element) => element.scrollTop),
-    )
-    .toBeGreaterThan(0);
-  const selectedRowPosition = await page.evaluate(() => {
-    const list = document.querySelector<HTMLElement>('.author-catalogue__list');
-    const row = document.querySelector<HTMLElement>(
-      '.author-record-summary[aria-current="true"]',
-    );
-    if (!list || !row) throw new Error('Selected catalogue row is missing.');
-    const listBounds = list.getBoundingClientRect();
-    const rowBounds = row.getBoundingClientRect();
-    return {
-      listBottom: listBounds.bottom,
-      listTop: listBounds.top,
-      rowBottom: rowBounds.bottom,
-      rowTop: rowBounds.top,
-    };
+  await page.getByRole('link', { name: 'Review', exact: true }).click();
+  await expect(page).toHaveURL(`/author/cards/${CARD_CREATURE}/review`);
+  await expect(page.getByRole('region', { name: 'Card review' })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Review', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Card review' })).toBeVisible();
+  await expect(page.locator('.author-history')).not.toHaveAttribute('open');
+  await page.getByText('Review history', { exact: true }).click();
+  await expect(page.locator('.author-history')).toHaveAttribute('open', '');
+  await expect(page.getByText('Approve: in review to approved')).toBeVisible();
+  await page.screenshot({
+    path: '/tmp/author-cards-redesign/review-1600.png',
+    fullPage: true,
   });
-  expect(selectedRowPosition.rowTop).toBeGreaterThanOrEqual(
-    selectedRowPosition.listTop - 1,
-  );
-  expect(selectedRowPosition.rowBottom).toBeLessThanOrEqual(
-    selectedRowPosition.listBottom + 1,
-  );
+  await page.getByRole('link', { name: 'Details', exact: true }).click();
+  await expect(page.getByText('Move 4', { exact: true })).toBeVisible();
   await page.goto(`/author/cards/${CARD_RETIRED_CREATURE}`);
   await expect(page.getByText('Legacy move 4')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retire card' })).toHaveCount(
@@ -1307,7 +1861,7 @@ test('tablet and wide workspaces preserve loading, error, empty and deep-link st
   await page.goto(`/author/cards/${CARD_CREATURE}`);
   await expect(
     page.getByRole('complementary', { name: 'Card definitions' }),
-  ).toBeVisible();
+  ).toBeHidden();
   await expect(
     page.locator('.author-card-detail__layout .collectible-card'),
   ).toBeVisible();
@@ -1325,6 +1879,10 @@ test('placement workspace stages preview, campus map, and secondary details acro
 }, testInfo) => {
   const authorState = await installAuthorApi(page);
   const consoleErrors = monitorConsoleErrors(page);
+
+  await page.route('**/api/v1/author/event-placement', async (route) => {
+    await json(route, { ...placementStateFixture(), overrides: [] });
+  });
 
   await page.setViewportSize({ height: 1000, width: 1440 });
   await page.goto('/author/placement');
@@ -1346,7 +1904,7 @@ test('placement workspace stages preview, campus map, and secondary details acro
     page.getByRole('button', { name: 'Reset map bearing and pitch' }),
   ).toBeHidden();
   await expect(
-    page.getByRole('table', { name: 'Current and proposed event placements' }),
+    page.getByRole('table', { name: 'Current event placements' }),
   ).toBeVisible();
   await expect(page.getByRole('table', { name: 'Coverage zones' })).toHaveCount(
     0,
@@ -1355,11 +1913,78 @@ test('placement workspace stages preview, campus map, and secondary details acro
   await expect(
     page.getByRole('table', { name: 'Coverage zones' }),
   ).toBeVisible();
+  const coverageTable = page.getByRole('table', { name: 'Coverage zones' });
+  const coverageLayout = await coverageTable.evaluate((table) => {
+    const container = table.closest('.placement-table-scroll')!;
+    return {
+      containerHeight: container.getBoundingClientRect().height,
+      containerWidth: container.clientWidth,
+      scrollWidth: container.scrollWidth,
+      tableHeight: table.getBoundingClientRect().height,
+    };
+  });
+  expect(coverageLayout.scrollWidth).toBeLessThanOrEqual(
+    coverageLayout.containerWidth + 1,
+  );
+  expect(coverageLayout.containerHeight).toBeLessThanOrEqual(
+    coverageLayout.tableHeight + 1,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath('placement-coverage-desktop.png'),
+    fullPage: true,
+  });
+  const placementRules = page.locator('.placement-policy-disclosure > summary');
+  await expect(
+    page.getByText('Minimum separation', { exact: true }),
+  ).toBeHidden();
+  await placementRules.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByText('Minimum separation', { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('placement-rules-open-desktop.png'),
+    fullPage: true,
+  });
+  const planDetails = page.locator('.placement-technical-details > summary');
+  await expect(page.getByText('State version', { exact: true })).toBeHidden();
+  await planDetails.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('State version', { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('placement-plan-details-open-desktop.png'),
+    fullPage: true,
+  });
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('State version', { exact: true })).toBeHidden();
+  await placementRules.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByText('Minimum separation', { exact: true }),
+  ).toBeHidden();
+  await page.getByRole('tab', { name: 'Manual controls' }).click();
+  const overridesHeading = (await page
+    .getByRole('heading', { name: 'Active overrides' })
+    .boundingBox())!;
+  const overridesMessage = (await page
+    .getByText('No active pauses, pins, or site exclusions.', { exact: true })
+    .boundingBox())!;
+  expect(
+    overridesMessage.y - overridesHeading.y - overridesHeading.height,
+  ).toBeLessThanOrEqual(16);
+  await page.screenshot({
+    path: testInfo.outputPath('placement-manual-empty-desktop.png'),
+    fullPage: true,
+  });
   await page.getByRole('tab', { name: 'Changes' }).click();
+  await page.screenshot({
+    path: testInfo.outputPath('placement-current-desktop.png'),
+    fullPage: true,
+  });
   await expectNoHorizontalOverflow(page);
 
   const preview = page.getByRole('button', {
-    name: 'Create coverage preview',
+    name: 'Create preview',
   });
   authorState.placementPreviewDelayMs = 800;
   await preview.focus();
@@ -1374,7 +1999,7 @@ test('placement workspace stages preview, campus map, and secondary details acro
   await expect(
     page.getByRole('button', { name: 'Review and apply' }),
   ).toBeFocused();
-  const policyDetails = page.getByText(/separation or policy details/u);
+  const policyDetails = page.getByText(/^\d+ placement issues$/u);
   await expect(policyDetails).toBeVisible();
   await policyDetails.click();
   const blockedSites = page.getByRole('list', {
@@ -1443,9 +2068,9 @@ test('placement workspace stages preview, campus map, and secondary details acro
   expect(controls.y).toBeLessThan(map.y);
   expect(map.y).toBeLessThan(details.y);
   await expect(
-    page.getByRole('button', { name: 'Create coverage preview' }),
+    page.getByRole('button', { name: 'Create preview' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Create coverage preview' }).click();
+  await page.getByRole('button', { name: 'Create preview' }).click();
   await expect(page.getByText('Plan needs review')).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Review and apply' }),
@@ -1456,6 +2081,76 @@ test('placement workspace stages preview, campus map, and secondary details acro
     fullPage: true,
   });
   expect(consoleErrors).toEqual([]);
+});
+
+test('event schedule picker preserves campus time with keyboard and calendar input', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ timezoneId: 'America/New_York' });
+  const page = await context.newPage();
+  try {
+    await installAuthorApi(page);
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    for (const width of [1280, 1440, 1694]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/author/events/${EVENT_A}/edit`);
+      await enterEventDateTime(page, 'Starts at', '2026-09-01T16:26');
+      const field = page.getByRole('group', { name: 'Starts at', exact: true });
+      const trigger = page.getByRole('button', {
+        name: 'Choose starts at date',
+      });
+      await trigger.click();
+      const calendar = page.getByRole('dialog');
+      await expect(calendar.getByRole('heading')).toHaveText('September 2026');
+      await expect(calendar).toContainText('Johannesburg · UTC+02:00');
+      await mkdir('.impeccable/review', { recursive: true });
+      await page.screenshot({
+        path: `.impeccable/review/event-date-picker-${width}.png`,
+      });
+      await page.keyboard.press('Escape');
+      await expect(calendar).toBeHidden();
+      await expect(trigger).toBeFocused();
+      await trigger.click();
+      await calendar
+        .getByRole('button', { name: 'Next month', exact: true })
+        .click();
+      await expect(calendar.getByRole('heading')).toHaveText('October 2026');
+      await calendar
+        .getByRole('button', { name: 'Previous month', exact: true })
+        .click();
+      await calendar
+        .getByRole('button', {
+          name: /Wednesday.*2 September 2026/u,
+          exact: false,
+        })
+        .first()
+        .click();
+      await expect(calendar).toBeHidden();
+      await expect(
+        field.getByRole('spinbutton', { name: /^hour,/u }),
+      ).toHaveAttribute('aria-valuenow', '16');
+      await expect(
+        field.getByRole('spinbutton', { name: /^minute,/u }),
+      ).toHaveAttribute('aria-valuenow', '26');
+      await enterEventDateTime(page, 'Ends at', '2026-09-03T18:00');
+      const save = page.waitForRequest(
+        (request) =>
+          request.method() === 'PUT' &&
+          request.url().endsWith(`/author/events/${EVENT_A}`),
+      );
+      await page.getByRole('button', { name: 'Save event' }).click();
+      expect((await save).postDataJSON()).toMatchObject({
+        startsAt: '2026-09-02T14:26:00.000Z',
+        endsAt: '2026-09-03T16:00:00.000Z',
+      });
+      await expect(page.getByText('Event changes saved.')).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    await context.close();
+  }
 });
 
 test('author save controls follow Active times in the form', async ({
@@ -1551,7 +2246,12 @@ interface AuthorApiState {
 async function installTrustReviewApi(
   page: Page,
   detail: ReturnType<typeof trustCaseFixture>,
+  { pagedEvidence = false }: { pagedEvidence?: boolean } = {},
 ) {
+  const queue = { totalItems: 40, missingReference: false };
+  const decisions: unknown[] = [];
+  let version: number = detail.version;
+  let resolved = false;
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const method = request.method();
@@ -1573,24 +2273,58 @@ async function installTrustReviewApi(
       return;
     }
     if (path === '/author/trust-cases' && method === 'GET') {
+      const url = new URL(request.url());
+      const pageNumber = Number(url.searchParams.get('page') ?? 1);
+      const search = (url.searchParams.get('search') ?? '').toLowerCase();
+      const items = Array.from({ length: queue.totalItems }, (_, index) => ({
+        ...detail,
+        caseId: index === 39 ? detail.caseId : uuid('a', index + 2),
+        playerName:
+          index === 39
+            ? detail.playerName
+            : `Casey Reviewer ${String(index + 1).padStart(2, '0')}`,
+        canReview: index % 5 !== 0,
+        signalTypes: ['impossible_movement', 'opponent_concentration'],
+      })).filter((item) => item.playerName.toLowerCase().includes(search));
       await json(route, {
-        items: [
-          {
-            ...detail,
-            activeRestrictionScopes: ['new_competitive_match_hold'],
-            signalTypes: ['impossible_movement', 'opponent_concentration'],
-          },
-        ],
-        page: 1,
+        items: items.slice((pageNumber - 1) * 20, pageNumber * 20),
+        page: pageNumber,
         pageSize: 20,
         requestId: 'request-trust-cases',
-        totalItems: 1,
-        totalPages: 1,
+        totalItems: items.length,
+        totalPages: Math.ceil(items.length / 20),
+      });
+      return;
+    }
+    if (
+      path === `/author/trust-cases/${detail.caseId}/decisions` &&
+      method === 'POST'
+    ) {
+      const decision = request.postDataJSON();
+      decisions.push(decision);
+      resolved = decision.action === 'dismiss';
+      version += 1;
+      await json(route, {
+        case: {
+          ...detail,
+          version,
+          status: resolved ? 'resolved' : detail.status,
+          canReview: !resolved && detail.canReview,
+        },
+        requestId: 'request-trust-decision',
       });
       return;
     }
     if (path === `/author/trust-cases/${detail.caseId}` && method === 'GET') {
-      await json(route, { case: detail, requestId: 'request-trust-case' });
+      await json(route, {
+        case: {
+          ...detail,
+          version,
+          status: resolved ? 'resolved' : detail.status,
+          canReview: !resolved && detail.canReview,
+        },
+        requestId: 'request-trust-case',
+      });
       return;
     }
     if (
@@ -1598,12 +2332,20 @@ async function installTrustReviewApi(
       method === 'GET'
     ) {
       await json(route, {
-        items: detail.evidence,
-        page: 1,
+        items: pagedEvidence
+          ? [
+              detail.evidence[
+                Number(new URL(request.url()).searchParams.get('page') ?? 1) - 1
+              ],
+            ]
+          : detail.evidence,
+        page: pagedEvidence
+          ? Number(new URL(request.url()).searchParams.get('page') ?? 1)
+          : 1,
         pageSize: 20,
         requestId: 'request-trust-evidence',
         totalItems: detail.evidenceTotalItems,
-        totalPages: 1,
+        totalPages: pagedEvidence ? 2 : 1,
       });
       return;
     }
@@ -1626,7 +2368,12 @@ async function installTrustReviewApi(
       method === 'GET'
     ) {
       await json(route, {
-        items: detail.history,
+        items: pagedEvidence
+          ? detail.history.map((item) => ({
+              ...item,
+              evidenceIds: [uuid('b', queue.missingReference ? 99 : 2)],
+            }))
+          : detail.history,
         page: 1,
         pageSize: 20,
         requestId: 'request-trust-history',
@@ -1648,6 +2395,7 @@ async function installTrustReviewApi(
       404,
     );
   });
+  return { queue, decisions };
 }
 
 function trustCaseFixture(caseId: string) {
@@ -1866,31 +2614,90 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     }
 
     if (path === '/author/review-queue' && method === 'GET') {
-      const items = state.questions
-        .filter((question) => question.status === 'in_review')
-        .map((question) => ({
-          canReview: question.submittedBy !== uuid('9', 1),
-          challengeId: question.challengeId,
-          entityId: question.questionId,
-          entityType: 'question' as const,
-          eventId:
-            state.challenges.find(
-              (challenge) => challenge.challengeId === question.challengeId,
-            )?.eventId ?? null,
-          label: question.prompt,
-          status: 'in_review' as const,
-          submittedAt: question.submittedAt,
-          submittedBy: question.submittedBy,
-          submittedByName: 'Review submitter',
-          version: question.version,
-        }));
+      const submittedByName = (id: string) =>
+        id === uuid('9', 1) ? 'author-e2e' : 'Review submitter';
+      const metadata = (record: {
+        submittedAt: string | null;
+        submittedBy: string | null;
+        version: number;
+      }) => ({
+        canReview: record.submittedBy !== uuid('9', 1),
+        status: 'in_review' as const,
+        submittedAt: record.submittedAt!,
+        submittedBy: record.submittedBy!,
+        submittedByName: submittedByName(record.submittedBy!),
+        version: record.version,
+      });
+      const items: AuthorReviewQueueItem[] = [
+        ...state.events
+          .filter((event) => event.authoringStatus === 'in_review')
+          .map((event) => ({
+            ...metadata(event),
+            entityType: 'event' as const,
+            entityId: event.eventId,
+            label: event.title,
+            eventId: null,
+            challengeId: null,
+          })),
+        ...state.challenges
+          .filter((challenge) => challenge.status === 'in_review')
+          .map((challenge) => ({
+            ...metadata(challenge),
+            entityType: 'challenge' as const,
+            entityId: challenge.challengeId,
+            label: 'Multiple-choice challenge',
+            eventId: challenge.eventId,
+            challengeId: null,
+          })),
+        ...state.questions
+          .filter((question) => question.status === 'in_review')
+          .map((question) => ({
+            ...metadata(question),
+            entityType: 'question' as const,
+            entityId: question.questionId,
+            label: question.prompt,
+            eventId:
+              state.challenges.find(
+                (challenge) => challenge.challengeId === question.challengeId,
+              )?.eventId ?? null,
+            challengeId: question.challengeId,
+          })),
+        ...state.campaigns
+          .filter((campaign) => campaign.status === 'in_review')
+          .map((campaign) => ({
+            ...metadata(campaign),
+            entityType: 'campaign' as const,
+            entityId: campaign.campaignId,
+            label: campaign.title,
+            eventId: null,
+            challengeId: null,
+          })),
+        ...state.cards
+          .filter((card) => card.authoringStatus === 'in_review')
+          .map((card) => ({
+            ...metadata(card),
+            entityType: 'card' as const,
+            entityId: card.id,
+            label: card.name,
+            eventId: null,
+            challengeId: null,
+          })),
+      ];
+      const query = new URL(request.url()).searchParams;
+      const filtered = items.filter(
+        (item) =>
+          !query.get('entityType') ||
+          item.entityType === query.get('entityType'),
+      );
+      const queuePage = Number(query.get('page') ?? 1);
+      const pageSize = Number(query.get('pageSize') ?? 10);
       await json(route, {
-        items,
-        page: 1,
-        pageSize: 20,
+        items: filtered.slice((queuePage - 1) * pageSize, queuePage * pageSize),
+        page: queuePage,
+        pageSize,
         requestId: 'request-review-queue',
-        totalItems: items.length,
-        totalPages: items.length === 0 ? 0 : 1,
+        totalItems: filtered.length,
+        totalPages: Math.ceil(filtered.length / pageSize),
       });
       return;
     }
@@ -1949,6 +2756,21 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
         { campaign, requestId: 'request-campaign-create' },
         201,
       );
+      return;
+    }
+    const campaignUpdate = path.match(/^\/author\/campaigns\/([^/]+)$/u);
+    if (campaignUpdate && method === 'PUT') {
+      const current = state.campaigns.find(
+        (item) => item.campaignId === campaignUpdate[1],
+      )!;
+      const input = request.postDataJSON();
+      expect(input.expectedVersion).toBe(current.version);
+      const campaign = {
+        ...materializeCampaign(input, current.campaignId, state),
+        version: current.version + 1,
+      };
+      replaceById(state.campaigns, campaign, (item) => item.campaignId);
+      await json(route, { campaign, requestId: 'request-campaign-update' });
       return;
     }
     if (path === '/author/trails' && method === 'GET') {
@@ -2863,82 +3685,13 @@ async function documentHeight(page: Page) {
   return page.evaluate(() => document.documentElement.scrollHeight);
 }
 
-interface QuestionWorkspaceMetrics {
-  catalogueWidth: number;
-  detailWidth: number;
-  mainContentWidth: number;
-  managementWidth: number;
-  questionWorkspaceWidth: number;
-  recordContentWidth: number;
-  updatedHeight: number | null;
-  updatedLineRects: number | null;
-  updatedWidth: number | null;
-  welcomeWidth: number | null;
-}
-
-async function questionWorkspaceMetrics(
-  page: Page,
-): Promise<QuestionWorkspaceMetrics> {
-  return page.evaluate(() => {
-    const element = (selector: string) => {
-      const match = document.querySelector<HTMLElement>(selector);
-      if (!match) throw new Error(`Missing layout element: ${selector}`);
-      return match;
-    };
-    const width = (selector: string) =>
-      element(selector).getBoundingClientRect().width;
-    const contentWidth = (selector: string) => {
-      const match = element(selector);
-      const styles = getComputedStyle(match);
-      return (
-        match.getBoundingClientRect().width -
-        Number.parseFloat(styles.paddingLeft) -
-        Number.parseFloat(styles.paddingRight)
-      );
-    };
-    const updated = document.querySelector<HTMLElement>(
-      '.question-detail time',
-    );
-    const updatedRange = updated ? document.createRange() : null;
-    if (updated && updatedRange) updatedRange.selectNodeContents(updated);
-
-    return {
-      catalogueWidth: width('.question-catalogue'),
-      detailWidth: width('.question-record-view'),
-      mainContentWidth: contentWidth('.author-console__workspace'),
-      managementWidth: width('.author-management-view--questions'),
-      questionWorkspaceWidth: width('.question-workspace'),
-      recordContentWidth: contentWidth(
-        '.author-management-view--questions > .author-record-view',
-      ),
-      updatedHeight: updated?.getBoundingClientRect().height ?? null,
-      updatedLineRects: updatedRange
-        ? [...updatedRange.getClientRects()].filter((rect) => rect.width > 0)
-            .length
-        : null,
-      updatedWidth: updated?.getBoundingClientRect().width ?? null,
-      welcomeWidth:
-        document
-          .querySelector<HTMLElement>('.question-record-view .author-welcome')
-          ?.getBoundingClientRect().width ?? null,
-    };
+async function openCatalogueRow(row: Locator) {
+  await expect(row.locator('.author-row-link > svg')).toHaveCount(0);
+  const bounds = await row.boundingBox();
+  if (!bounds) throw new Error('Catalogue row is not visible.');
+  await row.click({
+    position: { x: bounds.width - 16, y: bounds.height / 2 },
   });
-}
-
-function expectWideQuestionWorkspace(metrics: QuestionWorkspaceMetrics) {
-  expect(metrics.managementWidth).toBeGreaterThanOrEqual(
-    metrics.mainContentWidth - 2,
-  );
-  expect(metrics.questionWorkspaceWidth).toBeGreaterThanOrEqual(
-    metrics.recordContentWidth - 2,
-  );
-  expect(metrics.catalogueWidth).toBeGreaterThanOrEqual(320);
-  expect(metrics.catalogueWidth).toBeLessThanOrEqual(384);
-  expect(metrics.detailWidth).toBeGreaterThanOrEqual(480);
-  expect(metrics.detailWidth).toBeGreaterThan(metrics.catalogueWidth);
-  expect(metrics.detailWidth / metrics.questionWorkspaceWidth).toBeGreaterThan(
-    0.55,
-  );
 }
 
 async function expectNoHorizontalOverflow(page: Page) {
@@ -2952,10 +3705,424 @@ async function expectNoHorizontalOverflow(page: Page) {
 }
 
 async function openAuthorNavigation(page: Page) {
-  const toggle = page.getByRole('button', { name: /Navigation/ });
+  const toggle = page.getByRole('button', { name: /Author navigation/ });
   if (
     (await toggle.isVisible()) &&
     (await toggle.getAttribute('aria-expanded')) === 'false'
   )
     await toggle.click();
 }
+
+async function enterEventDateTime(page: Page, label: string, value: string) {
+  const [year, month, day, hour, minute] = value.split(/[-T:]/);
+  const field = page.getByRole('group', { name: label, exact: true });
+  for (const [part, digits] of Object.entries({
+    year,
+    month,
+    day,
+    hour,
+    minute,
+  })) {
+    const segment = field.getByRole('spinbutton', {
+      name: new RegExp(`^${part},`),
+    });
+    await segment.click();
+    if (!digits) throw new Error('Incomplete date-time test value');
+    await segment.pressSequentially(digits);
+  }
+}
+
+test('shared catalogue fields support search clearing, keyboard selection, and bounded menus', async ({
+  page,
+}, info) => {
+  await installAuthorApi(page);
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const section of ['cards', 'events']) {
+      await page.goto(`/author/${section}`);
+      const lifecycle = page.getByLabel('Lifecycle', { exact: true });
+      await expect(lifecycle).toBeVisible();
+      await lifecycle.focus();
+      await page.keyboard.press('ArrowDown');
+      const menu = page.getByRole('listbox');
+      await expect(menu).toBeVisible();
+      const bounds = await menu.boundingBox();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+      await expect(
+        page.getByRole('option', { name: 'All', exact: true }),
+      ).toHaveAttribute('aria-selected', 'true');
+      await page.screenshot({
+        path: info.outputPath(`${section}-filters-${width}.png`),
+      });
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      await expect(lifecycle).toBeFocused();
+      await lifecycle.click();
+      await page.getByRole('option', { name: 'Draft', exact: true }).click();
+      await expect(lifecycle).toContainText('Draft');
+      await expect(
+        page.locator(
+          `.${section === 'cards' ? 'card' : 'event'}-table tbody tr`,
+        ),
+      ).toHaveCount(1);
+      const search = page.getByRole('searchbox', {
+        name: 'Search',
+        exact: true,
+      });
+      await search.fill('no-such-content');
+      await expect(
+        page.getByText(`No ${section} match`, { exact: true }),
+      ).toBeVisible();
+      await page
+        .getByRole('button', { name: 'Clear search', exact: true })
+        .click();
+      await expect(search).toBeFocused();
+      await expect(search).toHaveValue('');
+      await expectNoHorizontalOverflow(page);
+    }
+  }
+});
+
+test('author creation fields keep keyboard menus and validation usable at responsive widths', async ({
+  page,
+}, info) => {
+  await installAuthorApi(page);
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/author/cards/new');
+    await page.getByLabel('Card name').fill('Library Fox');
+    const rarity = page.locator('#card-rarity');
+    await rarity.focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('listbox')).toBeVisible();
+    const menuBox = await page.getByRole('listbox').boundingBox();
+    expect(menuBox!.x).toBeGreaterThanOrEqual(0);
+    expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(width);
+    await page.screenshot({
+      path: info.outputPath(`new-card-fields-${width}.png`),
+    });
+    await page.keyboard.press('Escape');
+    await expect(rarity).toBeFocused();
+    await page.getByLabel('Move name').fill('Quiet Step');
+    await selectOption(page.locator('#move-0-effect-type'), 'buff');
+    await page.getByRole('button', { name: 'Create draft card' }).click();
+    const modifier = page.locator('#move-0-modifier-stat');
+    await expect(modifier).toBeFocused();
+    await expect(modifier).toHaveAttribute('aria-invalid', 'true');
+    await expect(modifier).toHaveAccessibleDescription(
+      'Buff and debuff effects require modifier metadata.',
+    );
+    await selectOption(modifier, 'power');
+    await expect(modifier).toContainText('Power');
+    await expectNoHorizontalOverflow(page);
+    // Complete the valid draft before leaving so the next route has no unsaved guard.
+    await page.getByRole('button', { name: 'Create draft card' }).click();
+    await expect(
+      page.getByText('Draft card created.', { exact: true }),
+    ).toBeVisible();
+    await page.goto('/author/events/new');
+    const title = page.getByLabel('Event title');
+    await expect(title).toBeVisible();
+    await title.focus();
+    await page.screenshot({
+      path: info.outputPath(`new-event-fields-${width}.png`),
+    });
+    await page.getByRole('button', { name: 'Create draft event' }).click();
+    await expect(title).toBeFocused();
+    await expect(title).toHaveAttribute('aria-invalid', 'true');
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
+test('desktop content review keeps evidence, decisions and queue return together', async ({
+  page,
+}) => {
+  const state = await installAuthorApi(page);
+  const errors = monitorConsoleErrors(page);
+  const submission = {
+    submittedAt: '2026-09-25T08:00:00.000Z',
+    submittedBy: uuid('9', 2),
+    version: 2,
+  };
+  state.events[1] = {
+    ...state.events[1]!,
+    ...submission,
+    authoringStatus: 'in_review',
+  };
+  const eventChallenge = {
+    ...challengeFixture(uuid('2', 2), EVENT_B),
+    ...submission,
+    status: 'in_review' as const,
+  };
+  state.challenges.push(eventChallenge);
+  state.questions.push(
+    ...Array.from({ length: 5 }, (_, index) => ({
+      ...questionFixture(
+        index + 31,
+        `Science question ${index + 1}`,
+        'in_review',
+      ),
+      ...submission,
+      challengeId: eventChallenge.challengeId,
+    })),
+  );
+  state.questions[0] = {
+    ...state.questions[0]!,
+    ...submission,
+    status: 'in_review',
+  };
+  state.questions[1] = {
+    ...state.questions[1]!,
+    ...submission,
+    submittedBy: uuid('9', 1),
+    status: 'in_review',
+  };
+  state.campaigns[0] = {
+    ...state.campaigns[0]!,
+    ...submission,
+    status: 'in_review',
+  };
+  state.cards[0] = {
+    ...state.cards[0]!,
+    ...submission,
+    authoringStatus: 'in_review',
+  };
+  state.cards.push(
+    ...Array.from({ length: 20 }, (_, index) => ({
+      ...state.cards[0]!,
+      id: uuid('5', index + 20),
+      name: `Campus Owl ${index + 2}`,
+    })),
+  );
+  await mkdir('.impeccable/review', { recursive: true });
+  const capture = async (name: string, width: number) => {
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: `.impeccable/review/content-review-${name}-${width}.png`,
+      fullPage: true,
+    });
+  };
+  for (const width of [1280, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/author/review');
+    await expect(
+      page.getByRole('heading', { name: 'Content review' }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Your submission', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('In review', { exact: true })).toHaveCount(0);
+    await expect(page.locator('.author-console__header')).toHaveCount(0);
+    await expect(page.locator('.review-table__open svg')).toHaveCount(0);
+    await capture('queue', width);
+
+    await page
+      .getByRole('row', { name: /MSL Open Day/ })
+      .click({ position: { x: 24, y: 24 } });
+    await expect(
+      page.getByRole('link', { name: 'Back to queue' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'Event definition' }),
+    ).toContainText('MSL Open Day');
+    await expect(
+      page
+        .getByRole('region', { name: 'Event definition' })
+        .getByText('Starts · Johannesburg'),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole('region', { name: 'Event definition' })
+        .getByText('Ends', { exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('.review-submission-meta')).toHaveCount(1);
+    await expect(
+      page.getByRole('region', { name: 'Submitted questions' }),
+    ).toContainText('Science question 5');
+    await expect(
+      page.getByRole('button', { name: 'Approve event package' }),
+    ).toBeEnabled();
+    await capture('event', width);
+    await page.getByRole('link', { name: 'Back to queue' }).click();
+
+    await page
+      .getByRole('link', { name: 'Review question: Where is the Great Hall?' })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Where is the Great Hall?' }),
+    ).toBeVisible();
+    await expect(page.getByText('Correct', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText('Author-only fixture explanation.'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Approve question' }),
+    ).toBeEnabled();
+    await capture('question', width);
+    await page
+      .getByRole('button', { name: 'Return to draft', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', {
+      name: 'Return this question to draft?',
+    });
+    await expect(dialog.getByLabel('Reason')).toBeFocused();
+    await dialog
+      .getByRole('button', { name: 'Return question', exact: true })
+      .click();
+    await expect(dialog.getByText('Add a reason.')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('button', { name: 'Return to draft', exact: true }),
+    ).toBeFocused();
+    if (width === 1920) {
+      await page.getByRole('button', { name: 'Approve question' }).click();
+      await expect(page.getByText('Approved.', { exact: true })).toBeFocused();
+      expect(
+        state.questions.find((question) => question.questionId === QUESTION_A)
+          ?.status,
+      ).toBe('approved');
+    }
+    await page.getByRole('link', { name: 'Back to queue' }).click();
+
+    await page
+      .getByRole('row', { name: /Which library is on East Campus\?/ })
+      .click({ position: { x: 24, y: 24 } });
+    await expect(
+      page.getByText('Another author must review this submission.'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Approve question' }),
+    ).toHaveCount(0);
+    await capture('own-question', width);
+    await page.getByRole('link', { name: 'Back to queue' }).click();
+    // Other review types may appear on the next server page with a mixed queue.
+    await selectOption(page.getByLabel('Content type'), 'campaign');
+    await page
+      .getByRole('link', { name: 'Review campaign: Orientation Week' })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Content', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('Campus orientation trail')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Approve campaign' }),
+    ).toBeEnabled();
+    await capture('campaign', width);
+    await page.getByRole('link', { name: 'MSL Open Day', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'MSL Open Day', exact: true }),
+    ).toBeVisible();
+    await page.goBack();
+    await expect(
+      page.getByRole('link', { name: 'Back to queue' }),
+    ).toBeVisible();
+    await page.getByRole('link', { name: 'Back to queue' }).click();
+    await expect(page.getByLabel('Content type')).toContainText('Campaigns');
+
+    await selectOption(page.getByLabel('Content type'), 'card');
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.getByText('Page 2 of 3')).toBeVisible();
+    await page.setViewportSize({ width, height: 600 });
+    const cardLink = page.getByRole('link', {
+      name: 'Review card: Campus Owl 20',
+      exact: true,
+    });
+    await cardLink.scrollIntoViewIfNeeded();
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+    expect(scrollBefore).toBeGreaterThan(0);
+    await cardLink.click();
+    await expect(page).toHaveURL(`/author/cards/${uuid('5', 38)}/review`);
+    await expect(page.locator('.author-record-view')).toBeFocused();
+    await expect(
+      page.getByRole('region', { name: 'Campus Owl 20 authoring preview' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Moves', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Review history', { exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('.author-history')).not.toHaveAttribute('open');
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator('.author-record-view')).toBeFocused();
+    await expect(page.locator('.skip-link')).not.toBeFocused();
+    await expect
+      .poll(() =>
+        page.locator('.skip-link').evaluate((element) => ({
+          focused: element.matches(':focus'),
+          aboveViewport: element.getBoundingClientRect().bottom <= 0,
+        })),
+      )
+      .toEqual({
+        focused: false,
+        aboveViewport: true,
+      });
+    await capture('card', width);
+    await expect(page.locator('.author-record-view')).toBeFocused();
+    await page.setViewportSize({ width, height: 600 });
+    await page.getByRole('link', { name: 'Back to queue' }).click();
+    await expect(page.getByText('Page 2 of 3')).toBeVisible();
+    await expect(cardLink).toBeFocused();
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeCloseTo(scrollBefore, 0);
+    await page.goBack();
+    await expect(
+      page.getByRole('link', { name: 'Back to queue' }),
+    ).toBeVisible();
+    await page.goForward();
+    await expect(cardLink).toBeFocused();
+    await page
+      .getByRole('link', { name: 'Events', exact: true })
+      .first()
+      .click();
+    await page.getByRole('link', { name: /MSL Open Day/ }).click();
+    await expect(page.getByRole('link', { name: 'Back to queue' })).toHaveCount(
+      0,
+    );
+  }
+  expect(errors).toEqual([]);
+});
+
+test('content review returns to a populated page after approving its last item', async ({
+  page,
+}) => {
+  const state = await installAuthorApi(page);
+  const errors = monitorConsoleErrors(page);
+  const submission = {
+    submittedAt: '2026-09-25T08:00:00.000Z',
+    submittedBy: uuid('9', 2),
+    version: 2,
+    authoringStatus: 'in_review' as const,
+  };
+  state.cards = Array.from({ length: 11 }, (_, index) => ({
+    ...state.cards[0]!,
+    ...submission,
+    id: uuid('5', index + 20),
+    name: `Review Owl ${index + 1}`,
+  }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/author/review');
+  await selectOption(page.getByLabel('Content type'), 'card');
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByText('Page 2 of 2')).toBeVisible();
+  await page
+    .getByRole('link', { name: 'Review card: Review Owl 11', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Approve card' }).click();
+  await expect(page.getByText('Approved.', { exact: true })).toBeFocused();
+  await page.getByRole('link', { name: 'Back to queue' }).click();
+  await expect(
+    page.getByRole('link', { name: 'Review card: Review Owl 1', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Review card:/ })).toHaveCount(
+    10,
+  );
+  await expect(
+    page.getByRole('heading', { name: 'Content review' }),
+  ).toBeFocused();
+  await expect(page.getByLabel('Content type')).toContainText('Cards');
+  expect(errors).toEqual([]);
+});

@@ -36,6 +36,8 @@ import type {
   MapFactory,
 } from '../src/components/exploration/map-provider';
 
+import { selectOption } from './fixtures/select-option';
+
 const apiBaseUrl = 'https://api.example.test/api/v1';
 const mapboxAccessToken = 'pk.test-token';
 const eventId = '10000000-0000-4000-8000-000000000001';
@@ -97,7 +99,7 @@ describe('Basic author console', () => {
     });
 
     const eventView = renderAuthorRoute(authorPaths.event(eventId));
-    await user.click(await screen.findByText('Event details'));
+    await user.click(await screen.findByRole('link', { name: 'Details' }));
     expect(screen.getByRole('link', { name: 'Source 1' })).toHaveAttribute(
       'href',
       sourceUrl,
@@ -439,16 +441,16 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.review);
 
     const reviewLink = await screen.findByRole('link', {
-      name: 'Review challenge',
+      name: 'Review challenge: Multiple-choice challenge',
     });
     expect(reviewLink).toHaveAttribute(
       'href',
-      authorPaths.challenge(eventId, queuedChallengeId),
+      authorPaths.challengeReview(eventId, queuedChallengeId),
     );
     await user.click(reviewLink);
 
-    expect(await screen.findByLabelText('Challenge')).toHaveValue(
-      queuedChallengeId,
+    expect(await screen.findByLabelText('Challenge')).toHaveTextContent(
+      'Challenge 2 · Multiple choice · in_review',
     );
     expect(
       await screen.findByRole('button', { name: 'Approve challenge' }),
@@ -495,8 +497,18 @@ describe('Basic author console', () => {
     await user.type(screen.getByLabelText('Longitude'), '28.03038');
     await user.click(screen.getByRole('button', { name: '75 m' }));
     expect(screen.getByLabelText('Radius (metres)')).toHaveValue(75);
-    await user.type(screen.getByLabelText('Starts at'), '2026-09-01T08:00');
-    await user.type(screen.getByLabelText('Ends at'), '2026-09-01T12:00');
+    await enterEventDateTime(user, 'Starts at', '2026-09-01T08:00');
+    await user.click(
+      screen.getByRole('button', { name: 'Create draft event' }),
+    );
+    expect(screen.getByText('Enter a valid end time.')).toBeVisible();
+    expect(
+      within(screen.getByRole('group', { name: 'Ends at' })).getByRole(
+        'spinbutton',
+        { name: /^year,/ },
+      ),
+    ).toHaveFocus();
+    await enterEventDateTime(user, 'Ends at', '2026-09-01T12:00');
     await user.click(
       screen.getByRole('button', { name: 'Create draft event' }),
     );
@@ -533,12 +545,12 @@ describe('Basic author console', () => {
 
     expect(screen.queryByText('Event location')).not.toBeInTheDocument();
     expect(
-      screen.getByText('Location will be assigned automatically'),
+      screen.getByText(/Assign a campus site at publication/u),
     ).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: '75 m' }));
-    await user.type(screen.getByLabelText('Starts at'), '2026-09-01T08:00');
-    await user.type(screen.getByLabelText('Ends at'), '2026-09-01T12:00');
+    await enterEventDateTime(user, 'Starts at', '2026-09-01T08:00');
+    await enterEventDateTime(user, 'Ends at', '2026-09-01T12:00');
     await user.click(
       screen.getByRole('button', { name: 'Create draft event' }),
     );
@@ -608,12 +620,34 @@ describe('Basic author console', () => {
     );
   });
 
+  it('allows a draft event to create a challenge when only a retired challenge remains', async () => {
+    installAuthorApi({
+      challenges: [challengeFixture({ status: 'retired' })],
+      questions: [questionFixture(1, 'retired')],
+    });
+    renderAuthorRoute(authorPaths.event(eventId));
+
+    expect(
+      await screen.findByRole('button', { name: 'Create challenge' }),
+    ).toBeEnabled();
+    expect(screen.getByLabelText('Format')).toBeVisible();
+    expect(
+      screen.queryByRole('link', { name: 'New question' }),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        'This challenge is retired. Questions are read-only.',
+      ),
+    ).toBeVisible();
+  });
+
   it('selects and creates an ordering challenge format', async () => {
     const user = userEvent.setup();
     const fetchMock = installAuthorApi({ challenges: [] });
     renderAuthorRoute();
 
-    await user.selectOptions(
+    await selectOption(
+      user,
       await screen.findByLabelText('Format'),
       'ordering',
     );
@@ -643,6 +677,7 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.newQuestion(eventId, challengeId));
 
     await screen.findByLabelText('Question prompt');
+    await selectOption(user, screen.getByLabelText('Difficulty'), '3');
     for (let index = 1; index <= 4; index += 1) {
       await user.type(
         await screen.findByLabelText(`Choice ${index}`),
@@ -671,7 +706,7 @@ describe('Basic author console', () => {
     expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
       acceptedChoicePosition: 2,
       choices: ['Answer 1', 'Answer 2', 'Answer 3', 'Answer 4'],
-      difficulty: 1,
+      difficulty: 3,
       explanation: 'The Great Hall is on East Campus.',
       format: 'multiple_choice',
       prompt: 'Where is the Great Hall?',
@@ -738,6 +773,7 @@ describe('Basic author console', () => {
     expect(
       screen.queryByRole('button', { name: 'Submit for review' }),
     ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Review' }));
     expect(
       screen.getByRole('button', { name: 'Submit event and questions' }),
     ).toBeDisabled();
@@ -917,8 +953,13 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.editCard(cardFixture().id));
 
     await screen.findByLabelText('Card name');
+    await user.click(screen.getByRole('button', { name: /^Move 4 / }));
     const moveNames = screen.getAllByLabelText('Move name');
     await user.clear(moveNames[3]!);
+    await user.click(screen.getByRole('button', { name: /^Quick Peck / }));
+    await user.click(screen.getByRole('button', { name: 'Save card' }));
+    await waitFor(() => expect(moveNames[3]).toHaveFocus());
+    expect(moveNames[3]).toBeVisible();
     await user.type(moveNames[3]!, 'Final Flourish');
     await user.click(screen.getByRole('button', { name: 'Save card' }));
 
@@ -941,7 +982,24 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.newCard);
 
     const artwork = await screen.findByLabelText('Artwork URL (optional)');
-    await user.type(artwork, 'not-an-image-url');
+    const preview = screen.getByRole('complementary', {
+      name: 'Live card preview',
+    });
+    expect(within(preview).getByText('Unsaved preview')).toBeVisible();
+    await user.type(screen.getByLabelText('Card name'), 'Library Fox');
+    await selectOption(
+      user,
+      screen.getByLabelText('Rarity', { selector: '#card-rarity' }),
+      'legendary',
+    );
+    await user.clear(screen.getByLabelText('Hit points (HP)'));
+    await user.type(screen.getByLabelText('Hit points (HP)'), '120');
+    expect(
+      within(preview).getByRole('heading', { name: 'Library Fox' }),
+    ).toBeVisible();
+    expect(preview.querySelector('.card-frame--legendary')).not.toBeNull();
+    expect(within(preview).getByText('120')).toBeVisible();
+    await pasteFieldValue(user, artwork, 'not-an-image-url');
     expect(
       screen.getByText('Enter an http(s) URL or /cards/ path to preview it.'),
     ).toBeVisible();
@@ -950,31 +1008,49 @@ describe('Basic author console', () => {
       screen.getByText('Use an http(s) URL or a /cards/ artwork path.'),
     ).toBeVisible();
 
-    await user.clear(artwork);
-    await user.type(artwork, '/cards/quillip.webp');
-    const localImage = await screen.findByAltText('Card artwork preview');
+    await pasteFieldValue(user, artwork, '/cards/quillip.webp');
+    const localImage = await screen.findByAltText(
+      'Library Fox artwork preview',
+    );
     expect(localImage).toHaveAttribute('src', '/cards/quillip.webp');
     expect(
       screen.queryByText('Use an http(s) URL or a /cards/ artwork path.'),
     ).not.toBeInTheDocument();
 
-    await user.clear(artwork);
-    await user.type(artwork, 'https://example.test/cards/broken.png');
-    const brokenImage = await screen.findByAltText('Card artwork preview');
+    await pasteFieldValue(
+      user,
+      artwork,
+      'https://example.test/cards/broken.png',
+    );
+    const brokenImage = await screen.findByAltText(
+      'Library Fox artwork preview',
+    );
     fireEvent.error(brokenImage);
     expect(
       screen.getByText('Image could not load. Check the URL.'),
     ).toBeVisible();
 
-    await user.clear(artwork);
-    await user.type(artwork, 'https://example.test/cards/working.png');
-    const workingImage = await screen.findByAltText('Card artwork preview');
+    await pasteFieldValue(
+      user,
+      artwork,
+      'https://example.test/cards/working.png',
+    );
+    const workingImage = await screen.findByAltText(
+      'Library Fox artwork preview',
+    );
     fireEvent.load(workingImage);
     expect(workingImage).not.toHaveAttribute('hidden');
     expect(workingImage).toHaveAttribute(
       'src',
       'https://example.test/cards/working.png',
     );
+    await selectOption(
+      user,
+      screen.getByLabelText('Category', { selector: '#card-category' }),
+      'power',
+    );
+    expect(within(preview).getByText('Power · Typeless')).toBeVisible();
+    expect(within(preview).queryByRole('definition')).not.toBeInTheDocument();
   });
 
   it('associates a name conflict with the field, preserves the draft, and retries successfully', async () => {
@@ -1029,9 +1105,13 @@ describe('Basic author console', () => {
     const moveName = screen.getByLabelText('Move name');
 
     await user.type(name, 'edge');
-    await user.type(description, 'Preserve this complete draft.');
-    await user.type(artwork, 'https://example.test/cards/edge-draft.png');
-    await user.type(moveName, 'Careful Step');
+    await pasteFieldValue(user, description, 'Preserve this complete draft.');
+    await pasteFieldValue(
+      user,
+      artwork,
+      'https://example.test/cards/edge-draft.png',
+    );
+    await pasteFieldValue(user, moveName, 'Careful Step');
     await user.click(screen.getByRole('button', { name: 'Create draft card' }));
 
     expect(
@@ -1044,8 +1124,7 @@ describe('Basic author console', () => {
     expect(artwork).toHaveValue('https://example.test/cards/edge-draft.png');
     expect(moveName).toHaveValue('Careful Step');
 
-    await user.clear(name);
-    await user.type(name, 'Unique Edge Successor');
+    await pasteFieldValue(user, name, 'Unique Edge Successor');
     expect(
       screen.queryByText('This card name is already in use.'),
     ).not.toBeInTheDocument();
@@ -1071,7 +1150,9 @@ describe('Basic author console', () => {
     });
     renderAuthorRoute();
 
-    expect(await screen.findByText(/Common reward needed/)).toBeVisible();
+    expect(
+      await screen.findByText(/published Common reward is needed/),
+    ).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Publish event package' }),
     );
@@ -1099,7 +1180,9 @@ describe('Basic author console', () => {
     });
     renderAuthorRoute();
 
-    expect(await screen.findByText('5 questions · Reward ready')).toBeVisible();
+    expect(
+      await screen.findByText('Published Common reward available'),
+    ).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Publish event package' }),
     );
@@ -1118,7 +1201,7 @@ describe('Basic author console', () => {
         questionFixture(index + 1, 'draft'),
       ),
     });
-    renderAuthorRoute(authorPaths.event(eventId));
+    renderAuthorRoute(authorPaths.eventReview(eventId));
 
     const submit = await screen.findByRole('button', {
       name: 'Submit event and questions',
@@ -1134,9 +1217,7 @@ describe('Basic author console', () => {
       expect.objectContaining({ method: 'POST' }),
     );
     expect(
-      await screen.findByText(
-        'Event and questions submitted. Another Author must review them.',
-      ),
+      await screen.findByText('Another author must review this submission.'),
     ).toBeVisible();
     expect(
       fetchMock.mock.calls.some(([input]) =>
@@ -1256,7 +1337,7 @@ describe('Basic author console', () => {
         return undefined;
       },
     });
-    renderAuthorRoute(authorPaths.event(eventId));
+    renderAuthorRoute(authorPaths.eventReview(eventId));
 
     const submit = await screen.findByRole('button', {
       name: 'Submit event and questions',
@@ -1313,7 +1394,7 @@ describe('Basic author console', () => {
         { timeout: 8_000 },
       ),
     ).toBeVisible();
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
+    await openEvent(user, /Library trail/);
     expect(screen.getByText('Loading challenge…')).toBeVisible();
     expect(
       screen.queryByRole('link', { name: /Question 1/ }),
@@ -1322,7 +1403,7 @@ describe('Basic author console', () => {
       screen.queryByRole('button', { name: 'Publish challenge' }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: /Great Hall history/ }));
+    await openEvent(user, /Great Hall history/);
     expect(
       await screen.findByRole('link', { name: /Question 1/ }),
     ).toBeVisible();
@@ -1361,7 +1442,7 @@ describe('Basic author console', () => {
         { timeout: 8_000 },
       ),
     ).toBeVisible();
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
+    await openEvent(user, /Library trail/);
     await act(async () => {
       pending.resolve(
         problemResponse(500, 'INTERNAL_ERROR', 'Event B failed to load.'),
@@ -1401,7 +1482,8 @@ describe('Basic author console', () => {
     expect(
       await screen.findByRole('link', { name: /Question 1/ }),
     ).toBeVisible();
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Challenge'),
       challengeB.challengeId,
     );
@@ -1412,7 +1494,7 @@ describe('Basic author console', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Question prompt')).not.toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Challenge'), challengeId);
+    await selectOption(user, screen.getByLabelText('Challenge'), challengeId);
     expect(
       await screen.findByRole('link', { name: /Question 1/ }),
     ).toBeVisible();
@@ -1449,7 +1531,8 @@ describe('Basic author console', () => {
     expect(
       await screen.findByRole('link', { name: /Question 1/ }),
     ).toBeVisible();
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Challenge'),
       challengeB.challengeId,
     );
@@ -1736,12 +1819,7 @@ describe('Basic author console', () => {
     await user.clear(title);
     await user.type(title, 'Delayed Event A');
     await user.click(screen.getByRole('button', { name: 'Save event' }));
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Discard changes',
-      }),
-    );
+    await openEvent(user, /Library trail/, true);
     await user.click(await screen.findByRole('link', { name: 'Edit event' }));
     const eventBTitle = await screen.findByLabelText('Event title');
     await user.type(eventBTitle, ' local edit');
@@ -1760,18 +1838,12 @@ describe('Basic author console', () => {
       'Library trail local edit',
     );
     expect(screen.getByLabelText('Event title')).toHaveFocus();
-    expect(screen.getByRole('link', { name: /Library trail/ })).toHaveAttribute(
-      'aria-current',
-      'true',
-    );
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Library trail' }),
+    ).toBeVisible();
     expect(screen.queryByText('Event changes saved.')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: /Delayed Event A/ }));
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Discard changes',
-      }),
-    );
+    await openEvent(user, /Delayed Event A/, true);
     await user.click(await screen.findByRole('link', { name: 'Edit event' }));
     expect(await screen.findByLabelText('Event title')).toHaveValue(
       'Delayed Event A',
@@ -1796,12 +1868,13 @@ describe('Basic author console', () => {
 
     await user.type(await screen.findByLabelText('Card name'), ' delayed');
     await user.click(screen.getByRole('button', { name: 'Save card' }));
-    await user.click(screen.getByRole('link', { name: /Library Fox/ }));
+    await user.click(screen.getByRole('link', { name: 'Cards' }));
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
+    await user.click(await screen.findByRole('link', { name: /Library Fox/ }));
     await user.click(await screen.findByRole('link', { name: 'Edit card' }));
     await user.type(await screen.findByLabelText('Card name'), ' local edit');
 
@@ -1819,17 +1892,19 @@ describe('Basic author console', () => {
       'Library Fox local edit',
     );
     expect(screen.getByLabelText('Card name')).toHaveFocus();
-    expect(screen.getByRole('link', { name: /Library Fox/ })).toHaveAttribute(
-      'aria-current',
-      'true',
-    );
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Library Fox' }),
+    ).toBeVisible();
     expect(screen.queryByText('Card changes saved.')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: /Campus Owl delayed/ }));
+    await user.click(screen.getByRole('link', { name: 'Cards' }));
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
+    );
+    await user.click(
+      await screen.findByRole('link', { name: /Campus Owl delayed/ }),
     );
     await user.click(await screen.findByRole('link', { name: 'Edit card' }));
     expect(await screen.findByLabelText('Card name')).toHaveValue(
@@ -1859,7 +1934,7 @@ describe('Basic author console', () => {
       ' delayed',
     );
     await user.click(screen.getByRole('button', { name: 'Save question' }));
-    await user.click(screen.getByRole('link', { name: /Question 2/ }));
+    await user.click(screen.getByRole('link', { name: 'Next' }));
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
@@ -1887,15 +1962,12 @@ describe('Basic author console', () => {
       'Question 2 local edit',
     );
     expect(screen.getByLabelText('Question prompt')).toHaveFocus();
-    expect(screen.getByRole('link', { name: /Question 2/ })).toHaveAttribute(
-      'aria-current',
-      'true',
-    );
+    expect(screen.getByText('Question 2 of 2')).toBeVisible();
     expect(
       screen.queryByText('Question changes saved.'),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: /Question 1 delayed/ }));
+    await user.click(screen.getByRole('link', { name: 'Previous' }));
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
@@ -1936,24 +2008,14 @@ describe('Basic author console', () => {
     await user.clear(title);
     await user.type(title, 'Event A version 1');
     await user.click(screen.getByRole('button', { name: 'Save event' }));
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Discard changes',
-      }),
-    );
-    await user.click(screen.getByRole('link', { name: /Great Hall history/ }));
+    await openEvent(user, /Library trail/, true);
+    await openEvent(user, /Great Hall history/);
     await user.click(await screen.findByRole('link', { name: 'Edit event' }));
     const secondTitle = await screen.findByLabelText('Event title');
     await user.clear(secondTitle);
     await user.type(secondTitle, 'Event A version 2');
     await user.click(screen.getByRole('button', { name: 'Save event' }));
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Discard changes',
-      }),
-    );
+    await openEvent(user, /Library trail/, true);
 
     await act(async () => {
       secondSave.resolve(
@@ -1981,7 +2043,7 @@ describe('Basic author console', () => {
     expect(
       screen.getByRole('heading', { level: 3, name: 'Library trail' }),
     ).toBeVisible();
-    await user.click(screen.getByRole('link', { name: /Event A version 2/ }));
+    await openEvent(user, /Event A version 2/);
     await user.click(await screen.findByRole('link', { name: 'Edit event' }));
     expect(await screen.findByLabelText('Event title')).toHaveValue(
       'Event A version 2',
@@ -2092,12 +2154,7 @@ describe('Basic author console', () => {
     const title = await screen.findByLabelText('Event title');
     await user.type(title, ' uncertain');
     await user.click(screen.getByRole('button', { name: 'Save event' }));
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Discard changes',
-      }),
-    );
+    await openEvent(user, /Library trail/, true);
     await act(async () => {
       pending.reject(new TypeError('Response connection lost'));
       await pending.promise.catch(() => undefined);
@@ -2106,9 +2163,7 @@ describe('Basic author console', () => {
     expect(
       screen.queryByText('No content change was confirmed.'),
     ).not.toBeInTheDocument();
-    await user.click(
-      await screen.findByRole('link', { name: /Server-confirmed Event A/ }),
-    );
+    await openEvent(user, /Server-confirmed Event A/);
     await user.click(await screen.findByRole('link', { name: 'Edit event' }));
     expect(await screen.findByLabelText('Event title')).toHaveValue(
       'Server-confirmed Event A',
@@ -2142,8 +2197,8 @@ describe('Basic author console', () => {
     await user.click(
       screen.getByRole('button', { name: 'Publish event package' }),
     );
-    await user.selectOptions(selector, challengeB.challengeId);
-    expect(selector).toHaveFocus();
+    await selectOption(user, selector, challengeB.challengeId);
+    await waitFor(() => expect(selector).toHaveFocus());
 
     await act(async () => {
       pending.resolve(
@@ -2158,8 +2213,8 @@ describe('Basic author console', () => {
       await pending.promise;
     });
 
-    expect(selector).toHaveValue(challengeB.challengeId);
-    expect(selector).toHaveFocus();
+    expect(selector).toHaveTextContent('Challenge 2 · Multiple choice');
+    await waitFor(() => expect(selector).toHaveFocus());
     expect(
       screen.queryByText(
         'Event published and available to the player API according to its active times.',
@@ -2202,7 +2257,8 @@ describe('Basic author console', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Publish card' }),
     );
-    await user.click(screen.getByRole('link', { name: /Library Fox/ }));
+    await user.click(screen.getByRole('link', { name: 'Cards' }));
+    await user.click(await screen.findByRole('link', { name: /Library Fox/ }));
     await user.click(await screen.findByRole('link', { name: 'Edit card' }));
     await user.type(await screen.findByLabelText('Card name'), ' local edit');
 
@@ -2227,16 +2283,21 @@ describe('Basic author console', () => {
       screen.queryByText('Card published and active.'),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: /Campus Owl/ }));
+    await user.click(screen.getByRole('link', { name: 'Cards' }));
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
+    await user.click(await screen.findByRole('link', { name: /Campus Owl/ }));
     expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Campus Owl/ })).toHaveTextContent(
-      'Published',
-    );
+    expect(
+      within(
+        screen
+          .getByRole('heading', { level: 3, name: 'Campus Owl' })
+          .closest('article')!,
+      ).getByText('Published'),
+    ).toBeVisible();
   });
 
   it('reconciles a delayed challenge lifecycle response without changing the newer challenge', async () => {
@@ -2265,8 +2326,8 @@ describe('Basic author console', () => {
 
     const selector = await screen.findByLabelText('Challenge');
     await user.click(screen.getByRole('button', { name: 'Publish challenge' }));
-    await user.selectOptions(selector, challengeB.challengeId);
-    expect(selector).toHaveFocus();
+    await selectOption(user, selector, challengeB.challengeId);
+    await waitFor(() => expect(selector).toHaveFocus());
 
     await act(async () => {
       pending.resolve(
@@ -2278,12 +2339,12 @@ describe('Basic author console', () => {
       await pending.promise;
     });
 
-    expect(selector).toHaveValue(challengeB.challengeId);
-    expect(selector).toHaveFocus();
+    expect(selector).toHaveTextContent('Challenge 2 · Multiple choice');
+    await waitFor(() => expect(selector).toHaveFocus());
     expect(screen.queryByText('Challenge published.')).not.toBeInTheDocument();
 
-    await user.selectOptions(selector, challengeId);
-    expect(selector).toHaveValue(challengeId);
+    await selectOption(user, selector, challengeId);
+    expect(selector).toHaveTextContent('Challenge 1 · Multiple choice');
     expect(
       screen.queryByRole('button', { name: 'Publish challenge' }),
     ).not.toBeInTheDocument();
@@ -2302,9 +2363,13 @@ describe('Basic author console', () => {
       await screen.findByRole('heading', { level: 3, name: 'Campus Owl' }),
     ).toBeVisible();
     expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Campus Owl/ })).toHaveTextContent(
-      'Approved',
-    );
+    expect(
+      within(
+        screen
+          .getByRole('heading', { level: 3, name: 'Campus Owl' })
+          .closest('article')!,
+      ).getByText('Approved'),
+    ).toBeVisible();
     expect(
       screen.queryByRole('link', { name: 'Edit card' }),
     ).not.toBeInTheDocument();
@@ -2337,11 +2402,11 @@ describe('Basic author console', () => {
     expect(
       screen.queryByRole('button', { name: 'Create challenge' }),
     ).not.toBeInTheDocument();
-    await user.selectOptions(selector, challengeB.challengeId);
-    expect(selector).toHaveValue(challengeB.challengeId);
-    expect(selector).toHaveFocus();
-    await user.selectOptions(selector, challengeId);
-    expect(selector).toHaveValue(challengeId);
+    await selectOption(user, selector, challengeB.challengeId);
+    expect(selector).toHaveTextContent('Challenge 2 · Multiple choice');
+    await waitFor(() => expect(selector).toHaveFocus());
+    await selectOption(user, selector, challengeId);
+    expect(selector).toHaveTextContent('Challenge 1 · Multiple choice');
   });
 
   it('focuses challenge-create feedback when the request fails in the same context', async () => {
@@ -2398,7 +2463,7 @@ describe('Basic author console', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Create challenge' }),
     );
-    await user.click(screen.getByRole('link', { name: /Library trail/ }));
+    await openEvent(user, /Library trail/);
     const eventBEdit = await screen.findByRole('link', { name: 'Edit event' });
     eventBEdit.focus();
 
@@ -2420,7 +2485,8 @@ describe('Basic author console', () => {
     installAuthorApi({ cards: [] });
     renderAuthorRoute(authorPaths.newCard);
 
-    await user.type(
+    await pasteFieldValue(
+      user,
       await screen.findByLabelText('Card name'),
       'Validation card',
     );
@@ -2440,18 +2506,19 @@ describe('Basic author console', () => {
       screen.getByLabelText('Effect value (optional)'),
     ).toHaveAccessibleDescription('Enter a non-negative whole number.');
 
-    await user.type(screen.getByLabelText('Move name'), 'Study');
+    await pasteFieldValue(user, screen.getByLabelText('Move name'), 'Study');
     await user.clear(screen.getByLabelText('Power cost'));
     await user.type(screen.getByLabelText('Power cost'), '0');
     await user.clear(screen.getByLabelText('Effect value (optional)'));
     await user.type(screen.getByLabelText('Effect value (optional)'), '0');
-    await user.selectOptions(screen.getByLabelText('Effect type'), 'buff');
+    await selectOption(user, screen.getByLabelText('Effect type'), 'buff');
     await user.click(screen.getByRole('button', { name: 'Create draft card' }));
     expect(screen.getByLabelText('Modifier stat')).toHaveAccessibleDescription(
       'Buff and debuff effects require modifier metadata.',
     );
 
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Modifier stat'),
       'damage_multiplier',
     );
@@ -2480,19 +2547,24 @@ describe('Basic author console', () => {
         eventId,
         mode: 'challenge' as const,
         section: 'events' as const,
+        tab: 'review' as const,
       },
     };
     const view = render(<EventWorkspace {...props} cardsState="loading" />);
 
-    expect(await screen.findByText(/Common reward needed/)).toBeVisible();
-    expect(screen.queryByText(/Reward ready/)).not.toBeInTheDocument();
+    expect(await screen.findByText('Loading reward catalogue…')).toBeVisible();
+    expect(
+      screen.queryByText('Published Common reward available'),
+    ).not.toBeInTheDocument();
 
     view.rerender(<EventWorkspace {...props} cardsState="error" />);
     expect(screen.getByRole('button', { name: 'Retry cards' })).toBeVisible();
-    expect(screen.queryByText(/Reward ready/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Published Common reward available'),
+    ).not.toBeInTheDocument();
 
     view.rerender(<EventWorkspace {...props} cardsState="ready" />);
-    expect(screen.getByText(/Reward ready/)).toBeVisible();
+    expect(screen.getByText('Published Common reward available')).toBeVisible();
   });
 });
 
@@ -2514,6 +2586,16 @@ interface RequestDetails {
   init?: RequestInit;
   method: string;
   path: string;
+}
+
+// Paste fixture text through real input events without rendering every character.
+async function pasteFieldValue(
+  user: ReturnType<typeof userEvent.setup>,
+  control: HTMLElement,
+  value: string,
+) {
+  await user.clear(control);
+  await user.paste(value);
 }
 
 function installAuthorApi(options: ApiOptions = {}) {
@@ -2849,8 +2931,26 @@ function installAuthorApi(options: ApiOptions = {}) {
   return fetchMock;
 }
 
+async function openEvent(
+  user: ReturnType<typeof userEvent.setup>,
+  name: RegExp,
+  discard = false,
+) {
+  if (!screen.queryByRole('link', { name })) {
+    await user.click(screen.getAllByRole('link', { name: 'Events' })[0]!);
+    if (discard) {
+      await user.click(
+        within(screen.getByRole('dialog')).getByRole('button', {
+          name: 'Discard changes',
+        }),
+      );
+    }
+  }
+  await user.click(await screen.findByRole('link', { name }));
+}
+
 function renderAuthorRoute(
-  pathname = authorPaths.eventChallenge(eventId),
+  pathname = authorPaths.eventReview(eventId),
   authValue = authenticatedAuthor(),
 ) {
   window.history.replaceState({}, '', pathname);
@@ -3066,4 +3166,26 @@ function jsonResponse(payload: object, status = 200): Response {
     headers: { 'Content-Type': 'application/json' },
     status,
   });
+}
+
+async function enterEventDateTime(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+  value: string,
+) {
+  const [year, month, day, hour, minute] = value.split(/[-T:]/);
+  const field = within(screen.getByRole('group', { name: label }));
+  for (const [part, digits] of Object.entries({
+    year,
+    month,
+    day,
+    hour,
+    minute,
+  })) {
+    if (!digits) throw new Error('Incomplete date-time test value');
+    await user.type(
+      field.getByRole('spinbutton', { name: new RegExp(`^${part},`) }),
+      digits,
+    );
+  }
 }

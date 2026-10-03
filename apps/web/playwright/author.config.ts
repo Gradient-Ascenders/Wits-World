@@ -13,7 +13,7 @@ export default defineConfig({
   reporter: 'line',
   retries: 0,
   testDir: '.',
-  testMatch: /author\.workspace\.spec\.ts/,
+  testMatch: /author\.(workspace|analytics)\.spec\.ts/,
   timeout: 120_000,
   workers: process.env.CI ? 8 : undefined,
   use: {

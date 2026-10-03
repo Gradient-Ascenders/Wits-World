@@ -1,3 +1,4 @@
+import { selectOption } from './fixtures/select-option';
 import {
   Auth0Context,
   initialContext,
@@ -219,9 +220,7 @@ describe('card collection page', () => {
     renderCollection();
     await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     expect(await screen.findByText('1–6 of 8 cards')).toBeVisible();
-    expect(screen.getByRole('combobox', { name: 'Availability' })).toHaveValue(
-      'ready',
-    );
+    expect(screen.getByLabelText('Availability')).toHaveTextContent('Ready');
     const list = screen.getByRole('list', { name: 'Evolution candidates' });
     expect(list.children).toHaveLength(6);
     expect(
@@ -255,10 +254,7 @@ describe('card collection page', () => {
         name: 'Preview Guardian 02 evolution',
       }),
     ).toBeVisible();
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Rarity' }),
-      'rare',
-    );
+    await selectOption(user, screen.getByLabelText('Rarity'), 'rare');
     expect(list.children).toHaveLength(1);
     await user.clear(search);
     await user.type(search, 'Guardian 03');
@@ -268,20 +264,19 @@ describe('card collection page', () => {
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
     expect(search).toHaveFocus();
     expect(screen.getByText('1–6 of 11 cards')).toBeVisible();
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Availability' }),
+    await selectOption(
+      user,
+      screen.getByLabelText('Availability'),
       'not-ready',
     );
     expect(within(list).getByText('Copies locked in decks')).toBeVisible();
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Availability' }),
+    await selectOption(
+      user,
+      screen.getByLabelText('Availability'),
       'unavailable',
     );
     expect(within(list).getByText('No evolution available')).toBeVisible();
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Availability' }),
-      'failed',
-    );
+    await selectOption(user, screen.getByLabelText('Availability'), 'failed');
     expect(within(list).getByText('Availability unknown')).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Retry availability' }),
@@ -308,8 +303,8 @@ describe('card collection page', () => {
       screen.queryByRole('button', { name: 'Preview Quillip evolution' }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show all cards' }));
-    expect(screen.getByRole('combobox', { name: 'Availability' })).toHaveValue(
-      'all',
+    expect(screen.getByLabelText('Availability')).toHaveTextContent(
+      'All cards',
     );
     expect(screen.getByText('Copies locked in decks')).toBeVisible();
     expect(screen.getByText('2 used in a deck')).toBeVisible();
@@ -636,8 +631,9 @@ describe('card collection page', () => {
     });
     expect(within(trigger).getByText('×4')).toBeVisible();
     await user.click(screen.getByRole('link', { name: 'Evolutions' }));
-    await user.selectOptions(
-      await screen.findByRole('combobox', { name: 'Availability' }),
+    await selectOption(
+      user,
+      await screen.findByLabelText('Availability'),
       'all',
     );
     const detailsTrigger = await screen.findByRole('button', {
@@ -704,8 +700,9 @@ describe('card collection page', () => {
 
     renderCollection();
     await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
-    await user.selectOptions(
-      await screen.findByRole('combobox', { name: 'Availability' }),
+    await selectOption(
+      user,
+      await screen.findByLabelText('Availability'),
       'all',
     );
     expect(await screen.findByText('Copies reserved for trade')).toBeVisible();
@@ -1092,8 +1089,9 @@ describe('card collection page', () => {
     );
     renderCollection();
     await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
-    await user.selectOptions(
-      await screen.findByRole('combobox', { name: 'Availability' }),
+    await selectOption(
+      user,
+      await screen.findByLabelText('Availability'),
       'all',
     );
     expect(await screen.findByText('Availability unknown')).toBeVisible();
@@ -1234,20 +1232,14 @@ describe('card collection page', () => {
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Clear' }));
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Category' }),
-      'power',
-    );
+    await selectOption(user, screen.getByLabelText('Category'), 'power');
     expect(within(gallery).getByText('Arcane Library Pass')).toBeVisible();
     expect(
       within(gallery).queryByText('Braamfontein Bulwark'),
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Clear' }));
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Sort' }),
-      'rarity',
-    );
+    await selectOption(user, screen.getByLabelText('Sort'), 'rarity');
     expect(
       Array.from(
         gallery.querySelectorAll('.card-thumbnail__title'),

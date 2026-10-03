@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { CheckIcon, ArrowUUpLeftIcon } from '@phosphor-icons/react';
 
 import type { AuthorTransitionAction, AuthoringStatus } from '../../api/author';
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
@@ -56,12 +57,12 @@ export function AuthorLifecycleControls({
   function submitReturn() {
     const normalized = reason.trim();
     if (normalized.length === 0) {
-      setReasonError(`Enter a reason for returning this ${noun}.`);
+      setReasonError('Add a reason.');
       reasonRef.current?.focus();
       return;
     }
     if (normalized.length > 1000) {
-      setReasonError('Keep the return reason to 1,000 characters or fewer.');
+      setReasonError('Use 1,000 characters or fewer.');
       reasonRef.current?.focus();
       return;
     }
@@ -70,13 +71,15 @@ export function AuthorLifecycleControls({
     onAction('return', normalized);
   }
 
+  if (status === 'retired') return null;
+
   return (
-    <>
+    <div className="author-review-decisions">
       <div className="author-actions author-actions--detail">
         {status === 'draft' ? editControl : null}
         {status === 'draft' ? (
           <button
-            className="button button--quiet"
+            className={reviewPackage ? 'button' : 'button button--quiet'}
             disabled={busy || submitDisabled}
             onClick={() => onAction('submit')}
             type="button"
@@ -91,14 +94,14 @@ export function AuthorLifecycleControls({
         {status === 'in_review' && canReview ? (
           <>
             <button
+              aria-label={`Approve ${reviewPackage ? 'event package' : noun}`}
               className="button"
               disabled={busy}
               onClick={() => onAction('approve')}
               type="button"
             >
-              {busy
-                ? 'Approving…'
-                : `Approve ${reviewPackage ? 'event package' : noun}`}
+              <CheckIcon size={18} aria-hidden="true" />
+              {busy ? 'Approving…' : 'Approve'}
             </button>
             <button
               className="button button--quiet"
@@ -107,7 +110,7 @@ export function AuthorLifecycleControls({
               ref={returnButtonRef}
               type="button"
             >
-              Return with reason
+              <ArrowUUpLeftIcon size={18} aria-hidden="true" /> Return to draft
             </button>
           </>
         ) : null}
@@ -131,7 +134,8 @@ export function AuthorLifecycleControls({
                 ref={returnButtonRef}
                 type="button"
               >
-                Return with reason
+                <ArrowUUpLeftIcon size={18} aria-hidden="true" /> Return to
+                draft
               </button>
             ) : null}
           </>
@@ -164,16 +168,14 @@ export function AuthorLifecycleControls({
 
       {status === 'in_review' && !canReview ? (
         <p className="author-notice" role="status">
-          {reviewPackage
-            ? 'Event and questions submitted. Another Author must review them.'
-            : 'This submission is awaiting review by another Author. Self-approval is not available.'}
+          Another author must review this submission.
         </p>
       ) : null}
 
       {dialog === 'return' ? (
         <AuthorConfirmationDialog
           busy={busy}
-          cancelLabel={`Keep ${reviewPackage ? 'event package' : noun} in review`}
+          cancelLabel="Cancel"
           confirmLabel={
             busy
               ? 'Returning…'
@@ -181,7 +183,7 @@ export function AuthorLifecycleControls({
           }
           description={
             <div className="form-field">
-              <label htmlFor={`return-${noun}-reason`}>Return reason</label>
+              <label htmlFor={`return-${noun}-reason`}>Reason</label>
               <textarea
                 aria-describedby={
                   reasonError ? `return-${noun}-reason-error` : undefined
@@ -226,6 +228,6 @@ export function AuthorLifecycleControls({
           title={retirementTitle ?? `Retire this ${noun}?`}
         />
       ) : null}
-    </>
+    </div>
   );
 }

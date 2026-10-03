@@ -12,6 +12,7 @@ interface ProtectedRouteProps {
   allowPlayerNameSetupRequired?: boolean;
   children: ReactNode;
   destination?: string;
+  loadingFallback?: ReactNode;
 }
 
 function currentRoute(): string {
@@ -22,6 +23,7 @@ export function ProtectedRoute({
   allowPlayerNameSetupRequired = false,
   children,
   destination = 'explore Wits World',
+  loadingFallback,
 }: ProtectedRouteProps) {
   const { error, isAuthenticated, isLoading, loginWithRedirect, logout } =
     useAuth0();
@@ -61,10 +63,12 @@ export function ProtectedRoute({
 
   if (isLoading) {
     return (
-      <PageLoadingState
-        title="Checking your sign-in status"
-        description="Please wait while Wits World restores your session."
-      />
+      loadingFallback ?? (
+        <PageLoadingState
+          title="Checking your sign-in status"
+          description="Please wait while Wits World restores your session."
+        />
+      )
     );
   }
 
@@ -108,10 +112,12 @@ export function ProtectedRoute({
 
   if (currentPlayer.status === 'loading') {
     return (
-      <PageLoadingState
-        title="Confirming your Wits World player"
-        description="Protected player data remains hidden until this check completes."
-      />
+      loadingFallback ?? (
+        <PageLoadingState
+          title="Confirming your Wits World player"
+          description="Protected player data remains hidden until this check completes."
+        />
+      )
     );
   }
 

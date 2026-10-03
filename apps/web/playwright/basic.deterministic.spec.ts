@@ -4,6 +4,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 import type { CpuMatch } from '../src/api/matches';
 import { buildStarterCards, buildUuid } from '../tests/fixtures/cards';
+import { selectOption } from './select-option';
 
 const EVENT_TITLE = 'Sprint 1 Demo - Wits Great Hall';
 const EVENT_ID = '00000000-0000-4000-8000-000000000018';
@@ -798,9 +799,8 @@ test('focuses and filters Explore events without breaking map following', async 
       await expect(
         page.getByRole('searchbox', { name: 'Search campus events' }),
       ).toBeVisible();
-      await expect(
-        page.getByRole('combobox', { name: 'Filter events by status' }),
-      ).toBeVisible();
+      const statusFilter = page.getByLabel('Filter events by status');
+      await expect(statusFilter).toBeVisible();
       await expect(page.locator('.event-list__items > li')).toHaveCount(3);
 
       const greatHallAction = page
@@ -890,20 +890,25 @@ test('focuses and filters Explore events without breaking map following', async 
       ).toHaveCount(0);
 
       await search.focus();
-      const searchOutline = await search.evaluate((element) => ({
-        style: getComputedStyle(element).outlineStyle,
-        width: Number.parseFloat(getComputedStyle(element).outlineWidth),
-      }));
+      const searchOutline = await search.evaluate((element) => {
+        const control = element.closest('.shared-search__control');
+        if (!control) throw new Error('Expected the shared search control.');
+        return {
+          style: getComputedStyle(control).outlineStyle,
+          width: Number.parseFloat(getComputedStyle(control).outlineWidth),
+        };
+      });
       expect(searchOutline.style).toBe('solid');
       expect(searchOutline.width).toBeGreaterThan(0);
       await page.keyboard.press('Tab');
       await expect(
-        page.getByRole('combobox', { name: 'Filter events by status' }),
+        page.getByRole('button', { name: 'Clear search campus events' }),
       ).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(statusFilter).toBeFocused();
 
-      await page
-        .getByRole('combobox', { name: 'Filter events by status' })
-        .selectOption('ended');
+      await selectOption(statusFilter, 'ended');
+      await expect(statusFilter).toBeFocused();
       await expect(
         page.getByText('No events match these filters.'),
       ).toBeVisible();

@@ -1,3 +1,5 @@
+import { SelectField } from '../fields/SelectField';
+import { SearchField } from '../fields/SearchField';
 import { StateIcon } from '../StatusMessage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -9,7 +11,6 @@ import {
   Crosshair,
   Cube,
   FlagBanner,
-  MagnifyingGlass,
   MapPin,
   Path,
   SidebarSimple,
@@ -1004,37 +1005,29 @@ export function CampusExplorer({
             <div className="event-panel__scroll">
               {discoverySection === 'events' && discovery.status === 'ready' ? (
                 <div className="event-discovery-controls">
-                  <label className="event-search">
-                    <span className="sr-only">Search campus events</span>
-                    <MagnifyingGlass
-                      aria-hidden="true"
-                      className="event-search__icon"
-                      size={20}
-                    />
-                    <input
-                      onChange={(event) => setSearchQuery(event.target.value)}
-                      placeholder="Search events"
-                      type="search"
-                      value={searchQuery}
-                    />
-                  </label>
-                  <label className="event-status-filter">
-                    <span className="sr-only">Filter events by status</span>
-                    <select
-                      aria-label="Filter events by status"
-                      onChange={(event) =>
-                        setAvailabilityFilter(
-                          event.target.value as EventAvailabilityFilter,
-                        )
-                      }
-                      value={availabilityFilter}
-                    >
-                      <option value="all">All statuses</option>
-                      <option value="active">Available now</option>
-                      <option value="upcoming">Upcoming</option>
-                      <option value="ended">Ended</option>
-                    </select>
-                  </label>
+                  <SearchField
+                    label="Search campus events"
+                    hideLabel
+                    className="event-search"
+                    onChange={(value) => setSearchQuery(value)}
+                    placeholder="Search events"
+                    value={searchQuery}
+                  />
+                  <SelectField
+                    label="Filter events by status"
+                    hideLabel
+                    className="event-status-filter"
+                    onChange={(value) =>
+                      setAvailabilityFilter(value as EventAvailabilityFilter)
+                    }
+                    value={availabilityFilter}
+                    options={[
+                      { value: 'all', label: 'All statuses' },
+                      { value: 'active', label: 'Available now' },
+                      { value: 'upcoming', label: 'Upcoming' },
+                      { value: 'ended', label: 'Ended' },
+                    ]}
+                  />
                 </div>
               ) : null}
 

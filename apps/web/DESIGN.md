@@ -88,6 +88,13 @@ components:
     backgroundColor: 'rgb(212 175 55 / 8%)'
     textColor: '{colors.beacon-gold-light}'
     rounded: '{rounded.md}'
+  interactive-highlight:
+    rounded: '{rounded.sm}'
+  filter-control:
+    backgroundColor: '{colors.night-sky-panel}'
+    textColor: '{colors.ivory}'
+    rounded: '{rounded.sm}'
+    height: '2.75rem'
   status-active:
     backgroundColor: 'rgb(57 184 121 / 8%)'
     textColor: '{colors.success-green}'
@@ -178,6 +185,10 @@ Depth is layered and ambient. Dark tonal steps, translucent borders, and restrai
 
 General controls use the small and medium radii; panels use large corners; badges and handles use pill or circular silhouettes. Borders remain thin and translucent. Collectible cards are the deliberate exception: they use a recessed square artwork window, metallic rims, corner engraving, and rarity-specific material colors while sharing one frame geometry.
 
+**The Gentle Highlight Rule.** Interactive background highlights use the small radius (`--radius-sm`, mapped to `rounded.sm`) and enough horizontal padding to keep text clear of their edges. Apply this treatment consistently to tabs, section navigation, and clickable list or table rows in hover, focus, and selected states wherever those states have a background fill. Preserve each component's existing accent colors, selection underline, and visible keyboard focus.
+
+For table rows, round only the outer corners of the first and last cells so the highlight reads as one continuous surface. Keep table rules and column alignment intact; use separate borders with zero spacing when collapsed borders prevent rounding. Avoid clipping focus outlines to achieve rounded highlights. Existing buttons, panels, and primary navigation retain their own radius tokens.
+
 ## Components
 
 ### Buttons
@@ -208,6 +219,10 @@ Resolve motion through the application's shared preference: `reduce` disables ca
 
 Fields sit on the darkest navy with ivory text, a thin border, small radius, and touch-target height. Focus uses the global blue outline. Invalid fields use the danger color in the border and an accompanying text error.
 
+**The Shared Selection Control Rule.** Native radios and checkboxes use `src/styles/selection-controls.css`: 20px controls, a slate outline, a blue radio dot or filled checkbox with a dark checkmark, and a quiet blue selected-row highlight. Keep native input semantics, label activation, radio-group arrow keys, checkbox Space activation, and disabled states. Wrapped controls show focus around their whole label; standalone controls retain the global focus outline. Existing card and grid layouts keep their geometry, and the starter-card picker retains its hidden radios and card-level selection/focus treatment. Forced-color mode restores native control rendering. Page styles should define alignment rather than duplicate the shared control appearance.
+
+**The Shared Filter Control Rule.** Search and filter controls across Author, Explore, and Collection use the shared search and select components. Author creation and editing forms use the same select component, including nested move, effect, challenge, and question fields. Text inputs, textareas, and date controls share its surface, border, corner radius, and focus treatment. Their slightly raised navy surface, small corners, quiet border, and consistent target height make browsing controls recognizable across pages. Searches include a leading search icon and a clear action that returns focus to the input. Custom select menus use the same navy surface, gently rounded options, and a checkmark beside the selected value. Keep visible labels or equivalent accessible names, keyboard navigation, Escape dismissal, focus restoration, disabled states, and viewport-bounded scrolling. Preserve the page's existing filtering and submission behavior.
+
 ### Navigation
 
 Player navigation uses icon and text labels. The current item receives gold text, a faint gold fill, and a short underline, with `aria-current="page"` providing semantic state. Mobile navigation sits at the bottom; the same destinations appear horizontally in the header at wide widths. Explore may collapse its mobile header to make room for the map and sheet.
@@ -224,6 +239,7 @@ Small pill badges use colored text and faint matching fill for active, upcoming,
 - **Do** retain the Campus Seal and the current icon-and-label navigation language.
 - **Do** pair state colors with words or icons and maintain the bright visible focus treatment.
 - **Do** use the shared spacing and radius steps before adding local values.
+- **Do** give interactive highlights gentle corners and breathing room using the Gentle Highlight Rule.
 
 ### Don't:
 
@@ -231,4 +247,4 @@ Small pill badges use colored text and faint matching fill for active, upcoming,
 - **Don't** make gold compete with Trail Blue as the default control fill.
 - **Don't** hide task status inside map styling or color alone.
 
-Shared collectible-card interaction guidance was edited with assistance from Codex[GPT-6].
+Shared collectible-card interaction, gentle-highlight, filter-control, and selection-control guidance was edited with assistance from Codex[GPT-6].

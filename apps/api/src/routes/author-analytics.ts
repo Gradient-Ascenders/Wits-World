@@ -84,6 +84,92 @@ export const authorAnalyticsRoutes: FastifyPluginAsync<Options> = async (
   app,
   { service },
 ) => {
+  app.get<{ Querystring: CardsQuery }>(
+    '/author/analytics/attention',
+    {
+      config: { rateLimitPolicy: 'author-expensive' },
+      onRequest: [app.authenticate, app.requireActivePlayer, app.requireAuthor],
+      schema: {
+        operationId: 'listAuthorEventAttention',
+        summary: 'List events with reportable analytics attention signals',
+        tags: ['Authoring'],
+        security: bearerSecurity,
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: commonQueryProperties,
+        },
+        response: {
+          200: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+              'items',
+              'page',
+              'pageSize',
+              'totalItems',
+              'totalPages',
+              'minimumSampleSize',
+              'requestId',
+            ],
+            properties: {
+              ...paginationProperties,
+              requestId: { type: 'string' },
+              items: {
+                type: 'array',
+                maxItems: ADVANCED_ANALYTICS_MAX_PAGE_SIZE,
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: [
+                    'eventId',
+                    'eventTitle',
+                    'ignoredLocationCount',
+                    'easyQuestionCount',
+                    'hardQuestionCount',
+                    'questionId',
+                    'challengeId',
+                  ],
+                  properties: {
+                    eventId: { type: 'string', format: 'uuid' },
+                    eventTitle: { type: 'string' },
+                    ignoredLocationCount: { type: 'integer', minimum: 0 },
+                    easyQuestionCount: { type: 'integer', minimum: 0 },
+                    hardQuestionCount: { type: 'integer', minimum: 0 },
+                    questionId: {
+                      anyOf: [
+                        { type: 'string', format: 'uuid' },
+                        { type: 'null' },
+                      ],
+                    },
+                    challengeId: {
+                      anyOf: [
+                        { type: 'string', format: 'uuid' },
+                        { type: 'null' },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: apiErrorSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+        },
+      },
+    },
+    async (request) =>
+      withInvalidFiltersAsApiError(async () => ({
+        ...(await service.listAttention({
+          ...request.query,
+          page: request.query.page ?? 1,
+          pageSize: request.query.pageSize ?? 25,
+        })),
+        requestId: request.id,
+      })),
+  );
+
   app.get<{ Querystring: EventLocationsQuery }>(
     '/author/analytics/event-locations',
     {

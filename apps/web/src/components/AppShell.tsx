@@ -198,9 +198,10 @@ export function AppShell({ children }: AppShellProps) {
     const routeManagedFocus =
       activeElement instanceof HTMLElement &&
       activeElement !== document.body &&
-      main?.contains(activeElement) &&
-      (activeElement !== focusBeforeRouteChange.current ||
-        activeElement.dataset.routeFocus === 'preserve');
+      ((main?.contains(activeElement) &&
+        activeElement !== focusBeforeRouteChange.current) ||
+        // A portalled author menu restores focus to its trigger after navigation.
+        activeElement.closest('[data-route-focus="preserve"]') !== null);
     if (main && !routeManagedFocus) {
       main.focus();
     }

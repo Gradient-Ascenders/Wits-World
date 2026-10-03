@@ -1,3 +1,6 @@
+import './author-player-review.css';
+import { SelectField } from '../fields/SelectField';
+import { SearchField } from '../fields/SearchField';
 import {
   appCalendarDateBoundary,
   createAppDateTimeFormatter,
@@ -9,7 +12,6 @@ import {
   DownloadSimpleIcon,
   EyeIcon,
   ShieldWarningIcon,
-  SidebarSimpleIcon,
   WarningDiamondIcon,
 } from '@phosphor-icons/react';
 import {
@@ -46,7 +48,7 @@ import {
   type WritableTrustRestrictionScope,
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
-import { LoadingState } from '../LoadingState';
+import { AuthorLoadingState } from './AuthorLoadingState';
 import { StateIcon, StatusMessage } from '../StatusMessage';
 import { AuthorConfirmationDialog } from './AuthorConfirmationDialog';
 import { authorErrorDetail } from './author-error-copy';
@@ -94,7 +96,13 @@ export function TrustReviewWorkspace({
   const [updatedFrom, setUpdatedFrom] = useState('');
   const [updatedTo, setUpdatedTo] = useState('');
   const [page, setPage] = useState(1);
-  const [queueCollapsed, setQueueCollapsed] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const queueRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const queueRestorePendingRef = useRef(false);
+  const queueEntryRef = useRef<{ caseId: string; scrollY: number } | null>(
+    null,
+  );
   const [queue, setQueue] = useState<AuthorPage<TrustCaseQueueItem> | null>(
     null,
   );
@@ -131,6 +139,10 @@ export function TrustReviewWorkspace({
         updatedTo: dateBoundary(updatedTo, 'end'),
       });
       if (!controller.signal.aborted) {
+        if (page > Math.max(1, result.totalPages)) {
+          setPage(Math.max(1, result.totalPages));
+          return;
+        }
         setQueue(result);
         setQueueState('ready');
       }
@@ -188,14 +200,39 @@ export function TrustReviewWorkspace({
   }, [apiBaseUrl, getAccessToken, route.caseId]);
 
   useEffect(() => {
-    void loadQueue();
+    if (!route.caseId) void loadQueue();
     return () => queueRequestRef.current?.abort();
-  }, [loadQueue]);
+  }, [loadQueue, route.caseId]);
 
   useEffect(() => {
     void loadDetail();
     return () => detailRequestRef.current?.abort();
   }, [loadDetail]);
+
+  useEffect(() => {
+    if (route.caseId) {
+      queueRestorePendingRef.current = Boolean(queueEntryRef.current);
+      return;
+    }
+    if (
+      queueState !== 'ready' ||
+      !queueEntryRef.current ||
+      !queueRestorePendingRef.current
+    )
+      return;
+    const entry = queueEntryRef.current;
+    const frame = window.requestAnimationFrame(() => {
+      const link = Array.from(
+        queueRef.current?.querySelectorAll<HTMLAnchorElement>(
+          'a[data-case-id]',
+        ) ?? [],
+      ).find((element) => element.dataset.caseId === entry.caseId);
+      (link ?? headingRef.current)?.focus({ preventScroll: true });
+      window.scrollTo({ top: entry.scrollY, behavior: 'instant' });
+      queueRestorePendingRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [queueState, route.caseId]);
 
   function submitSearch(event: FormEvent) {
     event.preventDefault();
@@ -215,6 +252,7 @@ export function TrustReviewWorkspace({
     setUpdatedFrom('');
     setUpdatedTo('');
     setPage(1);
+    searchRef.current?.focus();
   }
 
   const hasFilters =
@@ -225,152 +263,145 @@ export function TrustReviewWorkspace({
     signalType !== 'all' ||
     Boolean(openedFrom || openedTo || updatedFrom || updatedTo);
 
+  const secondaryFilterCount = [
+    restrictionState !== 'all',
+    signalType !== 'all',
+    Boolean(openedFrom),
+    Boolean(openedTo),
+    Boolean(updatedFrom),
+    Boolean(updatedTo),
+  ].filter(Boolean).length;
+
   return (
     <section
-      aria-labelledby="trust-review-title"
-      className={`trust-review${route.caseId ? ' trust-review--detail' : ''}`}
+      aria-label={route.caseId ? 'Player review' : undefined}
+      aria-labelledby={route.caseId ? undefined : 'trust-review-title'}
+      className="trust-review"
     >
-      <header className="author-workspace__heading trust-review__heading">
-        <div>
-          <h2 id="trust-review-title">Player review</h2>
-          <p>
-            Investigate server-derived signals and record proportionate human
-            decisions. Review priority is not proof of misconduct.
-          </p>
-        </div>
-      </header>
-
-      <div
-        className={`trust-review__layout${queueCollapsed ? ' trust-review__layout--queue-collapsed' : ''}`}
-      >
-        <aside aria-label="Trust case queue" className="trust-review__queue">
-          <div className="trust-review__queue-header">
-            <h3>Case queue</h3>
-            <button
-              aria-expanded={!queueCollapsed}
-              className="button button--quiet trust-review__queue-toggle"
-              onClick={() => setQueueCollapsed((value) => !value)}
-              type="button"
-            >
-              <SidebarSimpleIcon aria-hidden="true" size={18} />
-              <span className="sr-only">
-                {queueCollapsed ? 'Expand case queue' : 'Collapse case queue'}
-              </span>
-            </button>
-          </div>
-          <div className="trust-review__queue-body">
+      {!route.caseId ? (
+        <>
+          <header className="author-workspace__heading trust-review__heading">
+            <h2 id="trust-review-title" ref={headingRef} tabIndex={-1}>
+              Player review
+            </h2>
+          </header>
+          <section
+            aria-label="Trust case queue"
+            className="trust-review__queue"
+          >
             <form
               className="trust-review__filters"
               onSubmit={submitSearch}
               role="search"
             >
               <div className="trust-review__search-row">
-                <label className="author-filter">
-                  <span>Search cases</span>
-                  <input
-                    maxLength={256}
-                    onChange={(event) => setSearchDraft(event.target.value)}
-                    placeholder="Player, case, or player ID"
-                    type="search"
-                    value={searchDraft}
-                  />
-                </label>
+                <SearchField
+                  label="Search cases"
+                  inputRef={searchRef}
+                  className="author-filter"
+                  maxLength={256}
+                  onChange={(value) => setSearchDraft(value)}
+                  placeholder="Player, case, or player ID"
+                  value={searchDraft}
+                />
                 <div className="trust-review__search-actions">
                   <button className="button button--quiet" type="submit">
                     Search
                   </button>
-                  {hasFilters ? (
-                    <button
-                      className="button button--quiet"
-                      onClick={clearFilters}
-                      type="button"
-                    >
-                      Clear
-                    </button>
-                  ) : null}
                 </div>
               </div>
-              <label className="author-filter">
-                <span>Case status</span>
-                <select
-                  onChange={(event) => {
-                    setStatus(event.target.value as TrustCaseStatusFilter);
-                    setPage(1);
-                  }}
-                  value={status}
-                >
-                  <option value="active">Active cases</option>
-                  <option value="open">Open</option>
-                  <option value="under_review">Under review</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="all">All cases</option>
-                </select>
-              </label>
-              <label className="author-filter">
-                <span>Review priority</span>
-                <select
-                  onChange={(event) => {
-                    setBand(event.target.value as TrustReviewBand | 'all');
-                    setPage(1);
-                  }}
-                  value={band}
-                >
-                  <option value="all">All priorities</option>
-                  <option value="urgent_review">Urgent review</option>
-                  <option value="review_required">Review required</option>
-                  <option value="observe">Observe</option>
-                  <option value="normal">Normal</option>
-                </select>
-              </label>
-              <details className="trust-review__advanced-filters">
-                <summary>More filters</summary>
-                <div className="trust-review__advanced-grid">
-                  <label className="author-filter">
-                    <span>Signal type</span>
-                    <select
-                      onChange={(event) => {
-                        setSignalType(
-                          event.target.value as TrustSignalType | 'all',
-                        );
-                        setPage(1);
-                      }}
-                      value={signalType}
+              <SelectField
+                label="Case status"
+                className="author-filter"
+                onChange={(value) => {
+                  setStatus(value as TrustCaseStatusFilter);
+                  setPage(1);
+                }}
+                value={status}
+                options={[
+                  { value: 'active', label: 'Active cases' },
+                  { value: 'open', label: 'Open' },
+                  { value: 'under_review', label: 'Under review' },
+                  { value: 'resolved', label: 'Resolved' },
+                  { value: 'all', label: 'All cases' },
+                ]}
+              />
+              <SelectField
+                label="Review priority"
+                className="author-filter"
+                onChange={(value) => {
+                  setBand(value as TrustReviewBand | 'all');
+                  setPage(1);
+                }}
+                value={band}
+                options={[
+                  { value: 'all', label: 'All priorities' },
+                  { value: 'urgent_review', label: 'Urgent review' },
+                  { value: 'review_required', label: 'Review required' },
+                  { value: 'observe', label: 'Observe' },
+                  { value: 'normal', label: 'Normal' },
+                ]}
+              />
+              <details className="author-filter-menu trust-review__advanced-filters">
+                <summary>
+                  Filters
+                  {secondaryFilterCount > 0 ? (
+                    <span
+                      aria-label={`${secondaryFilterCount} active ${secondaryFilterCount === 1 ? 'filter' : 'filters'}`}
                     >
-                      <option value="all">All signal types</option>
-                      <option value="impossible_movement">
-                        Impossible movement
-                      </option>
-                      <option value="idempotency_payload_conflict">
-                        Submission payload conflict
-                      </option>
-                      <option value="submission_conflict_pattern">
-                        Submission conflict pattern
-                      </option>
-                      <option value="opponent_concentration">
-                        Opponent concentration
-                      </option>
-                      <option value="one_sided_outcome_pattern">
-                        One-sided outcomes
-                      </option>
-                    </select>
-                  </label>
-                  <label className="author-filter">
-                    <span>Restriction state</span>
-                    <select
-                      onChange={(event) => {
-                        setRestrictionState(
-                          event.target.value as
-                            TrustRestrictionStateFilter | 'all',
-                        );
-                        setPage(1);
-                      }}
-                      value={restrictionState}
-                    >
-                      <option value="all">Any restriction state</option>
-                      <option value="active">Active restriction</option>
-                      <option value="none">No active restriction</option>
-                    </select>
-                  </label>
+                      {secondaryFilterCount}
+                    </span>
+                  ) : null}
+                </summary>
+                <div className="author-filter-menu__panel trust-review__advanced-grid">
+                  <SelectField
+                    label="Signal type"
+                    className="author-filter"
+                    onChange={(value) => {
+                      setSignalType(value as TrustSignalType | 'all');
+                      setPage(1);
+                    }}
+                    value={signalType}
+                    options={[
+                      { value: 'all', label: 'All signal types' },
+                      {
+                        value: 'impossible_movement',
+                        label: 'Impossible movement',
+                      },
+                      {
+                        value: 'idempotency_payload_conflict',
+                        label: 'Submission payload conflict',
+                      },
+                      {
+                        value: 'submission_conflict_pattern',
+                        label: 'Submission conflict pattern',
+                      },
+                      {
+                        value: 'opponent_concentration',
+                        label: 'Opponent concentration',
+                      },
+                      {
+                        value: 'one_sided_outcome_pattern',
+                        label: 'One-sided outcomes',
+                      },
+                    ]}
+                  />
+                  <SelectField
+                    label="Restriction state"
+                    className="author-filter"
+                    onChange={(value) => {
+                      setRestrictionState(
+                        value as TrustRestrictionStateFilter | 'all',
+                      );
+                      setPage(1);
+                    }}
+                    value={restrictionState}
+                    options={[
+                      { value: 'all', label: 'Any restriction state' },
+                      { value: 'active', label: 'Active restriction' },
+                      { value: 'none', label: 'No active restriction' },
+                    ]}
+                  />
                   <DateFilter
                     label="Opened from (Johannesburg)"
                     onChange={(value) => {
@@ -407,13 +438,34 @@ export function TrustReviewWorkspace({
               </details>
             </form>
 
-            <QueueContents
-              error={queueError}
-              onReload={() => void loadQueue()}
-              queue={queue}
-              selectedCaseId={route.caseId}
-              state={queueState}
-            />
+            {queueState === 'ready' && queue ? (
+              <div className="trust-review__results">
+                <p aria-live="polite">
+                  {queue.totalItems} matching{' '}
+                  {queue.totalItems === 1 ? 'case' : 'cases'}
+                </p>
+                {hasFilters ? (
+                  <button
+                    className="trust-review__reset"
+                    onClick={clearFilters}
+                    type="button"
+                  >
+                    Reset filters
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            <div ref={queueRef}>
+              <QueueContents
+                error={queueError}
+                onReload={() => void loadQueue()}
+                queue={queue}
+                onOpen={(caseId) => {
+                  queueEntryRef.current = { caseId, scrollY: window.scrollY };
+                }}
+                state={queueState}
+              />
+            </div>
 
             {queueState === 'ready' && queue && queue.totalPages > 1 ? (
               <nav
@@ -441,27 +493,23 @@ export function TrustReviewWorkspace({
                 </button>
               </nav>
             ) : null}
-          </div>
-        </aside>
-
-        <main className="trust-review__case">
-          {route.caseId ? (
-            <Link
-              className="trust-review__back"
-              href={authorPaths.playerReview}
-            >
-              <ArrowLeftIcon aria-hidden="true" size={18} />
-              Back to case queue
-            </Link>
-          ) : null}
+          </section>
+        </>
+      ) : (
+        <section aria-label="Case review" className="trust-review__case">
+          <Link className="trust-review__back" href={authorPaths.playerReview}>
+            <ArrowLeftIcon aria-hidden="true" size={18} />
+            Back to case queue
+          </Link>
           {detailState === 'loading' ? (
-            <LoadingState label="Loading case details…" />
+            <AuthorLoadingState label="Loading case details…" />
           ) : null}
           {detailState === 'error' ? (
             <CaseError error={detailError} onReload={() => void loadDetail()} />
           ) : null}
           {detailState === 'ready' && detail ? (
             <TrustCasePanel
+              key={detail.caseId}
               apiBaseUrl={apiBaseUrl}
               caseDetail={detail}
               getAccessToken={getAccessToken}
@@ -472,17 +520,8 @@ export function TrustReviewWorkspace({
               onReload={() => void loadDetail()}
             />
           ) : null}
-          {detailState === 'ready' && !detail && !route.caseId ? (
-            <section className="author-state author-state--empty state-message state-message--empty">
-              <StateIcon tone="empty" />
-              <strong>Select a case to begin review.</strong>
-              <p>
-                A privacy-safe preview will appear before full records load.
-              </p>
-            </section>
-          ) : null}
-        </main>
-      </div>
+        </section>
+      )}
     </section>
   );
 }
@@ -512,16 +551,17 @@ function QueueContents({
   error,
   onReload,
   queue,
-  selectedCaseId,
+  onOpen,
   state,
 }: {
   error: AuthorApiError | null;
   onReload: () => void;
   queue: AuthorPage<TrustCaseQueueItem> | null;
-  selectedCaseId?: string;
+  onOpen: (caseId: string) => void;
   state: LoadState;
 }) {
-  if (state === 'loading') return <LoadingState label="Loading case queue…" />;
+  if (state === 'loading')
+    return <AuthorLoadingState label="Loading case queue…" />;
   if (state === 'error') {
     return (
       <section
@@ -551,48 +591,75 @@ function QueueContents({
     return (
       <section className="author-state author-state--empty state-message state-message--empty">
         <StateIcon tone="empty" />
-        <strong>No cases match this view.</strong>
-        <p>Adjust the filters or clear the search to see other cases.</p>
+        <strong>No cases match these filters.</strong>
       </section>
     );
   }
   return (
-    <ol className="trust-review__queue-list">
-      {queue.items.map((item) => (
-        <li key={item.caseId}>
-          <Link
-            aria-current={selectedCaseId === item.caseId ? 'page' : undefined}
-            className="trust-review__queue-link"
-            href={authorPaths.playerReviewCase(item.caseId)}
-          >
-            <span className="trust-review__queue-heading">
-              <strong>{item.playerName}</strong>
-              <BandBadge band={item.band} />
-            </span>
-            <span className="trust-review__queue-meta">
-              <StatusIcon status={item.status} />
-              {statusLabel(item.status)} · Score {item.score} · Updated{' '}
-              <time dateTime={item.updatedAt}>
-                {formatCompactDate(item.updatedAt)}
-              </time>
-            </span>
-            <span className="trust-review__queue-meta">
-              {item.signalTypes.length} signal type
-              {item.signalTypes.length === 1 ? '' : 's'} ·{' '}
-              {item.restrictionCount} restriction record
-              {item.restrictionCount === 1 ? '' : 's'}
-            </span>
-            {item.activeRestrictionCount > 0 ? (
-              <span className="trust-review__restriction-note">
-                <ShieldWarningIcon aria-hidden="true" size={16} />
-                {item.activeRestrictionCount} active restriction
-                {item.activeRestrictionCount === 1 ? '' : 's'}
-              </span>
-            ) : null}
-          </Link>
-        </li>
-      ))}
-    </ol>
+    <div className="trust-table-wrap">
+      <table className="trust-table">
+        <caption className="sr-only">
+          Player cases for human review. Review priority is not proof of
+          misconduct.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Player</th>
+            <th scope="col">Priority</th>
+            <th scope="col">Status</th>
+            <th scope="col">Active restrictions</th>
+            <th scope="col">Updated · Johannesburg</th>
+            <th scope="col">
+              <span className="sr-only">Action</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {queue.items.map((item) => (
+            <tr key={item.caseId}>
+              <th scope="row">
+                <strong>{item.playerName}</strong>
+                <small>Case {shortIdentifier(item.caseId)}</small>
+              </th>
+              <td>
+                <BandBadge band={item.band} />
+              </td>
+              <td>
+                <span className="trust-case-detail__status">
+                  <StatusIcon status={item.status} />
+                  {statusLabel(item.status)}
+                </span>
+              </td>
+              <td>
+                {item.activeRestrictionCount > 0 ? (
+                  <span className="trust-review__restriction-note">
+                    {item.activeRestrictionCount} active
+                  </span>
+                ) : (
+                  'None'
+                )}
+              </td>
+              <td>
+                <time dateTime={item.updatedAt}>
+                  {formatDateTime(item.updatedAt)}
+                </time>
+              </td>
+              <td>
+                <Link
+                  className="trust-table__open"
+                  href={authorPaths.playerReviewCase(item.caseId)}
+                  data-case-id={item.caseId}
+                  aria-label={`${item.canReview ? 'Review' : 'View'} ${item.playerName}, case ${item.caseId}`}
+                  onClick={() => onOpen(item.caseId)}
+                >
+                  {item.canReview ? 'Review' : 'View'}
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -610,6 +677,17 @@ function TrustCasePanel({
   onReload: () => void;
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const [tab, setTab] = useState<'review' | 'restrictions' | 'history'>(
+    'review',
+  );
+  const [pendingEvidence, setPendingEvidence] = useState<{
+    id: string;
+    version: number;
+  } | null>(null);
+  const [evidenceNavigationNotice, setEvidenceNavigationNotice] = useState('');
+  const [missingEvidenceId, setMissingEvidenceId] = useState<string | null>(
+    null,
+  );
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
   const [exportError, setExportError] = useState<AuthorApiError | null>(null);
@@ -680,6 +758,45 @@ function TrustCasePanel({
     ),
   });
 
+  useEffect(() => {
+    if (!pendingEvidence) return;
+    if (pendingEvidence.version !== caseDetail.version || tab !== 'review') {
+      setPendingEvidence(null);
+      if (pendingEvidence.version !== caseDetail.version)
+        setEvidenceNavigationNotice(
+          'This case changed. Select the history reference again.',
+        );
+      return;
+    }
+    const element = document.getElementById(`signal-${pendingEvidence.id}`);
+    if (element instanceof HTMLDetailsElement) {
+      element.open = true;
+      element.querySelector('summary')?.focus();
+      element.scrollIntoView?.({ block: 'center' });
+      setPendingEvidence(null);
+      return;
+    }
+    if (evidence.state !== 'ready') return;
+    if (evidence.page < evidence.totalPages) {
+      evidence.loadMore();
+      return;
+    }
+    setMissingEvidenceId(pendingEvidence.id);
+    setEvidenceNavigationNotice(
+      'The referenced signal was not found in the retained evidence.',
+    );
+    setPendingEvidence(null);
+  }, [
+    pendingEvidence,
+    caseDetail.version,
+    tab,
+    evidence.items,
+    evidence.state,
+    evidence.page,
+    evidence.totalPages,
+    evidence.loadMore,
+  ]);
+
   async function exportCase() {
     const controller = new AbortController();
     setExporting(true);
@@ -717,43 +834,66 @@ function TrustCasePanel({
     <article aria-labelledby="trust-case-title" className="trust-case-detail">
       <header className="trust-case-detail__header" id="trust-case-summary">
         <div>
+          <h3 id="trust-case-title" ref={headingRef} tabIndex={-1}>
+            {caseDetail.playerName}
+          </h3>
           <div className="trust-case-detail__labels">
             <BandBadge band={caseDetail.band} />
             <span className="trust-case-detail__status">
               <StatusIcon status={caseDetail.status} />
               {statusLabel(caseDetail.status)}
             </span>
+            <span>
+              Updated{' '}
+              <time dateTime={caseDetail.updatedAt}>
+                {formatDateTime(caseDetail.updatedAt)}
+              </time>
+            </span>
           </div>
-          <h3 id="trust-case-title" ref={headingRef} tabIndex={-1}>
-            {caseDetail.playerName}
-          </h3>
-          <p className="trust-case-detail__id">
-            Player ID {caseDetail.playerId}
-          </p>
         </div>
         <div className="trust-case-detail__header-actions">
-          <div
-            aria-label={`Review score ${caseDetail.score} out of 100`}
-            className="trust-score"
-          >
-            <strong>{caseDetail.score}</strong>
-            <span>Review score</span>
-          </div>
           <button
             className="button button--quiet"
             disabled={exporting}
+            aria-label="Export safe JSON"
+            title="Privacy-safe JSON · up to 100 records per collection"
             onClick={() => void exportCase()}
             type="button"
           >
             <DownloadSimpleIcon aria-hidden="true" size={18} />
-            {exporting ? 'Preparing…' : 'Export safe JSON'}
+            {exporting ? 'Preparing…' : 'Export'}
           </button>
-          <small>Up to 100 records per collection</small>
         </div>
       </header>
+      {caseDetail.activeRestrictionCount > 0 ? (
+        <div className="trust-case-active-restrictions">
+          <ShieldWarningIcon aria-hidden="true" size={18} />
+          <div>
+            <strong>
+              {caseDetail.activeRestrictionCount} active{' '}
+              {caseDetail.activeRestrictionCount === 1
+                ? 'restriction'
+                : 'restrictions'}
+            </strong>
+            <p>
+              {caseDetail.activeRestrictionScopes
+                .map((scope) => restrictionLabels[scope])
+                .join(' · ')}
+              {caseDetail.latestRestrictionExpiry ? (
+                <>
+                  {' '}
+                  · Latest expiry{' '}
+                  <time dateTime={caseDetail.latestRestrictionExpiry}>
+                    {formatDateTime(caseDetail.latestRestrictionExpiry)}
+                  </time>
+                </>
+              ) : null}
+            </p>
+          </div>
+        </div>
+      ) : null}
       <p className="trust-case-detail__caution">
-        <WarningDiamondIcon aria-hidden="true" size={20} />
-        Review priority, not proof of misconduct.
+        Review priority is not proof of misconduct.
       </p>
       {exportError ? (
         <StatusMessage tone="error">
@@ -766,94 +906,190 @@ function TrustCasePanel({
           <p>{exportMessage}</p>
         </StatusMessage>
       ) : null}
-      <dl className="trust-case-detail__metadata">
-        <div>
-          <dt>Case</dt>
-          <dd>{caseDetail.caseId}</dd>
-        </div>
-        <div>
-          <dt>Policy</dt>
-          <dd>{caseDetail.policyVersion}</dd>
-        </div>
-        <div>
-          <dt>Opened</dt>
-          <dd>
-            <time dateTime={caseDetail.openedAt}>
-              {formatDateTime(caseDetail.openedAt)}
-            </time>
-          </dd>
-        </div>
-        <div>
-          <dt>Updated</dt>
-          <dd>
-            <time dateTime={caseDetail.updatedAt}>
-              {formatDateTime(caseDetail.updatedAt)}
-            </time>
-          </dd>
-        </div>
-        <div>
-          <dt>Case version</dt>
-          <dd>{caseDetail.version}</dd>
-        </div>
-        <div>
-          <dt>Restrictions</dt>
-          <dd>
-            {caseDetail.activeRestrictionCount} active ·{' '}
-            {caseDetail.restrictionCount} total
-          </dd>
-        </div>
-        {caseDetail.latestRestrictionExpiry ? (
+      <details className="trust-case-metadata">
+        <summary>Case details</summary>
+        <dl className="trust-case-detail__metadata">
           <div>
-            <dt>Latest active expiry</dt>
+            <dt>Player ID</dt>
+            <dd>{caseDetail.playerId}</dd>
+          </div>
+          <div>
+            <dt>Case</dt>
+            <dd>{caseDetail.caseId}</dd>
+          </div>
+          <div>
+            <dt>Policy</dt>
+            <dd>{caseDetail.policyVersion}</dd>
+          </div>
+          <div>
+            <dt>Opened</dt>
             <dd>
-              <time dateTime={caseDetail.latestRestrictionExpiry}>
-                {formatDateTime(caseDetail.latestRestrictionExpiry)}
+              <time dateTime={caseDetail.openedAt}>
+                {formatDateTime(caseDetail.openedAt)}
               </time>
             </dd>
           </div>
-        ) : null}
-        {caseDetail.resolvedAt ? (
           <div>
-            <dt>Resolved</dt>
+            <dt>Updated</dt>
             <dd>
-              <time dateTime={caseDetail.resolvedAt}>
-                {formatDateTime(caseDetail.resolvedAt)}
+              <time dateTime={caseDetail.updatedAt}>
+                {formatDateTime(caseDetail.updatedAt)}
               </time>
             </dd>
           </div>
-        ) : null}
-      </dl>
+          <div>
+            <dt>Case version</dt>
+            <dd>{caseDetail.version}</dd>
+          </div>
+          <div>
+            <dt>Restrictions</dt>
+            <dd>
+              {caseDetail.activeRestrictionCount} active ·{' '}
+              {caseDetail.restrictionCount} total
+            </dd>
+          </div>
+          {caseDetail.latestRestrictionExpiry ? (
+            <div>
+              <dt>Latest active expiry</dt>
+              <dd>
+                <time dateTime={caseDetail.latestRestrictionExpiry}>
+                  {formatDateTime(caseDetail.latestRestrictionExpiry)}
+                </time>
+              </dd>
+            </div>
+          ) : null}
+          {caseDetail.resolvedAt ? (
+            <div>
+              <dt>Resolved</dt>
+              <dd>
+                <time dateTime={caseDetail.resolvedAt}>
+                  {formatDateTime(caseDetail.resolvedAt)}
+                </time>
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+        <p className="trust-case-section__note">
+          Exports include up to 100 records per collection.
+        </p>
+      </details>
       {caseDetail.resolutionReason ? (
         <p className="trust-case-detail__resolution">
           <strong>Resolution:</strong> {caseDetail.resolutionReason}
         </p>
       ) : null}
 
-      <nav aria-label="Case investigation" className="trust-case-outline">
-        <a href="#trust-case-summary">Summary</a>
-        <a href="#trust-case-score">Score</a>
-        <a href="#trust-case-signals">
-          Signals <span>{caseDetail.evidenceTotalItems}</span>
-        </a>
-        <a href="#trust-case-restrictions">
-          Restrictions <span>{caseDetail.restrictionTotalItems}</span>
-        </a>
-        <a href="#trust-case-audit">Audit</a>
-        <a href="#trust-case-decision">Decision</a>
-      </nav>
-
-      <ScoreExplanation caseDetail={caseDetail} />
-      <EvidenceSection collection={evidence} />
-      <RestrictionSection collection={restrictions} />
-      <HistorySection collection={history} />
-      <DecisionSection
-        apiBaseUrl={apiBaseUrl}
-        caseDetail={caseDetail}
-        evidence={evidence.items}
-        getAccessToken={getAccessToken}
-        onChanged={onChanged}
-        onReload={onReload}
-      />
+      <div
+        role="tablist"
+        aria-label="Case investigation"
+        className="trust-case-tabs"
+      >
+        {(['review', 'restrictions', 'history'] as const).map(
+          (value, index, values) => (
+            <button
+              key={value}
+              id={`trust-tab-${value}`}
+              role="tab"
+              type="button"
+              aria-selected={tab === value}
+              aria-controls={`trust-panel-${value}`}
+              tabIndex={tab === value ? 0 : -1}
+              onClick={() => setTab(value)}
+              onKeyDown={(event) => {
+                const next =
+                  event.key === 'ArrowRight'
+                    ? (index + 1) % values.length
+                    : event.key === 'ArrowLeft'
+                      ? (index + values.length - 1) % values.length
+                      : event.key === 'Home'
+                        ? 0
+                        : event.key === 'End'
+                          ? values.length - 1
+                          : null;
+                if (next === null) return;
+                event.preventDefault();
+                setTab(values[next]!);
+                document.getElementById(`trust-tab-${values[next]}`)?.focus();
+              }}
+            >
+              {titleCase(value)}
+              {value === 'restrictions' ? (
+                <span>{restrictions.totalItems}</span>
+              ) : null}
+            </button>
+          ),
+        )}
+      </div>
+      <div
+        role="tabpanel"
+        id="trust-panel-review"
+        aria-labelledby="trust-tab-review"
+        hidden={tab !== 'review'}
+      >
+        <ScoreExplanation caseDetail={caseDetail} />
+        {pendingEvidence ? (
+          <p role="status" className="trust-case-section__note">
+            {evidence.state === 'error'
+              ? 'Retry signal records below to find the referenced signal.'
+              : 'Finding the referenced signal…'}
+          </p>
+        ) : null}
+        {evidenceNavigationNotice ? (
+          <StatusMessage tone="info">
+            <p>{evidenceNavigationNotice}</p>
+            {missingEvidenceId ? (
+              <button
+                className="button button--quiet"
+                type="button"
+                onClick={() => {
+                  setEvidenceNavigationNotice('');
+                  setPendingEvidence({
+                    id: missingEvidenceId,
+                    version: caseDetail.version,
+                  });
+                  setMissingEvidenceId(null);
+                  evidence.reload();
+                }}
+              >
+                Retry reference
+              </button>
+            ) : null}
+          </StatusMessage>
+        ) : null}
+        <EvidenceSection collection={evidence} />
+        <DecisionSection
+          apiBaseUrl={apiBaseUrl}
+          caseDetail={caseDetail}
+          evidence={evidence.items}
+          getAccessToken={getAccessToken}
+          onChanged={onChanged}
+          onReload={onReload}
+        />
+      </div>
+      <div
+        role="tabpanel"
+        id="trust-panel-restrictions"
+        aria-labelledby="trust-tab-restrictions"
+        hidden={tab !== 'restrictions'}
+      >
+        <RestrictionSection collection={restrictions} />
+      </div>
+      <div
+        role="tabpanel"
+        id="trust-panel-history"
+        aria-labelledby="trust-tab-history"
+        hidden={tab !== 'history'}
+      >
+        <HistorySection
+          collection={history}
+          onOpenEvidence={(id) => {
+            setTab('review');
+            setEvidenceNavigationNotice('');
+            setMissingEvidenceId(null);
+            setPendingEvidence({ id, version: caseDetail.version });
+          }}
+        />
+      </div>
     </article>
   );
 }
@@ -861,15 +1097,16 @@ function TrustCasePanel({
 function ScoreExplanation({ caseDetail }: { caseDetail: TrustCaseDetail }) {
   const score = caseDetail.scoreExplanation;
   return (
-    <section
-      aria-labelledby="score-explanation-title"
-      className="trust-case-section"
-      id="trust-case-score"
-    >
-      <div className="trust-case-section__heading">
-        <h4 id="score-explanation-title">Score explanation</h4>
-        <span>{score.sourceSignalCount} source signals</span>
-      </div>
+    <details className="trust-score-details" id="trust-case-score">
+      <summary>
+        <span>
+          Review score <strong>{caseDetail.score}</strong> / 100
+        </span>
+        <span className="trust-score-details__toggle">Score breakdown</span>
+      </summary>
+      <p className="trust-case-section__note">
+        {score.sourceSignalCount} source signals
+      </p>
       <dl className="trust-score-breakdown">
         <ScorePart label="Movement" value={score.movementPoints} />
         <ScorePart
@@ -887,10 +1124,9 @@ function ScoreExplanation({ caseDetail }: { caseDetail: TrustCaseDetail }) {
         <time dateTime={score.evaluatedAt}>
           {formatDateTime(score.evaluatedAt)}
         </time>{' '}
-        under the server policy. Values shown here are not calculated by this
-        page.
+        under the server policy.
       </p>
-    </section>
+    </details>
   );
 }
 
@@ -920,7 +1156,6 @@ function EvidenceSection({
       <div className="trust-case-section__heading">
         <div>
           <h4 id="evidence-title">Signals</h4>
-          <p>Privacy-safe evidence only</p>
         </div>
         <span>
           Showing {collection.items.length} of {collection.totalItems}
@@ -928,42 +1163,45 @@ function EvidenceSection({
       </div>
       <CollectionFeedback collection={collection} label="signal record" />
       {collection.items.length ? (
-        <ol className="trust-timeline">
+        <ol className="trust-evidence-list">
           {collection.items.map((item) => (
-            <li id={`signal-${item.evidenceId}`} key={item.evidenceId}>
-              <span
-                className={`trust-timeline__marker trust-timeline__marker--${item.state}`}
+            <li key={item.evidenceId}>
+              <details
+                id={`signal-${item.evidenceId}`}
+                className="trust-evidence"
               >
-                <EyeIcon aria-hidden="true" size={17} />
-              </span>
-              <div>
-                <div className="trust-timeline__heading">
+                <summary>
                   <strong>{signalLabel(item.signalType)}</strong>
+                  <span>{evidenceStateLabel(item)}</span>
+                  <time dateTime={item.observedAt}>
+                    {formatDateTime(item.observedAt)}
+                  </time>
                   <span
                     className={`trust-severity trust-severity--${safeClass(item.severity)}`}
                   >
-                    <WarningDiamondIcon aria-hidden="true" size={15} />
                     {titleCase(item.severity)} severity
                   </span>
+                </summary>
+                <div className="trust-evidence__content">
+                  <p>
+                    {titleCase(item.safeSourceType)} · {item.effectivePoints}{' '}
+                    effective points ({item.basePoints} base)
+                  </p>
+                  <p>
+                    Expires{' '}
+                    <time dateTime={item.expiresAt}>
+                      {formatDateTime(item.expiresAt)}
+                    </time>{' '}
+                    · Policy {item.policyVersion}
+                  </p>
+                  {item.opponentPattern?.availability !== 'unavailable' ? (
+                    <OpponentPatternSummary evidence={item} />
+                  ) : null}
                 </div>
-                <p>
-                  {titleCase(item.safeSourceType)} · {item.effectivePoints}{' '}
-                  effective points ({item.basePoints} base) ·{' '}
-                  {evidenceStateLabel(item)}
-                </p>
-                <p>
-                  Observed{' '}
-                  <time dateTime={item.observedAt}>
-                    {formatDateTime(item.observedAt)}
-                  </time>{' '}
-                  · expires{' '}
-                  <time dateTime={item.expiresAt}>
-                    {formatDateTime(item.expiresAt)}
-                  </time>
-                </p>
-                <p>Policy {item.policyVersion}</p>
+              </details>
+              {item.opponentPattern?.availability === 'unavailable' ? (
                 <OpponentPatternSummary evidence={item} />
-              </div>
+              ) : null}
             </li>
           ))}
         </ol>
@@ -1056,7 +1294,6 @@ function RestrictionSection({
       <div className="trust-case-section__heading">
         <div>
           <h4 id="restrictions-title">Restriction history</h4>
-          <p>Authoritative capability limits and appeal state</p>
         </div>
         <span>
           Showing {collection.items.length} of {collection.totalItems}
@@ -1121,8 +1358,10 @@ function RestrictionSection({
 
 function HistorySection({
   collection,
+  onOpenEvidence,
 }: {
   collection: TrustCollection<TrustCaseHistoryItem>;
+  onOpenEvidence: (id: string) => void;
 }) {
   return (
     <section
@@ -1133,7 +1372,6 @@ function HistorySection({
       <div className="trust-case-section__heading">
         <div>
           <h4 id="history-title">Decision and audit history</h4>
-          <p>Append-only actions, actors, reasons, and state changes</p>
         </div>
         <span>
           Showing {collection.items.length} of {collection.totalItems}
@@ -1178,7 +1416,15 @@ function HistorySection({
                     {item.evidenceIds.map((id, index) => (
                       <span key={id}>
                         {index ? ', ' : ''}
-                        <a href={`#signal-${id}`}>{shortIdentifier(id)}</a>
+                        <a
+                          href={`#signal-${id}`}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            onOpenEvidence(id);
+                          }}
+                        >
+                          {shortIdentifier(id)}
+                        </a>
                       </span>
                     ))}
                   </p>
@@ -1232,14 +1478,7 @@ function CollectionFeedback<T>({
         {collection.announcement}
       </p>
       {collection.state === 'loading' ? (
-        <div
-          aria-label={`Loading complete ${label}s`}
-          className="trust-collection-loading"
-          role="status"
-        >
-          <span />
-          <span />
-        </div>
+        <AuthorLoadingState label={`Loading complete ${label}s…`} />
       ) : null}
       {collection.state === 'error' ? (
         <StatusMessage tone="error">
@@ -1402,9 +1641,7 @@ function DecisionSection({
       <div className="trust-case-section__heading">
         <div>
           <h4 id="decision-title">Record decision</h4>
-          <p>
-            Apply a proportionate human judgement to the current case version
-          </p>
+          <p>Choose an action and explain the evidence considered.</p>
         </div>
         <span>Version {caseDetail.version}</span>
       </div>
@@ -1491,20 +1728,18 @@ function DecisionSection({
                   </label>
                 ))}
               </fieldset>
-              <label className="author-filter">
-                <span>Duration</span>
-                <select
-                  disabled={controlsDisabled}
-                  onChange={(event) =>
-                    setDurationHours(Number(event.target.value))
-                  }
-                  value={durationHours}
-                >
-                  <option value={24}>24 hours</option>
-                  <option value={72}>72 hours</option>
-                  <option value={168}>7 days</option>
-                </select>
-              </label>
+              <SelectField
+                label="Duration"
+                className="author-filter"
+                disabled={controlsDisabled}
+                onChange={(value) => setDurationHours(Number(value))}
+                value={String(durationHours)}
+                options={[
+                  { value: '24', label: '24 hours' },
+                  { value: '72', label: '72 hours' },
+                  { value: '168', label: '7 days' },
+                ]}
+              />
             </div>
           ) : null}
 
@@ -1557,12 +1792,6 @@ function DecisionSection({
               ) : null}
             </StatusMessage>
           ) : null}
-          {success ? (
-            <StatusMessage tone="success">
-              <p>{success}</p>
-            </StatusMessage>
-          ) : null}
-
           <button
             className={
               action === 'restrict' ? 'button button--danger' : 'button'
@@ -1579,6 +1808,12 @@ function DecisionSection({
           </button>
         </form>
       )}
+
+      {success ? (
+        <StatusMessage tone="success">
+          <p>{success}</p>
+        </StatusMessage>
+      ) : null}
 
       {confirming ? (
         <AuthorConfirmationDialog
@@ -1741,13 +1976,16 @@ function useTrustCollection<T>({
     return () => requestRef.current?.abort();
   }, [refreshKey, load]);
 
+  const loadMore = useCallback(() => void load(page + 1, true), [load, page]);
+  const reload = useCallback(() => void load(1, false), [load]);
+
   return {
     announcement,
     error,
     items,
-    loadMore: () => void load(page + 1, true),
+    loadMore,
     page,
-    reload: () => void load(1, false),
+    reload,
     state,
     totalItems: knownTotal,
     totalPages,
@@ -1885,13 +2123,6 @@ function formatDateTime(value: string) {
   return createAppDateTimeFormatter(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
-  }).format(new Date(value));
-}
-
-function formatCompactDate(value: string) {
-  return createAppDateTimeFormatter(undefined, {
-    month: 'short',
-    day: 'numeric',
   }).format(new Date(value));
 }
 

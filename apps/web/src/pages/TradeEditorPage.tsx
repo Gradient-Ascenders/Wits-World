@@ -1,9 +1,9 @@
+import { SearchField } from '../components/fields/SearchField';
 import {
   ArrowLeft,
   ArrowRight,
   ArrowsLeftRight,
   LockSimple,
-  MagnifyingGlass,
   Minus,
   PaperPlaneTilt,
   Plus,
@@ -761,6 +761,8 @@ function TradeBuilder({
           </div>
           <SearchField
             label="Search your cards"
+            placeholder="Search your cards"
+            hideLabel
             onChange={onCopySearch}
             value={copySearch}
           />
@@ -789,6 +791,8 @@ function TradeBuilder({
           </p>
           <SearchField
             label="Search cards to request"
+            placeholder="Search cards to request"
+            hideLabel
             onChange={onCatalogueSearch}
             value={catalogueSearch}
           />
@@ -962,30 +966,6 @@ function groupSelectedCopies(copies: TradeSelectionCopy[]) {
   }
   return [...groups.values()].sort((left, right) =>
     left.copy.name.localeCompare(right.copy.name),
-  );
-}
-
-function SearchField({
-  label,
-  onChange,
-  value,
-}: {
-  label: string;
-  onChange: (value: string) => void;
-  value: string;
-}) {
-  return (
-    <label className="trade-search">
-      <span className="sr-only">{label}</span>
-      <MagnifyingGlass aria-hidden="true" size={20} />
-      <input
-        aria-label={label}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={label}
-        type="search"
-        value={value}
-      />
-    </label>
   );
 }
 

@@ -151,13 +151,6 @@ export function EventPlacementMap({
       <div className="placement-map__heading">
         <div>
           <h3 id="placement-map-title">Campus map</h3>
-          <p>
-            {plan
-              ? 'Blue markers are proposed. Gold markers remain live until you apply.'
-              : state.assignments.length > 0
-                ? 'Gold markers are live. Black markers are available candidate sites.'
-                : 'Black markers are reviewed candidate sites. Create a preview to see proposed placements.'}
-          </p>
         </div>
         <ul aria-label="Placement map legend" className="placement-map__legend">
           {(
@@ -168,22 +161,28 @@ export function EventPlacementMap({
               'excluded',
               'overridden',
             ] as const
-          ).map((placementState) => (
-            <li key={placementState}>
-              <span
-                aria-hidden="true"
-                className={`placement-map__key placement-map__key--${placementState}`}
-              />
-              {placementStateLabel(placementState)}
-            </li>
-          ))}
+          )
+            .filter((placementState) =>
+              points.some((point) =>
+                point.placementStates?.includes(placementState),
+              ),
+            )
+            .map((placementState) => (
+              <li key={placementState}>
+                <span
+                  aria-hidden="true"
+                  className={`placement-map__key placement-map__key--${placementState}`}
+                />
+                {placementStateLabel(placementState)}
+              </li>
+            ))}
         </ul>
       </div>
       <CampusMap
-        accessibleLabel="Author event-placement map showing reviewed candidate sites, coverage zones, current assignments, proposed assignments, exclusions, and active overrides. The complete data is available in the tables below."
+        accessibleLabel="Author event-placement map. Assignments and coverage are also available in the tables below."
         areas={areas}
         configuration={configuration}
-        errorDescription="Use the coverage, candidate-site, and assignment tables below. All placement controls remain available without the map."
+        errorDescription="Use Changes or Coverage & sites below. Placement controls still work."
         focusPointRequest={focusPointRequest}
         mapFactory={mapFactory}
         onPointSelect={onSelectedSiteChange}

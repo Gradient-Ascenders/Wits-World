@@ -169,6 +169,46 @@ describe.skipIf(!runIntegrationTests)(
       ]);
     });
 
+    it('groups ignored-location attention before pagination and excludes activity outside the date range', async () => {
+      const service = createAnalyticsService(pool);
+      const filters = {
+        fromDate: '2026-09-10',
+        toDate: '2026-09-11',
+        page: 1,
+        pageSize: 1,
+      };
+      const result = await service.listAttention(filters);
+      expect(result).toMatchObject({
+        totalItems: 1,
+        totalPages: 1,
+        items: [
+          {
+            eventId: EVENT_IGNORED,
+            ignoredLocationCount: 1,
+            easyQuestionCount: 0,
+            hardQuestionCount: 0,
+            questionId: null,
+            challengeId: null,
+          },
+        ],
+      });
+      expect(
+        (
+          await service.listAttention({
+            ...filters,
+            fromDate: '2026-09-11',
+            toDate: '2026-09-12',
+          })
+        ).items,
+      ).toEqual([]);
+      expect(
+        (await service.listAttention({ ...filters, page: 2 })).totalItems,
+      ).toBe(1);
+      expect(
+        (await service.listAttention({ ...filters, page: 2 })).items,
+      ).toEqual([]);
+    });
+
     it('counts card issuance from immutable reward history without depending on current ownership', async () => {
       const service = createAnalyticsService(pool);
       const ownership = await pool.query<{ count: number }>(

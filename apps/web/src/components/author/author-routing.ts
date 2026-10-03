@@ -1,3 +1,6 @@
+export type AnalyticsReport =
+  'overview' | 'locations' | 'questions' | 'rewards';
+
 export type AuthorWorkspaceRoute =
   | { mode: 'list'; section: 'events' }
   | { mode: 'new'; section: 'events' }
@@ -11,6 +14,7 @@ export type AuthorWorkspaceRoute =
       eventId: string;
       mode: 'challenge';
       section: 'events';
+      tab?: 'details' | 'review' | 'history';
     }
   | {
       challengeId?: string;
@@ -22,16 +26,22 @@ export type AuthorWorkspaceRoute =
     }
   | { mode: 'list'; section: 'cards' }
   | { mode: 'new'; section: 'cards' }
-  | { cardId: string; mode: 'detail' | 'edit'; section: 'cards' }
+  | {
+      cardId: string;
+      mode: 'detail' | 'edit';
+      section: 'cards';
+      tab?: 'details' | 'review';
+    }
   | { mode: 'list'; section: 'review' }
   | { caseId?: string; mode: 'detail' | 'list'; section: 'playerReview' }
-  | { mode: 'list'; section: 'analytics' }
+  | { mode: 'list'; section: 'analytics'; report?: AnalyticsReport }
   | { mode: 'list'; section: 'placement' }
   | { mode: 'list' | 'new'; section: 'campaigns' }
   | {
       campaignId: string;
       mode: 'detail' | 'edit';
       section: 'campaigns';
+      tab?: 'details' | 'review' | 'history';
     };
 
 const AUTHOR_ROOT = '/author';
@@ -56,7 +66,15 @@ export function parseAuthorWorkspaceRoute(
   }
 
   if (segments[0] === 'analytics') {
-    return { mode: 'list', section: 'analytics' };
+    const report = segments[1];
+    return {
+      mode: 'list',
+      section: 'analytics',
+      report:
+        report === 'locations' || report === 'questions' || report === 'rewards'
+          ? report
+          : 'overview',
+    };
   }
 
   if (segments[0] === 'placement') {
@@ -72,6 +90,9 @@ export function parseAuthorWorkspaceRoute(
         campaignId: segments[1],
         mode: segments[2] === 'edit' ? 'edit' : 'detail',
         section: 'campaigns',
+        ...(segments[2] === 'review' || segments[2] === 'history'
+          ? { tab: segments[2] }
+          : {}),
       };
     }
     return { mode: 'list', section: 'campaigns' };
@@ -86,6 +107,7 @@ export function parseAuthorWorkspaceRoute(
         cardId: segments[1],
         mode: segments[2] === 'edit' ? 'edit' : 'detail',
         section: 'cards',
+        ...(segments[2] === 'review' ? { tab: 'review' as const } : {}),
       };
     }
     return { mode: 'list', section: 'cards' };
@@ -102,6 +124,13 @@ export function parseAuthorWorkspaceRoute(
   }
 
   const eventId = segments[1];
+  if (
+    segments[2] === 'details' ||
+    segments[2] === 'review' ||
+    segments[2] === 'history'
+  ) {
+    return { eventId, mode: 'challenge', section: 'events', tab: segments[2] };
+  }
   if (segments[2] === 'edit') {
     return { eventId, mode: 'edit', section: 'events' };
   }
@@ -118,6 +147,15 @@ export function parseAuthorWorkspaceRoute(
   }
   if (segments[2] === 'challenges' && segments[3]) {
     const challengeId = segments[3];
+    if (segments[4] === 'review') {
+      return {
+        challengeId,
+        eventId,
+        mode: 'challenge',
+        section: 'events',
+        tab: 'review',
+      };
+    }
     if (segments[4] === 'questions') {
       if (segments[5] === 'new') {
         return {
@@ -157,11 +195,19 @@ export function parseAuthorWorkspaceRoute(
 export const authorPaths = {
   campaigns: `${AUTHOR_ROOT}/campaigns`,
   analytics: `${AUTHOR_ROOT}/analytics`,
+  analyticsReport: (report: AnalyticsReport) =>
+    report === 'overview'
+      ? `${AUTHOR_ROOT}/analytics`
+      : `${AUTHOR_ROOT}/analytics/${report}`,
   placement: `${AUTHOR_ROOT}/placement`,
   campaign: (campaignId: string) =>
     `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}`,
   editCampaign: (campaignId: string) =>
     `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}/edit`,
+  campaignReview: (campaignId: string) =>
+    `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}/review`,
+  campaignHistory: (campaignId: string) =>
+    `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}/history`,
   cards: `${AUTHOR_ROOT}/cards`,
   card: (cardId: string) =>
     `${AUTHOR_ROOT}/cards/${encodeURIComponent(cardId)}`,
@@ -170,12 +216,17 @@ export const authorPaths = {
   events: `${AUTHOR_ROOT}/events`,
   event: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}`,
+  eventDetails: (eventId: string) => `${authorPaths.event(eventId)}/details`,
+  eventReview: (eventId: string) => `${authorPaths.event(eventId)}/review`,
+  eventHistory: (eventId: string) => `${authorPaths.event(eventId)}/history`,
   editEvent: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/edit`,
   eventChallenge: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/challenge`,
   challenge: (eventId: string, challengeId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/challenges/${encodeURIComponent(challengeId)}`,
+  challengeReview: (eventId: string, challengeId: string) =>
+    `${authorPaths.challenge(eventId, challengeId)}/review`,
   eventQuestions: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/questions`,
   questions: (eventId: string, challengeId: string) =>

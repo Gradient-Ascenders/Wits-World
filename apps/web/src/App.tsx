@@ -16,6 +16,7 @@ import { PageLoadingState } from './components/LoadingState';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { StartupGate, StartupSettler } from './components/auth/startup-state';
 import { AuthorRoute } from './components/auth/AuthorRoute';
+import { AuthorLoadingState } from './components/author/AuthorLoadingState';
 import { GuardedRouter } from './components/author/AuthorNavigationGuard';
 import { CurrentPlayerProvider } from './auth/CurrentPlayerProvider';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -74,6 +75,10 @@ export function AppRoutes({
   mapFactory,
   mapboxAccessToken,
 }: AppRoutesProps) {
+  const [pathname] = useLocation();
+  const isAuthorRoute =
+    pathname === '/author' || pathname.startsWith('/author/');
+
   return (
     <CurrentPlayerProvider apiBaseUrl={apiBaseUrl}>
       <OfflineProvider apiBaseUrl={apiBaseUrl}>
@@ -83,10 +88,14 @@ export function AppRoutes({
           <ServiceWorkerUpdate />
           <Suspense
             fallback={
-              <PageLoadingState
-                title="Loading Wits World"
-                description="Preparing this page…"
-              />
+              isAuthorRoute ? (
+                <AuthorLoadingState page label="Loading author console…" />
+              ) : (
+                <PageLoadingState
+                  title="Loading Wits World"
+                  description="Preparing this page…"
+                />
+              )
             }
           >
             <StartupSettler />
@@ -216,7 +225,16 @@ export function AppRoutes({
                 </ProtectedRoute>
               </Route>
               <Route path="/author/*?">
-                <ProtectedRoute destination="open the author console">
+                <ProtectedRoute
+                  destination="open the author console"
+                  loadingFallback={
+                    <AuthorLoadingState
+                      page
+                      label="Checking author access"
+                      description="The console opens only after Wits World confirms your current role."
+                    />
+                  }
+                >
                   <AuthorRoute>
                     <AuthorConsolePage
                       apiBaseUrl={apiBaseUrl}

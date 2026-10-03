@@ -366,24 +366,6 @@
   border-color: var(--colour-focus);
 }
 
-.collection-search-field {
-  position: relative;
-  display: block;
-}
-
-.collection-search-field > svg {
-  position: absolute;
-  top: 50%;
-  left: var(--space-3);
-  transform: translateY(-50%);
-  color: var(--colour-text-secondary);
-  pointer-events: none;
-}
-
-.collection-control .collection-search-field input {
-  padding-left: var(--space-7);
-}
-
 .collection-gallery__status {
   display: flex;
   align-items: center;
@@ -452,7 +434,7 @@
   grid-column: 1 / -1;
 }
 
-.collection-control > span:not(.collection-search-field) {
+.collection-control > span {
   color: var(--colour-text-secondary);
   font-size: var(--text-sm);
   font-weight: 600;

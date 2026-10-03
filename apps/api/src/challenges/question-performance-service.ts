@@ -84,17 +84,8 @@ export class InvalidQuestionPerformanceFiltersError extends Error {
   }
 }
 
-export function createQuestionPerformanceService(
-  database: QuestionPerformanceDatabase,
-): QuestionPerformanceService {
-  return {
-    async list(filters) {
-      validateFilters(filters);
-      const client = await database.connect();
-      try {
-        const offset = (filters.page - 1) * filters.pageSize;
-        const result = await client.query<PerformanceRow>(
-          `
+// Shared authoritative outcome projection for paginated reports and event attention.
+export const QUESTION_PERFORMANCE_CTES = `
             with classified_snapshots as (
               select
                 attempt.id as attempt_id,
@@ -216,7 +207,21 @@ export function createQuestionPerformanceService(
             from projected
             join public.challenge_questions question on question.id = projected.question_id
             join public.events event on event.id = projected.event_id
-            ), page as (
+            )
+`;
+
+export function createQuestionPerformanceService(
+  database: QuestionPerformanceDatabase,
+): QuestionPerformanceService {
+  return {
+    async list(filters) {
+      validateFilters(filters);
+      const client = await database.connect();
+      try {
+        const offset = (filters.page - 1) * filters.pageSize;
+        const result = await client.query<PerformanceRow>(
+          `
+            ${QUESTION_PERFORMANCE_CTES}            , page as (
               select identified.*
               from identified
               order by is_problematic desc, incorrect_rate desc,

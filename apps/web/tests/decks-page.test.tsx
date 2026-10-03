@@ -1,3 +1,4 @@
+import { selectOption } from './fixtures/select-option';
 import { AppToaster } from '../src/components/AppToaster';
 import { toast } from 'sonner';
 import {
@@ -260,7 +261,7 @@ describe('saved deck management page', () => {
       screen.getByRole('heading', { name: 'No matching cards' }),
     ).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
-    await user.selectOptions(screen.getByLabelText('Type'), 'power');
+    await selectOption(user, screen.getByLabelText('Type'), 'power');
     expect(
       within(
         screen.getByRole('list', {
