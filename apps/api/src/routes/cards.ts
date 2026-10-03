@@ -556,7 +556,7 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
   app,
   { starterGrantService, collectionService, evolutionService },
 ) => {
-  app.get(
+  app.get<{ Querystring: { unique?: boolean } }>(
     '/cards/collection',
     {
       preHandler: [app.authenticate, app.requireActivePlayer],
@@ -564,13 +564,13 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
         operationId: 'listOwnedCards',
         summary: 'List the current player card collection',
         description:
-          'Returns every card copy owned by the authenticated player with player-safe catalogue and acquisition metadata.',
+          'Returns owned card copies with player-safe catalogue and acquisition metadata. With unique=true, returns only the newest owned copy of each card definition.',
         tags: ['Cards'],
         security: [{ bearerAuth: [] }],
         querystring: {
           type: 'object',
           additionalProperties: false,
-          properties: {},
+          properties: { unique: { type: 'boolean' } },
         },
         response: {
           200: collectionResponseSchema,
@@ -588,7 +588,9 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
         );
       }
 
-      const cards = await collectionService.listOwnedCards(player.id);
+      const cards = request.query.unique
+        ? await collectionService.listOwnedCards(player.id, true)
+        : await collectionService.listOwnedCards(player.id);
 
       return reply.status(200).send({
         cards,

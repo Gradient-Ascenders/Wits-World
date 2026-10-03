@@ -24,6 +24,26 @@ afterEach(() => {
 });
 
 describe('card API client', () => {
+  it('requests one owned copy per definition for the favourites picker', async () => {
+    const card = buildCard(1);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ cards: [card], requestId: 'unique' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      listOwnedCards({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+        unique: true,
+      }),
+    ).resolves.toEqual([card]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/cards/collection?unique=true`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
   it('loads the three server-provided starter packages', async () => {
     const options = buildStarterOptions();
     const fetchMock = vi.fn().mockResolvedValue(

@@ -1,5 +1,10 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import { PencilSimpleIcon, PlusIcon, UserIcon } from '@phosphor-icons/react';
+import {
+  CardsIcon,
+  PencilSimpleIcon,
+  PlusIcon,
+  UserIcon,
+} from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import {
@@ -240,7 +245,7 @@ export function PlayerShowcase({
         {profile.isOwner ? (
           <div className="showcase-owner-actions">
             <button
-              className="button button--quiet"
+              className="button button--quiet showcase-edit-action"
               type="button"
               onClick={() => setEditor('identity')}
             >
@@ -265,10 +270,10 @@ export function PlayerShowcase({
           {profile.isOwner ? (
             <button
               type="button"
-              className="showcase-text-action"
+              className="button button--quiet showcase-edit-action"
               onClick={() => setEditor('cards')}
             >
-              <PencilSimpleIcon size={16} aria-hidden="true" />
+              <CardsIcon size={18} aria-hidden="true" />
               Edit showcase
             </button>
           ) : null}

@@ -1,13 +1,6 @@
-import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  CheckIcon,
-  TrashIcon,
-  XIcon,
-} from '@phosphor-icons/react';
+import { XIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { listOwnedCards, type OwnedCard } from '../../api/cards';
 import {
   PlayerProfileError,
   requestPlayerProfile,
@@ -16,8 +9,7 @@ import {
 } from '../../api/player-profile';
 import { useApiAccessToken } from '../../auth/useApiAccessToken';
 import { useModalFocus } from '../useModalFocus';
-import { CardThumbnail } from '../cards/CollectibleCard';
-import { CardPresentationDialog } from '../cards/CardPresentationDialog';
+import { ProfileCardPicker } from './ProfileCardPicker';
 import { ProfileAvatar } from './PlayerShowcase';
 import { StatusEmojiPicker } from './StatusEmojiPicker';
 import { AvatarCrop } from './AvatarCrop';
@@ -358,6 +350,7 @@ export function ProfileEditor({
                 apiBaseUrl={apiBaseUrl}
                 selected={edit.featuredOwnedCardIds}
                 featured={profile}
+                disabled={busy}
                 onChange={(ids) => change('featuredOwnedCardIds', ids)}
               />
             )}
@@ -399,191 +392,5 @@ export function ProfileEditor({
       </section>
     </div>,
     document.body,
-  );
-}
-
-function ProfileCardPicker({
-  apiBaseUrl,
-  selected,
-  featured,
-  onChange,
-}: {
-  apiBaseUrl: string;
-  selected: string[];
-  featured: PlayerProfile;
-  onChange: (ids: string[]) => void;
-}) {
-  const getAccessToken = useApiAccessToken();
-  const [collection, setCollection] = useState<OwnedCard[] | null>(null);
-  const [error, setError] = useState('');
-  const [revision, setRevision] = useState(0);
-  const [query, setQuery] = useState('');
-  const [notice, setNotice] = useState('');
-  const [inspected, setInspected] = useState<OwnedCard | null>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    setError('');
-    void listOwnedCards({
-      apiBaseUrl,
-      getAccessToken,
-      signal: controller.signal,
-    })
-      .then((cards) => {
-        if (!controller.signal.aborted) setCollection(cards);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setError('Your collection could not be loaded. Try again.');
-      });
-    return () => controller.abort();
-  }, [apiBaseUrl, getAccessToken, revision]);
-  function move(index: number, delta: number) {
-    const ids = selected.slice();
-    [ids[index], ids[index + delta]] = [ids[index + delta]!, ids[index]!];
-    onChange(ids);
-    setNotice(`Card moved to position ${index + delta + 1}.`);
-  }
-  const visible = collection?.filter((card) =>
-    card.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
-  );
-  return (
-    <div className="profile-card-picker">
-      <p>
-        Choose up to four cards from your collection, in your favourite order.
-      </p>
-      <ol
-        className="profile-selected-cards"
-        aria-label="Selected favourite cards"
-      >
-        {selected.map((id, index) => {
-          const card =
-            collection?.find((entry) => entry.ownedCardId === id) ??
-            featured.featuredCards[featured.featuredOwnedCardIds.indexOf(id)];
-          return (
-            <li key={id}>
-              <span className="profile-selected-number">{index + 1}</span>
-              <span>{card?.name ?? 'Card no longer available'}</span>
-              <div>
-                <button
-                  className="button button--quiet"
-                  type="button"
-                  disabled={index === 0}
-                  aria-label={`Move ${card?.name ?? 'card'} left`}
-                  onClick={() => move(index, -1)}
-                >
-                  <ArrowLeftIcon size={18} aria-hidden="true" />
-                </button>
-                <button
-                  className="button button--quiet"
-                  type="button"
-                  disabled={index === selected.length - 1}
-                  aria-label={`Move ${card?.name ?? 'card'} right`}
-                  onClick={() => move(index, 1)}
-                >
-                  <ArrowRightIcon size={18} aria-hidden="true" />
-                </button>
-                <button
-                  className="button button--quiet"
-                  type="button"
-                  aria-label={`Remove ${card?.name ?? 'card'}`}
-                  onClick={() =>
-                    onChange(selected.filter((entry) => entry !== id))
-                  }
-                >
-                  <TrashIcon size={18} aria-hidden="true" />
-                </button>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-      <p role="status" className="profile-picker-notice">
-        {notice || `${selected.length} of 4 selected`}
-      </p>
-      {error ? (
-        <div role="alert">
-          <p>{error}</p>
-          <button
-            className="button button--quiet"
-            type="button"
-            onClick={() => setRevision((value) => value + 1)}
-          >
-            Try again
-          </button>
-        </div>
-      ) : !collection ? (
-        <p role="status">Loading your cards…</p>
-      ) : !collection.length ? (
-        <p>
-          No cards yet. Complete a challenge or choose your starter cards in
-          your collection.
-        </p>
-      ) : (
-        <>
-          <label>
-            Search your cards
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-          <div className="profile-picker-grid">
-            {visible?.map((card) => {
-              const picked = selected.includes(card.ownedCardId);
-              return (
-                <div
-                  key={card.ownedCardId}
-                  className={
-                    picked
-                      ? 'profile-picker-card profile-picker-card--selected'
-                      : 'profile-picker-card'
-                  }
-                >
-                  <CardThumbnail
-                    card={card}
-                    accessibleLabel={`Inspect ${card.name}, copy ${collection.filter((entry) => entry.cardDefinitionId === card.cardDefinitionId).findIndex((entry) => entry.ownedCardId === card.ownedCardId) + 1}`}
-                    onClick={() => setInspected(card)}
-                  />
-                  <button
-                    className="button button--quiet profile-picker-membership"
-                    type="button"
-                    aria-label={`${picked ? 'Remove' : 'Select'} ${card.name}, copy ${collection.filter((entry) => entry.cardDefinitionId === card.cardDefinitionId).findIndex((entry) => entry.ownedCardId === card.ownedCardId) + 1}`}
-                    onClick={() => {
-                      if (picked)
-                        onChange(
-                          selected.filter((id) => id !== card.ownedCardId),
-                        );
-                      else if (selected.length < 4)
-                        onChange([...selected, card.ownedCardId]);
-                      else
-                        setNotice(
-                          'Four cards selected. Remove one to choose another.',
-                        );
-                    }}
-                  >
-                    {picked ? (
-                      <TrashIcon size={16} aria-hidden="true" />
-                    ) : (
-                      <CheckIcon size={16} aria-hidden="true" />
-                    )}
-                    {picked
-                      ? `Remove · ${selected.indexOf(card.ownedCardId) + 1}`
-                      : 'Select'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          {!visible?.length ? <p>No cards match this search.</p> : null}
-          {inspected ? (
-            <CardPresentationDialog
-              card={inspected}
-              onClose={() => setInspected(null)}
-            />
-          ) : null}
-        </>
-      )}
-    </div>
   );
 }

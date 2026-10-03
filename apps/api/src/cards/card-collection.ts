@@ -17,7 +17,7 @@ export interface CardCollectionQueryable {
 }
 
 export interface CardCollectionService {
-  listOwnedCards(playerId: string): Promise<OwnedCard[]>;
+  listOwnedCards(playerId: string, unique?: boolean): Promise<OwnedCard[]>;
   listTradingCatalogue(): Promise<TradingCardDefinition[]>;
 }
 
@@ -77,7 +77,7 @@ export function createCardCollectionService(
   database: CardCollectionQueryable,
 ): CardCollectionService {
   return {
-    async listOwnedCards(playerId) {
+    async listOwnedCards(playerId, unique = false) {
       const result = await database.query<OwnedCardRow>(
         `
           select
@@ -130,7 +130,16 @@ export function createCardCollectionService(
               from public.card_effects effect
               where effect.card_definition_id = definition.id
             ), '[]'::json) as effects
-          from public.player_cards owned
+          from ${
+            unique
+              ? `(
+            select distinct on (card_definition_id) *
+            from public.player_cards
+            where player_id = $1::uuid
+            order by card_definition_id, acquired_at desc, id desc
+          )`
+              : 'public.player_cards'
+          } owned
           join public.card_definitions definition
             on definition.id = owned.card_definition_id
           where owned.player_id = $1::uuid

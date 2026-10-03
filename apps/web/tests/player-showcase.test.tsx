@@ -17,18 +17,22 @@ import { buildPlayerProfile } from './fixtures/player-profile';
 import { buildCard } from './fixtures/cards';
 import { jsonResponse } from './fixtures/progression';
 import type { PlayerProfile, ProfileEdit } from '../src/api/player-profile';
+import { parseCardPresentation } from '../src/api/cards';
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mount(profile = buildPlayerProfile(), playerName?: string) {
+function mount(
+  profile = buildPlayerProfile(),
+  playerName?: string,
+  cards = [buildCard(1), buildCard(2), buildCard(3)],
+) {
   const calls: ProfileEdit[] = [];
-  const cards = [buildCard(1), buildCard(2), buildCard(3)];
   const fetchMock = vi
     .fn()
     .mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).endsWith('/cards/collection'))
+      if (String(input).endsWith('/cards/collection?unique=true'))
         return Promise.resolve(
           jsonResponse({ cards, requestId: 'collection' }),
         );
@@ -54,7 +58,9 @@ function mount(profile = buildPlayerProfile(), playerName?: string) {
                 }
               : null,
           featuredCards: edit.featuredOwnedCardIds.map((id) => {
-            const card = cards.find((entry) => entry.ownedCardId === id)!;
+            const card =
+              cards.find((entry) => entry.ownedCardId === id) ??
+              profile.featuredCards[profile.featuredOwnedCardIds.indexOf(id)]!;
             return {
               affinity: card.affinity,
               cardDefinitionId: card.cardDefinitionId,
@@ -370,14 +376,98 @@ describe('player showcase', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('selects exact owned copies and changes their order using buttons', async () => {
+  it('keeps the saved copy when the unique picker returns a newer copy', async () => {
+    const original = buildCard(1, { imageAlt: null });
+    const newer = buildCard(2, {
+      cardDefinitionId: original.cardDefinitionId,
+      name: original.name,
+    });
+    const { acquiredAt, acquisitionKind, ownedCardId, ...presentation } =
+      original;
+    void acquiredAt;
+    void acquisitionKind;
+    const user = userEvent.setup();
+    const { calls, fetchMock } = mount(
+      buildPlayerProfile({
+        featuredOwnedCardIds: [ownedCardId],
+        featuredCards: [
+          parseCardPresentation({ ...presentation, imageAlt: null }),
+        ],
+      }),
+      undefined,
+      [newer],
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Edit showcase' }),
+    );
+    const dialog = within(
+      await screen.findByRole('dialog', { name: 'Edit favourite cards' }),
+    );
+    expect(
+      await dialog.findByRole('button', { name: `Remove ${original.name}` }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      dialog.queryByRole('button', { name: `Select ${original.name}` }),
+    ).not.toBeInTheDocument();
+    await user.click(dialog.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.featuredOwnedCardIds).toEqual([ownedCardId]);
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        String(url).endsWith('/cards/collection?unique=true'),
+      ),
+    ).toBe(true);
+  });
+
+  it('bounds the grid and searches all card types, resetting the visible page', async () => {
+    const cards = Array.from({ length: 30 }, (_, index) =>
+      buildCard(index + 1),
+    );
+    const user = userEvent.setup();
+    mount(buildPlayerProfile(), undefined, cards);
+    await user.click(
+      await screen.findByRole('button', { name: 'Edit showcase' }),
+    );
+    await screen.findByRole('button', { name: 'Select Campus Guardian 1' });
+    const dialog = screen.getByRole('dialog', { name: 'Edit favourite cards' });
+    expect(
+      within(dialog).getAllByRole('button', { name: /^Select Campus/ }),
+    ).toHaveLength(12);
+    await user.click(screen.getByRole('button', { name: 'Show more cards' }));
+    expect(
+      within(dialog).getAllByRole('button', { name: /^Select Campus/ }),
+    ).toHaveLength(24);
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search your cards' }),
+      'Guardian 30',
+    );
+    expect(
+      within(dialog).getAllByRole('button', { name: /^Select Campus/ }),
+    ).toHaveLength(1);
+    await user.click(
+      screen.getByRole('button', { name: 'Select Campus Guardian 30' }),
+    );
+    await user.clear(
+      screen.getByRole('searchbox', { name: 'Search your cards' }),
+    );
+    expect(
+      within(dialog).getAllByRole('button', { name: /^Select Campus/ }),
+    ).toHaveLength(12);
+    expect(
+      screen.getByRole('button', {
+        name: 'Inspect favourite Campus Guardian 30',
+      }),
+    ).toBeVisible();
+  });
+
+  it('selects exact owned copies and changes their order using the keyboard', async () => {
     const user = userEvent.setup();
     const { calls, cards } = mount();
     await user.click(
       await screen.findByRole('button', { name: 'Edit showcase' }),
     );
     const inspect = await screen.findByRole('button', {
-      name: 'Inspect Campus Guardian 1, copy 1',
+      name: 'Inspect Campus Guardian 1',
     });
     await user.click(inspect);
     expect(
@@ -386,19 +476,22 @@ describe('player showcase', () => {
     await user.keyboard('{Escape}');
     expect(inspect).toHaveFocus();
     expect(
-      screen.getByRole('list', { name: 'Selected favourite cards' }).children,
+      screen
+        .getByRole('list', { name: 'Selected favourite cards' })
+        .querySelectorAll('[data-owned-card-id]'),
     ).toHaveLength(0);
     await user.click(
       await screen.findByRole('button', {
-        name: 'Select Campus Guardian 1, copy 1',
+        name: 'Select Campus Guardian 1',
       }),
     );
     await user.click(
-      screen.getByRole('button', { name: 'Select Campus Guardian 2, copy 1' }),
+      screen.getByRole('button', { name: 'Select Campus Guardian 2' }),
     );
-    await user.click(
-      screen.getByRole('button', { name: 'Move Campus Guardian 2 left' }),
-    );
+    screen
+      .getByRole('button', { name: 'Reorder Campus Guardian 2, position 2' })
+      .focus();
+    await user.keyboard('{ArrowLeft}');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
     await screen.findByRole('button', { name: 'Inspect Campus Guardian 2' });
     expect(calls[0]?.featuredOwnedCardIds).toEqual([

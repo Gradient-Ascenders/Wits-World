@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { buildCard } from '../tests/fixtures/cards';
 import { buildPlayerProfile } from '../tests/fixtures/player-profile';
 import type { ProfileEdit } from '../src/api/player-profile';
+import { parseCardPresentation } from '../src/api/cards';
 
 // Keep native scrollbars visible so pointer interactions exercise their real hit area.
 test.use({ launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] } });
@@ -16,21 +17,23 @@ const cards = names.map((name, index) =>
     rarity: ['common', 'rare', 'epic', 'legendary'][index],
   }),
 );
-const featuredCards = cards.map((card) => ({
-  affinity: card.affinity,
-  cardDefinitionId: card.cardDefinitionId,
-  category: card.category,
-  description: card.description,
-  effects: card.effects,
-  hp: card.hp,
-  imageUrl: card.imageUrl,
-  imageAlt: card.name,
-  isActive: card.isActive,
-  moves: card.moves,
-  name: card.name,
-  power: card.power,
-  rarity: card.rarity,
-}));
+const featuredCards = cards
+  .map((card) => ({
+    affinity: card.affinity,
+    cardDefinitionId: card.cardDefinitionId,
+    category: card.category,
+    description: card.description,
+    effects: card.effects,
+    hp: card.hp,
+    imageUrl: card.imageUrl,
+    imageAlt: card.name,
+    isActive: card.isActive,
+    moves: card.moves,
+    name: card.name,
+    power: card.power,
+    rarity: card.rarity,
+  }))
+  .map(parseCardPresentation);
 const achievements = [
   ['first_quiz', 'First Quiz', true, 12, 1, 'Complete your first event quiz.'],
   [
@@ -81,6 +84,181 @@ const achievements = [
   target: target as number,
   description: description as string,
 }));
+
+test.describe('favourite card editing', () => {
+  test.use({ hasTouch: true });
+
+  test('reorders images with mouse, touch and keyboard while keeping a bounded picker', async ({
+    page,
+  }) => {
+    let profile = buildPlayerProfile({
+      featuredCards,
+      featuredOwnedCardIds: cards.map((card) => card.ownedCardId),
+    });
+    const collection = [
+      ...cards,
+      ...Array.from({ length: 16 }, (_, index) =>
+        buildCard(index + 5, { name: `Extra card ${index + 1}` }),
+      ),
+    ];
+    let saved: ProfileEdit | null = null;
+    await page.route('http://127.0.0.1:3999/api/v1/**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/auth/me'))
+        return route.fulfill({
+          json: {
+            connectionStrategy: 'auth0',
+            id: '17300000-0000-4000-8000-000000000001',
+            lifecycleStatus: 'active',
+            playerName: profile.playerName,
+            playerNameSetupRequired: false,
+            role: 'player',
+            requestId: 'favourites-owner',
+          },
+        });
+      if (url.pathname.endsWith('/cards/collection')) {
+        expect(url.searchParams.get('unique')).toBe('true');
+        return route.fulfill({
+          json: { cards: collection, requestId: 'unique-collection' },
+        });
+      }
+      if (url.pathname.endsWith('/profiles/me')) {
+        if (route.request().method() === 'PUT') {
+          saved = route.request().postDataJSON() as ProfileEdit;
+          profile = {
+            ...profile,
+            featuredOwnedCardIds: saved.featuredOwnedCardIds,
+            featuredCards: saved.featuredOwnedCardIds.map(
+              (id) =>
+                featuredCards[
+                  cards.findIndex((card) => card.ownedCardId === id)
+                ]!,
+            ),
+            version: 1,
+          };
+        }
+        return route.fulfill({
+          json: { ...profile, requestId: 'favourites-profile' },
+        });
+      }
+      return route.fulfill({
+        status: 404,
+        json: { detail: 'Fixture route unavailable' },
+      });
+    });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto('/profile');
+    await page.getByRole('button', { name: 'Edit showcase' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Edit favourite cards' });
+    const row = dialog.getByRole('list', { name: 'Selected favourite cards' });
+    const order = () =>
+      row
+        .locator('[data-owned-card-id]')
+        .evaluateAll((tiles) =>
+          tiles.map((tile) => tile.getAttribute('data-owned-card-id')),
+        );
+    const original = cards.map((card) => card.ownedCardId);
+    await expect(dialog.locator('.profile-picker-card')).toHaveCount(12);
+    await expect(
+      dialog.getByRole('button', { name: 'Select Extra card 1', exact: true }),
+    ).toBeDisabled();
+    const first = await row
+      .getByRole('button', { name: 'Inspect favourite Quillip' })
+      .boundingBox();
+    const last = await row
+      .getByRole('button', { name: 'Inspect favourite Sylphane' })
+      .boundingBox();
+    await page.mouse.move(
+      first!.x + first!.width / 2,
+      first!.y + first!.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      last!.x + last!.width / 2,
+      last!.y + last!.height / 2,
+      { steps: 12 },
+    );
+    await expect(row.locator('[data-drop-target="true"]')).toHaveCount(1);
+    await page.mouse.up();
+    expect(await order()).toEqual([...original.slice(1), original[0]]);
+    await expect(
+      page.getByRole('dialog', { name: 'Quillip', exact: true }),
+    ).toHaveCount(0);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const session = await page.context().newCDPSession(page);
+    const source = await row
+      .getByRole('button', { name: 'Reorder Quillip, position 4' })
+      .boundingBox();
+    const target = await row
+      .getByRole('button', { name: 'Reorder Cinderhop, position 1' })
+      .boundingBox();
+    const touch = async (
+      type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel',
+      x: number,
+      y: number,
+    ) =>
+      session.send('Input.dispatchTouchEvent', {
+        type,
+        touchPoints:
+          type === 'touchEnd' || type === 'touchCancel'
+            ? []
+            : [{ x, y, id: 1 }],
+      });
+    await touch('touchStart', source!.x + 20, source!.y + 20);
+    await touch('touchMove', target!.x + 20, target!.y + 20);
+    await touch('touchEnd', 0, 0);
+    await expect.poll(order).toEqual(original);
+    const cancelSource = await row
+      .getByRole('button', { name: 'Reorder Quillip, position 1' })
+      .boundingBox();
+    const cancelTarget = await row
+      .getByRole('button', { name: 'Reorder Cinderhop, position 2' })
+      .boundingBox();
+    await touch('touchStart', cancelSource!.x + 20, cancelSource!.y + 20);
+    await touch('touchMove', cancelTarget!.x + 20, cancelTarget!.y + 20);
+    await touch('touchCancel', 0, 0);
+    await expect.poll(order).toEqual(original);
+    await session.detach();
+    await row
+      .getByRole('button', { name: 'Reorder Cinderhop, position 2' })
+      .focus();
+    await page.keyboard.press('ArrowLeft');
+    expect(await order()).toEqual([
+      original[1],
+      original[0],
+      ...original.slice(2),
+    ]);
+    await expect(
+      row.getByRole('button', { name: 'Reorder Cinderhop, position 1' }),
+    ).toBeFocused();
+    for (const width of [390, 768, 1440]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await dialog.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      expect(
+        await dialog.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth,
+        ),
+      ).toBe(true);
+      await page.screenshot({ path: `/tmp/profile-favourites-${width}.png` });
+    }
+    await dialog.getByRole('button', { name: 'Show more cards' }).click();
+    await expect(dialog.locator('.profile-picker-card')).toHaveCount(20);
+    await dialog
+      .getByRole('searchbox', { name: 'Search your cards' })
+      .fill('Extra card 16');
+    await expect(dialog.locator('.profile-picker-card')).toHaveCount(1);
+    await dialog.getByRole('button', { name: 'Save changes' }).click();
+    await expect(dialog).toHaveCount(0);
+    expect((saved as ProfileEdit | null)?.featuredOwnedCardIds).toEqual([
+      original[1],
+      original[0],
+      ...original.slice(2),
+    ]);
+  });
+});
 
 test.describe('profile picture crop', () => {
   test.use({ hasTouch: true });
@@ -390,6 +568,17 @@ test('player showcase, editor and visitor view work across screen sizes', async 
         .locator('.showcase-stats')
         .evaluate((stats) => stats.getBoundingClientRect().top),
     );
+    const editProfile = await page
+      .getByRole('button', { name: 'Edit profile', exact: true })
+      .boundingBox();
+    const editShowcase = await page
+      .getByRole('button', { name: 'Edit showcase', exact: true })
+      .boundingBox();
+    expect(Math.abs(editProfile!.x - editShowcase!.x)).toBeLessThan(1);
+    expect(Math.abs(editProfile!.width - editShowcase!.width)).toBeLessThan(1);
+    expect(Math.abs(editProfile!.height - editShowcase!.height)).toBeLessThan(
+      1,
+    );
     await page.screenshot({
       fullPage: true,
       path: `/tmp/profile-showcase-${width}.png`,
@@ -541,17 +730,23 @@ test('player showcase, editor and visitor view work across screen sizes', async 
   expect(profile.avatarDataUrl).toBe(croppedAvatar);
   await expect(page.locator('.showcase-avatar img')).toBeVisible();
   await page.getByRole('button', { name: 'Edit showcase' }).click();
-  const pickerInspection = page.getByRole('button', {
-    name: 'Inspect Quillip, copy 1',
-  });
+  const pickerInspection = page
+    .getByRole('dialog', { name: 'Edit favourite cards' })
+    .getByRole('button', {
+      name: 'Inspect Quillip',
+      exact: true,
+    });
   await pickerInspection.click();
   await expect(page.getByRole('dialog', { name: 'Quillip' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(pickerInspection).toBeFocused();
   await expect(
-    page.getByRole('button', { name: 'Remove Quillip, copy 1' }),
+    page.getByRole('button', { name: 'Remove Quillip' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Move Cinderhop left' }).click();
+  await page
+    .getByRole('button', { name: 'Reorder Cinderhop, position 2' })
+    .focus();
+  await page.keyboard.press('ArrowLeft');
   await page
     .getByRole('dialog', { name: 'Edit favourite cards' })
     .evaluate((dialog) => {

@@ -56,3 +56,13 @@ are immediately excluded from reads.
 Focused verification covers SQL migration on an isolated database, publication
 privacy, foreign selections, concurrent writes, status expiry, transfers,
 deletion, image decoding, client validation and responsive browser flows.
+
+The favourite-card editor requests `GET /api/v1/cards/collection?unique=true`.
+The collection service selects the newest currently owned copy per definition
+before loading presentation details. The regular collection response still
+includes every copy. Saved favourites retain their original copy IDs, even when
+the picker represents the same definition with another copy. The browser shows
+12 unique cards at a time and searches all returned definitions. Selected cards
+can be reordered by dragging artwork or grips, or by using arrow keys on a grip.
+
+The preceding document was edited with assistance from Codex[GPT-6].

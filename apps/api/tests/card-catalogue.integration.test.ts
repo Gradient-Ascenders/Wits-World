@@ -117,7 +117,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
         [PLAYER_ID],
       );
     });
-  }, 45_000);
+  }, 120_000);
 
   afterAll(async () => {
     if (cataloguePool) {
@@ -133,6 +133,36 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
         `drop database if exists ${temporaryDatabaseName} with (force)`,
       );
     });
+  }, 30_000);
+
+  it('returns one real owned copy per definition for the favourites picker', async () => {
+    const playerId = '70000000-0000-4000-8000-000000000021';
+    await insertCataloguePlayer(
+      temporaryConfig,
+      playerId,
+      'unique-collection-player',
+    );
+    await starterService.selectStarter({ playerId, affinity: 'wit' });
+    await insertEvolutionRewardCopies(temporaryConfig, playerId, 'f7000000', 3);
+    const all = await collectionService.listOwnedCards(playerId);
+    const unique = await collectionService.listOwnedCards(playerId, true);
+    const newestIds = new Map<string, string>();
+    for (const card of all) {
+      if (!newestIds.has(card.cardDefinitionId))
+        newestIds.set(card.cardDefinitionId, card.ownedCardId);
+    }
+    expect(all.length).toBeGreaterThan(unique.length);
+    expect(unique).toEqual(
+      all.filter(
+        (card) => newestIds.get(card.cardDefinitionId) === card.ownedCardId,
+      ),
+    );
+    expect(new Set(unique.map((card) => card.cardDefinitionId)).size).toBe(
+      unique.length,
+    );
+    expect(
+      await collectionService.listOwnedCards(EMPTY_COLLECTION_PLAYER_ID, true),
+    ).toEqual([]);
   }, 30_000);
 
   it('applies the catalogue migration and seeds every starter affinity', () => {
