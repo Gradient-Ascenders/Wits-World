@@ -16,6 +16,8 @@ import { createChallengeAttemptCompletionFinalizer } from '../src/challenges/cha
 import { createChallengeAttemptFetchService } from '../src/challenges/challenge-attempt-fetch.js';
 import { createStarterGrantService } from '../src/cards/starter-grant.js';
 import { createCardCollectionService } from '../src/cards/card-collection.js';
+import { createPlayerProfileService } from '../src/players/player-profile.js';
+import { createProgressionReadService } from '../src/progression/progression-read-service.js';
 import { createDeckService } from '../src/cards/deck-service.js';
 import { createCpuMatchService } from '../src/matches/cpu-match-service.js';
 import { createAuthorEventService } from '../src/events/author-event-service.js';
@@ -114,6 +116,8 @@ async function startServer(): Promise<void> {
     config: { logLevel: 'silent' },
     corsConfig: { allowedOrigin: 'http://127.0.0.1:5175' },
     playerIdentityService: createPlayerIdentityService(database),
+    playerProfileService: createPlayerProfileService(database),
+    progressionReadService: createProgressionReadService(database),
     rateProtection: createAuthenticatedRateProtection({
       maxRequests: 1_000,
       windowMs: 60_000,

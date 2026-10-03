@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createQuestionPerformanceService } from '../src/challenges/question-performance-service.js';
+import { createAuthorAnalyticsService } from '../src/analytics/author-analytics-service.js';
 import {
   buildDatabaseConfig,
   loadApiEnvironment,
@@ -90,6 +91,50 @@ describe.skipIf(!runIntegrationTests)(
         incorrectRate: 0.6,
         isProblematic: false,
       });
+    });
+
+    it('includes reportable problematic questions in event attention and excludes narrow samples', async () => {
+      const analytics = createAuthorAnalyticsService(
+        pool,
+        createQuestionPerformanceService(pool),
+      );
+      const allTime = await analytics.listAttention({ page: 1, pageSize: 25 });
+      expect(allTime.totalItems).toBeGreaterThan(allTime.items.length);
+      const lastPage = await analytics.listAttention({
+        page: allTime.totalPages,
+        pageSize: 25,
+      });
+      expect(lastPage.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ eventId: EVENT_MCQ }),
+        ]),
+      );
+      const result = await analytics.listAttention({
+        fromDate: '2026-09-01',
+        toDate: '2026-09-03',
+        page: 1,
+        pageSize: 25,
+      });
+      expect(result.items).toEqual([
+        expect.objectContaining({
+          eventId: EVENT_MCQ,
+          ignoredLocationCount: 0,
+          hardQuestionCount: 1,
+          easyQuestionCount: 0,
+          questionId: QUESTION_MCQ,
+          challengeId: CHALLENGE_MCQ,
+        }),
+      ]);
+      expect(
+        (
+          await analytics.listAttention({
+            fromDate: '2026-09-03',
+            toDate: '2026-09-04',
+            page: 1,
+            pageSize: 25,
+          })
+        ).items,
+      ).toEqual([]);
     });
 
     it('counts only the active unanswered question when an attempt times out part-way through', async () => {

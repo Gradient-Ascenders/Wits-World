@@ -10,6 +10,7 @@ import {
   listAuthorAdvancedQuestionAnalytics,
   listAuthorCampaigns,
   listAuthorCardIssuanceAnalytics,
+  listAuthorEventAttention,
   listAuthorEventLocationAnalytics,
   listAuthorEvents,
   listAuthorQuestions,
@@ -199,6 +200,53 @@ describe('author API client', () => {
         signal: new AbortController().signal,
       }),
     ).rejects.toMatchObject({ failure: 'unavailable' });
+  });
+
+  it('loads event attention with period bounds and rejects unpaired question links', async () => {
+    const item = {
+      eventId,
+      eventTitle: 'Great Hall',
+      ignoredLocationCount: 1,
+      easyQuestionCount: 0,
+      hardQuestionCount: 0,
+      questionId: null,
+      challengeId: null,
+    };
+    const payload = {
+      items: [item],
+      page: 1,
+      pageSize: 25,
+      totalItems: 1,
+      totalPages: 1,
+      minimumSampleSize: 10,
+      requestId: 'attention',
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(payload))
+      .mockResolvedValueOnce(
+        jsonResponse({ ...payload, items: [{ ...item, questionId: eventId }] }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      listAuthorEventAttention({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+        fromDate: '2026-09-01',
+        toDate: '2026-09-08',
+      }),
+    ).resolves.toMatchObject({ items: [item] });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `${apiBaseUrl}/author/analytics/attention?fromDate=2026-09-01&toDate=2026-09-08&page=1&pageSize=25`,
+    );
+    await expect(
+      listAuthorEventAttention({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toBeInstanceOf(AuthorApiError);
   });
 
   it('loads all advanced analytics projections with bounded query parameters', async () => {

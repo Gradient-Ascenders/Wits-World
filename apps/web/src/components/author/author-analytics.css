@@ -1,0 +1,419 @@
+.analytics-workspace {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.analytics-workspace [hidden] {
+  display: none !important;
+}
+.analytics-workspace :is(h2, h3, h4) {
+  margin: 0;
+  font-family: var(--font-body);
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+.analytics-workspace h2 {
+  font-size: var(--text-2xl);
+}
+.analytics-workspace h3 {
+  font-size: var(--text-xl);
+}
+.analytics-workspace h4 {
+  font-size: var(--text-lg);
+}
+.analytics-header,
+.analytics-report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: var(--space-5);
+}
+.analytics-header > div:first-child {
+  display: grid;
+  flex: 1 1 24rem;
+  min-width: 0;
+  gap: var(--space-2);
+}
+.analytics-period {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 15rem;
+}
+.analytics-period__caption {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-xs);
+  text-align: right;
+}
+.analytics-tabs {
+  display: flex;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--colour-border-subtle);
+}
+.analytics-tabs a {
+  scroll-margin-block: 6rem;
+  padding: 0.75rem 0.25rem;
+  border-bottom: 2px solid transparent;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+.analytics-tabs a:hover {
+  color: var(--colour-text-primary);
+}
+.analytics-tabs a[aria-current='page'] {
+  color: var(--colour-focus);
+  border-bottom-color: var(--colour-focus);
+}
+.analytics-report {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.analytics-toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: end;
+}
+.analytics-toolbar > .shared-field {
+  min-width: 13rem;
+}
+.analytics-custom-period {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(10rem, 14rem)) auto auto;
+  align-items: end;
+  justify-content: start;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--colour-border-subtle);
+}
+.analytics-custom-period__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+.analytics-workspace .author-filter > span {
+  color: var(--colour-text-secondary);
+  font-weight: 500;
+  font-size: var(--text-sm);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.analytics-text-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--colour-focus);
+  font: inherit;
+  font-size: var(--text-sm);
+  justify-self: end;
+  cursor: pointer;
+}
+.analytics-about {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+.analytics-about summary {
+  width: fit-content;
+  cursor: pointer;
+}
+.analytics-about > div {
+  max-width: 75ch;
+  padding-top: var(--space-2);
+}
+.analytics-about p {
+  margin: 0 0 var(--space-2);
+}
+.analytics-results {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+.analytics-overview-plots {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-5);
+}
+.analytics-plot {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--colour-border-subtle);
+  border-bottom: 1px solid var(--colour-border-subtle);
+}
+.analytics-plot figcaption {
+  display: grid;
+  gap: var(--space-1);
+}
+.analytics-plot figcaption p {
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+.analytics-plot svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.analytics-plot text {
+  font-family: var(--font-body);
+  font-size: 13px;
+  fill: var(--colour-text-secondary);
+}
+.analytics-plot .analytics-plot__label {
+  fill: var(--colour-text-primary);
+}
+.analytics-plot .analytics-plot__value {
+  fill: var(--colour-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.analytics-plot .analytics-plot__reference-label {
+  font-size: 12px;
+}
+.analytics-plot__grid {
+  stroke: var(--colour-border-subtle);
+  stroke-width: 1;
+}
+.analytics-plot__reference {
+  stroke: var(--colour-text-secondary);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+}
+.analytics-plot__mark {
+  fill: var(--colour-focus);
+}
+.analytics-plot__row--danger .analytics-plot__mark {
+  fill: var(--colour-status-danger);
+}
+.analytics-plot__row--warning .analytics-plot__mark {
+  fill: var(--colour-status-warning);
+}
+.analytics-plot__highlight {
+  fill: transparent;
+}
+.analytics-plot__row[data-active] .analytics-plot__highlight {
+  fill: var(--colour-surface-elevated);
+}
+.analytics-plot__row:focus {
+  outline: 2px solid var(--colour-focus);
+  outline-offset: 2px;
+}
+.analytics-plot__detail {
+  position: absolute;
+  z-index: 2;
+  top: 100%;
+  left: 0;
+  right: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--colour-surface-elevated);
+  pointer-events: none;
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.analytics-workspace .analytics-table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.analytics-workspace .analytics-table {
+  width: 100%;
+  min-width: 42rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.analytics-workspace .analytics-table :is(th, td) {
+  padding: 0.875rem;
+  border-bottom: 1px solid var(--colour-border-subtle);
+  vertical-align: middle;
+}
+.analytics-workspace .analytics-table thead th {
+  color: var(--colour-text-secondary);
+  font-weight: 500;
+}
+.analytics-workspace .analytics-table tbody th {
+  width: 36%;
+  font-weight: 600;
+}
+.analytics-workspace .analytics-table td {
+  color: var(--colour-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.analytics-workspace .analytics-table tbody tr:is(:hover, :focus-within) {
+  background: var(--colour-surface-elevated);
+}
+.analytics-workspace .analytics-table a {
+  color: var(--colour-focus);
+  text-underline-offset: 0.2em;
+}
+.analytics-workspace .analytics-table tbody th a {
+  color: var(--colour-text-primary);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.analytics-workspace .analytics-table tbody th a:hover {
+  text-decoration: underline;
+}
+.analytics-workspace .analytics-table small {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--colour-text-secondary);
+  font-weight: 400;
+}
+.analytics-workspace .analytics-signal {
+  border: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: normal;
+}
+.analytics-workspace .analytics-signal--insufficient {
+  color: var(--colour-text-secondary);
+}
+.analytics-footnote {
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+.analytics-rarity-table > summary {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.analytics-rarity-table .analytics-table-wrap {
+  margin-top: var(--space-3);
+}
+.analytics-question-toolbar {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) auto auto auto;
+  gap: var(--space-3);
+  align-items: end;
+}
+.analytics-more-filters {
+  display: contents;
+}
+.analytics-more-filters::details-content {
+  display: contents;
+}
+.analytics-more-filters > summary {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--colour-text-secondary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.analytics-more-filters > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: var(--space-3);
+  grid-column: 1 / -1;
+  grid-row: 2;
+  padding: var(--space-3) 0;
+}
+.analytics-more-filters:not([open]) > div {
+  display: none;
+}
+.analytics-question-toolbar > button {
+  grid-row: 1;
+}
+.analytics-question-toolbar > .analytics-filter-note {
+  grid-column: 1 / -1;
+}
+.analytics-empty {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-6) 0;
+}
+.analytics-empty p {
+  margin: 0;
+  color: var(--colour-text-secondary);
+}
+.analytics-workspace ::selection {
+  background: var(--colour-blue-700);
+  color: var(--colour-text-primary);
+}
+.analytics-workspace input {
+  caret-color: var(--colour-focus);
+}
+@media (forced-colors: active) {
+  .analytics-plot__grid,
+  .analytics-plot__reference {
+    stroke: CanvasText;
+  }
+  .analytics-plot text,
+  .analytics-plot__mark {
+    fill: CanvasText;
+  }
+  .analytics-tabs a[aria-current='page'] {
+    border-bottom-color: LinkText;
+  }
+}
+
+.analytics-question-toolbar > .shared-field {
+  grid-column: 1;
+  grid-row: 1;
+}
+.analytics-question-toolbar > button[type='submit'] {
+  grid-column: 3;
+}
+.analytics-question-toolbar > button[type='button'] {
+  grid-column: 4;
+}
+
+/* Reflow zoomed desktop workspaces without compressing comparison axes. */
+@media (max-width: 60rem) {
+  .analytics-overview-plots {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .analytics-header,
+  .analytics-toolbar,
+  .analytics-results {
+    flex-wrap: wrap;
+  }
+  .analytics-question-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .analytics-question-toolbar > .shared-field {
+    grid-column: 1 / -1;
+  }
+  .analytics-more-filters > summary {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .analytics-more-filters > div {
+    grid-row: 4;
+  }
+  .analytics-question-toolbar > button[type='submit'] {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .analytics-question-toolbar > button[type='button'] {
+    grid-column: 2;
+    grid-row: 3;
+  }
+  .analytics-custom-period {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

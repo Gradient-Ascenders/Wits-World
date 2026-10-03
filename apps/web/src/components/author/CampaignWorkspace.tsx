@@ -1,17 +1,26 @@
 import {
+  AuthorRecordBackLink,
+  ReviewSubmissionMeta,
+} from './AuthorReviewNavigation';
+import { SelectField } from '../fields/SelectField';
+import { SearchField } from '../fields/SearchField';
+import {
   createAppDateTimeFormatter,
   parseAppDateTimeLocal,
   toAppDateTimeLocal,
 } from '../../date-time';
 import { authorErrorDetail } from './author-error-copy';
 import { StateIcon } from '../StatusMessage';
-import { LoadingState } from '../LoadingState';
-import {
-  ArrowLeftIcon,
-  CaretLeftIcon,
-  CaretRightIcon,
-} from '@phosphor-icons/react';
+import { AuthorLoadingState } from './AuthorLoadingState';
+import { ArrowLeftIcon, CaretRightIcon, XIcon } from '@phosphor-icons/react';
 import { AuthorSaveBar } from './AuthorSaveBar';
+import { AuthorDateTimePicker } from './AuthorDateTimePicker';
+import {
+  CampaignContentPicker,
+  CampaignStatus,
+  type CampaignMember,
+} from './CampaignContentPicker';
+import './author-campaigns.css';
 import {
   useCallback,
   useEffect,
@@ -70,6 +79,17 @@ export function CampaignWorkspace({
   const [statusFilter, setStatusFilter] = useState('all');
   const requestRef = useRef<AbortController | null>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
+  const catalogueRef = useRef<HTMLElement>(null);
+  const recordRef = useRef<HTMLDivElement>(null);
+  const routeKey = `${route.mode}:${'campaignId' in route ? route.campaignId : ''}:${'tab' in route ? route.tab : ''}`;
+  const previousRouteRef = useRef(routeKey);
+
+  useEffect(() => {
+    if (state !== 'ready' || previousRouteRef.current === routeKey) return;
+    previousRouteRef.current = routeKey;
+    (route.mode === 'list' ? catalogueRef.current : recordRef.current)?.focus();
+    window.scrollTo({ top: 0 });
+  }, [state, route.mode, routeKey]);
 
   const load = useCallback(async () => {
     requestRef.current?.abort();
@@ -160,7 +180,9 @@ export function CampaignWorkspace({
   }
 
   if (state === 'loading') {
-    return <LoadingState label="Loading campaigns and available members…" />;
+    return (
+      <AuthorLoadingState label="Loading campaigns and available members…" />
+    );
   }
 
   if (state === 'error') {
@@ -186,172 +208,191 @@ export function CampaignWorkspace({
   }
 
   return (
-    <div
-      className={`author-management-view author-management-view--${
-        route.mode === 'list' ? 'list' : 'record'
-      }`}
+    <section
+      className="author-workspace author-workspace--campaigns"
+      aria-label="Campaign workspace"
     >
-      <aside
-        aria-label="Campaign catalogue"
-        className="author-catalogue author-catalogue--campaigns"
-      >
-        <div className="author-catalogue__header">
-          <div>
-            <p className="eyebrow">Scheduling</p>
+      {route.mode === 'list' ? (
+        <>
+          <header className="author-workspace__heading">
             <h2>Campaigns</h2>
-          </div>
-          <Link className="button" href={authorPaths.newCampaign}>
-            New campaign
-          </Link>
-        </div>
-        <div className="author-toolbar author-toolbar--compact">
-          <label className="author-search" htmlFor="campaign-search">
-            <span>Search campaigns</span>
-            <input
-              id="campaign-search"
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search title or description"
-              type="search"
-              value={search}
-            />
-          </label>
-          <label className="author-filter" htmlFor="campaign-status-filter">
-            <span>Status</span>
-            <select
-              id="campaign-status-filter"
-              onChange={(event) => setStatusFilter(event.target.value)}
-              value={statusFilter}
-            >
-              <option value="all">All statuses</option>
-              {['draft', 'in_review', 'approved', 'published', 'retired'].map(
-                (status) => (
-                  <option key={status} value={status}>
-                    {titleCase(status)}
-                  </option>
-                ),
-              )}
-            </select>
-          </label>
-        </div>
-        {filteredCampaigns.length === 0 ? (
-          <div className="author-state author-state--empty state-message state-message--empty">
-            <StateIcon tone="empty" />
-            <strong>
-              {campaigns.length === 0
-                ? 'No campaigns have been created.'
-                : 'No campaigns match these filters.'}
-            </strong>
-          </div>
-        ) : (
-          <ol className="author-record-list">
-            {filteredCampaigns.map((campaign) => (
-              <li key={campaign.campaignId}>
-                <Link
-                  aria-current={
-                    selected?.campaignId === campaign.campaignId
-                      ? 'page'
-                      : undefined
-                  }
-                  className="author-record-link"
-                  href={authorPaths.campaign(campaign.campaignId)}
-                >
-                  <span>
-                    <strong>{campaign.title}</strong>
-                    <small>{campaignScheduleLabel(campaign)}</small>
-                  </span>
-                  <span
-                    className={`status-badge status-badge--author-${campaign.status}`}
-                  >
-                    {titleCase(campaign.status)}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ol>
-        )}
-      </aside>
-
-      <div className="author-record-view">
-        <AuthorFeedback
-          error={apiError}
-          message={message}
-          refObject={feedbackRef}
-        />
-        {route.mode === 'new' ? (
-          <CampaignForm
-            apiBaseUrl={apiBaseUrl}
-            events={events}
-            getAccessToken={getAccessToken}
-            key="new-campaign"
-            navigate={navigate}
-            onSaved={(campaign) => {
-              applyCampaign(campaign, 'Campaign draft created.');
-              navigate(authorPaths.campaign(campaign.campaignId));
-            }}
-            trails={trails}
+            <Link className="button" href={authorPaths.newCampaign}>
+              New campaign
+            </Link>
+          </header>
+          <aside
+            aria-label="Campaign catalogue"
+            className="author-catalogue"
+            ref={catalogueRef}
+            tabIndex={-1}
+          >
+            <div className="campaign-catalogue-filters">
+              <SearchField
+                label="Search"
+                id="campaign-search"
+                placeholder="Title or description"
+                value={search}
+                onChange={setSearch}
+              />
+              <SelectField
+                label="Lifecycle"
+                id="campaign-status-filter"
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  { value: 'all', label: 'All' },
+                  ...[
+                    'draft',
+                    'in_review',
+                    'approved',
+                    'published',
+                    'retired',
+                  ].map((status) => ({
+                    value: status,
+                    label: titleCase(status),
+                  })),
+                ]}
+              />
+            </div>
+            <p className="author-catalogue__results" aria-live="polite">
+              {filteredCampaigns.length}{' '}
+              {filteredCampaigns.length === 1 ? 'campaign' : 'campaigns'}
+            </p>
+            {filteredCampaigns.length === 0 ? (
+              <div className="author-state author-state--empty state-message state-message--empty">
+                <StateIcon tone="empty" />
+                <strong>
+                  {campaigns.length === 0
+                    ? 'No campaigns yet'
+                    : 'No campaigns match'}
+                </strong>
+                <p>
+                  {campaigns.length === 0
+                    ? 'Create a draft to start scheduling content.'
+                    : 'Adjust the search or lifecycle filter.'}
+                </p>
+              </div>
+            ) : (
+              <div className="campaign-table-wrap">
+                <table className="campaign-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Campaign</th>
+                      <th scope="col">Schedule · Johannesburg</th>
+                      <th scope="col">Lifecycle</th>
+                      <th scope="col">Content</th>
+                      <th scope="col">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCampaigns.map((campaign) => (
+                      <tr
+                        className="author-linked-row"
+                        key={campaign.campaignId}
+                      >
+                        <th scope="row">
+                          <Link
+                            className="author-row-link"
+                            href={authorPaths.campaign(campaign.campaignId)}
+                          >
+                            {campaign.title}
+                          </Link>
+                        </th>
+                        <td>{campaignScheduleLabel(campaign)}</td>
+                        <td>
+                          <CampaignStatus status={campaign.status} />
+                        </td>
+                        <td>
+                          {memberCounts(
+                            campaign.events.length,
+                            campaign.trails.length,
+                          )}
+                        </td>
+                        <td>
+                          <time dateTime={campaign.updatedAt}>
+                            {formatDateTime(campaign.updatedAt)}
+                          </time>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </aside>
+        </>
+      ) : (
+        <div className="author-record-view" ref={recordRef} tabIndex={-1}>
+          <AuthorFeedback
+            error={apiError}
+            message={message}
+            refObject={feedbackRef}
           />
-        ) : selected && route.mode === 'edit' ? (
-          selected.status === 'draft' ? (
+          {route.mode === 'new' ? (
             <CampaignForm
               apiBaseUrl={apiBaseUrl}
-              campaign={selected}
               events={events}
               getAccessToken={getAccessToken}
-              key={`campaign-form:${selected.campaignId}:${selected.version}`}
+              key="new-campaign"
               navigate={navigate}
-              onReloadServer={load}
               onSaved={(campaign) => {
-                applyCampaign(campaign, 'Campaign changes saved.');
+                applyCampaign(campaign, 'Campaign draft created.');
                 navigate(authorPaths.campaign(campaign.campaignId));
               }}
               trails={trails}
             />
-          ) : (
-            <CampaignEditUnavailable campaign={selected} />
-          )
-        ) : selected ? (
-          <CampaignDetail
-            apiBaseUrl={apiBaseUrl}
-            campaign={selected}
-            getAccessToken={getAccessToken}
-            onChanged={applyCampaign}
-            onConflict={async () => {
-              await load();
-              setMessage(
-                'The campaign changed on the server. Its authoritative state was reloaded.',
-              );
-            }}
-          />
-        ) : 'campaignId' in route ? (
-          <section
-            className="author-state author-state--error state-message state-message--error"
-            role="alert"
-          >
-            <StateIcon tone="error" />
-            <strong>This campaign is not in the loaded catalogue.</strong>
-            <Link className="button button--quiet" href={authorPaths.campaigns}>
-              Back to campaigns
-            </Link>
-          </section>
-        ) : (
-          <section className="author-welcome">
-            <p className="eyebrow">Campaign catalogue</p>
-            <h3>
-              {campaigns.length > 0
-                ? 'Select a campaign'
-                : 'Create the first campaign'}
-            </h3>
-            <p>
-              Group published events and trails inside one authoritative
-              schedule.
-            </p>
-            <Link className="button" href={authorPaths.newCampaign}>
-              New campaign
-            </Link>
-          </section>
-        )}
-      </div>
-    </div>
+          ) : selected && route.mode === 'edit' ? (
+            selected.status === 'draft' ? (
+              <CampaignForm
+                apiBaseUrl={apiBaseUrl}
+                campaign={selected}
+                events={events}
+                getAccessToken={getAccessToken}
+                key={`campaign-form:${selected.campaignId}:${selected.version}`}
+                navigate={navigate}
+                onReloadServer={load}
+                onSaved={(campaign) => {
+                  applyCampaign(campaign, 'Campaign changes saved.');
+                  navigate(authorPaths.campaign(campaign.campaignId));
+                }}
+                trails={trails}
+              />
+            ) : (
+              <CampaignEditUnavailable campaign={selected} />
+            )
+          ) : selected ? (
+            <CampaignDetail
+              apiBaseUrl={apiBaseUrl}
+              campaign={selected}
+              getAccessToken={getAccessToken}
+              tab={'tab' in route ? route.tab : undefined}
+              key={selected.campaignId}
+              onChanged={applyCampaign}
+              onConflict={async () => {
+                await load();
+                setMessage(
+                  'The campaign changed on the server. Its authoritative state was reloaded.',
+                );
+              }}
+            />
+          ) : 'campaignId' in route ? (
+            <section
+              className="author-state author-state--error state-message state-message--error"
+              role="alert"
+            >
+              <StateIcon tone="error" />
+              <strong>This campaign is not in the loaded catalogue.</strong>
+              <Link
+                className="button button--quiet"
+                href={authorPaths.campaigns}
+              >
+                Back to campaigns
+              </Link>
+            </section>
+          ) : null}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -361,12 +402,14 @@ function CampaignDetail({
   getAccessToken,
   onChanged,
   onConflict,
+  tab = 'details',
 }: {
   apiBaseUrl: string;
   campaign: AuthorCampaign;
   getAccessToken: ApiAccessTokenProvider;
   onChanged: (campaign: AuthorCampaign, notice: string) => void;
   onConflict: () => Promise<void>;
+  tab?: 'details' | 'review' | 'history';
 }) {
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -411,30 +454,63 @@ function CampaignDetail({
 
   return (
     <article aria-labelledby="campaign-detail-title" className="author-detail">
-      <Link className="author-back-link" href={authorPaths.campaigns}>
-        <ArrowLeftIcon size={16} aria-hidden="true" /> Campaigns
-      </Link>
+      <AuthorRecordBackLink href={authorPaths.campaigns}>
+        Campaigns
+      </AuthorRecordBackLink>
       <header className="author-detail__heading">
-        <div>
-          <p className="eyebrow">Campaign schedule</p>
-          <h3 id="campaign-detail-title">{campaign.title}</h3>
-          <p>{campaign.description ?? 'No campaign description provided.'}</p>
-        </div>
-        <span
-          className={`status-badge status-badge--author-${campaign.status}`}
-        >
-          {titleCase(campaign.status)}
-        </span>
+        <h3 id="campaign-detail-title">{campaign.title}</h3>
+        <CampaignStatus status={campaign.status} />
       </header>
-
-      <AuthorFeedback error={apiError} refObject={feedbackRef} />
-      <div className="author-overview-grid">
-        <section className="author-summary-block">
-          <p className="eyebrow">Schedule</p>
-          <h4>{campaignScheduleLabel(campaign)}</h4>
-          <dl className="author-metadata">
+      <ReviewSubmissionMeta
+        entityId={campaign.campaignId}
+        submittedAt={campaign.submittedAt}
+        submittedBy={campaign.submittedBy}
+      />
+      <div className="campaign-detail-summary">
+        <p>
+          {campaignScheduleLabel(campaign)} · Johannesburg ·{' '}
+          {memberCounts(campaign.events.length, campaign.trails.length)}
+        </p>
+        {campaign.status === 'draft' ? (
+          <Link
+            className="button button--quiet"
+            href={authorPaths.editCampaign(campaign.campaignId)}
+          >
+            Edit campaign
+          </Link>
+        ) : null}
+      </div>
+      <nav className="campaign-tabs" aria-label="Campaign workspace">
+        <Link
+          href={authorPaths.campaign(campaign.campaignId)}
+          aria-current={tab === 'details' ? 'page' : undefined}
+        >
+          Details
+        </Link>
+        <Link
+          href={authorPaths.campaignReview(campaign.campaignId)}
+          aria-current={tab === 'review' ? 'page' : undefined}
+        >
+          Review
+        </Link>
+        <Link
+          href={authorPaths.campaignHistory(campaign.campaignId)}
+          aria-current={tab === 'history' ? 'page' : undefined}
+        >
+          History
+        </Link>
+      </nav>
+      <AuthorFeedback
+        compact={tab === 'review'}
+        error={apiError}
+        refObject={feedbackRef}
+      />
+      {tab === 'details' || tab === 'review' ? (
+        <div className="campaign-definition">
+          {campaign.description ? <p>{campaign.description}</p> : null}
+          <dl className="campaign-metadata">
             <div>
-              <dt>Starts</dt>
+              <dt>Starts at</dt>
               <dd>
                 <time dateTime={campaign.startsAt}>
                   {formatDateTime(campaign.startsAt)}
@@ -442,72 +518,70 @@ function CampaignDetail({
               </dd>
             </div>
             <div>
-              <dt>Ends</dt>
+              <dt>Ends at</dt>
               <dd>
                 <time dateTime={campaign.endsAt}>
                   {formatDateTime(campaign.endsAt)}
                 </time>
               </dd>
             </div>
+            <div>
+              <dt>Timezone</dt>
+              <dd>Johannesburg · UTC+02:00</dd>
+            </div>
           </dl>
+          <h4>Content</h4>
+          <CampaignMembers
+            items={[
+              ...campaign.events.map((event) => ({
+                id: event.eventId,
+                title: event.title,
+                status: event.authoringStatus,
+                kind: 'event' as const,
+              })),
+              ...campaign.trails.map((trail) => ({
+                id: trail.trailId,
+                title: trail.title,
+                status: trail.status,
+                kind: 'trail' as const,
+              })),
+            ]}
+          />
+        </div>
+      ) : null}
+      {tab === 'review' ? (
+        <section className="campaign-review" aria-label="Campaign review">
+          {campaign.status === 'retired' ? (
+            <p>This campaign is retired.</p>
+          ) : null}
+          <AuthorLifecycleControls
+            busy={busy}
+            noun="campaign"
+            onAction={(action, reason) => void lifecycle(action, reason)}
+            retirementDescription={
+              <p>
+                Its members will leave new campaign discovery. Existing player
+                history remains intact and this campaign cannot be republished.
+              </p>
+            }
+            retirementTitle={`Retire ${campaign.title}?`}
+            status={campaign.status}
+            submittedBy={campaign.submittedBy}
+          />
         </section>
-        <section className="author-summary-block">
-          <p className="eyebrow">Membership</p>
-          <h4>
-            {campaign.events.length} events · {campaign.trails.length} trails
-          </h4>
-          {campaign.events.length === 0 && campaign.trails.length === 0 ? (
-            <p>No events or trails are assigned yet.</p>
-          ) : (
-            <ul className="author-membership-summary">
-              {campaign.events.map((event) => (
-                <li key={event.eventId}>
-                  <Link href={authorPaths.event(event.eventId)}>
-                    {event.title}
-                  </Link>
-                  <span>{titleCase(event.authoringStatus)} event</span>
-                </li>
-              ))}
-              {campaign.trails.map((trail) => (
-                <li key={trail.trailId}>
-                  <span>{trail.title}</span>
-                  <span>{titleCase(trail.status)} trail</span>
-                </li>
-              ))}
-            </ul>
-          )}
+      ) : null}
+      {tab === 'history' ? (
+        <section className="campaign-history" aria-label="Campaign history">
+          <AuthorHistoryPanel
+            defaultOpen
+            apiBaseUrl={apiBaseUrl}
+            entityId={campaign.campaignId}
+            entityType="campaign"
+            getAccessToken={getAccessToken}
+            revision={campaign.version}
+          />
         </section>
-      </div>
-
-      <AuthorLifecycleControls
-        busy={busy}
-        editControl={
-          <Link
-            className="button"
-            href={authorPaths.editCampaign(campaign.campaignId)}
-          >
-            Edit campaign
-          </Link>
-        }
-        noun="campaign"
-        onAction={(action, reason) => void lifecycle(action, reason)}
-        retirementDescription={
-          <p>
-            Its members will leave new campaign discovery. Existing player
-            history remains intact and this campaign cannot be republished.
-          </p>
-        }
-        retirementTitle={`Retire ${campaign.title}?`}
-        status={campaign.status}
-        submittedBy={campaign.submittedBy}
-      />
-      <AuthorHistoryPanel
-        apiBaseUrl={apiBaseUrl}
-        entityId={campaign.campaignId}
-        entityType="campaign"
-        getAccessToken={getAccessToken}
-        revision={campaign.version}
-      />
+      ) : null}
     </article>
   );
 }
@@ -526,7 +600,6 @@ function CampaignEditUnavailable({ campaign }: { campaign: AuthorCampaign }) {
       </Link>
       <header className="author-detail__heading">
         <div>
-          <p className="eyebrow">Campaign state</p>
           <h3 id="campaign-edit-unavailable">{campaign.title}</h3>
         </div>
         <span
@@ -586,6 +659,45 @@ function CampaignForm({
   const [validation, setValidation] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [reloadDialogOpen, setReloadDialogOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const addContentRef = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLElement>(null);
+  const memberItems: CampaignMember[] = [
+    ...events.map((event) => ({
+      id: event.eventId,
+      title: event.title,
+      status: event.authoringStatus,
+      kind: 'event' as const,
+    })),
+    ...trails.map((trail) => ({
+      id: trail.trailId,
+      title: trail.title,
+      status: trail.status,
+      kind: 'trail' as const,
+    })),
+  ];
+  const selectedMembers: CampaignMember[] = [
+    ...draft.eventIds.map(
+      (id) =>
+        memberItems.find((item) => item.kind === 'event' && item.id === id) ?? {
+          id,
+          title:
+            campaign?.events.find((item) => item.eventId === id)?.title ?? id,
+          status: 'unavailable' as const,
+          kind: 'event' as const,
+        },
+    ),
+    ...draft.trailIds.map(
+      (id) =>
+        memberItems.find((item) => item.kind === 'trail' && item.id === id) ?? {
+          id,
+          title:
+            campaign?.trails.find((item) => item.trailId === id)?.title ?? id,
+          status: 'unavailable' as const,
+          kind: 'trail' as const,
+        },
+    ),
+  ];
   const operationRef = useRef<AbortController | null>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const reloadButtonRef = useRef<HTMLButtonElement>(null);
@@ -596,6 +708,18 @@ function CampaignForm({
   );
 
   useEffect(() => () => operationRef.current?.abort(), []);
+  function setField<Key extends keyof CampaignDraft>(
+    key: Key,
+    value: CampaignDraft[Key],
+  ) {
+    setDraft((current) => ({ ...current, [key]: value }));
+    setValidation((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
   function setMember(
     kind: 'eventIds' | 'trailIds',
     id: string,
@@ -611,11 +735,15 @@ function CampaignForm({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy || staleEdit) return;
     const nextValidation = validateCampaignDraft(draft);
     setValidation(nextValidation);
     if (Object.keys(nextValidation).length > 0) {
       const firstField = Object.keys(nextValidation)[0]!;
-      document.getElementById(`campaign-${fieldId(firstField)}`)?.focus();
+      const field = document.getElementById(`campaign-${fieldId(firstField)}`);
+      (
+        field?.querySelector<HTMLElement>('[role="spinbutton"]') ?? field
+      )?.focus();
       return;
     }
 
@@ -676,10 +804,9 @@ function CampaignForm({
       </Link>
       <header className="author-detail__heading">
         <div>
-          <p className="eyebrow">{campaign ? 'Edit draft' : 'New draft'}</p>
-          <h3>{campaign ? campaign.title : 'Create campaign'}</h3>
+          <h3>{campaign ? campaign.title : 'New campaign'}</h3>
         </div>
-        <span className="status-badge status-badge--author-draft">Draft</span>
+        {campaign ? <CampaignStatus status={campaign.status} /> : null}
       </header>
       <AuthorFeedback error={apiError} refObject={feedbackRef} />
       {staleEdit ? (
@@ -700,23 +827,19 @@ function CampaignForm({
         </div>
       ) : null}
 
-      <div className="author-form-grid">
-        <p className="author-form-grid__wide">
-          Title, Starts, and Ends are required. Times use Johannesburg time.
-        </p>
+      <div className="campaign-form-fields">
         <label className="form-field" htmlFor="campaign-title">
-          <span>Title</span>
+          <span>Campaign title</span>
           <input
             aria-describedby={
               validation.title ? 'campaign-title-error' : undefined
             }
             aria-invalid={validation.title ? 'true' : undefined}
+            disabled={busy}
             id="campaign-title"
             maxLength={120}
             required
-            onChange={(event) =>
-              setDraft({ ...draft, title: event.target.value })
-            }
+            onChange={(event) => setField('title', event.target.value)}
             value={draft.title}
           />
           {validation.title ? (
@@ -729,89 +852,89 @@ function CampaignForm({
           className="form-field author-form-grid__wide"
           htmlFor="campaign-description"
         >
-          <span>Description</span>
+          <span>Description (optional)</span>
           <textarea
+            rows={3}
+            disabled={busy}
             id="campaign-description"
             maxLength={2000}
-            onChange={(event) =>
-              setDraft({ ...draft, description: event.target.value })
-            }
+            onChange={(event) => setField('description', event.target.value)}
             value={draft.description}
           />
         </label>
-        <label className="form-field" htmlFor="campaign-starts-at">
-          <span>Starts</span>
-          <input
-            aria-describedby={
-              validation.startsAt ? 'campaign-starts-at-error' : undefined
-            }
-            aria-invalid={validation.startsAt ? 'true' : undefined}
+      </div>
+      <fieldset className="campaign-form-section">
+        <legend>Schedule · Johannesburg</legend>
+        <div className="author-form__grid">
+          <AuthorDateTimePicker
             id="campaign-starts-at"
-            required
-            onChange={(event) =>
-              setDraft({ ...draft, startsAt: event.target.value })
-            }
-            type="datetime-local"
+            label="Starts at"
             value={draft.startsAt}
+            error={validation.startsAt}
+            disabled={busy}
+            onChange={(startsAt) => setField('startsAt', startsAt)}
           />
-          {validation.startsAt ? (
-            <span className="field-error" id="campaign-starts-at-error">
-              {validation.startsAt}
-            </span>
-          ) : null}
-        </label>
-        <label className="form-field" htmlFor="campaign-ends-at">
-          <span>Ends</span>
-          <input
-            aria-describedby={
-              validation.endsAt ? 'campaign-ends-at-error' : undefined
-            }
-            aria-invalid={validation.endsAt ? 'true' : undefined}
+          <AuthorDateTimePicker
             id="campaign-ends-at"
-            required
-            onChange={(event) =>
-              setDraft({ ...draft, endsAt: event.target.value })
-            }
-            type="datetime-local"
+            label="Ends at"
             value={draft.endsAt}
+            error={validation.endsAt}
+            disabled={busy}
+            onChange={(endsAt) => setField('endsAt', endsAt)}
           />
-          {validation.endsAt ? (
-            <span className="field-error" id="campaign-ends-at-error">
-              {validation.endsAt}
-            </span>
-          ) : null}
-        </label>
-      </div>
-
-      <div className="author-membership-grid">
-        <MembershipFieldset
-          empty="No events are available. Create and publish an event first."
-          items={events.map((event) => ({
-            id: event.eventId,
-            label: event.title,
-            status: titleCase(event.authoringStatus),
-          }))}
-          legend="Events"
-          onChange={(id, checked) => setMember('eventIds', id, checked)}
-          selected={draft.eventIds}
+        </div>
+      </fieldset>
+      <section
+        className="campaign-form-section"
+        aria-labelledby="campaign-content-title"
+        ref={contentRef}
+        tabIndex={-1}
+      >
+        <div className="campaign-content-heading">
+          <h4 id="campaign-content-title">
+            Content
+            {selectedMembers.length ? (
+              <span>
+                {memberCounts(draft.eventIds.length, draft.trailIds.length)}
+              </span>
+            ) : null}
+          </h4>
+          <button
+            className="button button--quiet"
+            type="button"
+            ref={addContentRef}
+            disabled={busy}
+            onClick={() => setPickerOpen(true)}
+          >
+            Add content
+          </button>
+        </div>
+        <CampaignMembers
+          items={selectedMembers}
+          busy={busy}
+          onRemove={(item) => {
+            setMember(
+              item.kind === 'event' ? 'eventIds' : 'trailIds',
+              item.id,
+              false,
+            );
+            contentRef.current?.focus();
+          }}
         />
-        <MembershipFieldset
-          empty="No trails are available."
-          items={trails.map((trail) => ({
-            id: trail.trailId,
-            label: trail.title,
-            status: titleCase(trail.status),
-          }))}
-          legend="Trails"
-          onChange={(id, checked) => setMember('trailIds', id, checked)}
-          selected={draft.trailIds}
+      </section>
+      {pickerOpen ? (
+        <CampaignContentPicker
+          items={memberItems}
+          eventIds={draft.eventIds}
+          trailIds={draft.trailIds}
+          returnFocusRef={addContentRef}
+          onCancel={() => setPickerOpen(false)}
+          onApply={(selection) => {
+            setDraft((current) => ({ ...current, ...selection }));
+            setPickerOpen(false);
+          }}
         />
-      </div>
-      <p className="field-help">
-        Drafts may be saved without members. Approval and publication require at
-        least one published member, and the server checks schedule conflicts.
-      </p>
-
+      ) : null}
       <AuthorSaveBar
         busy={busy}
         dirty={dirty}
@@ -819,7 +942,11 @@ function CampaignForm({
         isNew={!campaign}
       >
         <button className="button" disabled={busy || staleEdit} type="submit">
-          {busy ? 'Saving…' : campaign ? 'Save campaign' : 'Create campaign'}
+          {busy
+            ? 'Saving…'
+            : campaign
+              ? 'Save campaign'
+              : 'Create draft campaign'}
         </button>
         <button
           className="button button--quiet"
@@ -860,106 +987,86 @@ function CampaignForm({
   );
 }
 
-function MembershipFieldset({
-  empty,
+function CampaignMembers({
   items,
-  legend,
-  onChange,
-  selected,
+  busy,
+  onRemove,
 }: {
-  empty: string;
-  items: Array<{ id: string; label: string; status: string }>;
-  legend: string;
-  onChange: (id: string, checked: boolean) => void;
-  selected: string[];
+  items: CampaignMember[];
+  busy?: boolean;
+  onRemove?: (item: CampaignMember) => void;
 }) {
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
-  const filteredItems = items.filter((item) =>
-    item.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
-  );
-  const pageCount = Math.max(1, Math.ceil(filteredItems.length / 10));
-  const currentPage = Math.min(page, pageCount);
-  const visibleItems = filteredItems.slice(
-    (currentPage - 1) * 10,
-    currentPage * 10,
-  );
-
+  if (items.length === 0)
+    return (
+      <div className="campaign-content-empty">
+        <strong>No content added.</strong>
+        <p>You can save a draft before adding events or trails.</p>
+      </div>
+    );
   return (
-    <fieldset className="author-membership">
-      <legend>{legend}</legend>
-      {items.length === 0 ? (
-        <p>{empty}</p>
-      ) : (
-        <>
-          <label className="author-search author-membership__search">
-            <span>Search {legend.toLocaleLowerCase()}</span>
-            <input
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
-              }}
-              type="search"
-              value={query}
-            />
-          </label>
-          {filteredItems.length === 0 ? (
-            <p>No matching {legend.toLocaleLowerCase()}.</p>
-          ) : (
-            <ul>
-              {visibleItems.map((item) => (
-                <li key={item.id}>
-                  <label>
-                    <input
-                      checked={selected.includes(item.id)}
-                      onChange={(event) =>
-                        onChange(item.id, event.target.checked)
-                      }
-                      type="checkbox"
-                    />
-                    <span>
-                      <strong>{item.label}</strong>
-                      <small>{item.status}</small>
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-          {pageCount > 1 ? (
-            <nav
-              aria-label={`${legend} pages`}
-              className="author-pagination author-membership__pagination"
-            >
-              <button
-                aria-label={`Previous ${legend.toLocaleLowerCase()} page`}
-                className="button button--quiet"
-                disabled={currentPage === 1}
-                onClick={() => setPage(currentPage - 1)}
-                title={`Previous ${legend.toLocaleLowerCase()} page`}
-                type="button"
-              >
-                <CaretLeftIcon aria-hidden="true" size={18} />
-              </button>
-              <span>
-                Page {currentPage} of {pageCount}
-              </span>
-              <button
-                aria-label={`Next ${legend.toLocaleLowerCase()} page`}
-                className="button button--quiet"
-                disabled={currentPage === pageCount}
-                onClick={() => setPage(currentPage + 1)}
-                title={`Next ${legend.toLocaleLowerCase()} page`}
-                type="button"
-              >
-                <CaretRightIcon aria-hidden="true" size={18} />
-              </button>
-            </nav>
-          ) : null}
-        </>
-      )}
-    </fieldset>
+    <div className="campaign-table-wrap">
+      <table className="campaign-table campaign-table--members">
+        <thead>
+          <tr>
+            <th scope="col">Title</th>
+            <th scope="col">Type</th>
+            <th scope="col">Lifecycle</th>
+            {onRemove ? (
+              <th scope="col">
+                <span className="sr-only">Remove</span>
+              </th>
+            ) : null}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={`${item.kind}:${item.id}`}>
+              <th scope="row">
+                {item.kind === 'event' && !onRemove ? (
+                  <Link href={authorPaths.event(item.id)}>
+                    {item.title}
+                    <CaretRightIcon size={16} aria-hidden="true" />
+                  </Link>
+                ) : (
+                  item.title
+                )}
+                {item.status !== 'published' ? (
+                  <small className="campaign-member-warning">
+                    {item.status === 'unavailable'
+                      ? 'Unavailable in the loaded catalogue. Remove or reload before review.'
+                      : item.status === 'retired'
+                        ? 'Retired content cannot be approved or published.'
+                        : 'Must be published before campaign approval.'}
+                  </small>
+                ) : null}
+              </th>
+              <td>{item.kind === 'event' ? 'Event' : 'Trail'}</td>
+              <td>
+                <CampaignStatus status={item.status} />
+              </td>
+              {onRemove ? (
+                <td className="campaign-member-remove">
+                  <button
+                    className="button button--quiet"
+                    type="button"
+                    aria-label={`Remove ${item.kind}: ${item.title}`}
+                    disabled={busy}
+                    onClick={() => onRemove(item)}
+                  >
+                    <XIcon size={18} aria-hidden="true" />
+                  </button>
+                </td>
+              ) : null}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
+}
+
+function memberCounts(events: number, trails: number) {
+  return `${events} ${events === 1 ? 'event' : 'events'} · ${trails} ${trails === 1 ? 'trail' : 'trails'}`;
 }
 
 function campaignDraft(campaign?: AuthorCampaign): CampaignDraft {

@@ -105,6 +105,13 @@ components:
     backgroundColor: 'rgb(212 175 55 / 8%)'
     textColor: '{colors.beacon-gold-light}'
     rounded: '{rounded.md}'
+  interactive-highlight:
+    rounded: '{rounded.sm}'
+  filter-control:
+    backgroundColor: '{colors.night-sky-panel}'
+    textColor: '{colors.ivory}'
+    rounded: '{rounded.sm}'
+    height: '2.75rem'
   status-active:
     backgroundColor: 'rgb(57 184 121 / 8%)'
     textColor: '{colors.success-green}'
@@ -239,6 +246,10 @@ General controls use the small and medium radii; panels use large corners; badge
 
 Live Ranked uses a `1px` Beacon Gold Light stage border, the shared `1rem` panel radius, and a scoped `1.75rem` radius in tall portrait layouts. The Change deck control uses the shared button radius of `0.625rem`.
 
+**The Gentle Highlight Rule.** Interactive background highlights use the small radius (`--radius-sm`, mapped to `rounded.sm`) and enough horizontal padding to keep text clear of their edges. Apply this treatment consistently to tabs, section navigation, and clickable list or table rows in hover, focus, and selected states wherever those states have a background fill. Preserve each component's existing accent colors, selection underline, and visible keyboard focus.
+
+For table rows, round only the outer corners of the first and last cells so the highlight reads as one continuous surface. Keep table rules and column alignment intact; use separate borders with zero spacing when collapsed borders prevent rounding. Avoid clipping focus outlines to achieve rounded highlights. Existing buttons, panels, and primary navigation retain their own radius tokens.
+
 ## Components
 
 ### Buttons
@@ -257,11 +268,21 @@ The shared `CardThumbnail` pairs the existing material frame with `useCardTilt`.
 
 Clickable deck roster cards, collection-picker cards, and draft artwork open the shared `CardPresentationDialog`. Inspection presents the supplied card data without changing draft membership or order; unavailable detailed rules receive an explicit message. Keep keyboard activation, visible focus, modal focus containment, Escape dismissal, and focus restoration. Add and Remove remain separate controls outside the frame.
 
+The favourite-card editor shows the selected cards as artwork in order. Drag the
+artwork or its grip to reorder; arrow keys on the grip provide the keyboard
+alternative. Inspection and removal remain separate actions. The picker requests
+one currently owned copy per definition and renders 12 cards at a time, retaining
+saved copy IDs for existing favourites.
+
 Resolve motion through the application's shared preference: `reduce` disables card transforms regardless of the OS preference, `full` enables the shared pointer effect even when the OS requests reduction, and `system` follows the OS. Touch inspection remains available without tilt. This interaction is a collectible-card staple; ordinary panels retain their existing depth behavior.
 
 ### Inputs / Fields
 
 Fields sit on the darkest navy with ivory text, a thin border, small radius, and touch-target height. Focus uses the global blue outline. Invalid fields use the danger color in the border and an accompanying text error.
+
+**The Shared Selection Control Rule.** Native radios and checkboxes use `src/styles/selection-controls.css`: 20px controls, a slate outline, a blue radio dot or filled checkbox with a dark checkmark, and a quiet blue selected-row highlight. Keep native input semantics, label activation, radio-group arrow keys, checkbox Space activation, and disabled states. Wrapped controls show focus around their whole label; standalone controls retain the global focus outline. Existing card and grid layouts keep their geometry, and the starter-card picker retains its hidden radios and card-level selection/focus treatment. Forced-color mode restores native control rendering. Page styles should define alignment rather than duplicate the shared control appearance.
+
+**The Shared Filter Control Rule.** Search and filter controls across Author, Explore, and Collection use the shared search and select components. Author creation and editing forms use the same select component, including nested move, effect, challenge, and question fields. Text inputs, textareas, and date controls share its surface, border, corner radius, and focus treatment. Their slightly raised navy surface, small corners, quiet border, and consistent target height make browsing controls recognizable across pages. Searches include a leading search icon and a clear action that returns focus to the input. Custom select menus use the same navy surface, gently rounded options, and a checkmark beside the selected value. Keep visible labels or equivalent accessible names, keyboard navigation, Escape dismissal, focus restoration, disabled states, and viewport-bounded scrolling. Preserve the page's existing filtering and submission behavior.
 
 ### Navigation
 
@@ -299,6 +320,7 @@ Only a current, matching, loaded server profile supplies season wins, losses, ra
 - **Do** use the shared spacing and radius steps before adding local values.
 - **Do** share the Collection-style icon tabs across the battle lobbies while keeping their compositions distinct; keep Live Ranked's stage, deck fan, and responsive tall variants scoped to that surface.
 - **Do** preserve authoritative records, recovery controls, and reduced-motion behavior in ranked presentation.
+- **Do** give interactive highlights gentle corners and breathing room using the Gentle Highlight Rule.
 
 ### Don't:
 
@@ -307,4 +329,4 @@ Only a current, matching, loaded server profile supplies season wins, losses, ra
 - **Don't** hide task status inside map styling or color alone.
 - **Don't** invent ranked tiers, ratings, ranks, streaks, history, or eligibility to complete a visual composition.
 
-Shared collectible-card interaction guidance was edited with assistance from Codex[GPT-6].
+Shared collectible-card interaction, gentle-highlight, filter-control, and selection-control guidance was edited with assistance from Codex[GPT-6].

@@ -106,13 +106,6 @@
   box-shadow: var(--glow-blue);
 }
 
-.challenge-choice input {
-  width: 1.2rem;
-  height: 1.2rem;
-  margin: 0;
-  accent-color: var(--colour-blue-300);
-}
-
 .challenge-question__submit {
   width: 100%;
   margin-top: var(--space-5);

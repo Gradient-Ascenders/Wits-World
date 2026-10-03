@@ -1,3 +1,4 @@
+import { selectOption } from './select-option';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { buildCard, buildUuid } from '../tests/fixtures/cards';
 
@@ -242,12 +243,13 @@ for (const reducedMotion of [false, true]) {
         page.getByText('1 used in a deck', { exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByRole('combobox', { name: 'Availability' }),
-      ).toHaveValue('ready');
+        page.getByLabel('Availability', { exact: true }),
+      ).toContainText('Ready');
       await expect(page.getByText('No evolution available')).toHaveCount(0);
-      await page
-        .getByRole('combobox', { name: 'Availability' })
-        .selectOption('all');
+      await selectOption(
+        page.getByLabel('Availability', { exact: true }),
+        'all',
+      );
       await expect(page.getByText('No evolution available')).toBeVisible();
       const sourceDetailsTrigger = page.getByRole('button', {
         name: 'View Quillip details',
@@ -492,9 +494,7 @@ for (const reducedMotion of [false, true]) {
     eligible = 2;
     await page.getByRole('link', { name: 'Cards', exact: true }).click();
     await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
-    await page
-      .getByRole('combobox', { name: 'Availability' })
-      .selectOption('all');
+    await selectOption(page.getByLabel('Availability', { exact: true }), 'all');
     await expect(
       page.getByText('Copies locked in decks', { exact: true }),
     ).toBeVisible();
@@ -507,9 +507,7 @@ for (const reducedMotion of [false, true]) {
     previewFails = true;
     await page.getByRole('link', { name: 'Cards', exact: true }).click();
     await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
-    await page
-      .getByRole('combobox', { name: 'Availability' })
-      .selectOption('all');
+    await selectOption(page.getByLabel('Availability', { exact: true }), 'all');
     await expect(page.getByText('Availability unknown')).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath('preview-error-mobile.png'),
@@ -969,8 +967,8 @@ test('finds evolutions across pages and keeps browsing usable after consuming th
     await page.goto('/collection/evolutions');
     const list = page.getByRole('list', { name: 'Evolution candidates' });
     await expect(
-      page.getByRole('combobox', { name: 'Availability' }),
-    ).toHaveValue('ready');
+      page.getByLabel('Availability', { exact: true }),
+    ).toContainText('Ready');
     await expect(list.getByRole('listitem')).toHaveCount(6);
     await expect(page.getByText('1–6 of 7 cards')).toBeVisible();
     const overflows = await page.evaluate(
@@ -997,9 +995,7 @@ test('finds evolutions across pages and keeps browsing usable after consuming th
     await expect(
       list.getByRole('button', { name: 'Preview Voltiki evolution' }),
     ).toBeVisible();
-    await page
-      .getByRole('combobox', { name: 'Rarity' })
-      .selectOption('legendary');
+    await selectOption(page.getByLabel('Rarity', { exact: true }), 'legendary');
     await expect(
       page.getByRole('heading', { name: 'No matching cards' }),
     ).toBeVisible();
@@ -1012,9 +1008,10 @@ test('finds evolutions across pages and keeps browsing usable after consuming th
     await expect(
       list.getByRole('button', { name: 'View Arcalyron details' }),
     ).toBeVisible();
-    await page
-      .getByRole('combobox', { name: 'Availability' })
-      .selectOption('ready');
+    await selectOption(
+      page.getByLabel('Availability', { exact: true }),
+      'ready',
+    );
     await expect(
       page.getByRole('heading', { name: 'No matching cards' }),
     ).toBeVisible();
@@ -1022,9 +1019,7 @@ test('finds evolutions across pages and keeps browsing usable after consuming th
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Clear filters' }).click();
-  await page
-    .getByRole('combobox', { name: 'Availability' })
-    .selectOption('ready');
+  await selectOption(page.getByLabel('Availability', { exact: true }), 'ready');
   await page
     .getByRole('navigation', { name: 'Evolution pages below cards' })
     .getByRole('button', { name: 'Next page' })
@@ -1044,9 +1039,9 @@ test('finds evolutions across pages and keeps browsing usable after consuming th
   await expect(
     page.getByRole('navigation', { name: 'Evolution pages', exact: true }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole('combobox', { name: 'Availability' }),
-  ).toHaveValue('ready');
+  await expect(page.getByLabel('Availability', { exact: true })).toContainText(
+    'Ready',
+  );
   expect(mutationRequests).toBe(1);
   await page.screenshot({
     path: testInfo.outputPath('browse-after-evolving.png'),

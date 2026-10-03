@@ -1,3 +1,4 @@
+import { AuthorReviewNavigationProvider } from '../components/author/AuthorReviewNavigation';
 import { authorErrorDetail } from '../components/author/author-error-copy';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
@@ -27,6 +28,9 @@ import {
 } from '../components/author/author-mutation-coordinator';
 import { AuthorSidebar } from '../components/author/AuthorSidebar';
 import '../components/author/author.css';
+import '../components/author/author-events.css';
+import '../components/author/author-cards.css';
+import '../components/author/author-review.css';
 
 interface AuthorConsolePageProps {
   apiBaseUrl: string;
@@ -115,75 +119,94 @@ export default function AuthorConsolePage({
   }, [mutationCoordinator, mutationRevision]);
 
   return (
-    <section aria-labelledby="author-console-title" className="author-console">
-      <header className="author-console__header">
-        <div>
-          <p className="eyebrow">University content management</p>
-          <h1 id="author-console-title">Author console</h1>
-        </div>
-      </header>
-
-      <AuthorSidebar pathname={pathname} route={route} />
-      <div className="author-console__workspace">
-        {route.section === 'events' ? (
-          <EventWorkspace
-            apiBaseUrl={apiBaseUrl}
-            cards={cards}
-            cardsState={cardsState}
-            getAccessToken={getAccessToken}
-            mapFactory={mapFactory}
-            mapboxAccessToken={mapboxAccessToken}
-            mutationCoordinator={mutationCoordinator}
-            navigate={navigate}
-            onOpenCards={() => navigate(authorPaths.cards)}
-            onReloadCards={loadCards}
-            route={route}
-          />
-        ) : route.section === 'cards' ? (
-          <CardWorkspace
-            apiBaseUrl={apiBaseUrl}
-            cards={cards}
-            errorMessage={cardsError}
-            getAccessToken={getAccessToken}
-            mutationCoordinator={mutationCoordinator}
-            navigate={navigate}
-            onCardsChange={setCards}
-            onReload={loadCards}
-            route={route}
-            state={cardsState}
-          />
-        ) : route.section === 'campaigns' ? (
-          <CampaignWorkspace
-            apiBaseUrl={apiBaseUrl}
-            getAccessToken={getAccessToken}
-            navigate={navigate}
-            route={route}
-          />
-        ) : route.section === 'analytics' ? (
-          <AnalyticsWorkspace
-            apiBaseUrl={apiBaseUrl}
-            getAccessToken={getAccessToken}
-          />
-        ) : route.section === 'playerReview' ? (
-          <TrustReviewWorkspace
-            apiBaseUrl={apiBaseUrl}
-            getAccessToken={getAccessToken}
-            route={route}
-          />
-        ) : route.section === 'placement' ? (
-          <EventPlacementWorkspace
-            apiBaseUrl={apiBaseUrl}
-            getAccessToken={getAccessToken}
-            mapFactory={mapFactory}
-            mapboxAccessToken={mapboxAccessToken}
-          />
+    <AuthorReviewNavigationProvider>
+      <section
+        aria-labelledby="author-console-title"
+        className="author-console"
+      >
+        {[
+          'events',
+          'cards',
+          'campaigns',
+          'review',
+          'playerReview',
+          'analytics',
+          'placement',
+        ].includes(route.section) ? (
+          <h1 id="author-console-title" className="sr-only">
+            Author console
+          </h1>
         ) : (
-          <ReviewWorkspace
-            apiBaseUrl={apiBaseUrl}
-            getAccessToken={getAccessToken}
-          />
+          <header className="author-console__header">
+            <div>
+              <p className="eyebrow">University content management</p>
+              <h1 id="author-console-title">Author console</h1>
+            </div>
+          </header>
         )}
-      </div>
-    </section>
+
+        <AuthorSidebar pathname={pathname} route={route} />
+        <div className="author-console__workspace">
+          {route.section === 'events' ? (
+            <EventWorkspace
+              apiBaseUrl={apiBaseUrl}
+              cards={cards}
+              cardsState={cardsState}
+              getAccessToken={getAccessToken}
+              mapFactory={mapFactory}
+              mapboxAccessToken={mapboxAccessToken}
+              mutationCoordinator={mutationCoordinator}
+              navigate={navigate}
+              onOpenCards={() => navigate(authorPaths.cards)}
+              onReloadCards={loadCards}
+              route={route}
+            />
+          ) : route.section === 'cards' ? (
+            <CardWorkspace
+              apiBaseUrl={apiBaseUrl}
+              cards={cards}
+              errorMessage={cardsError}
+              getAccessToken={getAccessToken}
+              mutationCoordinator={mutationCoordinator}
+              navigate={navigate}
+              onCardsChange={setCards}
+              onReload={loadCards}
+              route={route}
+              state={cardsState}
+            />
+          ) : route.section === 'campaigns' ? (
+            <CampaignWorkspace
+              apiBaseUrl={apiBaseUrl}
+              getAccessToken={getAccessToken}
+              navigate={navigate}
+              route={route}
+            />
+          ) : route.section === 'analytics' ? (
+            <AnalyticsWorkspace
+              apiBaseUrl={apiBaseUrl}
+              getAccessToken={getAccessToken}
+            />
+          ) : route.section === 'playerReview' ? (
+            <TrustReviewWorkspace
+              apiBaseUrl={apiBaseUrl}
+              getAccessToken={getAccessToken}
+              route={route}
+            />
+          ) : route.section === 'placement' ? (
+            <EventPlacementWorkspace
+              apiBaseUrl={apiBaseUrl}
+              getAccessToken={getAccessToken}
+              mapFactory={mapFactory}
+              mapboxAccessToken={mapboxAccessToken}
+            />
+          ) : (
+            <ReviewWorkspace
+              apiBaseUrl={apiBaseUrl}
+              getAccessToken={getAccessToken}
+            />
+          )}
+        </div>
+      </section>
+    </AuthorReviewNavigationProvider>
   );
 }

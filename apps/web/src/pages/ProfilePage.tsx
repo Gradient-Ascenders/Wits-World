@@ -2,29 +2,24 @@ import { createAppDateTimeFormatter } from '../date-time';
 import { StateIcon } from '../components/StatusMessage';
 import { LoadingState } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
-import {
-  CheckIcon,
-  CrownIcon,
-  MedalIcon,
-  UserIcon,
-} from '@phosphor-icons/react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { CrownIcon, MedalIcon } from '@phosphor-icons/react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
-  getCurrentProgressionProfile,
   listProgressionStandings,
   ProgressionApiError,
-  type CurrentProgressionProfile,
-  type ProgressionAchievement,
   type ProgressionStandings,
   type StandingsEntry,
   type StandingsPeriod,
 } from '../api/progression';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
+import { PlayerShowcase } from '../components/profile/PlayerShowcase';
+import { Link } from 'wouter';
 import './profile.css';
 
 interface ProfilePageProps {
   apiBaseUrl: string;
+  playerName?: string;
 }
 
 type ResourceState<T> =
@@ -45,153 +40,11 @@ const monthFormatter = createAppDateTimeFormatter('en-ZA', {
   year: 'numeric',
 });
 
-export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
-  const getAccessToken = useApiAccessToken();
-  const { loginWithRedirect } = useAuth0();
-  const [profile, setProfile] = useState<
-    ResourceState<CurrentProgressionProfile>
-  >({ status: 'loading' });
-  const [profileRevision, setProfileRevision] = useState(0);
-  const [reauthFailed, setReauthFailed] = useState(false);
-  const profileHeading = useRef<HTMLHeadingElement>(null);
-  const shouldFocusProfile = useRef(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setProfile({ status: 'loading' });
-
-    void getCurrentProgressionProfile({
-      apiBaseUrl,
-      getAccessToken,
-      signal: controller.signal,
-    })
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setProfile({ data, status: 'ready' });
-        }
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setProfile({ error: toProgressionError(error), status: 'error' });
-        }
-      });
-
-    return () => controller.abort();
-  }, [apiBaseUrl, getAccessToken, profileRevision]);
-
-  useEffect(() => {
-    if (shouldFocusProfile.current && profile.status !== 'loading') {
-      shouldFocusProfile.current = false;
-      profileHeading.current?.focus();
-    }
-  }, [profile.status]);
-
-  async function startSignIn() {
-    setReauthFailed(false);
-
-    try {
-      await loginWithRedirect({ appState: { returnTo: '/profile' } });
-    } catch {
-      setReauthFailed(true);
-    }
-  }
-
-  function retryProfile() {
-    shouldFocusProfile.current = true;
-    setProfileRevision((revision) => revision + 1);
-  }
-
-  return (
-    <div className="profile-page">
-      <section
-        className="profile-overview"
-        aria-labelledby="profile-summary-heading"
-      >
-        <header className="profile-page__header">
-          <span className="profile-avatar" aria-hidden="true">
-            {profile.status === 'ready' ? (
-              profile.data.playerName
-                .split(/[^\p{L}\p{N}]+/u)
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((part) => Array.from(part)[0])
-                .join('')
-                .toLocaleUpperCase()
-            ) : (
-              <UserIcon size={24} />
-            )}
-          </span>
-          <div>
-            <p className="eyebrow">Player profile</p>
-            <h1 id="profile-summary-heading" ref={profileHeading} tabIndex={-1}>
-              {profile.status === 'ready'
-                ? profile.data.playerName
-                : 'Player profile'}
-            </h1>
-            <p className="lead">Your Wits Quest progression</p>
-          </div>
-        </header>
-
-        <div>
-          {profile.status === 'loading' ? (
-            <ProgressionLoadingState label="Loading your progression profile" />
-          ) : profile.status === 'error' ? (
-            <ProgressionErrorState
-              context="profile"
-              error={profile.error}
-              onRetry={retryProfile}
-              onSignIn={startSignIn}
-              reauthFailed={reauthFailed}
-            />
-          ) : (
-            <ProfileSummary profile={profile.data} />
-          )}
-        </div>
-      </section>
-
-      <section
-        aria-labelledby="achievements-heading"
-        className="progression-section achievement-section"
-      >
-        <div className="progression-section__heading">
-          <div>
-            <h2 id="achievements-heading">Achievements</h2>
-            <p>Keep exploring Wits Quest to unlock more.</p>
-          </div>
-          {profile.status === 'ready' ? (
-            <p className="progression-section__summary">
-              {numberFormatter.format(
-                profile.data.achievements.filter(
-                  (achievement) => achievement.earned,
-                ).length,
-              )}{' '}
-              of {numberFormatter.format(profile.data.achievements.length)}{' '}
-              earned
-            </p>
-          ) : null}
-        </div>
-
-        {profile.status === 'loading' ? (
-          <ProgressionLoadingState label="Loading achievement progress" />
-        ) : profile.status === 'error' ? (
-          <p className="progression-dependent-state state-message state-message--empty">
-            Achievement progress will appear when your profile is available.
-          </p>
-        ) : profile.data.achievements.length === 0 ? (
-          <div className="progression-empty-state state-message state-message--empty">
-            <StateIcon tone="empty" />
-            <h3>No achievements are available yet</h3>
-            <p>
-              Your progress is saved here. Explore campus to find your next
-              challenge.
-            </p>
-          </div>
-        ) : (
-          <AchievementList achievements={profile.data.achievements} />
-        )}
-      </section>
-    </div>
-  );
+export default function ProfilePage({
+  apiBaseUrl,
+  playerName,
+}: ProfilePageProps) {
+  return <PlayerShowcase apiBaseUrl={apiBaseUrl} playerName={playerName} />;
 }
 
 export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
@@ -346,98 +199,6 @@ export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
   );
 }
 
-function ProfileSummary({ profile }: { profile: CurrentProgressionProfile }) {
-  return (
-    <div className="progression-profile">
-      <dl className="progression-stats">
-        <ProgressionStat label="Points">
-          {numberFormatter.format(profile.points)}
-        </ProgressionStat>
-        <ProgressionStat label="All-time rank">
-          <span aria-label={`Rank ${numberFormatter.format(profile.rank)}`}>
-            <span aria-hidden="true">
-              #{numberFormatter.format(profile.rank)}
-            </span>
-          </span>
-        </ProgressionStat>
-        <ProgressionStat label="Current streak">
-          {formatDays(profile.currentStreak)}
-        </ProgressionStat>
-        <ProgressionStat label="Best streak">
-          {formatDays(profile.longestStreak)}
-        </ProgressionStat>
-      </dl>
-    </div>
-  );
-}
-
-function ProgressionStat({
-  children,
-  label,
-}: {
-  children: ReactNode;
-  label: string;
-}) {
-  return (
-    <div>
-      <dt>{label}</dt>
-      <dd>{children}</dd>
-    </div>
-  );
-}
-
-function AchievementList({
-  achievements,
-}: {
-  achievements: ProgressionAchievement[];
-}) {
-  return (
-    <ul aria-label="Achievement progress" className="achievement-list">
-      {achievements.map((achievement) => {
-        const progressLabel = achievement.earned
-          ? `Current ${numberFormatter.format(achievement.progress)} · target ${numberFormatter.format(achievement.target)}`
-          : `${numberFormatter.format(achievement.progress)} of ${numberFormatter.format(achievement.target)}`;
-        const accessibleProgressLabel = achievement.earned
-          ? `current progress ${numberFormatter.format(achievement.progress)}, target ${numberFormatter.format(achievement.target)}`
-          : progressLabel;
-
-        return (
-          <li
-            className={achievement.earned ? 'achievement--earned' : undefined}
-            key={achievement.code}
-          >
-            <span aria-hidden="true" className="achievement__badge">
-              <MedalIcon size={24} />
-            </span>
-            <div className="achievement__heading">
-              <h3>{achievement.title}</h3>
-              <span className="achievement__status">
-                {achievement.earned ? (
-                  <>
-                    Earned
-                    <CheckIcon aria-hidden="true" size={16} />
-                  </>
-                ) : (
-                  'In progress'
-                )}
-              </span>
-            </div>
-            <p>{achievement.description}</p>
-            <div className="achievement__progress">
-              <progress
-                aria-label={`${achievement.title}: ${achievement.earned ? 'Earned' : 'In progress'}, ${accessibleProgressLabel}`}
-                max={achievement.target}
-                value={achievement.progress}
-              />
-              <span>{progressLabel}</span>
-            </div>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 function StandingsResults({
   onPageChange,
   standings,
@@ -554,7 +315,9 @@ function StandingRowContent({ entry }: { entry: StandingsEntry }) {
               <span className="sr-only">, anonymous tombstone</span>
             </>
           ) : (
-            entry.playerName
+            <Link href={`/players/${encodeURIComponent(entry.playerName)}`}>
+              {entry.playerName}
+            </Link>
           )}
         </strong>
         {entry.isCurrentPlayer ? (

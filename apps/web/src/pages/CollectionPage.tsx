@@ -1,8 +1,10 @@
+import { SelectField } from '../components/fields/SelectField';
+import { SearchField } from '../components/fields/SearchField';
 import { StateIcon } from '../components/StatusMessage';
 import { PageLoadingState } from '../components/LoadingState';
 import { QuestMarker } from '../components/branding/QuestMarker';
 import { useAuth0 } from '@auth0/auth0-react';
-import { MagnifyingGlass, SlidersHorizontal, X } from '@phosphor-icons/react';
+import { SlidersHorizontal, X } from '@phosphor-icons/react';
 import {
   useCallback,
   useEffect,
@@ -925,19 +927,15 @@ function CollectionGrid({
       </h2>
 
       <div className="collection-controls">
-        <label className="collection-control collection-control--search">
-          <span className="sr-only">Search</span>
-          <span className="collection-search-field">
-            <MagnifyingGlass size={20} aria-hidden="true" />
-            <input
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search cards"
-              title="Search by name or affinity"
-              type="search"
-              value={searchQuery}
-            />
-          </span>
-        </label>
+        <SearchField
+          label="Search"
+          hideLabel
+          className="collection-control collection-control--search"
+          onChange={(value) => setSearchQuery(value)}
+          placeholder="Search cards"
+          title="Search by name or affinity"
+          value={searchQuery}
+        />
         <button
           className="button button--quiet collection-controls__toggle"
           type="button"
@@ -953,49 +951,45 @@ function CollectionGrid({
           id="collection-filters"
           className={`collection-controls__filters${filtersOpen ? ' collection-controls__filters--open' : ''}`}
         >
-          <label className="collection-control">
-            <span>Category</span>
-            <select
-              onChange={(event) =>
-                setCategoryFilter(
-                  event.target.value as CollectionCategoryFilter,
-                )
-              }
-              value={categoryFilter}
-            >
-              <option value="all">All</option>
-              <option value="creature">Creatures</option>
-              <option value="power">Power cards</option>
-            </select>
-          </label>
-          <label className="collection-control">
-            <span>Rarity</span>
-            <select
-              onChange={(event) =>
-                setRarityFilter(event.target.value as CollectionRarityFilter)
-              }
-              value={rarityFilter}
-            >
-              <option value="all">All</option>
-              <option value="common">Common</option>
-              <option value="rare">Rare</option>
-              <option value="epic">Epic</option>
-              <option value="legendary">Legendary</option>
-            </select>
-          </label>
-          <label className="collection-control">
-            <span>Sort</span>
-            <select
-              onChange={(event) =>
-                setSortOrder(event.target.value as CollectionSortOrder)
-              }
-              value={sortOrder}
-            >
-              <option value="name">A–Z</option>
-              <option value="newest">Newest acquired</option>
-              <option value="rarity">Rarity</option>
-            </select>
-          </label>
+          <SelectField
+            label="Category"
+            className="collection-control"
+            onChange={(value) =>
+              setCategoryFilter(value as CollectionCategoryFilter)
+            }
+            value={categoryFilter}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'creature', label: 'Creatures' },
+              { value: 'power', label: 'Power cards' },
+            ]}
+          />
+          <SelectField
+            label="Rarity"
+            className="collection-control"
+            onChange={(value) =>
+              setRarityFilter(value as CollectionRarityFilter)
+            }
+            value={rarityFilter}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'common', label: 'Common' },
+              { value: 'rare', label: 'Rare' },
+              { value: 'epic', label: 'Epic' },
+              { value: 'legendary', label: 'Legendary' },
+            ]}
+          />
+          <SelectField
+            label="Sort"
+            className="collection-control"
+            onChange={(value) => setSortOrder(value as CollectionSortOrder)}
+            value={sortOrder}
+            options={[
+              { value: 'name', label: 'A–Z' },
+              { value: 'newest', label: 'Newest acquired' },
+              { value: 'rarity', label: 'Rarity' },
+            ]}
+          />
         </div>
       </div>
 

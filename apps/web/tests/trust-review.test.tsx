@@ -1,3 +1,4 @@
+import { selectOption } from './fixtures/select-option';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -41,17 +42,20 @@ describe('TrustReviewWorkspace', () => {
 
     expect(await screen.findByText('Casey Reviewer')).toBeVisible();
     await user.type(screen.getByLabelText('Search cases'), 'casey');
-    await user.selectOptions(screen.getByLabelText('Case status'), 'resolved');
-    await user.selectOptions(
+    await selectOption(user, screen.getByLabelText('Case status'), 'resolved');
+    await selectOption(
+      user,
       screen.getByLabelText('Review priority'),
       'urgent_review',
     );
-    await user.click(screen.getByText('More filters'));
-    await user.selectOptions(
+    await user.click(screen.getByText('Filters'));
+    await selectOption(
+      user,
       screen.getByLabelText('Signal type'),
       'opponent_concentration',
     );
-    await user.selectOptions(
+    await selectOption(
+      user,
       screen.getByLabelText('Restriction state'),
       'active',
     );
@@ -65,7 +69,9 @@ describe('TrustReviewWorkspace', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Search' }));
 
-    expect(await screen.findByText('No cases match this view.')).toBeVisible();
+    expect(
+      await screen.findByText('No cases match these filters.'),
+    ).toBeVisible();
     const latest = requests.at(-1)!;
     expect(latest.searchParams.get('search')).toBe('casey');
     expect(latest.searchParams.get('status')).toBe('resolved');
@@ -83,6 +89,7 @@ describe('TrustReviewWorkspace', () => {
   });
 
   it('shows server-provided score categories, severity text, signals, and audit history', async () => {
+    const user = userEvent.setup();
     installCaseApi();
     renderWorkspace(caseId);
 
@@ -91,7 +98,8 @@ describe('TrustReviewWorkspace', () => {
     });
     expect(caseHeading).toBeVisible();
     expect(caseHeading).toHaveFocus();
-    expect(screen.getAllByText('Urgent Review')).toHaveLength(2);
+    expect(screen.getAllByText('Urgent Review')).toHaveLength(1);
+    await user.click(screen.getByText('Score breakdown'));
     expect(screen.getByText('High severity')).toBeVisible();
     expect(
       within(screen.getByRole('region', { name: 'Signals' })).getByText(
@@ -111,8 +119,9 @@ describe('TrustReviewWorkspace', () => {
       screen.getByText('Server final').nextElementSibling,
     ).toHaveTextContent('67');
     expect(
-      screen.getByText('Review priority, not proof of misconduct.'),
+      screen.getByText('Review priority is not proof of misconduct.'),
     ).toBeVisible();
+    await user.click(screen.getByRole('tab', { name: 'History' }));
     expect(screen.getByText('Initial Review Opened')).toBeVisible();
     expect(screen.queryByText(/latitude|longitude/i)).not.toBeInTheDocument();
   });
@@ -187,6 +196,8 @@ describe('TrustReviewWorkspace', () => {
 
     const signals = await screen.findByRole('region', { name: 'Signals' });
     expect(within(signals).getByText('Opponent concentration')).toBeVisible();
+    await user.click(within(signals).getByText('Opponent concentration'));
+    await user.click(within(signals).getByText('One-sided outcome pattern'));
     const aggregateToggles = screen.getAllByText('View aggregate basis');
     await user.click(aggregateToggles[0]!);
     await user.click(aggregateToggles[1]!);
@@ -201,8 +212,10 @@ describe('TrustReviewWorkspace', () => {
       screen.getByText('Qualifying forfeits').nextElementSibling,
     ).toHaveTextContent('5');
     expect(screen.queryByText(/policy threshold/i)).not.toBeInTheDocument();
-    expect(screen.getByText('Pause card trading')).toBeVisible();
+    expect(screen.getAllByText('Pause card trading')[0]).toBeVisible();
+    await user.click(screen.getByRole('tab', { name: /Restrictions/ }));
     expect(screen.getByText('Submitted')).toBeVisible();
+    await user.click(screen.getByRole('tab', { name: 'History' }));
     expect(
       screen.getByText(/Bounded restriction after aggregate review/),
     ).toBeVisible();
@@ -241,6 +254,7 @@ describe('TrustReviewWorkspace', () => {
   });
 
   it('keeps the case usable when one investigation collection fails', async () => {
+    const user = userEvent.setup();
     installCaseApi({ failHistory: true });
     renderWorkspace(caseId);
 
@@ -249,6 +263,7 @@ describe('TrustReviewWorkspace', () => {
         'Impossible movement',
       ),
     ).toBeVisible();
+    await user.click(screen.getByRole('tab', { name: 'History' }));
     expect(
       await screen.findByText(
         'The complete audit records could not be loaded.',
@@ -257,6 +272,7 @@ describe('TrustReviewWorkspace', () => {
     expect(
       screen.getByRole('button', { name: 'Retry audit records' }),
     ).toBeEnabled();
+    await user.click(screen.getByRole('tab', { name: 'Review' }));
     expect(
       screen.getByRole('heading', { name: 'Record decision' }),
     ).toBeVisible();
@@ -343,6 +359,35 @@ describe('TrustReviewWorkspace', () => {
     });
   });
 
+  it('retains decision success when the server resolves the case and removes review permission', async () => {
+    const user = userEvent.setup();
+    installCaseApi({
+      onDecision: () =>
+        jsonResponse(
+          caseEnvelope(
+            caseFixture({ status: 'resolved', canReview: false, version: 4 }),
+          ),
+        ),
+    });
+    renderWorkspace(caseId);
+    await screen.findByRole('heading', { name: 'Casey Reviewer' });
+    await user.click(screen.getByLabelText('Dismiss case'));
+    await user.type(
+      screen.getByRole('textbox', { name: /Reason and context/ }),
+      'The retained evidence does not justify further review.',
+    );
+    await user.click(screen.getByRole('button', { name: 'Record decision' }));
+    expect(
+      await screen.findByText('Decision recorded in the audit history.'),
+    ).toBeVisible();
+    expect(
+      screen.getByText('Decision controls are unavailable.'),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Record decision' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('requires keyboard-accessible confirmation before applying restrictions', async () => {
     const user = userEvent.setup();
     const fetchMock = installCaseApi({
@@ -357,7 +402,7 @@ describe('TrustReviewWorkspace', () => {
     await screen.findByRole('heading', { name: 'Casey Reviewer' });
     await user.click(screen.getByLabelText('Apply temporary restriction'));
     await user.click(screen.getByLabelText('Pause new competitive matches'));
-    await user.selectOptions(screen.getByLabelText('Duration'), '72');
+    await selectOption(user, screen.getByLabelText('Duration'), '72');
     await user.type(
       screen.getByRole('textbox', { name: /Reason and context/ }),
       'Repeated evidence warrants a bounded competitive pause.',
@@ -469,8 +514,175 @@ describe('TrustReviewWorkspace', () => {
     ).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Load latest case' }));
     await waitFor(() => expect(detailLoads).toBe(2));
+    await user.click(screen.getByText('Case details'));
     expect(screen.getByText('4', { selector: 'dd' })).toBeVisible();
     expect(decisionRequests(fetchMock)).toHaveLength(1);
+  });
+
+  it('preserves the decision draft through keyboard tab navigation and opens audit evidence references', async () => {
+    const user = userEvent.setup();
+    installCaseApi({
+      detail: caseFixture({
+        activeRestrictionCount: 1,
+        activeRestrictionScopes: ['new_competitive_match_hold'],
+        recentHistory: [
+          { ...caseFixture().recentHistory[0]!, evidenceIds: [evidenceId] },
+        ],
+      }),
+    });
+    renderWorkspace(caseId);
+    await screen.findByRole('heading', { name: 'Casey Reviewer' });
+    const reason = screen.getByRole('textbox', { name: /Reason and context/ });
+    await user.type(reason, 'Consider the retained evidence.');
+    await user.click(screen.getByLabelText('Dismiss case'));
+    screen.getByRole('tab', { name: 'Review' }).focus();
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('tab', { name: /Restrictions/ })).toHaveFocus();
+    expect(
+      screen.getByRole('tabpanel', { name: /Restrictions/ }),
+    ).toBeVisible();
+    expect(screen.getByText('1 active restriction')).toBeVisible();
+    await user.keyboard('{End}');
+    expect(screen.getByRole('tab', { name: 'History' })).toHaveFocus();
+    await user.click(
+      screen.getByRole('link', { name: evidenceId.slice(0, 8) }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Review' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    await waitFor(() =>
+      expect(document.getElementById(`signal-${evidenceId}`)).toHaveAttribute(
+        'open',
+      ),
+    );
+    expect(reason).toHaveValue('Consider the retained evidence.');
+    expect(screen.getByLabelText('Dismiss case')).toBeChecked();
+  });
+
+  it('loads later evidence pages for an audit reference and focuses the expanded signal', async () => {
+    const user = userEvent.setup();
+    const first = caseFixture().evidencePreview[0]!;
+    const later = {
+      ...first,
+      evidenceId: '30000000-0000-4000-8000-000000000002',
+      signalType: 'one_sided_outcome_pattern' as const,
+    };
+    const fetchMock = installCaseApi({
+      detail: caseFixture({
+        evidenceTotalItems: 2,
+        recentHistory: [
+          {
+            ...caseFixture().recentHistory[0]!,
+            evidenceIds: [later.evidenceId],
+          },
+        ],
+      }),
+      evidencePages: [[first], [later]],
+    });
+    renderWorkspace(caseId);
+    await screen.findByRole('heading', { name: 'Casey Reviewer' });
+    await user.click(screen.getByRole('tab', { name: 'History' }));
+    await user.click(
+      screen.getByRole('link', { name: later.evidenceId.slice(0, 8) }),
+    );
+    const signal = await screen.findByText('One-sided outcome pattern');
+    await waitFor(() => expect(signal.closest('summary')).toHaveFocus());
+    expect(signal.closest('details')).toHaveAttribute('open');
+    expect(screen.getByRole('tab', { name: 'Review' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    const pages = fetchMock.mock.calls
+      .filter(([input]) =>
+        new URL(String(input)).pathname.endsWith('/evidence'),
+      )
+      .map(([input]) => new URL(String(input)).searchParams.get('page'));
+    expect(pages).toEqual(['1', '2']);
+    expect(screen.getAllByText('Impossible movement')).toHaveLength(1);
+  });
+
+  it('provides recoverable feedback when an audit reference is absent from retained evidence', async () => {
+    const user = userEvent.setup();
+    const first = caseFixture().evidencePreview[0]!;
+    const missingId = '30000000-0000-4000-8000-000000000099';
+    const fetchMock = installCaseApi({
+      detail: caseFixture({
+        recentHistory: [
+          { ...caseFixture().recentHistory[0]!, evidenceIds: [missingId] },
+        ],
+      }),
+      evidencePages: [[first]],
+    });
+    renderWorkspace(caseId);
+    await screen.findByRole('heading', { name: 'Casey Reviewer' });
+    await user.click(screen.getByRole('tab', { name: 'History' }));
+    await user.click(screen.getByRole('link', { name: missingId.slice(0, 8) }));
+    expect(
+      await screen.findByText(
+        'The referenced signal was not found in the retained evidence.',
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: 'Record decision' }),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Retry reference' }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          new URL(String(input)).pathname.endsWith('/evidence'),
+        ),
+      ).toHaveLength(2),
+    );
+    expect(
+      await screen.findByText(
+        'The referenced signal was not found in the retained evidence.',
+      ),
+    ).toBeVisible();
+    expect(decisionRequests(fetchMock)).toHaveLength(0);
+  });
+
+  it('resets a filtered queue from the last page without a competing case placeholder', async () => {
+    const user = userEvent.setup();
+    let lastPageRemoved = false;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const page = Number(url.searchParams.get('page'));
+      const filtered = url.searchParams.get('band') === 'urgent_review';
+      return jsonResponse(
+        pagePayload(filtered ? [] : [queueFixture(caseFixture())], {
+          page,
+          totalItems: filtered ? 0 : lastPageRemoved ? 1 : 21,
+          totalPages: lastPageRemoved || filtered ? 1 : 2,
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderWorkspace();
+    await screen.findByRole('table');
+    expect(
+      screen.queryByText('Select a case to begin review.'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Score 67/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('Page 2 of 2');
+    lastPageRemoved = true;
+    await selectOption(
+      user,
+      screen.getByLabelText('Review priority'),
+      'urgent_review',
+    );
+    await screen.findByText('No cases match these filters.');
+    await user.click(screen.getByRole('button', { name: 'Reset filters' }));
+    await screen.findByRole('table');
+    expect(
+      new URL(String(fetchMock.mock.calls.at(-1)![0])).searchParams.get('page'),
+    ).toBe('1');
+    expect(screen.getByLabelText('Review priority')).toHaveTextContent(
+      'All priorities',
+    );
   });
 
   it('renders useful loading, empty, forbidden, and API-error states', async () => {
@@ -488,7 +700,9 @@ describe('TrustReviewWorkspace', () => {
       vi.fn(async () => jsonResponse(queuePayload([]))),
     );
     const empty = renderWorkspace();
-    expect(await screen.findByText('No cases match this view.')).toBeVisible();
+    expect(
+      await screen.findByText('No cases match these filters.'),
+    ).toBeVisible();
     empty.unmount();
 
     vi.stubGlobal(

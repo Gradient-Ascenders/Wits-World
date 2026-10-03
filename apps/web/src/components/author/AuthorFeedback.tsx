@@ -5,12 +5,14 @@ import type { RefObject } from 'react';
 import type { AuthorApiError } from '../../api/author';
 
 interface AuthorFeedbackProps {
+  compact?: boolean;
   error?: AuthorApiError | null;
   message?: string;
   refObject: RefObject<HTMLDivElement | null>;
 }
 
 export function AuthorFeedback({
+  compact = false,
   error,
   message,
   refObject,
@@ -24,9 +26,22 @@ export function AuthorFeedback({
         role="alert"
         tabIndex={-1}
       >
-        <strong>{errorTitle(error)}</strong>
-        <p>{authorErrorDetail(error)}</p>
-        {error.requestId ? <p>Request reference: {error.requestId}</p> : null}
+        <strong>
+          {compact && error.failure === 'unavailable'
+            ? 'Outcome not confirmed'
+            : errorTitle(error)}
+        </strong>
+        <p>
+          {compact && error.failure === 'unavailable'
+            ? 'Reload before retrying.'
+            : authorErrorDetail(error)}
+        </p>
+        {error.requestId ? (
+          <details>
+            <summary>Request details</summary>
+            <p>Request reference: {error.requestId}</p>
+          </details>
+        ) : null}
       </StatusMessage>
     );
   }
@@ -41,12 +56,24 @@ export function AuthorFeedback({
         role="status"
         tabIndex={-1}
       >
-        {message}
+        {compact ? compactNotice(message) : message}
       </StatusMessage>
     );
   }
 
   return null;
+}
+
+function compactNotice(message: string) {
+  if (/^(Event|Question|Challenge|Card|Campaign) approved\.$/.test(message))
+    return 'Approved.';
+  if (
+    /^(Event|Question|Challenge|Card|Campaign) returned to draft\.$/.test(
+      message,
+    )
+  )
+    return 'Returned to draft.';
+  return message;
 }
 
 function errorTitle(error: AuthorApiError): string {

@@ -24,6 +24,8 @@ Players sign in through Auth0, browse published events on a map or in a text lis
 
 A separate protected Author workspace supports content creation, review, campaigns, question curation, and privacy-limited operational analytics. Advanced placement services rotate explicitly portable events among reviewed campus sites while preserving fixed authored locations and Author control. Account settings also support lifecycle management and developer API keys for approved public read-only integrations.
 
+The Author console primarily serves desktop use. Author workspace design and acceptance prioritize desktop layouts, while retaining keyboard, screen-reader, and browser-zoom access. Player journeys retain their mobile requirements.
+
 For Advanced-tier trust review, the API derives privacy-limited signals from authoritative operations, calculates a private review-priority score, and opens or updates a case when policy bands require attention. Authors review safe evidence summaries and may dismiss, monitor, mark false positives, or apply a short capability-specific restriction. A restricted player receives a neutral notice and may submit one appeal; a different Author resolves it.
 
 ## Capabilities and Constraints
@@ -74,3 +76,5 @@ For Advanced-tier trust review, the API derives privacy-limited signals from aut
 The web experience must be responsive and accessible. Key journeys must work with keyboard and screen reader input, visible focus, and textual status that does not rely on color alone. A map-independent event list supports players who cannot use the map. Trust-case review, restriction notices, and appeals must communicate priority, state, affected capability, timing, and available action without relying on color or accusatory language.
 
 The preceding document was edited with the assistance of Codex[GPT-5].
+
+The Author desktop operating-context declaration was added with assistance from Codex[GPT-6].

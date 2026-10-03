@@ -1,14 +1,18 @@
+import {
+  AuthorRecordBackLink,
+  ReviewSubmissionMeta,
+  useReviewEntry,
+} from './AuthorReviewNavigation';
+import { SelectField } from '../fields/SelectField';
+import { SearchField } from '../fields/SearchField';
 import { createAppDateTimeFormatter } from '../../date-time';
 import { StateIcon } from '../StatusMessage';
-import { LoadingState } from '../LoadingState';
-import {
-  ArrowLeftIcon,
-  CaretRightIcon,
-  CaretDownIcon,
-} from '@phosphor-icons/react';
+import { AuthorLoadingState } from './AuthorLoadingState';
+import { ArrowLeftIcon, CaretDownIcon, ImageIcon } from '@phosphor-icons/react';
 import { AuthorSaveBar } from './AuthorSaveBar';
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -39,9 +43,10 @@ import {
   type AuthorTransitionAction,
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
-import type { OwnedCard } from '../../api/cards';
+import type { CardPresentation } from '../../api/cards';
 import { describeStarterEffect } from '../../battle/effect-presentation';
 import { CollectibleCard } from '../cards/CollectibleCard';
+import { CardFrame } from '../cards/CardFrame';
 import '../cards/cards.css';
 import { AuthorFeedback } from './AuthorFeedback';
 import { AuthorHistoryPanel } from './AuthorHistoryPanel';
@@ -80,6 +85,7 @@ export function CardWorkspace({
   route,
   state,
 }: CardWorkspaceProps) {
+  const reviewEntry = useReviewEntry();
   const [message, setMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [lifecycleFilter, setLifecycleFilter] = useState('all');
@@ -89,7 +95,6 @@ export function CardWorkspace({
   const [sortOrder, setSortOrder] = useState<'name' | 'updated'>('name');
   const feedbackRef = useRef<HTMLDivElement>(null);
   const catalogueRef = useRef<HTMLElement>(null);
-  const selectedRowRef = useRef<HTMLLIElement>(null);
   const recordViewRef = useRef<HTMLDivElement>(null);
   const focusRouteRef = useRef<string | null>(null);
   const selectedIdRef = useRef<string | 'new'>('new');
@@ -107,20 +112,20 @@ export function CardWorkspace({
 
   useEffect(() => {
     if (state !== 'ready') return;
-    if (focusRouteRef.current === null) {
+    if (focusRouteRef.current === null && !reviewEntry) {
       focusRouteRef.current = routeContext;
       return;
     }
     if (focusRouteRef.current === routeContext) return;
-    focusRouteRef.current = routeContext;
     const timer = window.setTimeout(() => {
+      focusRouteRef.current = routeContext;
       (route.mode === 'list'
         ? catalogueRef.current
         : recordViewRef.current
       )?.focus();
     });
     return () => window.clearTimeout(timer);
-  }, [route.mode, routeContext, state]);
+  }, [route.mode, routeContext, state, reviewEntry]);
 
   const selected = cards.find((card) => card.id === selectedId);
   const visibleCards = useMemo(
@@ -154,28 +159,6 @@ export function CardWorkspace({
       sortOrder,
     ],
   );
-
-  useEffect(() => {
-    if (state !== 'ready' || selectedId === null) return;
-
-    const timer = window.setTimeout(() => {
-      const list = catalogueRef.current?.querySelector<HTMLElement>(
-        '.author-catalogue__list',
-      );
-      const row = selectedRowRef.current;
-      if (!list || !row || list.clientHeight === 0) return;
-
-      const listBounds = list.getBoundingClientRect();
-      const rowBounds = row.getBoundingClientRect();
-      if (rowBounds.top < listBounds.top) {
-        list.scrollTop -= listBounds.top - rowBounds.top;
-      } else if (rowBounds.bottom > listBounds.bottom) {
-        list.scrollTop += rowBounds.bottom - listBounds.bottom;
-      }
-    });
-
-    return () => window.clearTimeout(timer);
-  }, [selectedId, state, visibleCards]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -224,11 +207,13 @@ export function CardWorkspace({
   return (
     <section
       aria-labelledby="cards-workspace-title"
-      className="author-workspace"
+      className={`author-workspace author-workspace--cards${route.mode === 'new' || route.mode === 'edit' ? ' author-workspace--card-editor' : ''}`}
     >
-      <header className="author-workspace__heading">
+      <header
+        className="author-workspace__heading"
+        hidden={route.mode !== 'list'}
+      >
         <div>
-          <p className="eyebrow">Reward catalogue</p>
           <h2 id="cards-workspace-title">Card catalogue</h2>
         </div>
         {state === 'ready' ? (
@@ -254,7 +239,7 @@ export function CardWorkspace({
       ) : null}
 
       {state === 'loading' ? (
-        <LoadingState label="Loading card definitions…" />
+        <AuthorLoadingState label="Loading card definitions…" />
       ) : null}
       {state === 'error' ? (
         <div
@@ -275,10 +260,11 @@ export function CardWorkspace({
       ) : null}
       {state === 'ready' ? (
         <div
-          className={`author-management-view author-management-view--cards${route.mode === 'list' || route.mode === 'detail' ? ' author-management-view--card-catalogue' : ''}${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}`}
+          className={`author-management-view author-management-view--cards${route.mode === 'list' || route.mode === 'detail' ? ' author-management-view--card-catalogue' : ' author-management-view--card-editor'}${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}`}
         >
           <aside
             aria-label="Card definitions"
+            hidden={route.mode !== 'list'}
             className="author-catalogue author-catalogue--cards"
             ref={catalogueRef}
             tabIndex={-1}
@@ -315,50 +301,68 @@ export function CardWorkspace({
                 <p>Adjust the catalogue filters.</p>
               </div>
             ) : null}
-            <ul className="author-catalogue__list">
-              {visibleCards.map((card) => (
-                <li
-                  key={card.id}
-                  ref={selectedId === card.id ? selectedRowRef : undefined}
-                >
-                  <Link
-                    aria-current={selectedId === card.id ? 'true' : undefined}
-                    className="author-record-summary author-record-summary--card"
-                    href={authorPaths.card(card.id)}
-                  >
-                    <span className="author-record-summary__heading">
-                      <strong>{card.name}</strong>
-                      <StatusBadge status={card.authoringStatus} />
-                    </span>
-                    <span className="author-record-summary__meta">
-                      {titleCase(card.category)} ·{' '}
-                      {card.affinity ? titleCase(card.affinity) : 'Typeless'} ·{' '}
-                      {titleCase(card.rarity)}
-                    </span>
-                    <CaretRightIcon
-                      size={16}
-                      aria-hidden="true"
-                      className="author-record-summary__chevron"
-                    />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            {visibleCards.length > 0 ? (
+              <div className="card-table-wrap">
+                <table className="card-table">
+                  <caption className="sr-only">Card definitions</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Card</th>
+                      <th scope="col">Category</th>
+                      <th scope="col">Affinity</th>
+                      <th scope="col">Rarity</th>
+                      <th scope="col">Lifecycle</th>
+                      <th scope="col">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleCards.map((card) => (
+                      <tr className="author-linked-row" key={card.id}>
+                        <th scope="row">
+                          <Link
+                            className="author-row-link"
+                            href={authorPaths.card(card.id)}
+                          >
+                            <span className="card-table__identity">
+                              <CatalogueArtwork
+                                key={card.imageUrl}
+                                card={card}
+                              />
+                              <span>{card.name}</span>
+                            </span>
+                          </Link>
+                        </th>
+                        <td>{titleCase(card.category)}</td>
+                        <td>
+                          {card.affinity
+                            ? titleCase(card.affinity)
+                            : 'Typeless'}
+                        </td>
+                        <td>{titleCase(card.rarity)}</td>
+                        <td>
+                          <StatusBadge status={card.authoringStatus} />
+                        </td>
+                        <td>
+                          <time dateTime={card.updatedAt}>
+                            {formatCardDate(card.updatedAt)}
+                          </time>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
           </aside>
           <div
             aria-label="Card workspace detail"
+            hidden={route.mode === 'list'}
             className="author-record-view"
             ref={recordViewRef}
             role="region"
             tabIndex={-1}
           >
-            {route.mode === 'list' ? (
-              <CatalogueWelcome
-                count={cards.length}
-                noun="card"
-                onCreatePath={authorPaths.newCard}
-              />
-            ) : route.mode === 'new' ? (
+            {route.mode === 'list' ? null : route.mode === 'new' ? (
               <CardForm
                 apiBaseUrl={apiBaseUrl}
                 getAccessToken={getAccessToken}
@@ -382,6 +386,7 @@ export function CardWorkspace({
                 />
               ) : (
                 <CardDetail
+                  tab={'tab' in route ? route.tab : undefined}
                   apiBaseUrl={apiBaseUrl}
                   card={selected}
                   getAccessToken={getAccessToken}
@@ -446,40 +451,39 @@ function CardCatalogueControls({
       className="author-catalogue-toolbar"
       role="group"
     >
-      <label className="author-catalogue-toolbar__search">
-        <span className="sr-only">Search</span>
-        <input
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search cards"
-          type="search"
-          value={search}
-        />
-      </label>
+      <SearchField
+        label="Search"
+        hideLabel
+        className="author-catalogue-toolbar__search"
+        onChange={(value) => onSearchChange(value)}
+        placeholder="Search cards"
+        value={search}
+      />
       <div className="author-catalogue-toolbar__controls">
-        <label className="author-catalogue-toolbar__select">
-          <span>Lifecycle</span>
-          <select
-            onChange={(event) => onLifecycleChange(event.target.value)}
-            value={lifecycle}
-          >
-            <option value="all">All</option>
-            <option value="draft">Draft</option>
-            <option value="published">Published</option>
-            <option value="retired">Retired</option>
-          </select>
-        </label>
-        <label className="author-catalogue-toolbar__select">
-          <span>Sort</span>
-          <select
-            onChange={(event) =>
-              onSortChange(event.target.value as 'name' | 'updated')
-            }
-            value={sort}
-          >
-            <option value="name">A–Z</option>
-            <option value="updated">Updated</option>
-          </select>
-        </label>
+        <SelectField
+          label="Lifecycle"
+          className="author-catalogue-toolbar__select"
+          onChange={(value) => onLifecycleChange(value)}
+          value={lifecycle}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'draft', label: 'Draft' },
+            { value: 'in_review', label: 'In review' },
+            { value: 'approved', label: 'Approved' },
+            { value: 'published', label: 'Published' },
+            { value: 'retired', label: 'Retired' },
+          ]}
+        />
+        <SelectField
+          label="Sort"
+          className="author-catalogue-toolbar__select"
+          onChange={(value) => onSortChange(value as 'name' | 'updated')}
+          value={sort}
+          options={[
+            { value: 'name', label: 'A–Z' },
+            { value: 'updated', label: 'Updated' },
+          ]}
+        />
         <details className="author-filter-menu">
           <summary>
             <CaretDownIcon size={16} aria-hidden="true" />
@@ -491,74 +495,46 @@ function CardCatalogueControls({
             ) : null}
           </summary>
           <div className="author-filter-menu__panel">
-            <label className="author-filter">
-              <span>Category</span>
-              <select
-                onChange={(event) => onCategoryChange(event.target.value)}
-                value={category}
-              >
-                <option value="all">All</option>
-                <option value="creature">Creature</option>
-                <option value="power">Power</option>
-              </select>
-            </label>
-            <label className="author-filter">
-              <span>Affinity</span>
-              <select
-                onChange={(event) => onAffinityChange(event.target.value)}
-                value={affinity}
-              >
-                <option value="all">All</option>
-                {['wit', 'grit', 'spark', 'spirit', 'mystic'].map((value) => (
-                  <option key={value} value={value}>
-                    {titleCase(value)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="author-filter">
-              <span>Rarity</span>
-              <select
-                onChange={(event) => onRarityChange(event.target.value)}
-                value={rarity}
-              >
-                <option value="all">All</option>
-                {['common', 'rare', 'epic', 'legendary'].map((value) => (
-                  <option key={value} value={value}>
-                    {titleCase(value)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectField
+              label="Category"
+              className="author-filter"
+              onChange={(value) => onCategoryChange(value)}
+              value={category}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'creature', label: 'Creature' },
+                { value: 'power', label: 'Power' },
+              ]}
+            />
+            <SelectField
+              label="Affinity"
+              className="author-filter"
+              onChange={(value) => onAffinityChange(value)}
+              value={affinity}
+              options={[
+                { value: 'all', label: 'All' },
+                ...['wit', 'grit', 'spark', 'spirit', 'mystic'].map(
+                  (value) => ({ value, label: titleCase(value) }),
+                ),
+              ]}
+            />
+            <SelectField
+              label="Rarity"
+              className="author-filter"
+              onChange={(value) => onRarityChange(value)}
+              value={rarity}
+              options={[
+                { value: 'all', label: 'All' },
+                ...['common', 'rare', 'epic', 'legendary'].map((value) => ({
+                  value,
+                  label: titleCase(value),
+                })),
+              ]}
+            />
           </div>
         </details>
       </div>
     </div>
-  );
-}
-
-function CatalogueWelcome({
-  count,
-  noun,
-  onCreatePath,
-}: {
-  count: number;
-  noun: string;
-  onCreatePath: string;
-}) {
-  return (
-    <section className="author-welcome">
-      <p className="eyebrow">Catalogue</p>
-      <h3>{count > 0 ? `Select a ${noun}` : `Create the first ${noun}`}</h3>
-      <p>
-        {count > 0
-          ? `Choose a ${noun} to review its authoritative lifecycle and content.`
-          : `New ${noun}s begin as editable drafts.`}
-      </p>
-      <Link className="button" href={onCreatePath}>
-        New {noun}
-      </Link>
-    </section>
   );
 }
 
@@ -606,7 +582,9 @@ function CardDetail({
   mutationCoordinator,
   onConflict,
   onSaved,
+  tab = 'details',
 }: {
+  tab?: 'details' | 'review';
   apiBaseUrl: string;
   card: AuthorCard;
   getAccessToken: ApiAccessTokenProvider;
@@ -617,6 +595,7 @@ function CardDetail({
   onConflict: () => Promise<void>;
   onSaved: CardFormProps['onSaved'];
 }) {
+  const reviewEntry = useReviewEntry();
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
@@ -668,12 +647,11 @@ function CardDetail({
 
   return (
     <article aria-labelledby="card-detail-title" className="author-detail">
-      <Link className="author-back-link" href={authorPaths.cards}>
-        <ArrowLeftIcon size={16} aria-hidden="true" /> Card catalogue
-      </Link>
+      <AuthorRecordBackLink href={authorPaths.cards}>
+        Card catalogue
+      </AuthorRecordBackLink>
       <header className="author-card-detail__header">
         <div className="author-card-detail__identity">
-          <p className="eyebrow">Card definition</p>
           <h3 id="card-detail-title">{card.name}</h3>
           <p className="author-card-detail__definition">
             {titleCase(card.category)} ·{' '}
@@ -683,36 +661,33 @@ function CardDetail({
         </div>
         <div className="author-card-detail__lifecycle">
           <StatusBadge status={card.authoringStatus} />
-          <AuthorLifecycleControls
-            busy={busy}
-            editControl={
-              <Link className="button" href={authorPaths.editCard(card.id)}>
-                Edit card
-              </Link>
-            }
-            noun="card"
-            onAction={(action, reason) => void lifecycle(action, reason)}
-            retirementDescription={
-              <p>
-                This definition will leave future reward selection and cannot be
-                republished. Existing owned copies remain intact.
-              </p>
-            }
-            retirementTitle={`Retire ${card.name}?`}
-            status={card.authoringStatus}
-            submittedBy={card.submittedBy}
-          />
-          <AuthorFeedback error={apiError} refObject={feedbackRef} />
-          <AuthorFeedback message={message} refObject={messageRef} />
         </div>
       </header>
 
+      <ReviewSubmissionMeta
+        entityId={card.id}
+        submittedAt={card.submittedAt}
+        submittedBy={card.submittedBy}
+      />
+      <nav className="card-tabs" aria-label="Card workspace">
+        <Link
+          href={authorPaths.card(card.id)}
+          aria-current={tab === 'details' ? 'page' : undefined}
+        >
+          Details
+        </Link>
+        <Link
+          href={`${authorPaths.card(card.id)}/review`}
+          aria-current={tab === 'review' ? 'page' : undefined}
+        >
+          Review
+        </Link>
+      </nav>
       <div className="author-card-detail__layout">
         <section
           aria-label={`${card.name} authoring preview`}
           className="author-card-detail__preview"
         >
-          <p className="eyebrow">Player card preview</p>
           <CollectibleCard
             card={toCollectibleCard(card)}
             compact
@@ -750,13 +725,48 @@ function CardDetail({
           <CardMechanicsSummary card={card} />
         </div>
       </div>
-      <AuthorHistoryPanel
-        apiBaseUrl={apiBaseUrl}
-        entityId={card.id}
-        entityType="card"
-        getAccessToken={getAccessToken}
-        revision={card.version}
-      />
+      <div className="author-card-detail__decisions">
+        <AuthorLifecycleControls
+          busy={busy}
+          editControl={
+            <Link className="button" href={authorPaths.editCard(card.id)}>
+              Edit card
+            </Link>
+          }
+          noun="card"
+          onAction={(action, reason) => void lifecycle(action, reason)}
+          retirementDescription={
+            <p>
+              This definition will leave future reward selection and cannot be
+              republished. Existing owned copies remain intact.
+            </p>
+          }
+          retirementTitle={`Retire ${card.name}?`}
+          status={card.authoringStatus}
+          submittedBy={card.submittedBy}
+        />
+        <AuthorFeedback
+          compact={tab === 'review' || Boolean(reviewEntry)}
+          error={apiError}
+          refObject={feedbackRef}
+        />
+        <AuthorFeedback
+          compact={tab === 'review' || Boolean(reviewEntry)}
+          message={message}
+          refObject={messageRef}
+        />
+      </div>
+      {tab === 'review' ? (
+        <section aria-label="Card review" className="card-review">
+          <AuthorHistoryPanel
+            apiBaseUrl={apiBaseUrl}
+            entityId={card.id}
+            entityType="card"
+            getAccessToken={getAccessToken}
+            revision={card.version}
+          />
+        </section>
+      ) : null}
     </article>
   );
 }
@@ -804,10 +814,8 @@ function CardMechanicsSummary({ card }: { card: AuthorCard }) {
   );
 }
 
-function toCollectibleCard(card: AuthorCard): OwnedCard {
+function toCollectibleCard(card: AuthorCard): CardPresentation {
   return {
-    acquiredAt: card.createdAt,
-    acquisitionKind: 'event_reward',
     affinity: card.affinity,
     cardDefinitionId: card.id,
     category: card.category,
@@ -818,10 +826,15 @@ function toCollectibleCard(card: AuthorCard): OwnedCard {
     isActive: card.isActive,
     moves: card.moves,
     name: card.name,
-    ownedCardId: `author-${card.id}`,
     power: card.power,
     rarity: card.rarity,
   };
+}
+
+function formatCardDate(value: string) {
+  return createAppDateTimeFormatter(undefined, { dateStyle: 'medium' }).format(
+    new Date(value),
+  );
 }
 
 function formatDateTime(value: string) {
@@ -887,6 +900,7 @@ function CardForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [busy, setBusy] = useState(false);
+  const [activeMove, setActiveMove] = useState<number | null>(0);
   const formRef = useRef<HTMLFormElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef<AbortController | null>(null);
@@ -904,6 +918,14 @@ function CardForm({
       formRef.current?.querySelector<HTMLElement>('#card-name')?.focus();
     }
   }, [apiError?.code, busy, errors.name]);
+
+  useLayoutEffect(() => {
+    const invalidMove = Object.keys(errors).find((field) =>
+      /^move\d/.test(field),
+    );
+    if (invalidMove)
+      setActiveMove(Number(invalidMove.match(/^move(\d+)/)?.[1]));
+  }, [errors]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(cardDraft(card));
   const recordKey = `card:${card?.id ?? 'new'}` as AuthorRecordKey;
@@ -1011,7 +1033,6 @@ function CardForm({
       </Link>
       <header className="author-panel__heading">
         <div>
-          <p className="eyebrow">Card definition</p>
           <h3 id="card-editor-title">{card ? card.name : 'New card'}</h3>
         </div>
         {card ? <StatusBadge status={card.authoringStatus} /> : null}
@@ -1019,312 +1040,381 @@ function CardForm({
       <AuthorFeedback error={apiError} refObject={feedbackRef} />
 
       <form className="author-form" noValidate onSubmit={save} ref={formRef}>
-        <div className="author-form__grid">
-          <Field error={errors.name} label="Card name" name="card-name">
-            <input
-              aria-describedby={errors.name ? 'card-name-error' : undefined}
-              aria-invalid={Boolean(errors.name)}
+        <div className="author-card-editor__layout">
+          <div className="author-card-editor__fields">
+            <fieldset
+              className="author-fieldset card-editor-section"
               disabled={busy}
-              id="card-name"
-              onChange={(change) => {
-                const name = change.currentTarget.value;
-                setDraft((current) => ({
-                  ...current,
-                  name,
-                }));
-                setErrors((current) => {
-                  const remaining = { ...current };
-                  delete remaining.name;
-                  return remaining;
-                });
-                if (apiError?.code === 'CARD_NAME_CONFLICT') {
-                  setApiError(null);
-                }
-              }}
-              required
-              value={draft.name}
-            />
-          </Field>
-          <Field label="Category" name="card-category">
-            <select
-              disabled={busy || draft.category === 'power'}
-              id="card-category"
-              onChange={(change) =>
-                changeCategory(change.target.value as CardCategory)
-              }
-              value={draft.category}
             >
-              <option value="creature">Creature</option>
-              <option value="power">Power</option>
-            </select>
-          </Field>
-          <Field label="Affinity" name="card-affinity">
-            <select
-              disabled={busy}
-              id="card-affinity"
-              onChange={(change) => {
-                const value = change.currentTarget.value as CardAffinity;
-                setDraft((current) => ({ ...current, affinity: value }));
-              }}
-              value={draft.affinity ?? ''}
-            >
-              {draft.category === 'power' ? (
-                <option value="">Typeless</option>
-              ) : null}
-              {['wit', 'grit', 'spark', 'spirit', 'mystic'].map((value) => (
-                <option key={value} value={value}>
-                  {titleCase(value)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Rarity" name="card-rarity">
-            <select
-              disabled={busy}
-              id="card-rarity"
-              onChange={(change) => {
-                const value = change.currentTarget.value as CardRarity;
-                setDraft((current) => ({ ...current, rarity: value }));
-              }}
-              value={draft.rarity}
-            >
-              {['common', 'rare', 'epic', 'legendary'].map((value) => (
-                <option key={value} value={value}>
-                  {titleCase(value)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {draft.category === 'creature' ? (
-            <>
-              <Field error={errors.hp} label="Hit points (HP)" name="card-hp">
-                <input
-                  aria-describedby={errors.hp ? 'card-hp-error' : undefined}
-                  aria-invalid={Boolean(errors.hp)}
+              <legend>Identity</legend>
+              <div className="author-form__grid">
+                <Field error={errors.name} label="Card name" name="card-name">
+                  <input
+                    aria-describedby={
+                      errors.name ? 'card-name-error' : undefined
+                    }
+                    aria-invalid={Boolean(errors.name)}
+                    disabled={busy}
+                    id="card-name"
+                    onChange={(change) => {
+                      const name = change.currentTarget.value;
+                      setDraft((current) => ({
+                        ...current,
+                        name,
+                      }));
+                      setErrors((current) => {
+                        const remaining = { ...current };
+                        delete remaining.name;
+                        return remaining;
+                      });
+                      if (apiError?.code === 'CARD_NAME_CONFLICT') {
+                        setApiError(null);
+                      }
+                    }}
+                    required
+                    value={draft.name}
+                  />
+                </Field>
+                <SelectField
+                  className="form-field"
+                  label="Category"
+                  disabled={busy || draft.category === 'power'}
+                  id="card-category"
+                  onChange={(value) => changeCategory(value as CardCategory)}
+                  value={draft.category}
+                  options={[
+                    { value: 'creature', label: 'Creature' },
+                    { value: 'power', label: 'Power' },
+                  ]}
+                />
+                <SelectField
+                  className="form-field"
+                  label="Affinity"
                   disabled={busy}
-                  id="card-hp"
-                  inputMode="numeric"
-                  min="1"
+                  id="card-affinity"
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      affinity: value as CardAffinity,
+                    }))
+                  }
+                  value={draft.affinity ?? ''}
+                  options={[
+                    ...(draft.category === 'power'
+                      ? [{ value: '', label: 'Typeless' }]
+                      : []),
+                    ...['wit', 'grit', 'spark', 'spirit', 'mystic'].map(
+                      (value) => ({
+                        value,
+                        label: titleCase(value),
+                      }),
+                    ),
+                  ]}
+                />
+                <SelectField
+                  className="form-field"
+                  label="Rarity"
+                  disabled={busy}
+                  id="card-rarity"
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      rarity: value as CardRarity,
+                    }))
+                  }
+                  value={draft.rarity}
+                  options={['common', 'rare', 'epic', 'legendary'].map(
+                    (value) => ({
+                      value,
+                      label: titleCase(value),
+                    }),
+                  )}
+                />
+                {draft.category === 'creature' ? (
+                  <>
+                    <Field
+                      error={errors.hp}
+                      label="Hit points (HP)"
+                      name="card-hp"
+                    >
+                      <input
+                        aria-describedby={
+                          errors.hp ? 'card-hp-error' : undefined
+                        }
+                        aria-invalid={Boolean(errors.hp)}
+                        disabled={busy}
+                        id="card-hp"
+                        inputMode="numeric"
+                        min="1"
+                        onChange={(change) => {
+                          const value = change.currentTarget.value;
+                          setDraft((current) => ({ ...current, hp: value }));
+                        }}
+                        required
+                        step="1"
+                        type="number"
+                        value={draft.hp}
+                      />
+                    </Field>
+                    <Field
+                      error={errors.power}
+                      label="Starting Power"
+                      name="card-power"
+                    >
+                      <input
+                        aria-describedby={
+                          errors.power ? 'card-power-error' : undefined
+                        }
+                        aria-invalid={Boolean(errors.power)}
+                        disabled={busy}
+                        id="card-power"
+                        inputMode="numeric"
+                        min="0"
+                        onChange={(change) => {
+                          const value = change.currentTarget.value;
+                          setDraft((current) => ({ ...current, power: value }));
+                        }}
+                        required
+                        step="1"
+                        type="number"
+                        value={draft.power}
+                      />
+                    </Field>
+                  </>
+                ) : null}
+              </div>
+
+              <Field
+                error={errors.description}
+                label="Display description (optional)"
+                name="card-description"
+              >
+                <textarea
+                  aria-describedby={
+                    errors.description ? 'card-description-error' : undefined
+                  }
+                  aria-invalid={Boolean(errors.description)}
+                  disabled={busy}
+                  id="card-description"
                   onChange={(change) => {
                     const value = change.currentTarget.value;
-                    setDraft((current) => ({ ...current, hp: value }));
+                    setDraft((current) => ({ ...current, description: value }));
                   }}
-                  required
-                  step="1"
-                  type="number"
-                  value={draft.hp}
+                  rows={3}
+                  value={draft.description}
                 />
               </Field>
+            </fieldset>
+            <fieldset
+              className="author-fieldset card-editor-section"
+              disabled={busy}
+            >
+              <legend>Artwork</legend>
               <Field
-                error={errors.power}
-                label="Starting Power"
-                name="card-power"
+                error={errors.imageUrl}
+                label="Artwork URL (optional)"
+                name="card-image-url"
               >
                 <input
-                  aria-describedby={
-                    errors.power ? 'card-power-error' : undefined
-                  }
-                  aria-invalid={Boolean(errors.power)}
+                  aria-describedby={`${errors.imageUrl ? 'card-image-url-error ' : ''}card-image-help`.trim()}
+                  aria-invalid={Boolean(errors.imageUrl)}
                   disabled={busy}
-                  id="card-power"
-                  inputMode="numeric"
-                  min="0"
+                  id="card-image-url"
+                  inputMode="url"
                   onChange={(change) => {
                     const value = change.currentTarget.value;
-                    setDraft((current) => ({ ...current, power: value }));
+                    setDraft((current) => ({ ...current, imageUrl: value }));
+                    setErrors((current) => {
+                      if (!current.imageUrl) return current;
+                      const next = { ...current };
+                      delete next.imageUrl;
+                      return next;
+                    });
                   }}
-                  required
-                  step="1"
-                  type="number"
-                  value={draft.power}
+                  spellCheck={false}
+                  type="text"
+                  value={draft.imageUrl}
                 />
+                <span className="field-help" id="card-image-help">
+                  Use only artwork with recorded rights and attribution. Enter a
+                  direct http(s) link or /cards/ path.
+                </span>
               </Field>
-            </>
-          ) : null}
-        </div>
-
-        <Field
-          error={errors.description}
-          label="Display description (optional)"
-          name="card-description"
-        >
-          <textarea
-            aria-describedby={
-              errors.description ? 'card-description-error' : undefined
-            }
-            aria-invalid={Boolean(errors.description)}
-            disabled={busy}
-            id="card-description"
-            onChange={(change) => {
-              const value = change.currentTarget.value;
-              setDraft((current) => ({ ...current, description: value }));
-            }}
-            rows={3}
-            value={draft.description}
-          />
-        </Field>
-        <Field
-          error={errors.imageUrl}
-          label="Artwork URL (optional)"
-          name="card-image-url"
-        >
-          <input
-            aria-describedby={`${errors.imageUrl ? 'card-image-url-error ' : ''}card-image-help`.trim()}
-            aria-invalid={Boolean(errors.imageUrl)}
-            disabled={busy}
-            id="card-image-url"
-            inputMode="url"
-            onChange={(change) => {
-              const value = change.currentTarget.value;
-              setDraft((current) => ({ ...current, imageUrl: value }));
-              setErrors((current) => {
-                if (!current.imageUrl) return current;
-                const next = { ...current };
-                delete next.imageUrl;
-                return next;
-              });
-            }}
-            spellCheck={false}
-            type="text"
-            value={draft.imageUrl}
-          />
-          <span className="field-help" id="card-image-help">
-            Use only artwork with recorded rights and attribution. Enter a
-            direct http(s) link or /cards/ path.
-          </span>
-          {draft.imageUrl.trim() ? (
-            <ArtworkPreview
-              imageUrl={draft.imageUrl}
-              key={draft.imageUrl.trim()}
-              name={draft.name}
-            />
-          ) : null}
-        </Field>
-
-        {draft.category === 'creature' ? (
-          <fieldset
-            aria-describedby={errors.moves ? 'card-moves-error' : undefined}
-            aria-invalid={Boolean(errors.moves)}
-            className="author-fieldset"
-            disabled={busy}
-            tabIndex={errors.moves ? -1 : undefined}
-          >
-            <legend>Creature moves</legend>
-            {errors.moves ? (
-              <p className="field-error" id="card-moves-error">
-                {errors.moves}
-              </p>
-            ) : null}
-            {draft.moves.map((move, index) => (
-              <MoveEditor
-                errors={errors}
-                index={index}
-                key={index}
-                move={move}
-                onChange={(next) =>
-                  setDraft((current) => ({
-                    ...current,
-                    moves: current.moves.map((item, itemIndex) =>
-                      itemIndex === index ? next : item,
-                    ),
-                  }))
-                }
-                onRemove={() =>
-                  setDraft((current) => ({
-                    ...current,
-                    moves: current.moves.filter(
-                      (_item, itemIndex) => itemIndex !== index,
-                    ),
-                  }))
-                }
-              />
-            ))}
-            <button
-              aria-describedby="card-move-limit"
-              className="button button--quiet"
-              disabled={draft.moves.length >= 4}
-              onClick={() =>
-                setDraft((current) =>
-                  current.moves.length >= 4
-                    ? current
-                    : {
+            </fieldset>
+            {draft.category === 'creature' ? (
+              <fieldset
+                aria-describedby={errors.moves ? 'card-moves-error' : undefined}
+                aria-invalid={Boolean(errors.moves)}
+                className="author-fieldset card-editor-section"
+                disabled={busy}
+                tabIndex={errors.moves ? -1 : undefined}
+              >
+                <legend>Creature moves</legend>
+                {errors.moves ? (
+                  <p className="field-error" id="card-moves-error">
+                    {errors.moves}
+                  </p>
+                ) : null}
+                {draft.moves.map((move, index) => (
+                  <MoveEditor
+                    busy={busy}
+                    errors={errors}
+                    expanded={activeMove === index}
+                    onToggle={() =>
+                      setActiveMove(activeMove === index ? null : index)
+                    }
+                    index={index}
+                    key={index}
+                    move={move}
+                    onChange={(next) =>
+                      setDraft((current) => ({
                         ...current,
-                        moves: [...current.moves, emptyMove()],
-                      },
-                )
-              }
-              type="button"
-            >
-              Add move
-            </button>
-            <span className="field-help" id="card-move-limit">
-              Creature drafts may contain up to four moves. Publication requires
-              exactly four.
-            </span>
-          </fieldset>
-        ) : (
-          <fieldset
-            aria-describedby={errors.effects ? 'card-effects-error' : undefined}
-            aria-invalid={Boolean(errors.effects)}
-            className="author-fieldset"
-            disabled={busy}
-            tabIndex={errors.effects ? -1 : undefined}
+                        moves: current.moves.map((item, itemIndex) =>
+                          itemIndex === index ? next : item,
+                        ),
+                      }))
+                    }
+                    onRemove={() => {
+                      setActiveMove((current) =>
+                        current === null
+                          ? null
+                          : Math.max(0, current - (index <= current ? 1 : 0)),
+                      );
+                      setDraft((current) => ({
+                        ...current,
+                        moves: current.moves.filter(
+                          (_item, itemIndex) => itemIndex !== index,
+                        ),
+                      }));
+                    }}
+                  />
+                ))}
+                <button
+                  aria-describedby="card-move-limit"
+                  className="button button--quiet"
+                  disabled={draft.moves.length >= 4}
+                  onClick={() => {
+                    setActiveMove(draft.moves.length);
+                    setDraft((current) =>
+                      current.moves.length >= 4
+                        ? current
+                        : {
+                            ...current,
+                            moves: [...current.moves, emptyMove()],
+                          },
+                    );
+                  }}
+                  type="button"
+                >
+                  Add move
+                </button>
+                <span className="field-help" id="card-move-limit">
+                  Creature drafts may contain up to four moves. Publication
+                  requires exactly four.
+                </span>
+              </fieldset>
+            ) : (
+              <fieldset
+                aria-describedby={
+                  errors.effects ? 'card-effects-error' : undefined
+                }
+                aria-invalid={Boolean(errors.effects)}
+                className="author-fieldset card-editor-section"
+                disabled={busy}
+                tabIndex={errors.effects ? -1 : undefined}
+              >
+                <legend>Power-card effects</legend>
+                {errors.effects ? (
+                  <p className="field-error" id="card-effects-error">
+                    {errors.effects}
+                  </p>
+                ) : null}
+                {draft.effects.map((effect, index) => (
+                  <EffectEditor
+                    busy={busy}
+                    effect={effect}
+                    errors={errors}
+                    index={index}
+                    key={index}
+                    prefix="effect"
+                    onChange={(next) =>
+                      setDraft((current) => ({
+                        ...current,
+                        effects: current.effects.map((item, itemIndex) =>
+                          itemIndex === index ? next : item,
+                        ),
+                      }))
+                    }
+                    onRemove={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        effects: current.effects.filter(
+                          (_item, itemIndex) => itemIndex !== index,
+                        ),
+                      }))
+                    }
+                  />
+                ))}
+                <button
+                  className="button button--quiet"
+                  onClick={() =>
+                    setDraft((current) => ({
+                      ...current,
+                      effects: [...current.effects, emptyEffect()],
+                    }))
+                  }
+                  type="button"
+                >
+                  Add effect
+                </button>
+              </fieldset>
+            )}
+          </div>
+          <aside
+            className="author-card-editor__preview"
+            aria-label="Live card preview"
           >
-            <legend>Power-card effects</legend>
-            {errors.effects ? (
-              <p className="field-error" id="card-effects-error">
-                {errors.effects}
-              </p>
-            ) : null}
-            {draft.effects.map((effect, index) => (
-              <EffectEditor
-                effect={effect}
-                errors={errors}
-                index={index}
-                key={index}
-                prefix="effect"
-                onChange={(next) =>
-                  setDraft((current) => ({
-                    ...current,
-                    effects: current.effects.map((item, itemIndex) =>
-                      itemIndex === index ? next : item,
-                    ),
-                  }))
-                }
-                onRemove={() =>
-                  setDraft((current) => ({
-                    ...current,
-                    effects: current.effects.filter(
-                      (_item, itemIndex) => itemIndex !== index,
-                    ),
-                  }))
-                }
-              />
-            ))}
-            <button
-              className="button button--quiet"
-              onClick={() =>
-                setDraft((current) => ({
-                  ...current,
-                  effects: [...current.effects, emptyEffect()],
-                }))
-              }
-              type="button"
+            <h4>Card preview</h4>
+            <p className="field-help">Unsaved preview</p>
+            <div
+              className={`collectible-card collectible-card--${draft.rarity}`}
             >
-              Add effect
-            </button>
-          </fieldset>
-        )}
-
-        <div className="card-preview" aria-label="Card metadata preview">
-          <p className="eyebrow">Preview</p>
-          <strong>{draft.name.trim() || 'Untitled card'}</strong>
-          <p>
-            {titleCase(draft.rarity)}{' '}
-            {draft.affinity ? titleCase(draft.affinity) : 'Typeless'}{' '}
-            {titleCase(draft.category)}
-          </p>
-          {draft.description.trim() ? <p>{draft.description}</p> : null}
+              <CardFrame rarity={draft.rarity}>
+                <ArtworkPreview
+                  imageUrl={draft.imageUrl}
+                  key={draft.imageUrl.trim()}
+                  name={draft.name}
+                />
+              </CardFrame>
+              <div className="collectible-card__body">
+                <p className="collectible-card__kind">
+                  {titleCase(draft.category)} ·{' '}
+                  {draft.affinity ? titleCase(draft.affinity) : 'Typeless'}
+                </p>
+                <h4>{draft.name.trim() || 'Untitled card'}</h4>
+                {draft.description.trim() ? (
+                  <p className="collectible-card__description">
+                    {draft.description}
+                  </p>
+                ) : null}
+                {draft.category === 'creature' ? (
+                  <dl
+                    aria-label="Preview creature attributes"
+                    className="collectible-card__stats"
+                  >
+                    <div>
+                      <dt>HP</dt>
+                      <dd>{draft.hp || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Power</dt>
+                      <dd>{draft.power || '—'}</dd>
+                    </div>
+                  </dl>
+                ) : null}
+              </div>
+            </div>
+          </aside>
         </div>
 
         <AuthorSaveBar
@@ -1347,6 +1437,34 @@ function CardForm({
         </AuthorSaveBar>
       </form>
     </section>
+  );
+}
+
+function CatalogueArtwork({ card }: { card: AuthorCard }) {
+  const [failed, setFailed] = useState(false);
+  const url = cardArtworkUrl(card.imageUrl ?? '');
+
+  return (
+    <span
+      aria-hidden="true"
+      className="card-table__artwork"
+      title={!url || failed ? 'Artwork unavailable' : undefined}
+    >
+      {url && !failed ? (
+        <img
+          alt=""
+          decoding="async"
+          height={36}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          referrerPolicy="no-referrer"
+          src={url}
+          width={36}
+        />
+      ) : (
+        <ImageIcon size={20} />
+      )}
+    </span>
   );
 }
 
@@ -1380,13 +1498,13 @@ function ArtworkPreview({
           src={url}
         />
       ) : null}
-      {status !== 'ready' ? (
+      {url && (status === 'waiting' || status === 'loading') ? (
+        <AuthorLoadingState label="Loading artwork preview…" />
+      ) : status !== 'ready' ? (
         <p role="status">
           {!url
             ? 'Enter an http(s) URL or /cards/ path to preview it.'
-            : status === 'error'
-              ? 'Image could not load. Check the URL.'
-              : 'Loading artwork preview…'}
+            : 'Image could not load. Check the URL.'}
         </p>
       ) : null}
     </div>
@@ -1409,105 +1527,131 @@ function cardArtworkUrl(value: string): string | null {
 }
 
 function MoveEditor({
+  busy,
   errors,
+  expanded,
+  onToggle,
   index,
   move,
   onChange,
   onRemove,
 }: {
+  busy: boolean;
   errors: Record<string, string>;
+  expanded: boolean;
+  onToggle: () => void;
   index: number;
   move: MoveDraft;
   onChange: (move: MoveDraft) => void;
   onRemove: () => void;
 }) {
   return (
-    <div className="nested-editor">
-      <div className="nested-editor__heading">
-        <strong>Move {index + 1}</strong>
+    <div className="card-move-editor">
+      <div className="card-move-editor__header">
         <button
-          className="button button--quiet"
-          onClick={onRemove}
+          className="card-move-editor__toggle"
           type="button"
+          aria-expanded={expanded}
+          aria-controls={`card-move-panel-${index}`}
+          onClick={onToggle}
         >
-          Remove move
+          <span>
+            <strong>{move.name.trim() || `Move ${index + 1}`}</strong>{' '}
+            <span>
+              {titleCase(move.moveType)} · {move.powerCost || '—'} Power
+            </span>
+          </span>
+          <CaretDownIcon size={16} aria-hidden="true" />
         </button>
+        {expanded ? (
+          <button
+            className="button button--quiet"
+            onClick={onRemove}
+            type="button"
+          >
+            Remove move
+          </button>
+        ) : null}
       </div>
-      <div className="author-form__grid">
-        <Field
-          error={errors[`move${index}Name`]}
-          label="Move name"
-          name={`move-${index}-name`}
-        >
-          <input
-            aria-describedby={
-              errors[`move${index}Name`]
-                ? `move-${index}-name-error`
-                : undefined
-            }
-            aria-invalid={Boolean(errors[`move${index}Name`])}
-            id={`move-${index}-name`}
-            onChange={(change) =>
-              onChange({ ...move, name: change.target.value })
-            }
-            value={move.name}
-          />
-        </Field>
-        <Field label="Move type" name={`move-${index}-type`}>
-          <select
+      <div
+        id={`card-move-panel-${index}`}
+        className="card-move-editor__body"
+        hidden={!expanded}
+      >
+        <div className="author-form__grid">
+          <Field
+            error={errors[`move${index}Name`]}
+            label="Move name"
+            name={`move-${index}-name`}
+          >
+            <input
+              aria-describedby={
+                errors[`move${index}Name`]
+                  ? `move-${index}-name-error`
+                  : undefined
+              }
+              aria-invalid={Boolean(errors[`move${index}Name`])}
+              id={`move-${index}-name`}
+              onChange={(change) =>
+                onChange({ ...move, name: change.target.value })
+              }
+              value={move.name}
+            />
+          </Field>
+          <SelectField
+            className="form-field"
+            label="Move type"
             id={`move-${index}-type`}
-            onChange={(change) =>
-              onChange({
-                ...move,
-                moveType: change.target.value as CardMoveType,
-              })
+            disabled={busy}
+            onChange={(value) =>
+              onChange({ ...move, moveType: value as CardMoveType })
             }
             value={move.moveType}
-          >
-            {['basic', 'wit', 'grit', 'spark', 'spirit', 'mystic'].map(
-              (value) => (
-                <option key={value} value={value}>
-                  {titleCase(value)}
-                </option>
-              ),
+            options={['basic', 'wit', 'grit', 'spark', 'spirit', 'mystic'].map(
+              (value) => ({
+                value,
+                label: titleCase(value),
+              }),
             )}
-          </select>
-        </Field>
-        <Field
-          error={errors[`move${index}PowerCost`]}
-          label="Power cost"
-          name={`move-${index}-cost`}
-        >
-          <input
-            aria-describedby={
-              errors[`move${index}PowerCost`]
-                ? `move-${index}-cost-error`
-                : undefined
-            }
-            aria-invalid={Boolean(errors[`move${index}PowerCost`])}
-            id={`move-${index}-cost`}
-            min="0"
-            onChange={(change) =>
-              onChange({ ...move, powerCost: change.target.value })
-            }
-            step="1"
-            type="number"
-            value={move.powerCost}
           />
-        </Field>
+          <Field
+            error={errors[`move${index}PowerCost`]}
+            label="Power cost"
+            name={`move-${index}-cost`}
+          >
+            <input
+              aria-describedby={
+                errors[`move${index}PowerCost`]
+                  ? `move-${index}-cost-error`
+                  : undefined
+              }
+              aria-invalid={Boolean(errors[`move${index}PowerCost`])}
+              id={`move-${index}-cost`}
+              min="0"
+              onChange={(change) =>
+                onChange({ ...move, powerCost: change.target.value })
+              }
+              step="1"
+              type="number"
+              value={move.powerCost}
+            />
+          </Field>
+        </div>
+        <EffectEditor
+          busy={busy}
+          effect={move}
+          errors={errors}
+          index={index}
+          onChange={(effect) => onChange({ ...move, ...effect })}
+          prefix="move"
+        />
       </div>
-      <EffectEditor
-        effect={move}
-        errors={errors}
-        index={index}
-        onChange={(effect) => onChange({ ...move, ...effect })}
-        prefix="move"
-      />
     </div>
   );
 }
 
 function EffectEditor({
+  busy,
   effect,
   errors,
   index,
@@ -1515,6 +1659,7 @@ function EffectEditor({
   onRemove,
   prefix,
 }: {
+  busy: boolean;
   effect: EffectDraft;
   errors: Record<string, string>;
   index: number;
@@ -1570,21 +1715,18 @@ function EffectEditor({
         </div>
       ) : null}
       <div className="author-form__grid">
-        <Field label="Effect type" name={`${prefix}-${index}-effect-type`}>
-          <select
-            id={`${prefix}-${index}-effect-type`}
-            onChange={(change) =>
-              changeType(change.target.value as CardEffectType)
-            }
-            value={effect.effectType}
-          >
-            {['damage', 'debuff', 'heal', 'buff'].map((value) => (
-              <option key={value} value={value}>
-                {titleCase(value)}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <SelectField
+          className="form-field"
+          label="Effect type"
+          id={`${prefix}-${index}-effect-type`}
+          disabled={busy}
+          onChange={(value) => changeType(value as CardEffectType)}
+          value={effect.effectType}
+          options={['damage', 'debuff', 'heal', 'buff'].map((value) => ({
+            value,
+            label: titleCase(value),
+          }))}
+        />
         <Field
           error={errors[`${prefix}${index}EffectValue`]}
           label="Effect value (optional)"
@@ -1609,30 +1751,21 @@ function EffectEditor({
         </Field>
         {modifier ? (
           <>
-            <Field
+            <SelectField
+              className="form-field"
               error={errors[`${prefix}${index}Modifier`]}
               label="Modifier stat"
-              name={`${prefix}-${index}-modifier-stat`}
-            >
-              <select
-                aria-describedby={
-                  errors[`${prefix}${index}Modifier`]
-                    ? `${prefix}-${index}-modifier-stat-error`
-                    : undefined
-                }
-                aria-invalid={Boolean(errors[`${prefix}${index}Modifier`])}
-                id={`${prefix}-${index}-modifier-stat`}
-                onChange={(change) =>
-                  changeStat(change.target.value as '' | CardModifierStat)
-                }
-                value={effect.modifierStat}
-              >
-                <option value="">Choose stat</option>
-                <option value="hp">HP</option>
-                <option value="power">Power</option>
-                <option value="damage_multiplier">Damage multiplier</option>
-              </select>
-            </Field>
+              id={`${prefix}-${index}-modifier-stat`}
+              disabled={busy}
+              onChange={(value) => changeStat(value as '' | CardModifierStat)}
+              value={effect.modifierStat}
+              options={[
+                { value: '', label: 'Choose stat' },
+                { value: 'hp', label: 'HP' },
+                { value: 'power', label: 'Power' },
+                { value: 'damage_multiplier', label: 'Damage multiplier' },
+              ]}
+            />
             <Field
               label="Modifier operation"
               name={`${prefix}-${index}-modifier-operation`}

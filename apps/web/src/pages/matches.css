@@ -476,13 +476,6 @@
   background: rgb(212 175 55 / 8%);
 }
 
-.pvp-creature-options input {
-  width: 1.2rem;
-  height: 1.2rem;
-  flex: 0 0 auto;
-  accent-color: var(--colour-gold-500);
-}
-
 .pvp-creature-options span {
   display: grid;
 }
@@ -4230,10 +4223,7 @@
 }
 
 .ranked-territory-option__toggle input {
-  width: 1.2rem;
-  height: 1.2rem;
   margin: 0.15rem 0 0;
-  accent-color: var(--colour-blue-500);
 }
 
 .ranked-territory-option__toggle span,
