@@ -531,7 +531,7 @@ test('player showcase, editor and visitor view work across screen sizes', async 
       json: { detail: 'Fixture route unavailable' },
     });
   });
-  for (const width of [1440, 768, 390]) {
+  for (const width of [1440, 768, 390, 320]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
     await page.goto('/profile');
     await expect(
@@ -574,16 +574,78 @@ test('player showcase, editor and visitor view work across screen sizes', async 
     const editShowcase = await page
       .getByRole('button', { name: 'Edit showcase', exact: true })
       .boundingBox();
-    expect(Math.abs(editProfile!.x - editShowcase!.x)).toBeLessThan(1);
-    expect(Math.abs(editProfile!.width - editShowcase!.width)).toBeLessThan(1);
+    if (width >= 768) {
+      expect(Math.abs(editProfile!.x - editShowcase!.x)).toBeLessThan(1);
+      expect(Math.abs(editProfile!.width - editShowcase!.width)).toBeLessThan(
+        1,
+      );
+    } else {
+      const header = (await page.locator('.showcase-identity').boundingBox())!;
+      const details = (await page
+        .locator('.showcase-identity__details')
+        .boundingBox())!;
+      const identity = (await page
+        .locator('.showcase-identity__text')
+        .boundingBox())!;
+      expect(Math.abs(details.x - header.x)).toBeLessThan(1);
+      expect(details.y).toBeGreaterThanOrEqual(identity.y + identity.height);
+      expect(Math.abs(editProfile!.width - header.width)).toBeLessThan(1);
+    }
     expect(Math.abs(editProfile!.height - editShowcase!.height)).toBeLessThan(
       1,
     );
+    const cardRow = await page
+      .locator('.showcase-card-grid .card-thumbnail')
+      .evaluateAll((cards) =>
+        cards.map((card) => {
+          const { x, y, width, height } = card.getBoundingClientRect();
+          return { x, y, width, height };
+        }),
+      );
+    expect(cardRow).toHaveLength(4);
+    for (const card of cardRow) {
+      expect(Math.abs(card.y - cardRow[0]!.y)).toBeLessThan(1);
+      expect(card.width).toBeGreaterThanOrEqual(50);
+      expect(card.height).toBeGreaterThan(card.width);
+    }
+    const inspectCard = page.getByRole('button', { name: 'Inspect Quillip' });
+    await inspectCard.hover();
+    await expect(inspectCard).toHaveAttribute('data-hovered', '');
+    await page.mouse.move(0, 0);
+    await inspectCard.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog', { name: 'Quillip' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(inspectCard).toBeFocused();
+    await page.locator('.showcase-activity').scrollIntoViewIfNeeded();
+    await page.getByLabel('Activity period').selectOption('365');
+    const lastDay = page.locator('.activity-days button').last();
+    const cell = (await lastDay.boundingBox())!;
+    expect(cell.width).toBeGreaterThanOrEqual(width < 768 ? 12 : 18);
+    if (width < 768) expect(cell.width).toBeLessThanOrEqual(14);
+    expect(Math.abs(cell.width - cell.height)).toBeLessThan(1);
+    await page.locator('.showcase-activity').screenshot({
+      path: `/tmp/profile-activity-year-${width}.png`,
+    });
+    await lastDay.click();
+    await expect(page.getByRole('tooltip')).toContainText('2 October 2026');
+    await page.keyboard.press('Home');
+    await expect(page.locator('.activity-days button').first()).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(lastDay).toBeFocused();
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Activity period').focus();
+    await page.getByLabel('Activity period').selectOption('91');
+    expect(
+      (await page.locator('.activity-days button').last().boundingBox())!.width,
+    ).toBe(cell.width);
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
       fullPage: true,
       path: `/tmp/profile-showcase-${width}.png`,
     });
     const activityDay = page.locator('.activity-day[data-day-index="90"]');
+    await activityDay.scrollIntoViewIfNeeded();
     await activityDay.focus();
     await expect(page.getByRole('tooltip')).toContainText('completed');
     await page.screenshot({
@@ -829,11 +891,22 @@ test('player showcase, editor and visitor view work across screen sizes', async 
 });
 
 async function expectNoOverflow(page: Page) {
+  const overflow = await page.evaluate(() => {
+    const width = document.documentElement.clientWidth;
+    return [...document.querySelectorAll('body *')]
+      .filter((element) => {
+        const bounds = element.getBoundingClientRect();
+        return bounds.left < 0 || bounds.right > width;
+      })
+      .slice(0, 8)
+      .map((element) => element.className);
+  });
   expect(
     await page.evaluate(
       () =>
         document.documentElement.scrollWidth <=
         document.documentElement.clientWidth,
     ),
+    `Overflowing elements: ${JSON.stringify(overflow)}`,
   ).toBe(true);
 }

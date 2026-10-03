@@ -52,6 +52,7 @@ export function ProfileActivity({ profile }: { profile: PlayerProfile }) {
   const [tooltip, setTooltip] = useState<ActivityTooltip | null>(null);
   const tooltipId = useId();
   const gridRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const end = new Date(`${profile.activityThrough}T12:00:00Z`).getTime();
   const counts = new Map(
     profile.activity?.map((entry) => [entry.date, entry.count]),
@@ -69,6 +70,10 @@ export function ProfileActivity({ profile }: { profile: PlayerProfile }) {
   const total = days.reduce((sum, entry) => sum + entry.count, 0);
   const columns = Math.ceil((period + startOffset) / 7);
   const tooltipDay = tooltip ? days[tooltip.index] : null;
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (scroll) scroll.scrollLeft = scroll.scrollWidth;
+  }, [period, profile.activityThrough]);
   useEffect(() => {
     const hide = () => setTooltip(null);
     const reposition = () => {
@@ -149,12 +154,13 @@ export function ProfileActivity({ profile }: { profile: PlayerProfile }) {
           <div className="activity-map">
             <div
               className="activity-scroll"
+              ref={scrollRef}
               role="group"
               tabIndex={0}
               aria-label="Activity calendar. Scroll horizontally to view more dates."
             >
               <div
-                className={`activity-calendar${period === 365 ? ' activity-calendar--year' : ' activity-calendar--quarter'}`}
+                className="activity-calendar"
                 style={{ '--activity-columns': columns } as CSSProperties}
               >
                 <div className="activity-weekdays" aria-hidden="true">

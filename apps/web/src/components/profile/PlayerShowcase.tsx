@@ -235,13 +235,19 @@ export function PlayerShowcase({
               <span className="showcase-status__label">{status.text}</span>
             </p>
           ) : null}
-          {profile.degree || profile.studyYear ? (
-            <p className="showcase-academic">
-              {[profile.degree, profile.studyYear].filter(Boolean).join(' · ')}
-            </p>
-          ) : null}
-          {profile.bio ? <p className="showcase-bio">{profile.bio}</p> : null}
         </div>
+        {profile.degree || profile.studyYear || profile.bio ? (
+          <div className="showcase-identity__details">
+            {profile.degree || profile.studyYear ? (
+              <p className="showcase-academic">
+                {[profile.degree, profile.studyYear]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            ) : null}
+            {profile.bio ? <p className="showcase-bio">{profile.bio}</p> : null}
+          </div>
+        ) : null}
         {profile.isOwner ? (
           <div className="showcase-owner-actions">
             <button
@@ -286,6 +292,7 @@ export function PlayerShowcase({
                 card={card}
                 accessibleLabel={`Inspect ${card.name}`}
                 loading="eager"
+                nameplate={null}
                 onClick={() => setInspected(card)}
               />
             ))}

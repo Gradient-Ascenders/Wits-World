@@ -702,12 +702,16 @@
 .showcase-identity {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'avatar identity actions'
+    'avatar details actions';
   column-gap: var(--space-5);
   row-gap: var(--space-4);
   align-items: start;
   padding-bottom: var(--space-3);
 }
 .showcase-avatar {
+  grid-area: avatar;
   display: grid;
   place-items: center;
   width: 7rem;
@@ -732,9 +736,16 @@
   line-height: 1.15;
 }
 .showcase-identity__text {
+  grid-area: identity;
   display: grid;
   justify-items: start;
   gap: var(--space-3);
+  min-width: 0;
+}
+.showcase-identity__details {
+  grid-area: details;
+  display: grid;
+  gap: var(--space-2);
   min-width: 0;
 }
 .showcase-status {
@@ -816,6 +827,7 @@ button.showcase-status:hover {
   flex-shrink: 0;
 }
 .showcase-owner-actions {
+  grid-area: actions;
   display: grid;
   justify-items: end;
   gap: var(--space-2);
@@ -891,9 +903,6 @@ button.showcase-status:hover {
   min-width: 0;
   width: 100%;
 }
-.showcase-card-grid .card-thumbnail__title {
-  font-size: clamp(0.7rem, 1.3vw, 1rem);
-}
 .showcase-card-empty {
   display: flex;
   flex-direction: column;
@@ -962,23 +971,18 @@ button.showcase-status:hover {
   background: var(--colour-background-secondary);
 }
 .activity-calendar {
-  --activity-gap: 2px;
+  --activity-cell: 1.125rem;
+  --activity-gap: 4px;
   display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr);
+  width: max-content;
+  grid-template-columns: 2rem auto;
   grid-template-rows: auto auto;
   column-gap: var(--space-2);
-}
-.activity-calendar--year {
-  min-width: 35rem;
-}
-.activity-calendar--quarter {
-  min-width: 15rem;
-  max-width: 26rem;
 }
 .activity-weekdays {
   grid-row: 2;
   display: grid;
-  grid-template-rows: repeat(7, minmax(0, 1fr));
+  grid-template-rows: repeat(7, var(--activity-cell));
   gap: var(--activity-gap);
   align-items: center;
   color: var(--colour-text-secondary);
@@ -988,7 +992,7 @@ button.showcase-status:hover {
 .activity-months {
   grid-column: 2;
   display: grid;
-  grid-template-columns: repeat(var(--activity-columns), minmax(0, 1fr));
+  grid-template-columns: repeat(var(--activity-columns), var(--activity-cell));
   gap: var(--activity-gap);
   margin-bottom: var(--space-2);
   color: var(--colour-text-secondary);
@@ -999,8 +1003,8 @@ button.showcase-status:hover {
   grid-column: 2;
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(7, minmax(0, 1fr));
-  grid-template-columns: repeat(var(--activity-columns), minmax(0, 1fr));
+  grid-template-rows: repeat(7, var(--activity-cell));
+  grid-template-columns: repeat(var(--activity-columns), var(--activity-cell));
   gap: var(--activity-gap);
 }
 .activity-day {
@@ -1803,19 +1807,40 @@ button.activity-day:hover {
     padding-top: var(--space-3);
   }
   .showcase-identity {
-    grid-template-columns: 5rem minmax(0, 1fr);
-    gap: var(--space-4);
+    grid-template-columns: 4rem minmax(0, 1fr);
+    grid-template-areas:
+      'avatar identity'
+      'details details'
+      'actions actions';
+    gap: var(--space-3) var(--space-4);
+    align-items: center;
   }
   .showcase-avatar {
-    width: 5rem;
-    height: 5rem;
+    width: 4rem;
+    height: 4rem;
     font-size: 2rem;
   }
   .showcase-identity h1 {
-    font-size: 1.875rem;
+    font-size: clamp(1.5rem, 5.5vw, 1.875rem);
+    text-wrap: pretty;
+  }
+  .showcase-identity__text {
+    gap: var(--space-2);
   }
   .showcase-owner-actions {
-    grid-column: 1 / -1;
+    justify-items: start;
+  }
+  .showcase-owner-actions .showcase-edit-action {
+    width: 100%;
+    margin: 0;
+  }
+  .showcase-cards .showcase-edit-action {
+    width: auto;
+    padding-inline: var(--space-3);
+    font-size: var(--text-sm);
+  }
+  .showcase-section-heading h2 {
+    font-size: clamp(1.25rem, 4.5vw, 1.5rem);
   }
   .showcase-bio {
     font-size: var(--text-sm);
@@ -1833,11 +1858,43 @@ button.activity-day:hover {
     font-size: var(--text-xs);
   }
   .showcase-card-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-4);
+    gap: var(--space-2);
+    align-items: stretch;
   }
-  .showcase-card-grid .card-thumbnail__title {
+  .showcase-card-grid .card-frame {
+    padding: 10px 4px 4px;
+    border-width: 2px;
+    border-radius: var(--radius-md);
+  }
+  .showcase-card-grid .card-frame__rail {
+    min-height: 0;
+    gap: 2px;
+    padding: 4px 2px;
+  }
+  .showcase-card-grid .card-frame__rarity {
+    gap: 2px;
+    font-size: 0.5625rem;
+    letter-spacing: 0;
+  }
+  .showcase-card-grid .card-frame__insignia {
+    width: 6px;
+    height: 6px;
+    border-width: 1px;
+  }
+  .showcase-card-empty {
+    height: 100%;
+    gap: var(--space-2);
+    padding: var(--space-1);
+    border-radius: var(--radius-md);
     font-size: var(--text-xs);
+    text-align: center;
+  }
+  .activity-map {
+    padding: var(--space-2);
+  }
+  .activity-calendar {
+    --activity-cell: 0.75rem;
+    --activity-gap: 2px;
   }
   .showcase-progress {
     margin-top: var(--space-6);
