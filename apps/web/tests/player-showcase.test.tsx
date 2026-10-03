@@ -3,7 +3,13 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  within,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from '../src/pages/ProfilePage';
@@ -332,6 +338,36 @@ describe('player showcase', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(calls).toHaveLength(0);
+  });
+
+  it('keeps the emoji picker open when native scrolling blurs the search without a focus target', async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(
+      await screen.findByRole('button', { name: 'Set a status' }),
+    );
+    const trigger = screen.getByRole('button', { name: 'Choose status emoji' });
+    await user.click(trigger);
+    const filter = screen.getByRole('combobox', { name: 'Filter emojis' });
+    fireEvent.blur(filter, { relatedTarget: null });
+    expect(
+      screen.getByRole('group', { name: 'Select an emoji' }),
+    ).toBeVisible();
+    const options = screen.getByRole('listbox', { name: 'Select an emoji' });
+    await user.click(options);
+    expect(options).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Clear emoji' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByLabelText('Status')).toHaveFocus();
+    expect(
+      screen.queryByRole('group', { name: 'Select an emoji' }),
+    ).not.toBeInTheDocument();
+    await user.click(trigger);
+    await user.click(screen.getByRole('heading', { name: 'Set your status' }));
+    expect(
+      screen.queryByRole('group', { name: 'Select an emoji' }),
+    ).not.toBeInTheDocument();
   });
 
   it('selects exact owned copies and changes their order using buttons', async () => {

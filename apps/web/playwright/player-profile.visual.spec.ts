@@ -4,6 +4,9 @@ import { buildCard } from '../tests/fixtures/cards';
 import { buildPlayerProfile } from '../tests/fixtures/player-profile';
 import type { ProfileEdit } from '../src/api/player-profile';
 
+// Keep native scrollbars visible so pointer interactions exercise their real hit area.
+test.use({ launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] } });
+
 const names = ['Quillip', 'Cinderhop', 'Karrik', 'Sylphane'];
 const cards = names.map((name, index) =>
   buildCard(index + 1, {
@@ -467,6 +470,32 @@ test('player showcase, editor and visitor view work across screen sizes', async 
       width === 390 ? 844 - 16 : 1000 - 16,
     );
     await expectNoOverflow(page);
+    const options = page.getByRole('listbox', { name: 'Select an emoji' });
+    const scrollbar = await options.evaluate((list: HTMLElement) => {
+      const box = list.getBoundingClientRect();
+      return {
+        x: box.right - 6,
+        y: box.top + 12,
+        width: list.offsetWidth - list.clientWidth,
+      };
+    });
+    expect(scrollbar.width).toBeGreaterThanOrEqual(12);
+    await page.mouse.move(scrollbar.x, scrollbar.y);
+    await page.mouse.down();
+    await expect(emojiMenu).toBeVisible();
+    await page.mouse.move(scrollbar.x, scrollbar.y + 60, { steps: 6 });
+    await page.mouse.up();
+    await expect(emojiMenu).toBeVisible();
+    await expect
+      .poll(() => options.evaluate((list) => list.scrollTop))
+      .toBeGreaterThan(0);
+    await expect(options).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(
+      page.getByRole('button', { name: 'Clear emoji' }),
+    ).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(emojiFilter).toBeFocused();
     await page.screenshot({ path: `/tmp/profile-emoji-picker-${width}.png` });
     await emojiFilter.fill('books');
     await page.keyboard.press('Enter');

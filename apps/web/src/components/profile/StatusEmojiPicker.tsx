@@ -50,7 +50,13 @@ export function StatusEmojiPicker({
       className="status-emoji-field"
       ref={root}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) close(false);
+        // Native scrollbar interaction can blur the input without moving focus
+        // to another element. Outside pointer presses are handled separately.
+        if (
+          event.relatedTarget &&
+          !event.currentTarget.contains(event.relatedTarget)
+        )
+          close(false);
       }}
       onKeyDown={(event) => {
         if (open && event.key === 'Escape') {
@@ -219,6 +225,12 @@ function EmojiMenu({
         className="status-emoji-options"
         id={`${id}-list`}
         role="listbox"
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          // Leave the focused scroller in DOM order; the dialog's focus trap
+          // otherwise treats this non-Tab-stop element as outside its controls.
+          if (event.key === 'Tab') event.stopPropagation();
+        }}
         aria-labelledby={`${id}-heading`}
       >
         {filtered.map((emoji, index) => (

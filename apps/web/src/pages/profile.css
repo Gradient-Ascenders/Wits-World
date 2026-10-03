@@ -1566,7 +1566,21 @@ button.activity-day:hover {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-color: var(--colour-border-strong) var(--colour-background-app);
-  scrollbar-width: thin;
+  scrollbar-width: auto;
+}
+@supports selector(::-webkit-scrollbar) {
+  .status-emoji-options {
+    scrollbar-color: auto;
+  }
+  .status-emoji-options::-webkit-scrollbar {
+    width: var(--space-3);
+    background: var(--colour-background-app);
+  }
+  .status-emoji-options::-webkit-scrollbar-thumb {
+    min-height: var(--space-5);
+    border-radius: var(--radius-pill);
+    background: var(--colour-border-strong);
+  }
 }
 .status-emoji-option {
   display: flex;
