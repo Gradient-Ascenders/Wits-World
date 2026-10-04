@@ -960,7 +960,7 @@ export function createAsyncPvpService(
     async getMatch(playerId, matchId, timing) {
       const view = await withServiceTransaction(async (client) => {
         const match = await timePhase(timing, 'get_locked_projection_ms', () =>
-          lockMatch(client, playerId, matchId),
+          lockMatchForView(client, playerId, matchId),
         );
         if (match.status === 'active' && match.turn_deadline) {
           const now = await timePhase(timing, 'get_clock_ms', () =>
@@ -977,7 +977,10 @@ export function createAsyncPvpService(
             );
           }
         }
-        return await loadMatchView(client, playerId, matchId, false, timing);
+        // A fresh statement after locking is required: a lock wait can return
+        // an updated match row alongside older joined state/history snapshots.
+        // This also reloads all persisted state after a deadline forfeit.
+        return await loadMatchView(client, playerId, matchId, true, timing);
       }, timing);
       if (view.status === 'completed') {
         await timePhase(
@@ -2038,6 +2041,48 @@ const matchProjectionSql = `
     ) history on true
 `;
 
+type MatchViewLock = Pick<
+  MatchRow,
+  | 'id'
+  | 'status'
+  | 'version'
+  | 'current_player_id'
+  | 'turn_deadline'
+  | 'viewer_player_id'
+  | 'opponent_player_id'
+>;
+
+/** GET needs authority and deadline inputs here, not a pre-lock response. */
+async function lockMatchForView(
+  client: AsyncPvpClient,
+  playerId: string,
+  matchId: string,
+): Promise<MatchViewLock> {
+  const result = await client.query<MatchViewLock>(
+    `select match.id::text, match.status, match.version,
+            match.current_player_id::text, match.turn_deadline,
+            viewer.player_id::text as viewer_player_id,
+            opponent.player_id::text as opponent_player_id
+       from public.async_pvp_matches match
+       join public.async_pvp_match_participants viewer
+         on viewer.match_id = match.id
+       join public.async_pvp_match_participants opponent
+         on opponent.match_id = match.id
+        and opponent.player_id <> viewer.player_id
+      where match.id = $1::uuid and viewer.player_id = $2::uuid
+      for update of match`,
+    [matchId, playerId],
+  );
+  const match = result.rows[0];
+  if (!match) {
+    throw new AsyncPvpError(
+      'PVP_MATCH_NOT_FOUND',
+      'The requested PvP match was not found.',
+    );
+  }
+  return match;
+}
+
 async function lockMatch(
   client: AsyncPvpClient,
   playerId: string,
@@ -2082,17 +2127,14 @@ async function loadMatchView(
 ): Promise<AsyncPvpMatchView> {
   const projection = `${matchProjectionSql}
       where match.id = $1::uuid and viewer.player_id = $2::uuid`;
-  const result = await timePhase(
-    includeCardPresentation ? undefined : timing,
-    'get_response_projection_ms',
-    () =>
-      client.query<
-        MatchRow & {
-          card_presentation?: Record<string, SnapshotCardPresentation>;
-        }
-      >(
-        includeCardPresentation
-          ? `
+  const result = await timePhase(timing, 'get_response_projection_ms', () =>
+    client.query<
+      MatchRow & {
+        card_presentation?: Record<string, SnapshotCardPresentation>;
+      }
+    >(
+      includeCardPresentation
+        ? `
           with match_view as (${projection}),
                card_presentation as (${cardPresentationSql})
           select match_view.*,
@@ -2104,9 +2146,9 @@ async function loadMatchView(
                  ), '{}'::jsonb) as card_presentation
             from match_view
         `
-          : projection,
-        [matchId, playerId],
-      ),
+        : projection,
+      [matchId, playerId],
+    ),
   );
   const match = result.rows[0];
   if (!match) {
@@ -2481,7 +2523,10 @@ async function finalizeVisibleOverdueMatches(
 
 async function completeForfeit(
   client: AsyncPvpClient,
-  match: MatchRow,
+  match: Pick<
+    MatchRow,
+    'id' | 'version' | 'viewer_player_id' | 'opponent_player_id'
+  >,
   losingPlayerId: string,
   completedAt: Date,
   reason: 'turn_forfeit' | 'account_deletion_forfeit' | 'voluntary_resignation',

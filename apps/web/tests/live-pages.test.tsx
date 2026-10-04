@@ -251,6 +251,9 @@ describe('live lobby and battle experience', () => {
     expect(image).toHaveAttribute('srcset', expect.stringContaining('192w'));
     expect(container.querySelector('.live-deck-fan__card--2 img')).toBeNull();
     expect(screen.getByRole('button', { name: 'Find battle' })).toBeEnabled();
+    // Artwork renders before the authenticated collection fetch starts.
+    // Reject only after fetch has returned this deferred response to its caller.
+    await waitFor(() => expect(collectionRequests).toBe(1));
     await act(async () =>
       rejectCollection(new Error('Collection unavailable')),
     );
@@ -418,7 +421,9 @@ describe('live lobby and battle experience', () => {
       `https://witsworld.co.za/matches/live/${LIVE_MATCH_ID}`,
     );
     await user.click(screen.getByRole('button', { name: 'Paste and watch' }));
-    expect(window.location.pathname).toBe(`/matches/live/${LIVE_MATCH_ID}`);
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/matches/live/${LIVE_MATCH_ID}`),
+    );
   });
 
   it('shows deck selection without a pretend hand when no deck is selected', async () => {

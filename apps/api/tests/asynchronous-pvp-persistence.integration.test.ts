@@ -649,7 +649,7 @@ describe.skipIf(!runIntegrationTests)(
       await expect(
         service.getMatch(recipientPlayerId, accepted.match.matchId),
       ).resolves.toEqual(accepted.match);
-      expect(statementCount).toBe(6);
+      expect(statementCount).toBe(5);
       const concurrentGets = [createPhaseTiming(), createPhaseTiming()];
       const views = await Promise.all([
         service.getMatch(
@@ -669,7 +669,7 @@ describe.skipIf(!runIntegrationTests)(
       ]);
       expect(
         concurrentGets.map((t) => t.snapshot().sql_statement_count),
-      ).toEqual([6, 6]);
+      ).toEqual([5, 5]);
       await expect(service.acceptInvitation(acceptanceInput)).resolves.toEqual(
         accepted,
       );
@@ -1776,6 +1776,114 @@ describe.skipIf(!runIntegrationTests)(
       ).resolves.toMatchObject({ rows: [{ count: '0' }] });
     });
 
+    it('returns fresh state and history after waiting for an opponent action lock', async () => {
+      const match = await createAcceptedMatch(pool, cardDefinitions);
+      const options = {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+        randomInt: () => 0,
+      };
+      const service = createAsyncPvpService(pool, options);
+      const initial = await service.getMatch(
+        match.challengerPlayerId,
+        match.matchId,
+      );
+      let releaseCommit!: () => void;
+      const heldCommit = new Promise<void>((resolve) => {
+        releaseCommit = resolve;
+      });
+      let commitReached!: () => void;
+      const committing = new Promise<void>((resolve) => {
+        commitReached = resolve;
+      });
+      const writer = createAsyncPvpService(
+        {
+          async connect() {
+            const client = await pool.connect();
+            return {
+              async query<T extends pg.QueryResultRow>(
+                statement: string,
+                values?: unknown[],
+              ) {
+                if (statement === 'commit') {
+                  commitReached();
+                  await heldCommit;
+                }
+                return client.query<T>(statement, values);
+              },
+              release() {
+                client.release();
+              },
+            };
+          },
+        },
+        options,
+      );
+      let readerPid: number | undefined;
+      const reader = createAsyncPvpService(
+        {
+          async connect() {
+            const client = await pool.connect();
+            readerPid = (
+              await client.query<{ pid: number }>(
+                'select pg_backend_pid() as pid',
+              )
+            ).rows[0]!.pid;
+            return client;
+          },
+        },
+        options,
+      );
+      const action = writer.submitAction({
+        playerId: match.challengerPlayerId,
+        matchId: match.matchId,
+        submissionId: randomUUID(),
+        expectedVersion: initial.version,
+        action: initial.legalActions[0]!,
+      });
+      action.catch(() => {});
+      await committing;
+      const pendingRead = reader.getMatch(
+        match.recipientPlayerId,
+        match.matchId,
+      );
+      pendingRead.catch(() => {});
+      try {
+        await vi.waitFor(
+          async () => {
+            expect(readerPid).toBeDefined();
+            const activity = await pool.query<{ wait_event_type: string }>(
+              'select wait_event_type from pg_stat_activity where pid = $1',
+              [readerPid],
+            );
+            expect(activity.rows[0]?.wait_event_type).toBe('Lock');
+          },
+          { timeout: 10_000, interval: 50 },
+        );
+      } finally {
+        releaseCommit();
+      }
+      const [advanced, observed] = await Promise.all([action, pendingRead]);
+      expect(observed).toEqual(
+        await service.getMatch(match.recipientPlayerId, match.matchId),
+      );
+      expect(observed.version).toBe(advanced.version);
+      expect(observed.version).toBe(1);
+      expect(observed.currentActor).toBe('self');
+      expect(observed.history).toHaveLength(1);
+      expect(observed.lastAction).toMatchObject({ side: 'opponent' });
+      await expect(
+        service.submitAction({
+          playerId: match.recipientPlayerId,
+          matchId: match.matchId,
+          submissionId: randomUUID(),
+          expectedVersion: observed.version,
+          action: observed.legalActions[0]!,
+        }),
+      ).resolves.toMatchObject({ version: 2 });
+    });
+
     it('finalizes an elapsed deadline before returning match detail', async () => {
       const match = await createAcceptedMatch(pool, cardDefinitions, {
         acceptedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
@@ -1787,9 +1895,12 @@ describe.skipIf(!runIntegrationTests)(
       });
 
       const timing = createPhaseTiming();
-      await expect(
-        service.getMatch(match.challengerPlayerId, match.matchId, timing),
-      ).resolves.toMatchObject({
+      const completed = await service.getMatch(
+        match.challengerPlayerId,
+        match.matchId,
+        timing,
+      );
+      expect(completed).toMatchObject({
         status: 'completed',
         completionReason: 'turn_forfeit',
         version: 1,
@@ -1798,10 +1909,20 @@ describe.skipIf(!runIntegrationTests)(
         get_clock_ms: expect.any(Number),
         get_locked_projection_ms: expect.any(Number),
         get_response_projection_ms: expect.any(Number),
-        get_card_presentation_ms: expect.any(Number),
         project_match_ms: expect.any(Number),
         commit_ms: expect.any(Number),
       });
+      expect(timing.snapshot()).not.toHaveProperty('get_card_presentation_ms');
+      const completedTiming = createPhaseTiming();
+      await expect(
+        service.getMatch(
+          match.challengerPlayerId,
+          match.matchId,
+          completedTiming,
+        ),
+      ).resolves.toEqual(completed);
+      expect(completedTiming.snapshot().sql_statement_count).toBe(4);
+      expect(completedTiming.snapshot()).not.toHaveProperty('get_clock_ms');
       await expect(
         pool.query<{ count: string }>(
           `select count(*)::text
