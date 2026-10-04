@@ -19,9 +19,14 @@ import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
 import {
-  createAsyncPvpService,
+  createAsyncPvpService as createUntimedAsyncPvpService,
   type AsyncPvpDatabase,
 } from '../src/matches/asynchronous-pvp-service.js';
+import {
+  createPhaseTiming,
+  phaseTimingFields,
+  type PhaseTimingSink,
+} from '../src/request-timing.js';
 import { TrustActivityRestrictedError } from '../src/trust/trust-restrictions.js';
 import { createAsyncPvpDeadlineProcessor } from '../src/matches/asynchronous-pvp-deadline-processor.js';
 import { createSignedCursorCodec } from '../src/security/signed-cursor.js';
@@ -49,6 +54,44 @@ const PRE_MIGRATION_PLAYER_ID = '17900000-0000-4000-8000-000000000001';
 const PRE_MIGRATION_MATCH_ID = '17900000-0000-4000-8000-000000000002';
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
+
+// Exercise the unchanged behavior suite with one independent collector per call.
+function createAsyncPvpService(
+  ...args: Parameters<typeof createUntimedAsyncPvpService>
+) {
+  const service = createUntimedAsyncPvpService(...args);
+  async function observed<T>(
+    timing: PhaseTimingSink | undefined,
+    run: (sink: PhaseTimingSink) => Promise<T>,
+  ) {
+    const collector = createPhaseTiming();
+    try {
+      return await run(timing ?? collector);
+    } finally {
+      if (!timing) {
+        const fields = collector.snapshot();
+        expect(fields).toMatchObject({
+          pool_acquire_ms: expect.any(Number),
+          transaction_ms: expect.any(Number),
+          sql_statement_count: expect.any(Number),
+        });
+        for (const [key, value] of Object.entries(fields)) {
+          expect(phaseTimingFields).toContain(key);
+          expect(Number.isFinite(value) && value >= 0).toBe(true);
+        }
+      }
+    }
+  }
+  return {
+    ...service,
+    acceptInvitation: (
+      input: Parameters<typeof service.acceptInvitation>[0],
+      timing?: PhaseTimingSink,
+    ) => observed(timing, (sink) => service.acceptInvitation(input, sink)),
+    getMatch: (playerId: string, matchId: string, timing?: PhaseTimingSink) =>
+      observed(timing, (sink) => service.getMatch(playerId, matchId, sink)),
+  };
+}
 
 interface CardDefinitionFixture extends pg.QueryResultRow {
   id: string;
@@ -602,9 +645,31 @@ describe.skipIf(!runIntegrationTests)(
       });
       expect(accepted.match.history).toEqual([]);
       expect(accepted.match.lastAction).toBeNull();
+      statementCount = 0;
       await expect(
         service.getMatch(recipientPlayerId, accepted.match.matchId),
       ).resolves.toEqual(accepted.match);
+      expect(statementCount).toBe(6);
+      const concurrentGets = [createPhaseTiming(), createPhaseTiming()];
+      const views = await Promise.all([
+        service.getMatch(
+          recipientPlayerId,
+          accepted.match.matchId,
+          concurrentGets[0],
+        ),
+        service.getMatch(
+          challengerPlayerId,
+          accepted.match.matchId,
+          concurrentGets[1],
+        ),
+      ]);
+      expect(views.map((view) => view.currentActor)).toEqual([
+        'opponent',
+        'self',
+      ]);
+      expect(
+        concurrentGets.map((t) => t.snapshot().sql_statement_count),
+      ).toEqual([6, 6]);
       await expect(service.acceptInvitation(acceptanceInput)).resolves.toEqual(
         accepted,
       );
@@ -847,13 +912,28 @@ describe.skipIf(!runIntegrationTests)(
           submissionId: randomUUID(),
           expectedVersion: 0,
         };
+        const timings = [createPhaseTiming(), createPhaseTiming()];
         const results = await Promise.allSettled([
-          service.acceptInvitation(input),
-          service.acceptInvitation({
-            ...input,
-            submissionId: duplicate ? input.submissionId : randomUUID(),
-          }),
+          service.acceptInvitation(input, timings[0]),
+          service.acceptInvitation(
+            {
+              ...input,
+              submissionId: duplicate ? input.submissionId : randomUUID(),
+            },
+            timings[1],
+          ),
         ]);
+        const statementCounts = timings
+          .map((t) => t.snapshot().sql_statement_count!)
+          .sort((a, b) => a - b);
+        expect(statementCounts).toEqual([5, 18]);
+        for (const timing of timings)
+          expect(timing.snapshot()).toMatchObject({
+            transaction_ms: expect.any(Number),
+            invitation_lock_client_ms: expect.any(Number),
+            submission_lock_client_ms: expect.any(Number),
+            receipt_clock_ms: expect.any(Number),
+          });
         const successes = results.filter(
           (result) => result.status === 'fulfilled',
         );
@@ -1679,8 +1759,9 @@ describe.skipIf(!runIntegrationTests)(
           expectedVersion: 0,
         }),
       ).rejects.toMatchObject({ code: 'PVP_MATCH_COMPLETED' });
+      const timing = createPhaseTiming();
       await expect(
-        service.getMatch(match.challengerPlayerId, match.matchId),
+        service.getMatch(match.challengerPlayerId, match.matchId, timing),
       ).resolves.toMatchObject({
         status: 'completed',
         completionReason: 'turn_forfeit',
@@ -1705,12 +1786,21 @@ describe.skipIf(!runIntegrationTests)(
         ),
       });
 
+      const timing = createPhaseTiming();
       await expect(
-        service.getMatch(match.challengerPlayerId, match.matchId),
+        service.getMatch(match.challengerPlayerId, match.matchId, timing),
       ).resolves.toMatchObject({
         status: 'completed',
         completionReason: 'turn_forfeit',
         version: 1,
+      });
+      expect(timing.snapshot()).toMatchObject({
+        get_clock_ms: expect.any(Number),
+        get_locked_projection_ms: expect.any(Number),
+        get_response_projection_ms: expect.any(Number),
+        get_card_presentation_ms: expect.any(Number),
+        project_match_ms: expect.any(Number),
+        commit_ms: expect.any(Number),
       });
       await expect(
         pool.query<{ count: string }>(
