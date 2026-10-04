@@ -968,14 +968,28 @@ describe.skipIf(!runIntegrationTests)(
     }, 45_000);
 
     it.each(['invitation', 'submission'] as const)(
-      'uses fresh database time after waiting past acceptance expiry on the %s lock',
+      'samples database time after the %s lock and applies the controlled expiry boundary',
       async (lock) => {
         const { invitation, input, expiresAt } = await createAcceptanceInput(
           pool,
           cardDefinitions,
-          20,
         );
-        const service = createAsyncPvpService(pool, {
+        const boundary = await loadAcceptanceClockBoundary(
+          pool,
+          invitation.invitationId,
+        );
+        let releaseTime: Date | undefined;
+        let clockReads = 0;
+        const database = withAcceptanceClock(pool, (actualTime) => {
+          // The real combined query must run after the blocked lock is released.
+          expect(releaseTime).toBeDefined();
+          expect(actualTime.getTime()).toBeGreaterThanOrEqual(
+            releaseTime!.getTime(),
+          );
+          clockReads += 1;
+          return boundary.after_expiry;
+        });
+        const service = createAsyncPvpService(database, {
           cursorCodec: createSignedCursorCodec(
             'database-test-only-cursor-key-with-32-bytes',
           ),
@@ -1012,7 +1026,11 @@ describe.skipIf(!runIntegrationTests)(
               ? 'for update of invitation'
               : 'pg_advisory_xact_lock',
           );
-          await waitUntilDatabaseAfter(pool, expiresAt);
+          expect(clockReads).toBe(0);
+          const release = await blocker.query<{ now: Date }>(
+            'select clock_timestamp() as now',
+          );
+          releaseTime = release.rows[0]!.now;
           // An application clock before expiry must not permit this acceptance.
           const applicationClock = vi.spyOn(Date, 'now').mockReturnValue(0);
           try {
@@ -1023,6 +1041,7 @@ describe.skipIf(!runIntegrationTests)(
           } finally {
             applicationClock.mockRestore();
           }
+          expect(clockReads).toBe(1);
           const persisted = await loadAcceptanceRecords(
             pool,
             invitation.invitationId,
@@ -1038,6 +1057,7 @@ describe.skipIf(!runIntegrationTests)(
             expiresAt.getTime(),
           );
           expect(persisted.updated_at).toEqual(persisted.responded_at);
+          expect(persisted.responded_at).toEqual(boundary.after_expiry);
           await expect(service.acceptInvitation(input)).rejects.toMatchObject({
             code: 'PVP_INVITATION_EXPIRED',
           });
@@ -1050,54 +1070,27 @@ describe.skipIf(!runIntegrationTests)(
       45_000,
     );
 
-    it('retains a pre-expiry database decision time and replays its receipt after expiry', async () => {
+    it('retains a controlled pre-expiry database decision time and replays after the clock advances past expiry', async () => {
       const { invitation, input, expiresAt } = await createAcceptanceInput(
         pool,
         cardDefinitions,
-        20,
       );
-      let decisionTime: Date | undefined;
-      const database: AsyncPvpDatabase = {
-        async connect() {
-          const client = await pool.connect();
-          return {
-            async query<T extends pg.QueryResultRow>(
-              statement: string,
-              values?: unknown[],
-            ) {
-              if (
-                statement.includes('clock_timestamp() as now') &&
-                !decisionTime
-              ) {
-                await waitUntilDatabaseAfter(
-                  pool,
-                  new Date(expiresAt.getTime() - 2_000),
-                );
-              }
-              const result = await client.query<T>(statement, values);
-              if (
-                statement.includes('clock_timestamp() as now') &&
-                !decisionTime
-              ) {
-                decisionTime = (result.rows[0] as pg.QueryResultRow)
-                  .now as Date;
-                expect(decisionTime.getTime()).toBeGreaterThanOrEqual(
-                  expiresAt.getTime() - 2_000,
-                );
-                expect(decisionTime.getTime()).toBeLessThan(
-                  expiresAt.getTime(),
-                );
-                // Preserve the real DB sample while delaying its delivery past expiry.
-                await waitUntilDatabaseAfter(pool, expiresAt);
-              }
-              return result;
-            },
-            release() {
-              client.release();
-            },
-          };
-        },
-      };
+      const boundary = await loadAcceptanceClockBoundary(
+        pool,
+        invitation.invitationId,
+      );
+      let clockTime = boundary.before_expiry;
+      const observedClockTimes: Date[] = [];
+      const database = withAcceptanceClock(pool, () => {
+        const sampledTime = clockTime;
+        observedClockTimes.push(sampledTime);
+        // Advance before delivering the sample: all acceptance writes must retain it.
+        // Later replay reads see an expired clock without any real-time waiting.
+        clockTime = boundary.after_expiry;
+        return sampledTime;
+      });
+      expect(clockTime.getTime()).toBe(expiresAt.getTime() - 1);
+      const decisionTime = clockTime;
       const service = createAsyncPvpService(database, {
         cursorCodec: createSignedCursorCodec(
           'database-test-only-cursor-key-with-32-bytes',
@@ -1113,6 +1106,7 @@ describe.skipIf(!runIntegrationTests)(
       } finally {
         applicationClock.mockRestore();
       }
+      expect(clockTime.getTime()).toBe(expiresAt.getTime() + 1);
       const persisted = await loadAcceptanceRecords(
         pool,
         invitation.invitationId,
@@ -1131,7 +1125,7 @@ describe.skipIf(!runIntegrationTests)(
         receipt_created_at: decisionTime,
       });
       expect(persisted.turn_deadline!.getTime()).toBe(
-        decisionTime!.getTime() + 24 * 60 * 60 * 1000,
+        decisionTime.getTime() + 24 * 60 * 60 * 1000,
       );
       await expect(service.acceptInvitation(input)).resolves.toEqual(accepted);
       await expect(
@@ -1139,6 +1133,11 @@ describe.skipIf(!runIntegrationTests)(
       ).rejects.toMatchObject({
         code: 'PVP_IDEMPOTENCY_CONFLICT',
       });
+      expect(observedClockTimes).toEqual([
+        decisionTime,
+        boundary.after_expiry,
+        boundary.after_expiry,
+      ]);
       await expect(
         loadAcceptanceRecords(pool, invitation.invitationId),
       ).resolves.toEqual(persisted);
@@ -2916,7 +2915,6 @@ async function createPendingInvitation(
 async function createAcceptanceInput(
   database: pg.Pool,
   definitions: readonly CardDefinitionFixture[],
-  expiresInSeconds?: number,
 ) {
   const challengerPlayerId = await insertPlayer(database, 'clock_challenger');
   const recipientPlayerId = await insertPlayer(database, 'clock_recipient');
@@ -2930,35 +2928,7 @@ async function createAcceptanceInput(
     'select player_name from public.players where id = $1::uuid',
     [recipientPlayerId],
   );
-  const fixtureDatabase: AsyncPvpDatabase = {
-    async connect() {
-      const client = await database.connect();
-      return {
-        query<T extends pg.QueryResultRow>(
-          statement: string,
-          values?: unknown[],
-        ) {
-          // Create a real, complete invitation whose DB-sampled deadline is near.
-          // Acceptance itself uses the unmodified database clock and queries.
-          if (
-            expiresInSeconds !== undefined &&
-            statement.trim() === 'select clock_timestamp() as now'
-          ) {
-            return client.query<T>(
-              `select clock_timestamp() - interval '24 hours'
-                      + make_interval(secs => $1::integer) as now`,
-              [expiresInSeconds],
-            );
-          }
-          return client.query<T>(statement, values);
-        },
-        release() {
-          client.release();
-        },
-      };
-    },
-  };
-  const service = createAsyncPvpService(fixtureDatabase, {
+  const service = createAsyncPvpService(database, {
     cursorCodec: createSignedCursorCodec(
       'database-test-only-cursor-key-with-32-bytes',
     ),
@@ -2981,6 +2951,52 @@ async function createAcceptanceInput(
       initialCreatureId: deck.creatureId,
       submissionId: randomUUID(),
       expectedVersion: 0,
+    },
+  };
+}
+
+async function loadAcceptanceClockBoundary(
+  database: pg.Pool,
+  invitationId: string,
+) {
+  const result = await database.query<{
+    before_expiry: Date;
+    after_expiry: Date;
+  }>(
+    `select expires_at - interval '1 millisecond' as before_expiry,
+            expires_at + interval '1 millisecond' as after_expiry
+       from public.async_pvp_invitations where id = $1::uuid`,
+    [invitationId],
+  );
+  return result.rows[0]!;
+}
+
+function withAcceptanceClock(
+  database: pg.Pool,
+  sample: (actualTime: Date) => Date,
+): AsyncPvpDatabase {
+  return {
+    async connect() {
+      const client = await database.connect();
+      return {
+        async query<T extends pg.QueryResultRow>(
+          statement: string,
+          values?: unknown[],
+        ) {
+          const result = await client.query<T>(statement, values);
+          // Execute the real receipt/clock SQL, replacing only its clock result
+          // with a database-derived boundary. Locks, receipt visibility and writes
+          // remain real; expiry tests do not depend on runner scheduling speed.
+          if (statement.includes('clock_timestamp() as now')) {
+            const row = result.rows[0] as pg.QueryResultRow;
+            row.now = sample(row.now as Date);
+          }
+          return result;
+        },
+        release() {
+          client.release();
+        },
+      };
     },
   };
 }
