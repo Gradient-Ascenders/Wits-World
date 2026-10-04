@@ -6,6 +6,10 @@ AGENTS.md
 .playwright-mcp/
 .agents/skills/impeccable/
 
+# Preserve bundled upstream font licenses verbatim.
+apps/web/src/assets/fonts/source-sans-3/LICENSE.md
+apps/web/src/assets/fonts/source-serif-4/LICENSE.md
+
 # Docusaurus generated output
 apps/docs/build/
 apps/docs/.docusaurus/
