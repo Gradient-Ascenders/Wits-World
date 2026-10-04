@@ -222,7 +222,6 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     <div className="account-page">
       <header className="account-page__header">
         <h1>Account settings</h1>
-        <p>Manage your accessibility, account, and sign-in settings.</p>
       </header>
 
       {showsDeletionResult ? (
@@ -235,14 +234,12 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         />
       ) : (
         <>
-          <AccessibilitySettings />
           <section
             aria-labelledby="account-profile-title"
-            className="account-profile-card"
+            className="account-page__section account-summary"
           >
             <div className="account-section-heading">
               <h2 id="account-profile-title">Account details</h2>
-              <p>Your account information is read-only here.</p>
             </div>
             <dl className="account-details">
               <div className="account-details__name">
@@ -250,19 +247,21 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 <dd>{player.playerName ?? 'Not chosen yet'}</dd>
               </div>
               <div>
-                <dt>Sign-in provider</dt>
+                <dt>Sign-in method</dt>
                 <dd>{providerName(provider)}</dd>
               </div>
               <div>
-                <dt>Account role</dt>
+                <dt>Role</dt>
                 <dd>{player.role === 'author' ? 'Author' : 'Player'}</dd>
               </div>
             </dl>
           </section>
 
+          <AccessibilitySettings />
+
           <section
             aria-labelledby="account-security-title"
-            className="account-page__section"
+            className="account-page__section account-security"
           >
             <h2 id="account-security-title">Security</h2>
 
@@ -286,17 +285,16 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
           <section
             aria-labelledby="account-deletion-title"
-            className="account-page__section"
+            className="account-page__section account-deletion"
           >
             <h2 id="account-deletion-title">Account deletion</h2>
 
             <div className="account-action-card account-action-card--danger">
               <AccountActionIcon name="danger" />
               <div className="account-action-card__content">
-                <h3>Delete account</h3>
                 <p>
-                  Permanently remove your account and player-owned game data.
-                  Anonymous history required by the retention policy remains.
+                  Permanently delete your account and game data. Required
+                  anonymous history remains.
                 </p>
               </div>
 
@@ -306,7 +304,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                   className="account-action-card__message account-inline-status"
                   role="status"
                 >
-                  Opening Auth0 for a fresh identity check…
+                  Opening sign-in…
                 </p>
               ) : null}
 
@@ -400,11 +398,8 @@ function DatabaseRecovery({
   return (
     <>
       <div className="account-action-card__content">
-        <h3>Password &amp; recovery</h3>
-        <p>
-          Managed securely through Auth0. Wits World never receives your
-          password.
-        </p>
+        <h3>Password recovery</h3>
+        <p>Choose “Forgot password?” on the Auth0 sign-in page.</p>
       </div>
       <button
         className="button"
@@ -412,25 +407,15 @@ function DatabaseRecovery({
         onClick={() => void onStart()}
         type="button"
       >
-        {state === 'redirecting' ? 'Opening Auth0…' : 'Reset password'}
+        {state === 'redirecting' ? 'Opening sign-in…' : 'Reset password'}
       </button>
-      {state === 'redirecting' ? (
-        <p
-          className="account-action-card__message account-inline-status"
-          role="status"
-        >
-          Opening secure sign-in. Choose “Forgot password?” on the Auth0 page to
-          request a reset.
-        </p>
-      ) : null}
       {state === 'returned' ? (
         <p
           className="account-action-card__message account-inline-status"
           role="status"
         >
-          Back from Auth0. If you requested recovery, use the newest link Auth0
-          sends you. Completion stays with Auth0 and is not reported to Wits
-          World.
+          If you requested a reset, use the latest email link. Wits World cannot
+          confirm whether your password changed.
         </p>
       ) : null}
       {state === 'unavailable' ? (
@@ -438,8 +423,7 @@ function DatabaseRecovery({
           className="account-action-card__message account-inline-error state-message state-message--error"
           role="alert"
         >
-          Auth0 password recovery could not open. Check your connection and try
-          again.
+          Could not open password recovery. Check your connection and try again.
         </p>
       ) : null}
     </>
@@ -450,10 +434,9 @@ function FederatedRecovery() {
   return (
     <>
       <div className="account-action-card__content">
-        <h3>Password &amp; recovery</h3>
+        <h3>Password recovery</h3>
         <p>
-          Your password is managed by Google. Change or recover it through your
-          Google account.
+          Google manages your password. Recover it through your Google account.
         </p>
       </div>
       <a
@@ -490,28 +473,25 @@ function DeletionResult({
       aria-labelledby="account-deletion-result-title"
       className={`account-result account-result--${completed ? 'completed' : 'pending'}`}
     >
-      <p className="eyebrow">
-        {completed ? 'Deletion completed' : 'Cleanup queued'}
-      </p>
       <h2 id="account-deletion-result-title" ref={statusHeading} tabIndex={-1}>
         {completed
           ? 'Your Wits World account is deleted'
-          : 'Your account is locked while cleanup retries'}
+          : 'Account locked. Deletion pending.'}
       </h2>
       <p>
         {completed
-          ? 'Your Wits World account, Auth0 login identity for this app, cards, decks, rank, points, achievements, and personal game progress have been removed. A future signup starts as a new player.'
-          : 'The permanent request is safely recorded. The server will retry the unfinished Auth0 or local cleanup automatically; no game access remains while it does.'}
+          ? 'Your account, Auth0 sign-in for this app, and game data are deleted. Signing up again creates a new player.'
+          : 'Your deletion request is saved. Cleanup will retry automatically. You cannot access the game while deletion is pending.'}
       </p>
       <p className="account-support-reference">
         Deletion reference: {result.deletionId}
       </p>
       <button className="button" onClick={() => void onFinish()} type="button">
-        Finish and return home
+        Return home
       </button>
       {signOutFailed ? (
         <p className="account-inline-error" role="alert">
-          Sign-out could not finish. Your account remains locked. Try again.
+          Could not sign out. Your account remains locked. Try again.
         </p>
       ) : null}
     </section>
@@ -544,17 +524,17 @@ function DeletionErrorState({
     >
       <h3 id="account-deletion-error-title" ref={statusHeading} tabIndex={-1}>
         {unavailableAccount
-          ? 'This account is already locked'
+          ? 'Account already locked'
           : recentAuthentication
-            ? 'Your identity check expired'
-            : 'The deletion response could not be confirmed'}
+            ? 'Sign in again to continue'
+            : 'Could not confirm deletion'}
       </h3>
       <p>
         {unavailableAccount
-          ? 'Cleanup may already be underway after an earlier request. No protected game operation is available. Sign out to finish safely.'
+          ? 'Deletion may already be underway. Game access is blocked. Sign out to finish.'
           : recentAuthentication
-            ? 'Return to Auth0 for a new identity check before confirming permanent deletion again.'
-            : 'We could not confirm whether your deletion request completed. Try again to check and finish the same request safely.'}
+            ? 'Sign in with Auth0 before confirming deletion again.'
+            : 'Your request may have completed. Try again to check and safely finish the same request.'}
       </p>
       {deletion.error.options.requestId ? (
         <p className="account-support-reference">
@@ -572,16 +552,13 @@ function DeletionErrorState({
           </button>
         ) : (
           <button className="button" onClick={onRetry} type="button">
-            {recentAuthentication
-              ? 'Verify again with Auth0'
-              : 'Try deletion again'}
+            {recentAuthentication ? 'Sign in again' : 'Try deletion again'}
           </button>
         )}
       </div>
       {signOutFailed ? (
         <p className="account-inline-error" role="alert">
-          Sign-out could not finish. The server still protects the locked
-          account. Try again.
+          Could not sign out. Your account remains locked. Try again.
         </p>
       ) : null}
     </div>
