@@ -742,44 +742,72 @@ export function createAsyncPvpService(
             ? invitation.challenger_player_id
             : invitation.recipient_player_id;
         const deadline = new Date(now.getTime() + DECISION_WINDOW_MS);
-        await timePhase(timing, 'match_insert_ms', () =>
-          client.query(
-            `
-            insert into public.async_pvp_matches (
-              id, invitation_id, current_player_id, decision_started_at,
-              turn_deadline, started_at, created_at, updated_at
-            ) values ($1::uuid, $2::uuid, $3::uuid, $4, $5, $4, $4, $4)
+        const initialWrites = await timePhase(
+          timing,
+          'initial_match_write_ms',
+          () =>
+            client.query<{
+              match_count: number;
+              participant_count: number;
+              state_count: number;
+            }>(
+              `
+            with inserted_match as (
+              insert into public.async_pvp_matches (
+                id, invitation_id, current_player_id, decision_started_at,
+                turn_deadline, started_at, created_at, updated_at
+              ) values ($1::uuid, $2::uuid, $3::uuid, $4, $5, $4, $4, $4)
+              returning id, version
+            ), inserted_participants as (
+              insert into public.async_pvp_match_participants (
+                match_id, player_id, engine_side, deck_snapshot_id, created_at
+              )
+              select match.id, participant.player_id, participant.engine_side,
+                     participant.deck_snapshot_id, $4
+                from inserted_match match
+                cross join (values
+                  ($6::uuid, 'player', $7::uuid),
+                  ($8::uuid, 'cpu', $9::uuid)
+                ) as participant(player_id, engine_side, deck_snapshot_id)
+              returning match_id
+            ), inserted_state as (
+              insert into private.async_pvp_match_states
+                (match_id, version, battle_state, updated_at)
+              select match.id, match.version, $10::jsonb, $4
+                from inserted_match match
+               where (select count(*) from inserted_participants) = 2
+              returning match_id
+            )
+            select (select count(*)::integer from inserted_match) as match_count,
+                   (select count(*)::integer from inserted_participants) as participant_count,
+                   (select count(*)::integer from inserted_state) as state_count
           `,
-            [matchId, invitation.id, currentPlayerId, now, deadline],
-          ),
+              [
+                matchId,
+                invitation.id,
+                currentPlayerId,
+                now,
+                deadline,
+                invitation.challenger_player_id,
+                challenger.snapshotId,
+                invitation.recipient_player_id,
+                recipientSnapshotId,
+                JSON.stringify(state),
+              ],
+            ),
         );
-        await timePhase(timing, 'participants_insert_ms', () =>
-          client.query(
-            `
-            insert into public.async_pvp_match_participants (
-              match_id, player_id, engine_side, deck_snapshot_id, created_at
-            ) values
-              ($1::uuid, $2::uuid, 'player', $3::uuid, $6),
-              ($1::uuid, $4::uuid, 'cpu', $5::uuid, $6)
-          `,
-            [
-              matchId,
-              invitation.challenger_player_id,
-              challenger.snapshotId,
-              invitation.recipient_player_id,
-              recipientSnapshotId,
-              now,
-            ],
-          ),
-        );
-        await timePhase(timing, 'private_state_insert_ms', () =>
-          client.query(
-            `insert into private.async_pvp_match_states
-             (match_id, version, battle_state, updated_at)
-           values ($1::uuid, 0, $2::jsonb, $3)`,
-            [matchId, JSON.stringify(state), now],
-          ),
-        );
+        // Consume RETURNING rows, not same-statement table reads. The CTE
+        // dependencies order the writes; deferred integrity checks still run
+        // at COMMIT after the invitation and receipt have been persisted.
+        const written = initialWrites.rows[0];
+        if (
+          initialWrites.rows.length !== 1 ||
+          written?.match_count !== 1 ||
+          written.participant_count !== 2 ||
+          written.state_count !== 1
+        ) {
+          throw new Error('Accepted PvP match initial writes were incomplete.');
+        }
         await timePhase(timing, 'invitation_update_ms', () =>
           client.query(
             `

@@ -64,6 +64,7 @@ it('keeps detailed metrics server-only, numeric, scoped and isolated for concurr
       ids.add(timing);
       await timePhase(timing, 'transaction_ms', async () => {
         timing.record('sql_statement_count', 18);
+        timing.record('initial_match_write_ms', 2.5);
         timing.record('private_identifier' as PhaseTimingField, 999);
         await new Promise((resolve) => setTimeout(resolve, 5));
       });
@@ -121,6 +122,10 @@ it('keeps detailed metrics server-only, numeric, scoped and isolated for concurr
         )
         .sort((a, b) => a - b),
     ).toEqual([6, 6, 18, 18]);
+    for (const event of detailed.filter((e) =>
+      String(e.route).endsWith('/accept'),
+    ))
+      expect(event.phaseTimings).toMatchObject({ initial_match_write_ms: 2.5 });
     for (const e of detailed) {
       expect(e.reqId).toEqual(expect.any(String));
       for (const [key, value] of Object.entries(e.phaseTimings as object)) {
