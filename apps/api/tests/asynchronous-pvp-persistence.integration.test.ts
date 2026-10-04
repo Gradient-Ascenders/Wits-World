@@ -542,20 +542,102 @@ describe.skipIf(!runIntegrationTests)(
         }),
       ).rejects.toMatchObject({ code: 'PVP_PLAYER_UNAVAILABLE' });
 
-      const accepted = await service.acceptInvitation({
+      const acceptanceInput = {
         playerId: recipientPlayerId,
         invitationId: invitation.invitationId,
         deckId: recipientDeck.deckId,
         initialCreatureId: recipientDeck.creatureId,
         submissionId: randomUUID(),
         expectedVersion: 0,
-      });
+      };
+      await expect(
+        service.acceptInvitation({
+          ...acceptanceInput,
+          playerId: unrelatedPlayerId,
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_INVITATION_NOT_FOUND' });
+      await expect(
+        service.acceptInvitation({
+          ...acceptanceInput,
+          deckId: challengerDeck.deckId,
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_DECK_INVALID' });
+      await expect(
+        service.acceptInvitation({
+          ...acceptanceInput,
+          initialCreatureId: randomUUID(),
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_DECK_INVALID' });
+      statementCount = 0;
+      const accepted = await service.acceptInvitation(acceptanceInput);
+      // Includes BEGIN/COMMIT, validation, writes, and fresh response hydration.
+      expect(statementCount).toBe(19);
       expect(accepted.invitation.status).toBe('accepted');
       expect(accepted.match).toMatchObject({
         status: 'active',
         version: 0,
         currentActor: 'opponent',
       });
+      expect(accepted.match.state).toMatchObject({
+        phase: 'active',
+        turnNumber: 1,
+        self: { activeCreatureId: recipientDeck.creatureId },
+        opponent: {
+          activeCreature: { id: challengerDeck.creatureId },
+        },
+      });
+      expect(accepted.match.history).toEqual([]);
+      expect(accepted.match.lastAction).toBeNull();
+      await expect(
+        service.getMatch(recipientPlayerId, accepted.match.matchId),
+      ).resolves.toEqual(accepted.match);
+      await expect(service.acceptInvitation(acceptanceInput)).resolves.toEqual(
+        accepted,
+      );
+      await expect(
+        service.acceptInvitation({ ...acceptanceInput, expectedVersion: 1 }),
+      ).rejects.toMatchObject({ code: 'PVP_IDEMPOTENCY_CONFLICT' });
+      await expect(
+        service.acceptInvitation({
+          ...acceptanceInput,
+          submissionId: randomUUID(),
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_INVITATION_VERSION_CONFLICT' });
+      const persistedAcceptance = await pool.query<{
+        response: unknown;
+        deck_id: string;
+        cards: Array<{ id: string; name: string; category: string }>;
+      }>(
+        `select receipt.committed_response as response,
+                snapshot.source_deck_id::text as deck_id,
+                jsonb_agg(jsonb_build_object(
+                  'id', card.battle_card_id,
+                  'name', card.card_snapshot ->> 'name',
+                  'category', card.category
+                ) order by card.position) as cards
+           from private.async_pvp_submission_receipts receipt
+           join private.async_pvp_deck_snapshots snapshot
+             on snapshot.invitation_id = receipt.invitation_id
+            and snapshot.participant_role = 'recipient'
+           join private.async_pvp_deck_snapshot_cards card
+             on card.snapshot_id = snapshot.id
+          where receipt.submission_id = $1::uuid
+          group by receipt.id, snapshot.id`,
+        [acceptanceInput.submissionId],
+      );
+      const savedAcceptance = persistedAcceptance.rows[0]!;
+      expect(savedAcceptance.response).toEqual(accepted);
+      expect(savedAcceptance.deck_id).toBe(recipientDeck.deckId);
+      expect(accepted.match.state.self.creatures).toEqual(
+        savedAcceptance.cards
+          .filter((card) => card.category === 'creature')
+          .map(({ id, name }) => expect.objectContaining({ id, name })),
+      );
+      expect(accepted.match.state.self.powerCards).toEqual(
+        savedAcceptance.cards
+          .filter((card) => card.category === 'power')
+          .map(({ id, name }) => expect.objectContaining({ id, name })),
+      );
 
       const challengerView = await service.getMatch(
         challengerPlayerId,
@@ -707,6 +789,148 @@ describe.skipIf(!runIntegrationTests)(
         action_count: 3,
         response: duplicates[0],
       });
+    });
+
+    it('serializes competing acceptances and replays concurrent duplicates without creating another match', async () => {
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+        randomInt: () => 0,
+      });
+      for (const duplicate of [false, true]) {
+        const challengerPlayerId = await insertPlayer(
+          pool,
+          'accept_challenger',
+        );
+        const recipientPlayerId = await insertPlayer(pool, 'accept_recipient');
+        const challengerDeck = await createOwnedDeck(
+          pool,
+          challengerPlayerId,
+          cardDefinitions,
+        );
+        const recipient = await pool.query<{ player_name: string }>(
+          `select player_name from public.players where id = $1::uuid`,
+          [recipientPlayerId],
+        );
+        const invitation = await service.createInvitation({
+          playerId: challengerPlayerId,
+          opponentPlayerName: recipient.rows[0]!.player_name,
+          deckId: challengerDeck.deckId,
+          initialCreatureId: challengerDeck.creatureId,
+          submissionId: randomUUID(),
+        });
+        const deck = await createOwnedDeck(
+          pool,
+          recipientPlayerId,
+          cardDefinitions,
+        );
+        const input = {
+          playerId: recipientPlayerId,
+          invitationId: invitation.invitationId,
+          deckId: deck.deckId,
+          initialCreatureId: deck.creatureId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        };
+        const results = await Promise.allSettled([
+          service.acceptInvitation(input),
+          service.acceptInvitation({
+            ...input,
+            submissionId: duplicate ? input.submissionId : randomUUID(),
+          }),
+        ]);
+        const successes = results.filter(
+          (result) => result.status === 'fulfilled',
+        );
+        expect(successes).toHaveLength(duplicate ? 2 : 1);
+        if (duplicate) {
+          expect(successes[0]!.value).toEqual(successes[1]!.value);
+        } else {
+          expect(results).toContainEqual({
+            status: 'rejected',
+            reason: expect.objectContaining({
+              code: 'PVP_INVITATION_VERSION_CONFLICT',
+            }),
+          });
+        }
+        const accepted = successes[0]!.value;
+        await expect(
+          service.getMatch(input.playerId, accepted.match.matchId),
+        ).resolves.toEqual(accepted.match);
+        const persisted = await pool.query<{
+          version: number;
+          matches: number;
+          snapshots: number;
+          receipts: number;
+        }>(
+          `select invitation.version,
+                  (select count(*)::integer from public.async_pvp_matches
+                    where invitation_id = invitation.id) as matches,
+                  (select count(*)::integer from private.async_pvp_deck_snapshots
+                    where invitation_id = invitation.id) as snapshots,
+                  (select count(*)::integer from private.async_pvp_submission_receipts
+                    where invitation_id = invitation.id
+                      and operation = 'invitation_accept') as receipts
+             from public.async_pvp_invitations invitation
+            where invitation.id = $1::uuid`,
+          [invitation.invitationId],
+        );
+        expect(persisted.rows).toEqual([
+          { version: 1, matches: 1, snapshots: 2, receipts: 1 },
+        ]);
+      }
+    });
+
+    it('rejects inactive recipient cards without persisting acceptance state', async () => {
+      const invitation = await createPendingInvitation(pool, cardDefinitions);
+      const inactiveDefinitionId = randomUUID();
+      // Inactive cards must be unpublished; keep the shared published fixtures
+      // intact rather than attempting a forbidden edit of published content.
+      await pool.query(
+        `insert into public.card_definitions (
+           id, name, category, affinity, rarity, hp, power,
+           is_active, authoring_status, catalogue_class,
+           starter_eligible, reward_eligible, cpu_eligible
+         )
+         select $1::uuid, $2, category, affinity, rarity, hp, power,
+                false, 'draft', 'ordinary', false, false, false
+           from public.card_definitions where id = $3::uuid`,
+        [
+          inactiveDefinitionId,
+          `Inactive acceptance fixture ${inactiveDefinitionId}`,
+          cardDefinitions[0]!.id,
+        ],
+      );
+      const deck = await createOwnedDeck(pool, invitation.recipientPlayerId, [
+        { ...cardDefinitions[0]!, id: inactiveDefinitionId },
+        ...cardDefinitions.slice(1),
+      ]);
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      await expect(
+        service.acceptInvitation({
+          playerId: invitation.recipientPlayerId,
+          invitationId: invitation.invitationId,
+          deckId: deck.deckId,
+          initialCreatureId: deck.creatureId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_DECK_INVALID' });
+      await expect(
+        pool.query<{ status: string; matches: number }>(
+          `select invitation.status,
+                    (select count(*)::integer from public.async_pvp_matches
+                      where invitation_id = invitation.id) as matches
+               from public.async_pvp_invitations invitation
+              where invitation.id = $1::uuid`,
+          [invitation.invitationId],
+        ),
+      ).resolves.toMatchObject({ rows: [{ status: 'pending', matches: 0 }] });
     });
 
     it('cancels only the challenger, retains an auditable terminal record, and supports replay and pagination', async () => {

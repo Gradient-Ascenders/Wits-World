@@ -761,7 +761,7 @@ export function createAsyncPvpService(
             input.playerId,
             invitation.id,
           ),
-          match: await loadMatchView(client, input.playerId, matchId),
+          match: await loadMatchView(client, input.playerId, matchId, true),
         };
         await insertReceipt(client, {
           actorId: input.playerId,
