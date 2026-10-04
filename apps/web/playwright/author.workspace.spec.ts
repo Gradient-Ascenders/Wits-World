@@ -639,8 +639,14 @@ test.describe('desktop campaign workspace', () => {
         .getByRole('checkbox', { name: /Great Hall Discovery/ })
         .check();
       // Escape dismisses only the nested menu before dismissing the picker.
-      await picker.getByLabel('Lifecycle').click();
+      const lifecycle = picker.getByLabel('Lifecycle');
+      const menu = page.getByRole('listbox');
+      await lifecycle.click();
+      await expect(menu).toBeVisible();
       await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      // The portaled menu restores focus on the next animation frame.
+      await expect(lifecycle).toBeFocused();
       await expect(picker).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(picker).toBeHidden();
