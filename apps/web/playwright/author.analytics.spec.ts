@@ -447,3 +447,66 @@ test('desktop reports keep controls reachable at native 200% browser zoom', asyn
     await rm(profile, { recursive: true, force: true });
   }
 });
+
+test('charts enlarge their text and geometry for comfortable reading', async ({
+  page,
+}) => {
+  await installAnalyticsApi(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/author/analytics/questions');
+  const chart = page.locator('.analytics-plot__chart').first();
+  const svg = chart.locator('svg');
+  await expect(svg).toBeVisible();
+  const before = await svg.evaluate((el) => ({
+    height: el.getBoundingClientRect().height,
+    fontSize: Number.parseFloat(
+      getComputedStyle(el.querySelector('text')!).fontSize,
+    ),
+  }));
+  // Apply the persisted settings through the same cross-tab preference path.
+  await page.evaluate(() => {
+    const key = 'wits-world.accessibility-preferences.v1';
+    const newValue = JSON.stringify({ scale: '150', reading: 'comfortable' });
+    localStorage.setItem(key, newValue);
+    window.dispatchEvent(new StorageEvent('storage', { key, newValue }));
+  });
+  await expect(page.locator('html')).toHaveAttribute('data-ui-scale', '150');
+  await expect
+    .poll(() =>
+      svg.evaluate((el) =>
+        Number.parseFloat(getComputedStyle(el.querySelector('text')!).fontSize),
+      ),
+    )
+    .toBe(18);
+  await expect
+    .poll(() => svg.evaluate((el) => el.getBoundingClientRect().height))
+    .toBeGreaterThan(before.height * 1.5);
+  for (const width of [320, 640, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const bounds = await svg.evaluate((el) => ({
+      rendered: el.getBoundingClientRect().width,
+      declared: (el as SVGSVGElement).viewBox.baseVal.width,
+      labelSizes: Array.from(el.querySelectorAll('text')).map((text) =>
+        Number.parseFloat(getComputedStyle(text).fontSize),
+      ),
+    }));
+    expect(bounds.rendered).toBeCloseTo(bounds.declared, 0);
+    expect(Math.min(...bounds.labelSizes)).toBeGreaterThanOrEqual(18);
+    const rows = await svg
+      .locator('.analytics-plot__row')
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect()),
+      );
+    for (let index = 1; index < rows.length; index++) {
+      expect(rows[index]!.top).toBeGreaterThanOrEqual(rows[index - 1]!.bottom);
+    }
+    await chart.scrollIntoViewIfNeeded();
+    await chart.focus();
+    await expect(chart).toBeFocused();
+    await page.keyboard.press('End');
+    await page.screenshot({
+      path: test.info().outputPath(`${width}-150-chart.png`),
+    });
+  }
+  expect(before.fontSize).toBe(12);
+});

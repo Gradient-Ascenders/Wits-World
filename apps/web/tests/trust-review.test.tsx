@@ -97,7 +97,7 @@ describe('TrustReviewWorkspace', () => {
       name: 'Casey Reviewer',
     });
     expect(caseHeading).toBeVisible();
-    expect(caseHeading).toHaveFocus();
+    await waitFor(() => expect(caseHeading).toHaveFocus());
     expect(screen.getAllByText('Urgent Review')).toHaveLength(1);
     await user.click(screen.getByText('Score breakdown'));
     expect(screen.getByText('High severity')).toBeVisible();

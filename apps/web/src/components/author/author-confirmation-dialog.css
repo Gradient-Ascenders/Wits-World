@@ -32,6 +32,7 @@
 
 .author-dialog h2 {
   font-size: var(--text-2xl);
+  font-family: var(--font-author);
 }
 
 .author-dialog__description {

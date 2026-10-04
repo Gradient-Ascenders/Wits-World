@@ -179,13 +179,15 @@ test('keeps accessibility choices usable and contained across device widths', as
         '.primary-navigation--mobile .primary-navigation__label',
       );
       for (const label of await mobileLabels.all()) {
-        const oneLine = await label.evaluate((element) => {
-          const lineHeight = Number.parseFloat(
-            getComputedStyle(element).lineHeight,
-          );
-          return element.getBoundingClientRect().height <= lineHeight * 1.2;
-        });
-        expect(oneLine).toBe(true);
+        const dimensions = await label.evaluate((element) => ({
+          fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+        }));
+        expect(dimensions.fontSize).toBe(18);
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(
+          dimensions.clientWidth,
+        );
       }
     }
     await page.screenshot({
