@@ -318,7 +318,7 @@ export function OfflineAttemptPage() {
   if (!attempt)
     return (
       <section className="challenge-page">
-        <h1>
+        <h1 className="status-title">
           {receipt?.outcome === 'accepted'
             ? 'Attempt confirmed'
             : 'Saved attempt'}

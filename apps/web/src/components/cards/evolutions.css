@@ -70,7 +70,7 @@
 }
 .evolution-candidate__info h3 {
   margin: var(--space-1) 0;
-  font-family: var(--font-heading);
+  font-family: var(--font-entity);
   font-size: var(--text-xl);
 }
 .evolution-candidate__info {
@@ -139,10 +139,10 @@
 .evolution-surface .evolution-result > h2 {
   margin: 0 0 var(--space-4);
   text-align: center;
-  font-family: var(--font-heading);
+  font-family: var(--font-entity);
   font-size: clamp(var(--text-3xl), 5.5vw, var(--text-4xl));
-  line-height: 1.1;
-  letter-spacing: -0.03em;
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-heading);
   text-wrap: balance;
 }
 .evolution-preview__composition {
@@ -215,7 +215,7 @@
 .evolution-surface .collectible-card__heading h3 {
   margin: 0;
   font-size: clamp(var(--text-xl), 4vw, var(--text-2xl));
-  line-height: 1.15;
+  line-height: var(--leading-heading);
   overflow-wrap: anywhere;
 }
 .evolution-surface .collectible-card__stats {
@@ -242,7 +242,7 @@
   margin: 0;
   font-size: var(--text-xl);
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+  line-height: var(--leading-metric);
 }
 .evolution-convergence {
   position: relative;
@@ -328,7 +328,7 @@
 }
 .evolution-preview__sources h3 {
   margin: var(--space-2) 0 var(--space-1);
-  font-family: var(--font-heading);
+  font-family: var(--font-entity);
   font-size: var(--text-xl);
   overflow-wrap: anywhere;
 }
@@ -391,8 +391,7 @@
 }
 .evolution-surface .evolution-confirmation > h2 {
   margin: 0 0 var(--space-2);
-  font-size: clamp(var(--text-xl), 4vw, var(--text-2xl));
-  line-height: 1.2;
+  line-height: var(--leading-heading);
   text-align: center;
   text-wrap: balance;
 }
@@ -403,7 +402,7 @@
 .evolution-surface .evolution-preview__target .card-frame__rarity,
 .evolution-surface .evolution-reveal__card .card-frame__rarity {
   grid-column: 1 / -1;
-  font-size: clamp(0.5rem, 6cqw, var(--text-xs));
+  font-size: var(--text-xs);
   gap: 0.2em;
 }
 .evolution-surface .evolution-preview__target .card-frame__insignia,
@@ -684,7 +683,7 @@
 }
 .evolution-result__receipt dd {
   margin: 0;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   overflow-wrap: anywhere;
 }
 .evolution-result__receipt > svg {
@@ -971,7 +970,6 @@
 }
 .evolution-surface .evolution-confirmation > h2 {
   margin-bottom: var(--space-4);
-  font-family: var(--font-heading);
   font-size: var(--text-2xl);
 }
 .evolution-surface .evolution-confirmation > p {
@@ -988,4 +986,10 @@
   :root:not([data-motion='full']) .evolution-source-copy {
     transform: none;
   }
+}
+.evolution-surface .evolution-result > h2 {
+  font-family: var(--font-reward);
+}
+.evolution-surface .evolution-confirmation > h2 {
+  font-family: var(--font-operational);
 }

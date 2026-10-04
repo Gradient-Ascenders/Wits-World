@@ -567,7 +567,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
       >
         <p className="eyebrow">Challenge time ended</p>
         {isTimeoutChecking ? <QuestMarker /> : null}
-        <h1 ref={timeoutHeading} tabIndex={-1}>
+        <h1 className="status-title" ref={timeoutHeading} tabIndex={-1}>
           Checking your result
         </h1>
         <p>{statusMessage}</p>

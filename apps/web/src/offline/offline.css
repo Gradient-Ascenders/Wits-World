@@ -1,6 +1,6 @@
 .offline-status {
   margin: 0.75rem 1rem;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 .offline-page {
   max-width: 60rem;
@@ -26,4 +26,7 @@
   padding: 1rem;
   border: 1px solid currentColor;
   border-radius: 0.75rem;
+}
+.offline-events h2 {
+  font-family: var(--font-entity);
 }

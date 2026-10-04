@@ -2086,6 +2086,9 @@ async function json(route: Route, body: object, status = 200) {
 }
 
 async function routeCurrentPlayer(page: Page) {
+  await page.route('**/api/v1/events', (route) =>
+    json(route, { events: [], requestId: 'cpu-browser-offline-events' }),
+  );
   await page.route('**/api/v1/auth/me', (route) =>
     json(route, {
       connectionStrategy: 'auth0',

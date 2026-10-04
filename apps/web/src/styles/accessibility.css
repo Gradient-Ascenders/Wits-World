@@ -65,24 +65,15 @@ html[data-ui-scale='150'] .combatant__hud:has(.combatant__vitals) {
 
 html[data-reading='comfortable'] {
   --content-readable: 65ch;
-}
-html[data-reading='comfortable'] .main-content p,
-html[data-reading='comfortable'] .main-content li,
-html[data-reading='comfortable'] .main-content dd,
-html[data-reading='comfortable'] .main-content label {
-  line-height: 1.65;
-  letter-spacing: 0.02em;
-  word-spacing: 0.04em;
-}
-html[data-reading='comfortable'] .main-content p + p {
-  margin-top: 1em;
-}
-html[data-reading='comfortable'] .main-content p {
-  max-width: min(100%, var(--content-readable));
-}
-html[data-font='plain'] .main-content :is(h1, h2, h3, h4),
-html[data-font='plain'] .card-frame__name {
-  font-family: var(--font-body);
+  --leading-body: 1.75;
+  --leading-heading: 1.35;
+  --leading-compact: 1.5;
+  --leading-control: 1.5;
+  --leading-metric: 1.35;
+  --tracking-body: 0.02em;
+  --tracking-heading: 0;
+  --tracking-label: 0.04em;
+  --word-spacing-reading: 0.04em;
 }
 
 html[data-contrast='high'] {
@@ -256,16 +247,13 @@ html[data-motion='full'] .card-thumbnail__button {
   html[data-ui-scale='125'] .primary-navigation__label,
   html[data-ui-scale='150'] .primary-navigation__label {
     max-width: 100%;
-    line-height: 1.1;
-    overflow-wrap: normal;
     text-align: center;
-    white-space: nowrap;
   }
-  html[data-ui-scale='125'] .primary-navigation__label {
-    font-size: 0.6rem;
-  }
-  html[data-ui-scale='150'] .primary-navigation__label {
-    font-size: 0.5rem;
-    letter-spacing: 0;
-  }
+}
+
+html[data-font='plain'] {
+  --font-display: var(--font-source-sans);
+  --font-page-title: var(--font-source-sans);
+  --font-entity: var(--font-source-sans);
+  --font-reward: var(--font-source-sans);
 }

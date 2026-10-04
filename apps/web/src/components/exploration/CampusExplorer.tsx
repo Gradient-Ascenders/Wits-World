@@ -911,7 +911,17 @@ export function CampusExplorer({
                 size={20}
               />
               <span className="event-panel__peek-copy">
-                <strong>
+                <strong
+                  className={
+                    (
+                      exploreMode === 'territories'
+                        ? selectedRegion !== null
+                        : selectedEvent !== null
+                    )
+                      ? 'event-panel__entity-name'
+                      : undefined
+                  }
+                >
                   {exploreMode === 'territories'
                     ? (selectedRegion?.label ?? 'Campus territories')
                     : selectedEvent === null
