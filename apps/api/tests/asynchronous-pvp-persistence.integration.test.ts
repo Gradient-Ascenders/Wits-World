@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import {
   buildDatabaseConfig,
@@ -446,6 +446,7 @@ describe.skipIf(!runIntegrationTests)(
         [recipientPlayerId],
       );
       let statementCount = 0;
+      let queryCategories: string[] = [];
       const countedDatabase: AsyncPvpDatabase = {
         async connect() {
           const client = await pool.connect();
@@ -455,6 +456,7 @@ describe.skipIf(!runIntegrationTests)(
               values?: unknown[],
             ) {
               statementCount += 1;
+              queryCategories.push(classifyAcceptanceQuery(statement));
               return client.query<T>(statement, values);
             },
             release() {
@@ -569,9 +571,21 @@ describe.skipIf(!runIntegrationTests)(
         }),
       ).rejects.toMatchObject({ code: 'PVP_DECK_INVALID' });
       statementCount = 0;
+      queryCategories = [];
       const accepted = await service.acceptInvitation(acceptanceInput);
       // Includes BEGIN/COMMIT, validation, writes, and fresh response hydration.
-      expect(statementCount).toBe(19);
+      expect(statementCount).toBe(18);
+      expect(queryCategories.slice(0, 4)).toEqual([
+        'begin',
+        'invitation_lock',
+        'submission_lock',
+        'receipt_and_clock',
+      ]);
+      expect(
+        queryCategories.filter((category) => category === 'receipt_and_clock'),
+      ).toHaveLength(1);
+      expect(queryCategories).not.toContain('receipt_only');
+      expect(queryCategories).not.toContain('clock_only');
       expect(accepted.invitation.status).toBe('accepted');
       expect(accepted.match).toMatchObject({
         status: 'active',
@@ -881,6 +895,253 @@ describe.skipIf(!runIntegrationTests)(
         ]);
       }
     });
+
+    it('observes the committed acceptance receipt after waiting for the invitation lock', async () => {
+      const { invitation, input } = await createAcceptanceInput(
+        pool,
+        cardDefinitions,
+      );
+      let signalCommit: () => void = () => {};
+      let allowCommit: () => void = () => {};
+      const atCommit = new Promise<void>((resolve) => {
+        signalCommit = resolve;
+      });
+      const commitAllowed = new Promise<void>((resolve) => {
+        allowCommit = resolve;
+      });
+      const writerDatabase: AsyncPvpDatabase = {
+        async connect() {
+          const client = await pool.connect();
+          return {
+            async query<T extends pg.QueryResultRow>(
+              statement: string,
+              values?: unknown[],
+            ) {
+              if (statement === 'commit') {
+                signalCommit();
+                await commitAllowed;
+              }
+              return client.query<T>(statement, values);
+            },
+            release() {
+              client.release();
+            },
+          };
+        },
+      };
+      const options = {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+        randomInt: () => 0,
+      };
+      const writer = createAsyncPvpService(writerDatabase, options);
+      const reader = createAsyncPvpService(pool, options);
+      const first = writer.acceptInvitation(input);
+      let second: ReturnType<typeof reader.acceptInvitation> | undefined;
+      try {
+        await Promise.race([atCommit, first]);
+        const isolation = await pool.query<{ transaction_isolation: string }>(
+          'show transaction_isolation',
+        );
+        expect(isolation.rows[0]!.transaction_isolation).toBe('read committed');
+        second = reader.acceptInvitation(input);
+        await waitForBlockedQuery(pool, 'for update of invitation');
+        allowCommit();
+        const accepted = await first;
+        await expect(second).resolves.toEqual(accepted);
+        await expect(reader.acceptInvitation(input)).resolves.toEqual(accepted);
+        await expect(
+          loadAcceptanceRecords(pool, invitation.invitationId),
+        ).resolves.toMatchObject({
+          status: 'accepted',
+          version: 1,
+          matches: 1,
+          snapshots: 2,
+          receipts: 1,
+          response: accepted,
+        });
+      } finally {
+        allowCommit();
+        await Promise.allSettled([first, ...(second ? [second] : [])]);
+      }
+    }, 45_000);
+
+    it.each(['invitation', 'submission'] as const)(
+      'samples database time after the %s lock and applies the controlled expiry boundary',
+      async (lock) => {
+        const { invitation, input, expiresAt } = await createAcceptanceInput(
+          pool,
+          cardDefinitions,
+        );
+        const boundary = await loadAcceptanceClockBoundary(
+          pool,
+          invitation.invitationId,
+        );
+        let releaseTime: Date | undefined;
+        let clockReads = 0;
+        const database = withAcceptanceClock(pool, (actualTime) => {
+          // The real combined query must run after the blocked lock is released.
+          expect(releaseTime).toBeDefined();
+          expect(actualTime.getTime()).toBeGreaterThanOrEqual(
+            releaseTime!.getTime(),
+          );
+          clockReads += 1;
+          return boundary.after_expiry;
+        });
+        const service = createAsyncPvpService(database, {
+          cursorCodec: createSignedCursorCodec(
+            'database-test-only-cursor-key-with-32-bytes',
+          ),
+        });
+        const blocker = await pool.connect();
+        let acceptance: ReturnType<typeof service.acceptInvitation> | undefined;
+        try {
+          await blocker.query('begin');
+          if (lock === 'invitation') {
+            await blocker.query(
+              'select id from public.async_pvp_invitations where id = $1::uuid for update',
+              [invitation.invitationId],
+            );
+          } else {
+            await blocker.query(
+              'select pg_advisory_xact_lock(hashtextextended($1, 0))',
+              [
+                `async-pvp-submission:${input.playerId}:invitation_accept:${input.submissionId}`,
+              ],
+            );
+          }
+          const before = await pool.query<{ now: Date }>(
+            'select clock_timestamp() as now',
+          );
+          expect(before.rows[0]!.now.getTime()).toBeLessThan(
+            expiresAt.getTime(),
+          );
+          acceptance = service.acceptInvitation(input);
+          // Attach a handler before releasing the lock to avoid an unhandled rejection.
+          const outcome = acceptance.catch((error: unknown) => error);
+          await waitForBlockedQuery(
+            pool,
+            lock === 'invitation'
+              ? 'for update of invitation'
+              : 'pg_advisory_xact_lock',
+          );
+          expect(clockReads).toBe(0);
+          const release = await blocker.query<{ now: Date }>(
+            'select clock_timestamp() as now',
+          );
+          releaseTime = release.rows[0]!.now;
+          // An application clock before expiry must not permit this acceptance.
+          const applicationClock = vi.spyOn(Date, 'now').mockReturnValue(0);
+          try {
+            await blocker.query('commit');
+            await expect(outcome).resolves.toMatchObject({
+              code: 'PVP_INVITATION_EXPIRED',
+            });
+          } finally {
+            applicationClock.mockRestore();
+          }
+          expect(clockReads).toBe(1);
+          const persisted = await loadAcceptanceRecords(
+            pool,
+            invitation.invitationId,
+          );
+          expect(persisted).toMatchObject({
+            status: 'expired',
+            version: 1,
+            matches: 0,
+            snapshots: 1,
+            receipts: 0,
+          });
+          expect(persisted.responded_at!.getTime()).toBeGreaterThanOrEqual(
+            expiresAt.getTime(),
+          );
+          expect(persisted.updated_at).toEqual(persisted.responded_at);
+          expect(persisted.responded_at).toEqual(boundary.after_expiry);
+          await expect(service.acceptInvitation(input)).rejects.toMatchObject({
+            code: 'PVP_INVITATION_EXPIRED',
+          });
+        } finally {
+          await blocker.query('rollback');
+          blocker.release();
+          if (acceptance) await Promise.allSettled([acceptance]);
+        }
+      },
+      45_000,
+    );
+
+    it('retains a controlled pre-expiry database decision time and replays after the clock advances past expiry', async () => {
+      const { invitation, input, expiresAt } = await createAcceptanceInput(
+        pool,
+        cardDefinitions,
+      );
+      const boundary = await loadAcceptanceClockBoundary(
+        pool,
+        invitation.invitationId,
+      );
+      let clockTime = boundary.before_expiry;
+      const observedClockTimes: Date[] = [];
+      const database = withAcceptanceClock(pool, () => {
+        const sampledTime = clockTime;
+        observedClockTimes.push(sampledTime);
+        // Advance before delivering the sample: all acceptance writes must retain it.
+        // Later replay reads see an expired clock without any real-time waiting.
+        clockTime = boundary.after_expiry;
+        return sampledTime;
+      });
+      expect(clockTime.getTime()).toBe(expiresAt.getTime() - 1);
+      const decisionTime = clockTime;
+      const service = createAsyncPvpService(database, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+        randomInt: () => 0,
+      });
+      const applicationClock = vi
+        .spyOn(Date, 'now')
+        .mockReturnValue(8_000_000_000_000);
+      let accepted: Awaited<ReturnType<typeof service.acceptInvitation>>;
+      try {
+        accepted = await service.acceptInvitation(input);
+      } finally {
+        applicationClock.mockRestore();
+      }
+      expect(clockTime.getTime()).toBe(expiresAt.getTime() + 1);
+      const persisted = await loadAcceptanceRecords(
+        pool,
+        invitation.invitationId,
+      );
+      expect(persisted).toMatchObject({
+        status: 'accepted',
+        version: 1,
+        matches: 1,
+        snapshots: 2,
+        receipts: 1,
+        response: accepted,
+        responded_at: decisionTime,
+        updated_at: decisionTime,
+        started_at: decisionTime,
+        decision_started_at: decisionTime,
+        receipt_created_at: decisionTime,
+      });
+      expect(persisted.turn_deadline!.getTime()).toBe(
+        decisionTime.getTime() + 24 * 60 * 60 * 1000,
+      );
+      await expect(service.acceptInvitation(input)).resolves.toEqual(accepted);
+      await expect(
+        service.acceptInvitation({ ...input, expectedVersion: 1 }),
+      ).rejects.toMatchObject({
+        code: 'PVP_IDEMPOTENCY_CONFLICT',
+      });
+      expect(observedClockTimes).toEqual([
+        decisionTime,
+        boundary.after_expiry,
+        boundary.after_expiry,
+      ]);
+      await expect(
+        loadAcceptanceRecords(pool, invitation.invitationId),
+      ).resolves.toEqual(persisted);
+    }, 45_000);
 
     it('rejects inactive recipient cards without persisting acceptance state', async () => {
       const invitation = await createPendingInvitation(pool, cardDefinitions);
@@ -2383,6 +2644,21 @@ describe.skipIf(!runIntegrationTests)(
   },
 );
 
+function classifyAcceptanceQuery(statement: string): string {
+  const sql = statement.trim().toLowerCase();
+  if (sql === 'begin') return 'begin';
+  if (sql.includes('for update of invitation')) return 'invitation_lock';
+  if (sql.includes('pg_advisory_xact_lock')) return 'submission_lock';
+  const receipt =
+    sql.startsWith('select') &&
+    sql.includes('private.async_pvp_submission_receipts');
+  const clock = sql.includes('clock_timestamp() as now');
+  if (receipt && clock) return 'receipt_and_clock';
+  if (receipt) return 'receipt_only';
+  if (clock) return 'clock_only';
+  return 'other';
+}
+
 async function waitForBlockedQuery(
   database: pg.Pool,
   queryFragment: string,
@@ -2634,6 +2910,130 @@ async function createPendingInvitation(
   } finally {
     client.release();
   }
+}
+
+async function createAcceptanceInput(
+  database: pg.Pool,
+  definitions: readonly CardDefinitionFixture[],
+) {
+  const challengerPlayerId = await insertPlayer(database, 'clock_challenger');
+  const recipientPlayerId = await insertPlayer(database, 'clock_recipient');
+  const challengerDeck = await createOwnedDeck(
+    database,
+    challengerPlayerId,
+    definitions,
+  );
+  const deck = await createOwnedDeck(database, recipientPlayerId, definitions);
+  const recipient = await database.query<{ player_name: string }>(
+    'select player_name from public.players where id = $1::uuid',
+    [recipientPlayerId],
+  );
+  const service = createAsyncPvpService(database, {
+    cursorCodec: createSignedCursorCodec(
+      'database-test-only-cursor-key-with-32-bytes',
+    ),
+    randomInt: () => 0,
+  });
+  const invitation = await service.createInvitation({
+    playerId: challengerPlayerId,
+    opponentPlayerName: recipient.rows[0]!.player_name,
+    deckId: challengerDeck.deckId,
+    initialCreatureId: challengerDeck.creatureId,
+    submissionId: randomUUID(),
+  });
+  return {
+    invitation,
+    expiresAt: new Date(invitation.expiresAt),
+    input: {
+      playerId: recipientPlayerId,
+      invitationId: invitation.invitationId,
+      deckId: deck.deckId,
+      initialCreatureId: deck.creatureId,
+      submissionId: randomUUID(),
+      expectedVersion: 0,
+    },
+  };
+}
+
+async function loadAcceptanceClockBoundary(
+  database: pg.Pool,
+  invitationId: string,
+) {
+  const result = await database.query<{
+    before_expiry: Date;
+    after_expiry: Date;
+  }>(
+    `select expires_at - interval '1 millisecond' as before_expiry,
+            expires_at + interval '1 millisecond' as after_expiry
+       from public.async_pvp_invitations where id = $1::uuid`,
+    [invitationId],
+  );
+  return result.rows[0]!;
+}
+
+function withAcceptanceClock(
+  database: pg.Pool,
+  sample: (actualTime: Date) => Date,
+): AsyncPvpDatabase {
+  return {
+    async connect() {
+      const client = await database.connect();
+      return {
+        async query<T extends pg.QueryResultRow>(
+          statement: string,
+          values?: unknown[],
+        ) {
+          const result = await client.query<T>(statement, values);
+          // Execute the real receipt/clock SQL, replacing only its clock result
+          // with a database-derived boundary. Locks, receipt visibility and writes
+          // remain real; expiry tests do not depend on runner scheduling speed.
+          if (statement.includes('clock_timestamp() as now')) {
+            const row = result.rows[0] as pg.QueryResultRow;
+            row.now = sample(row.now as Date);
+          }
+          return result;
+        },
+        release() {
+          client.release();
+        },
+      };
+    },
+  };
+}
+
+async function loadAcceptanceRecords(database: pg.Pool, invitationId: string) {
+  const result = await database.query<{
+    status: string;
+    version: number;
+    matches: number;
+    snapshots: number;
+    receipts: number;
+    response: unknown;
+    responded_at: Date | null;
+    updated_at: Date;
+    started_at: Date | null;
+    decision_started_at: Date | null;
+    turn_deadline: Date | null;
+    receipt_created_at: Date | null;
+  }>(
+    `select invitation.status, invitation.version, invitation.responded_at,
+            invitation.updated_at, match.started_at, match.decision_started_at,
+            match.turn_deadline, receipt.created_at as receipt_created_at,
+            receipt.committed_response as response,
+            (select count(*)::integer from public.async_pvp_matches
+              where invitation_id = invitation.id) as matches,
+            (select count(*)::integer from private.async_pvp_deck_snapshots
+              where invitation_id = invitation.id) as snapshots,
+            (select count(*)::integer from private.async_pvp_submission_receipts
+              where invitation_id = invitation.id and operation = 'invitation_accept') as receipts
+       from public.async_pvp_invitations invitation
+       left join public.async_pvp_matches match on match.id = invitation.match_id
+       left join private.async_pvp_submission_receipts receipt
+         on receipt.invitation_id = invitation.id and receipt.operation = 'invitation_accept'
+      where invitation.id = $1::uuid`,
+    [invitationId],
+  );
+  return result.rows[0]!;
 }
 
 async function createAcceptedMatch(
