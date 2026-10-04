@@ -36,6 +36,12 @@ import {
   type TrustRestrictionService,
 } from '../trust/trust-restrictions.js';
 import type { TrustService } from '../trust/trust-service.js';
+import {
+  timePhase,
+  timePhaseSync,
+  type PhaseTimingSink,
+} from '../request-timing.js';
+import { timePvpClient, countTrustStatements } from './pvp-query-timing.js';
 
 const DECISION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PAGE_LIMIT = 20;
@@ -147,14 +153,17 @@ export interface AsyncPvpService {
     direction?: 'incoming' | 'outgoing';
     status?: PvpInvitationStatus;
   }): Promise<Page<PvpInvitationView>>;
-  acceptInvitation(input: {
-    playerId: string;
-    invitationId: string;
-    deckId: string;
-    initialCreatureId: string;
-    submissionId: string;
-    expectedVersion: number;
-  }): Promise<{ invitation: PvpInvitationView; match: AsyncPvpMatchView }>;
+  acceptInvitation(
+    input: {
+      playerId: string;
+      invitationId: string;
+      deckId: string;
+      initialCreatureId: string;
+      submissionId: string;
+      expectedVersion: number;
+    },
+    timing?: PhaseTimingSink,
+  ): Promise<{ invitation: PvpInvitationView; match: AsyncPvpMatchView }>;
   declineInvitation(input: {
     playerId: string;
     invitationId: string;
@@ -177,7 +186,11 @@ export interface AsyncPvpService {
     cursor?: string;
     limit?: number;
   }): Promise<Page<PvpHistorySummary>>;
-  getMatch(playerId: string, matchId: string): Promise<AsyncPvpMatchView>;
+  getMatch(
+    playerId: string,
+    matchId: string,
+    timing?: PhaseTimingSink,
+  ): Promise<AsyncPvpMatchView>;
   submitAction(input: {
     playerId: string;
     matchId: string;
@@ -353,7 +366,8 @@ export function createAsyncPvpService(
 ): AsyncPvpService {
   const withServiceTransaction = <T>(
     operation: (client: AsyncPvpClient) => Promise<T>,
-  ) => withTransaction(database, operation, trustService);
+    timing?: PhaseTimingSink,
+  ) => withTransaction(database, operation, trustService, timing);
 
   const service: AsyncPvpService = {
     async findPlayer(viewerId, playerName) {
@@ -601,7 +615,7 @@ export function createAsyncPvpService(
       }
     },
 
-    async acceptInvitation(input) {
+    async acceptInvitation(input, timing) {
       const payloadHash = hashPayload({
         invitationId: input.invitationId,
         deckId: input.deckId,
@@ -610,22 +624,34 @@ export function createAsyncPvpService(
       });
       let deadlineExpired = false;
       const result = await withServiceTransaction(async (client) => {
-        const invitation = await lockInvitation(
-          client,
-          input.invitationId,
-          input.playerId,
-          'recipient',
+        const invitation = await timePhase(
+          timing,
+          'invitation_lock_client_ms',
+          () =>
+            lockInvitation(
+              client,
+              input.invitationId,
+              input.playerId,
+              'recipient',
+            ),
         );
-        await lockSubmissionKey(
-          client,
-          input.playerId,
-          'invitation_accept',
-          input.submissionId,
+        await timePhase(timing, 'submission_lock_client_ms', () =>
+          lockSubmissionKey(
+            client,
+            input.playerId,
+            'invitation_accept',
+            input.submissionId,
+          ),
         );
-        const { replay, now } = await loadAcceptanceReceiptAndTime<{
-          invitation: PvpInvitationView;
-          match: AsyncPvpMatchView;
-        }>(client, input.playerId, input.submissionId, payloadHash);
+        const { replay, now } = await timePhase(
+          timing,
+          'receipt_clock_ms',
+          () =>
+            loadAcceptanceReceiptAndTime<{
+              invitation: PvpInvitationView;
+              match: AsyncPvpMatchView;
+            }>(client, input.playerId, input.submissionId, payloadHash),
+        );
         if (replay) return replay;
         if (invitation.status === 'pending' && now >= invitation.expires_at) {
           await markInvitationExpired(client, invitation.id, now);
@@ -634,16 +660,20 @@ export function createAsyncPvpService(
         }
         assertPendingInvitation(invitation, input.expectedVersion);
         if (trustRestrictions) {
-          await trustRestrictions.assertAllowed(
-            input.playerId,
-            'new_competitive_match_hold',
-            client,
+          await timePhase(timing, 'trust_ms', () =>
+            trustRestrictions.assertAllowed(
+              input.playerId,
+              'new_competitive_match_hold',
+              countTrustStatements(client, timing),
+            ),
           );
           try {
-            await trustRestrictions.assertAllowed(
-              invitation.challenger_player_id,
-              'new_competitive_match_hold',
-              client,
+            await timePhase(timing, 'trust_ms', () =>
+              trustRestrictions.assertAllowed(
+                invitation.challenger_player_id,
+                'new_competitive_match_hold',
+                countTrustStatements(client, timing),
+              ),
             );
           } catch (error) {
             if (error instanceof TrustActivityRestrictedError) {
@@ -656,50 +686,55 @@ export function createAsyncPvpService(
           }
         }
 
-        const recipientDeck = await loadDeck(
-          client,
-          input.playerId,
-          input.deckId,
+        const recipientDeck = await timePhase(timing, 'deck_ms', () =>
+          loadDeck(client, input.playerId, input.deckId),
         );
         assertInitialCreature(recipientDeck, input.initialCreatureId);
-        const challenger = await loadSnapshotDeck(
-          client,
-          invitation.id,
-          'challenger',
+        const challenger = await timePhase(timing, 'snapshot_read_ms', () =>
+          loadSnapshotDeck(client, invitation.id, 'challenger'),
         );
-        const recipientSnapshotId = await insertDeckSnapshot(
-          client,
-          invitation.id,
-          input.playerId,
-          'recipient',
-          recipientDeck,
-          input.initialCreatureId,
-          now,
+        const recipientSnapshotId = await timePhase(
+          timing,
+          'snapshot_write_ms',
+          () =>
+            insertDeckSnapshot(
+              client,
+              invitation.id,
+              input.playerId,
+              'recipient',
+              recipientDeck,
+              input.initialCreatureId,
+              now,
+            ),
         );
-        let state = createBattleState(challenger.deck, recipientDeck.deck);
-        state = applyBattleAction(
-          state,
-          'player',
-          {
-            type: 'select_initial_creature',
-            creatureId: challenger.initialCreatureId,
-          },
-          randomInt,
-        ).state;
-        state = applyBattleAction(
-          state,
-          'cpu',
-          {
-            type: 'select_initial_creature',
-            creatureId: input.initialCreatureId,
-          },
-          randomInt,
-        ).state;
-        if (!state.currentSide || state.phase !== 'active') {
-          throw new Error(
-            'Accepted PvP match did not enter an active decision.',
-          );
-        }
+        const state = timePhaseSync(timing, 'match_construct_ms', () => {
+          let state = createBattleState(challenger.deck, recipientDeck.deck);
+          state = applyBattleAction(
+            state,
+            'player',
+            {
+              type: 'select_initial_creature',
+              creatureId: challenger.initialCreatureId,
+            },
+            randomInt,
+          ).state;
+          state = applyBattleAction(
+            state,
+            'cpu',
+            {
+              type: 'select_initial_creature',
+              creatureId: input.initialCreatureId,
+            },
+            randomInt,
+          ).state;
+          if (!state.currentSide || state.phase !== 'active') {
+            throw new Error(
+              'Accepted PvP match did not enter an active decision.',
+            );
+          }
+
+          return state;
+        });
 
         const matchId = randomUUID();
         const currentPlayerId =
@@ -707,66 +742,76 @@ export function createAsyncPvpService(
             ? invitation.challenger_player_id
             : invitation.recipient_player_id;
         const deadline = new Date(now.getTime() + DECISION_WINDOW_MS);
-        await client.query(
-          `
+        await timePhase(timing, 'match_insert_ms', () =>
+          client.query(
+            `
             insert into public.async_pvp_matches (
               id, invitation_id, current_player_id, decision_started_at,
               turn_deadline, started_at, created_at, updated_at
             ) values ($1::uuid, $2::uuid, $3::uuid, $4, $5, $4, $4, $4)
           `,
-          [matchId, invitation.id, currentPlayerId, now, deadline],
+            [matchId, invitation.id, currentPlayerId, now, deadline],
+          ),
         );
-        await client.query(
-          `
+        await timePhase(timing, 'participants_insert_ms', () =>
+          client.query(
+            `
             insert into public.async_pvp_match_participants (
               match_id, player_id, engine_side, deck_snapshot_id, created_at
             ) values
               ($1::uuid, $2::uuid, 'player', $3::uuid, $6),
               ($1::uuid, $4::uuid, 'cpu', $5::uuid, $6)
           `,
-          [
-            matchId,
-            invitation.challenger_player_id,
-            challenger.snapshotId,
-            invitation.recipient_player_id,
-            recipientSnapshotId,
-            now,
-          ],
+            [
+              matchId,
+              invitation.challenger_player_id,
+              challenger.snapshotId,
+              invitation.recipient_player_id,
+              recipientSnapshotId,
+              now,
+            ],
+          ),
         );
-        await client.query(
-          `insert into private.async_pvp_match_states
+        await timePhase(timing, 'private_state_insert_ms', () =>
+          client.query(
+            `insert into private.async_pvp_match_states
              (match_id, version, battle_state, updated_at)
            values ($1::uuid, 0, $2::jsonb, $3)`,
-          [matchId, JSON.stringify(state), now],
+            [matchId, JSON.stringify(state), now],
+          ),
         );
-        await client.query(
-          `
+        await timePhase(timing, 'invitation_update_ms', () =>
+          client.query(
+            `
             update public.async_pvp_invitations
                set status = 'accepted', version = version + 1,
                    match_id = $2::uuid, responded_at = $3, updated_at = $3
              where id = $1::uuid
           `,
-          [invitation.id, matchId, now],
+            [invitation.id, matchId, now],
+          ),
         );
         const response = {
-          invitation: await loadInvitationView(
-            client,
-            input.playerId,
-            invitation.id,
+          invitation: await timePhase(timing, 'invitation_view_ms', () =>
+            loadInvitationView(client, input.playerId, invitation.id),
           ),
-          match: await loadMatchView(client, input.playerId, matchId, true),
+          match: await timePhase(timing, 'match_response_view_ms', () =>
+            loadMatchView(client, input.playerId, matchId, true),
+          ),
         };
-        await insertReceipt(client, {
-          actorId: input.playerId,
-          operation: 'invitation_accept',
-          submissionId: input.submissionId,
-          invitationId: invitation.id,
-          payloadHash,
-          response,
-          now,
-        });
+        await timePhase(timing, 'receipt_write_ms', () =>
+          insertReceipt(client, {
+            actorId: input.playerId,
+            operation: 'invitation_accept',
+            submissionId: input.submissionId,
+            invitationId: invitation.id,
+            payloadHash,
+            response,
+            now,
+          }),
+        );
         return response;
-      });
+      }, timing);
       if (deadlineExpired) throw expiredInvitation();
       if (!result)
         throw new Error('PvP invitation acceptance returned no result.');
@@ -912,11 +957,15 @@ export function createAsyncPvpService(
       return listMatchSummaries(database, cursorCodec, input, 'history');
     },
 
-    async getMatch(playerId, matchId) {
+    async getMatch(playerId, matchId, timing) {
       const view = await withServiceTransaction(async (client) => {
-        const match = await lockMatch(client, playerId, matchId);
+        const match = await timePhase(timing, 'get_locked_projection_ms', () =>
+          lockMatch(client, playerId, matchId),
+        );
         if (match.status === 'active' && match.turn_deadline) {
-          const now = await databaseNow(client);
+          const now = await timePhase(timing, 'get_clock_ms', () =>
+            databaseNow(client),
+          );
           if (now >= match.turn_deadline) {
             await completeForfeit(
               client,
@@ -928,10 +977,14 @@ export function createAsyncPvpService(
             );
           }
         }
-        return await loadMatchView(client, playerId, matchId);
-      });
+        return await loadMatchView(client, playerId, matchId, false, timing);
+      }, timing);
       if (view.status === 'completed') {
-        await evaluateOpponentPatternsSafely(trustService, matchId);
+        await timePhase(
+          trustService ? timing : undefined,
+          'post_transaction_trust_ms',
+          () => evaluateOpponentPatternsSafely(trustService, matchId),
+        );
       }
       return view;
     },
@@ -1342,11 +1395,17 @@ async function withTransaction<T>(
   database: AsyncPvpDatabase,
   operation: (client: AsyncPvpClient) => Promise<T>,
   trustService?: Pick<TrustService, 'recordSubmissionConflict'>,
+  timing?: PhaseTimingSink,
 ): Promise<T> {
-  const client = await database.connect();
+  const client = timePvpClient(
+    await timePhase(timing, 'pool_acquire_ms', () => database.connect()),
+    timing,
+  );
   let failure: unknown;
   try {
-    return await withExistingClientTransaction(client, () => operation(client));
+    return await timePhase(timing, 'transaction_ms', () =>
+      withExistingClientTransaction(client, () => operation(client), timing),
+    );
   } catch (error) {
     failure = error;
   } finally {
@@ -1355,12 +1414,17 @@ async function withTransaction<T>(
 
   if (failure instanceof AsyncPvpIdempotencyConflictError) {
     try {
-      await trustService?.recordSubmissionConflict({
-        playerId: failure.actorId,
-        operation: `async_pvp_${failure.operation}`,
-        resourceIdentifier: failure.resourceIdentifier,
-        submissionId: failure.submissionId,
-      });
+      await timePhase(
+        trustService ? timing : undefined,
+        'post_transaction_trust_ms',
+        async () =>
+          trustService?.recordSubmissionConflict({
+            playerId: failure.actorId,
+            operation: `async_pvp_${failure.operation}`,
+            resourceIdentifier: failure.resourceIdentifier,
+            submissionId: failure.submissionId,
+          }),
+      );
     } catch {
       // Preserve the authoritative mutation conflict. A repeated conflict can
       // retry trust ingestion without changing the gameplay outcome.
@@ -1373,14 +1437,15 @@ async function withTransaction<T>(
 async function withExistingClientTransaction<T>(
   client: AsyncPvpClient,
   operation: () => Promise<T>,
+  timing?: PhaseTimingSink,
 ): Promise<T> {
-  await client.query('begin');
+  await timePhase(timing, 'begin_ms', () => client.query('begin'));
   try {
     const result = await operation();
-    await client.query('commit');
+    await timePhase(timing, 'commit_ms', () => client.query('commit'));
     return result;
   } catch (error) {
-    await client.query('rollback');
+    await timePhase(timing, 'rollback_ms', () => client.query('rollback'));
     throw error;
   }
 }
@@ -2013,14 +2078,21 @@ async function loadMatchView(
   playerId: string,
   matchId: string,
   includeCardPresentation = false,
+  timing?: PhaseTimingSink,
 ): Promise<AsyncPvpMatchView> {
   const projection = `${matchProjectionSql}
       where match.id = $1::uuid and viewer.player_id = $2::uuid`;
-  const result = await client.query<
-    MatchRow & { card_presentation?: Record<string, SnapshotCardPresentation> }
-  >(
-    includeCardPresentation
-      ? `
+  const result = await timePhase(
+    includeCardPresentation ? undefined : timing,
+    'get_response_projection_ms',
+    () =>
+      client.query<
+        MatchRow & {
+          card_presentation?: Record<string, SnapshotCardPresentation>;
+        }
+      >(
+        includeCardPresentation
+          ? `
           with match_view as (${projection}),
                card_presentation as (${cardPresentationSql})
           select match_view.*,
@@ -2032,8 +2104,9 @@ async function loadMatchView(
                  ), '{}'::jsonb) as card_presentation
             from match_view
         `
-      : projection,
-    [matchId, playerId],
+          : projection,
+        [matchId, playerId],
+      ),
   );
   const match = result.rows[0];
   if (!match) {
@@ -2044,8 +2117,12 @@ async function loadMatchView(
   }
   const cards = includeCardPresentation
     ? (match.card_presentation ?? {})
-    : await loadCardPresentation(client, matchId);
-  return projectMatch(match, cards);
+    : await timePhase(timing, 'get_card_presentation_ms', () =>
+        loadCardPresentation(client, matchId),
+      );
+  return timePhaseSync(timing, 'project_match_ms', () =>
+    projectMatch(match, cards),
+  );
 }
 
 interface SnapshotCardPresentation {

@@ -18,7 +18,7 @@ test('keeps the database-account deletion journey focused and accessible on mobi
     page.getByRole('heading', { level: 1, name: 'Account settings' }),
   ).toBeVisible();
   await expect(
-    page.getByText('Your account information is read-only here.'),
+    page.getByRole('heading', { name: 'Account details' }),
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible();
   await expect(
@@ -65,7 +65,7 @@ test('keeps the database-account deletion journey focused and accessible on mobi
     .click();
   await expect(
     page.getByRole('heading', {
-      name: 'Your account is locked while cleanup retries',
+      name: 'Account locked. Deletion pending.',
     }),
   ).toBeFocused();
   await expect(
@@ -104,19 +104,32 @@ test('uses desktop space without exposing federated credentials', async ({
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
 
   await expect(page.getByText('Google', { exact: true })).toBeVisible();
-  await expect(page.getByText(/password is managed by Google/iu)).toBeVisible();
+  await expect(page.getByText(/Google manages your password/iu)).toBeVisible();
   await expect(
     page.getByRole('link', { name: /Open Google recovery/iu }),
   ).toHaveAttribute('target', '_blank');
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
 
-  await page.setViewportSize({ height: 900, width: 768 });
-  await expectNoHorizontalOverflow(page);
-  await page.setViewportSize({ height: 900, width: 1440 });
-
   await page.keyboard.press('Escape');
   await expect(accountTrigger).toBeFocused();
+  await captureAccountScreenshot(page, testInfo, '1440-account.png');
+  const motion = page.getByRole('button', { name: /Motion/ });
+  await motion.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByRole('option', { name: 'Use device setting' }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.screenshot({
+    path: testInfo.outputPath('1440-account-dropdown.png'),
+  });
+  await page.keyboard.press('Escape');
+  await expect(motion).toBeFocused();
+  await page.setViewportSize({ height: 900, width: 768 });
+  await expectNoHorizontalOverflow(page);
+  await captureAccountScreenshot(page, testInfo, '768-account.png');
+  await page.setViewportSize({ height: 900, width: 1440 });
+
   await page.getByRole('button', { name: 'Delete account' }).click();
   await expect(
     page.getByRole('heading', { name: 'Delete account?' }),
@@ -127,7 +140,7 @@ test('uses desktop space without exposing federated credentials', async ({
   await expect(
     page.getByRole('button', { name: 'Sign in again' }),
   ).toBeVisible();
-  await captureAccountScreenshot(page, testInfo, '1280-reauth-dialog.png');
+  await captureAccountScreenshot(page, testInfo, '1440-reauth-dialog.png');
 
   expect(errors).toEqual([]);
 });
@@ -139,11 +152,23 @@ test('keeps accessibility choices usable and contained across device widths', as
   await mockAccountApi(page, 'auth0', 'completed', 'player');
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/account');
-  await page.getByLabel('Interface size').selectOption('150');
-  await page.getByLabel('Contrast').selectOption('high');
-  await page.getByLabel('Reading layout').selectOption('comfortable');
-  await page.getByLabel('Font').selectOption('plain');
-  await page.getByLabel('Read aloud').selectOption('on');
+  const motion = page.getByRole('button', { name: /Motion/ });
+  await motion.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByRole('option', { name: 'Use device setting' }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.screenshot({
+    path: testInfo.outputPath('390-account-dropdown.png'),
+  });
+  await page.keyboard.press('Escape');
+  await expect(motion).toBeFocused();
+  await chooseAccountSetting(page, 'Motion', 'Reduce motion');
+  await chooseAccountSetting(page, 'Interface size', '150%');
+  await chooseAccountSetting(page, 'Contrast', 'High contrast');
+  await chooseAccountSetting(page, 'Reading layout', 'Comfortable');
+  await chooseAccountSetting(page, 'Font', 'Plain sans-serif');
+  await chooseAccountSetting(page, 'Read aloud', 'On');
   await expect(page.getByRole('button', { name: 'Read page' })).toBeVisible();
 
   for (const width of [390, 768, 1440]) {
@@ -172,8 +197,12 @@ test('keeps accessibility choices usable and contained across device widths', as
   }
 
   await page.reload();
-  await expect(page.getByLabel('Interface size')).toHaveValue('150');
-  await expect(page.getByLabel('Contrast')).toHaveValue('high');
+  await expect(page.getByRole('button', { name: /Interface size/ })).toHaveText(
+    '150%',
+  );
+  await expect(page.getByRole('button', { name: /Contrast/ })).toHaveText(
+    'High contrast',
+  );
   await expect(page.getByRole('button', { name: 'Read page' })).toBeVisible();
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/');
@@ -193,7 +222,99 @@ test('keeps accessibility choices usable and contained across device widths', as
   await page.goto('/account');
   await page.getByRole('button', { name: 'Reset to defaults' }).click();
   await expect(page.getByRole('button', { name: 'Read page' })).toHaveCount(0);
-  await expect(page.getByLabel('Interface size')).toHaveValue('100');
+  await expect(page.getByRole('button', { name: /Interface size/ })).toHaveText(
+    '100%',
+  );
+  expect(errors).toEqual([]);
+});
+
+test('keeps developer disclosure and one-time keys usable with long names and large UI', async ({
+  page,
+}, testInfo) => {
+  const errors = monitorRuntimeErrors(page);
+  await mockAccountApi(page, 'auth0', 'completed');
+  const longName = 'Campus integration '.repeat(4).trim();
+  const key = {
+    id: '00000000-0000-4000-8000-000000000701',
+    name: longName,
+    keyPrefix: 'ww_api_0123456789abcdef_…',
+    createdAt: '2026-10-04T10:00:00.000Z',
+    lastUsedAt: null,
+    revokedAt: null,
+    status: 'active',
+  };
+  const secret = `ww_api_0123456789abcdef_${'a'.repeat(43)}`;
+  let generated = false;
+  await page.route(`${apiBaseUrl}/developer/keys`, (route) => {
+    if (route.request().method() === 'POST') {
+      generated = true;
+      return route.fulfill({
+        status: 201,
+        json: { apiKey: secret, key, requestId: 'browser-created-key' },
+      });
+    }
+    return route.fulfill({
+      json: {
+        activeKeyLimit: 3,
+        keys: generated ? [key] : [],
+        requestId: 'browser-key-list',
+      },
+    });
+  });
+  await page.route(`${apiBaseUrl}/auth/me`, (route) =>
+    route.fulfill({
+      json: {
+        connectionStrategy: 'auth0',
+        id: playerId,
+        lifecycleStatus: 'active',
+        playerName: 'campus-player-with-a-long-name',
+        playerNameSetupRequired: false,
+        requestId: 'browser-long-player',
+        role: 'player',
+      },
+    }),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/account');
+  const disclosure = page.getByRole('button', {
+    name: 'Developer API access',
+    exact: true,
+  });
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('textbox', { name: 'Key name' })).toBeHidden();
+  await disclosure.focus();
+  await page.keyboard.press('Enter');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('textbox', { name: 'Key name' }).fill(longName);
+  await page.getByRole('button', { name: 'Generate API key' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Save this API key now' }),
+  ).toBeFocused();
+  await expect(disclosure).toHaveAttribute('aria-disabled', 'true');
+  await disclosure.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByRole('textbox', { name: 'Generated API key' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'I have saved it' }).click();
+  await expect(page.getByRole('textbox', { name: 'Key name' })).toBeFocused();
+  await expect(page.getByText(longName, { exact: true })).toBeVisible();
+
+  await chooseAccountSetting(page, 'Interface size', '150%');
+  await chooseAccountSetting(page, 'Contrast', 'High contrast');
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expectNoHorizontalOverflow(page);
+    await captureAccountScreenshot(
+      page,
+      testInfo,
+      `${width}-developer-expanded.png`,
+    );
+  }
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await disclosure.click();
+  await expect(page.getByText(longName, { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -304,6 +425,11 @@ test('keeps collection and battle content readable with large high-contrast UI',
   expect(errors).toEqual([]);
 });
 
+async function chooseAccountSetting(page: Page, label: string, option: string) {
+  await page.getByRole('button', { name: new RegExp(label) }).click();
+  await page.getByRole('option', { name: option, exact: true }).click();
+}
+
 async function mockAccountApi(
   page: Page,
   connectionStrategy: 'auth0' | 'google-oauth2',
@@ -392,8 +518,16 @@ async function captureAccountScreenshot(
   testInfo: TestInfo,
   name: string,
 ) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const showsDialog = await page.getByRole('alertdialog').isVisible();
   await page.screenshot({
-    fullPage: true,
+    fullPage: !showsDialog,
     path: testInfo.outputPath(name),
   });
+  if (!showsDialog) {
+    await page.screenshot({
+      fullPage: false,
+      path: testInfo.outputPath(name.replace('.png', '-viewport.png')),
+    });
+  }
 }

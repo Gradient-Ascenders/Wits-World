@@ -65,6 +65,12 @@ serialization before sending, not browser transport or response download.
 Use browser Network timings alongside this header to separate network waiting
 from server work. Compare warm and first-after-idle requests separately.
 
+For acceptance and match-detail GET diagnostics, see
+[PvP request phase timing](./pvp-request-phase-timing.md). It documents the
+additional server-only fields, overlapping spans, privacy limits and controlled
+deployment/measurement procedure. Detailed timing is observability, not a claim
+of a latency improvement or deployed instrumentation.
+
 The deployed browser/API click-to-result path was not profiled with a signed-in
 session. The identity measurements isolate real database work; they are not a
 claim of deployed end-to-end latency. Cold database/API starts, geographic network

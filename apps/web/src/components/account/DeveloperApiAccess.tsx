@@ -1,4 +1,5 @@
 import { createAppDateTimeFormatter } from '../../date-time';
+import { CaretDown } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 
 import {
@@ -25,6 +26,7 @@ export function DeveloperApiAccess({
   getAccessToken,
 }: DeveloperApiAccessProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
+  const [expanded, setExpanded] = useState(false);
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
@@ -36,6 +38,8 @@ export function DeveloperApiAccess({
     null,
   );
   const secretHeading = useRef<HTMLHeadingElement>(null);
+  const disclosureTrigger = useRef<HTMLButtonElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
   const revokeTrigger = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -154,29 +158,78 @@ export function DeveloperApiAccess({
   const atLimit =
     state.status === 'ready' && activeCount >= state.data.activeKeyLimit;
   const hasUnacknowledgedSecret = createdSecret !== null;
+  const disclosureLocked = creating || hasUnacknowledgedSecret;
+  const showsControls = expanded || disclosureLocked;
 
   return (
     <section
       aria-labelledby="developer-api-access-title"
-      className="account-page__section"
+      className="account-page__section developer-api-access"
     >
       <div className="account-section-heading">
-        <h2 id="developer-api-access-title">Developer API access</h2>
-        <p>
-          Create credentials for HTTP tools and server-side applications that
-          read published events, the card catalogue and public leaderboard.
+        <h2 id="developer-api-access-title">
+          <button
+            aria-controls="developer-api-controls"
+            aria-describedby="developer-api-description developer-api-count"
+            aria-disabled={disclosureLocked || undefined}
+            aria-expanded={showsControls}
+            className="developer-api-disclosure"
+            onClick={() => {
+              if (!disclosureLocked) setExpanded(!expanded);
+            }}
+            ref={disclosureTrigger}
+            type="button"
+          >
+            <span>Developer API access</span>
+            <span
+              aria-hidden="true"
+              className="developer-api-disclosure__count"
+              id="developer-api-count"
+            >
+              {state.status === 'ready'
+                ? `${activeCount} of ${state.data.activeKeyLimit} active`
+                : state.status === 'loading'
+                  ? 'Loading keys…'
+                  : 'Keys unavailable'}
+            </span>
+            <CaretDown aria-hidden="true" size={18} />
+          </button>
+        </h2>
+        <p id="developer-api-description">
+          Read-only access to public events, cards, and standings.
         </p>
       </div>
 
-      <div className="developer-api-card">
+      {mutationError ? (
+        <DeveloperApiErrorMessage error={mutationError} />
+      ) : null}
+
+      {state.status === 'error' ? (
+        <div className="developer-api-error">
+          <DeveloperApiErrorMessage error={state.error} />
+          <button
+            className="button button--quiet"
+            onClick={() => void refresh()}
+            type="button"
+          >
+            Try again
+          </button>
+        </div>
+      ) : null}
+
+      <div
+        className="developer-api-card"
+        hidden={!showsControls}
+        id="developer-api-controls"
+      >
         {createdSecret ? (
           <div className="developer-api-secret" role="region">
             <h3 ref={secretHeading} tabIndex={-1}>
               Save this API key now
             </h3>
             <p>
-              Wits World cannot show the complete value again. Keep it out of
-              source control, URLs and browser bundles.
+              This key is shown only once. Keep it out of source control, URLs,
+              and browser code.
             </p>
             <input
               aria-label="Generated API key"
@@ -201,6 +254,12 @@ export function DeveloperApiAccess({
                 onClick={() => {
                   setCreatedSecret(null);
                   setCopyState('idle');
+                  queueMicrotask(() => {
+                    (nameInput.current?.disabled
+                      ? disclosureTrigger.current
+                      : nameInput.current
+                    )?.focus();
+                  });
                 }}
                 type="button"
               >
@@ -218,8 +277,7 @@ export function DeveloperApiAccess({
             ) : null}
             {copyState === 'failed' ? (
               <p className="account-inline-error" role="alert">
-                Copying failed. Select the key above and copy it manually before
-                closing this message.
+                Could not copy. Select and copy the key manually before closing.
               </p>
             ) : null}
           </div>
@@ -241,6 +299,7 @@ export function DeveloperApiAccess({
               maxLength={80}
               onChange={(event) => setName(event.target.value)}
               placeholder="My Discord bot"
+              ref={nameInput}
               required
               type="text"
               value={name}
@@ -257,49 +316,22 @@ export function DeveloperApiAccess({
           </div>
           {atLimit ? (
             <p className="account-inline-status">
-              You have reached the{' '}
-              {state.status === 'ready' ? state.data.activeKeyLimit : 5}-key
-              active limit. Revoke a key before generating another.
+              Key limit reached. Revoke a key before generating another.
             </p>
           ) : null}
         </form>
 
-        {mutationError ? (
-          <DeveloperApiErrorMessage error={mutationError} />
-        ) : null}
-
         {state.status === 'loading' ? (
           <p aria-live="polite" className="account-inline-status" role="status">
-            Loading developer API keys…
+            Loading keys…
           </p>
-        ) : null}
-
-        {state.status === 'error' ? (
-          <div className="developer-api-error">
-            <DeveloperApiErrorMessage error={state.error} />
-            <button
-              className="button button--quiet"
-              onClick={() => void refresh()}
-              type="button"
-            >
-              Try again
-            </button>
-          </div>
         ) : null}
 
         {state.status === 'ready' ? (
           <div className="developer-api-keys">
-            <div className="developer-api-keys__heading">
-              <h3>Your API keys</h3>
-              <p>
-                {activeCount} of {state.data.activeKeyLimit} active
-              </p>
-            </div>
+            <h3>Your API keys</h3>
             {state.data.keys.length === 0 ? (
-              <p className="developer-api-empty">
-                No developer API keys yet. Generate one when you are ready to
-                connect an external application.
-              </p>
+              <p className="developer-api-empty">No API keys yet.</p>
             ) : (
               <ul>
                 {state.data.keys.map((key) => (
@@ -337,8 +369,8 @@ export function DeveloperApiAccess({
                             id={`developer-api-revoke-${key.id}`}
                           >
                             <p>
-                              Revoke this key? Applications using it will stop
-                              working immediately.
+                              Revoke this key? Apps using it will lose access
+                              immediately.
                             </p>
                             <div>
                               <button
@@ -377,12 +409,12 @@ export function DeveloperApiAccess({
 function DeveloperApiErrorMessage({ error }: { error: DeveloperApiError }) {
   const message =
     error.failure === 'authorization'
-      ? 'Your session cannot manage developer API keys. Sign in again and retry.'
+      ? 'Sign in again to manage API keys.'
       : error.failure === 'key-limit'
-        ? 'The active key limit was reached. Revoke an existing key and try again.'
+        ? 'Key limit reached. Revoke a key and try again.'
         : error.failure === 'not-found'
-          ? 'That API key is no longer available. Refresh the list and try again.'
-          : 'Developer API access is temporarily unavailable. Try again.';
+          ? 'Key no longer available. Refresh the list and try again.'
+          : 'API keys are unavailable. Try again.';
   return (
     <p className="account-inline-error" role="alert">
       {message}

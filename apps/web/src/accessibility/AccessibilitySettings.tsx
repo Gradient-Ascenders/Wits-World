@@ -6,6 +6,7 @@ import {
   type AccessibilityPreferences,
 } from './preferences';
 import { useState } from 'react';
+import { SelectField } from '../components/fields/SelectField';
 
 export function AccessibilitySettings() {
   const preferences = useAccessibilityPreferences();
@@ -18,130 +19,151 @@ export function AccessibilitySettings() {
     updateAccessibilityPreferences({ [key]: value });
     setStorageNotice(
       accessibilityPreferencesSaved()
-        ? 'Accessibility preference saved on this device.'
-        : 'This browser could not save your choice. It will last until this page closes.',
+        ? 'Saved on this device.'
+        : 'Could not save this choice. It applies until this page closes.',
     );
   }
 
   return (
     <section
       aria-labelledby="account-accessibility-title"
-      className="account-page__section"
+      className="account-page__section accessibility-settings"
     >
-      <h2 id="account-accessibility-title">Accessibility</h2>
-      <div className="account-profile-card accessibility-settings">
-        <p>Choose how Wits World looks and reads on this device.</p>
-        <label className="accessibility-settings__field">
-          <span>Read aloud</span>
-          <small id="accessibility-speech-help">
-            Show a speaker control to read the page. Speech starts only when you
-            select it.
-          </small>
-          <select
-            aria-label="Read aloud"
-            aria-describedby="accessibility-speech-help"
+      <div className="account-section-heading">
+        <h2 id="account-accessibility-title">Accessibility</h2>
+        <p>Changes save automatically on this device.</p>
+      </div>
+      <div className="accessibility-settings__fields">
+        <div className="accessibility-settings__field">
+          <span className="accessibility-settings__label">
+            <label htmlFor="account-speech">Read aloud</label>
+            <small id="accessibility-speech-help">
+              Adds a read-aloud button. Select it to start listening.
+            </small>
+          </span>
+          <SelectField
+            label="Read aloud"
+            hideLabel
+            id="account-speech"
+            descriptionId="accessibility-speech-help"
             value={preferences.speech ? 'on' : 'off'}
-            onChange={(event) => change('speech', event.target.value === 'on')}
-          >
-            <option value="off">Off</option>
-            <option value="on">On</option>
-          </select>
-        </label>
-        <label className="accessibility-settings__field">
-          <span>Motion</span>
-          <small id="accessibility-motion-help">
-            Reduce animations and map camera movement.
-          </small>
-          <select
-            aria-label="Motion"
-            aria-describedby="accessibility-motion-help"
+            onChange={(value) => change('speech', value === 'on')}
+            options={[
+              { value: 'off', label: 'Off' },
+              { value: 'on', label: 'On' },
+            ]}
+          />
+        </div>
+        <div className="accessibility-settings__field">
+          <span className="accessibility-settings__label">
+            <label htmlFor="account-motion">Motion</label>
+            <small id="accessibility-motion-help">
+              Controls animations and map movement.
+            </small>
+          </span>
+          <SelectField
+            label="Motion"
+            hideLabel
+            id="account-motion"
+            descriptionId="accessibility-motion-help"
             value={preferences.motion}
-            onChange={(event) =>
-              change(
-                'motion',
-                event.target.value as AccessibilityPreferences['motion'],
-              )
+            onChange={(value) =>
+              change('motion', value as AccessibilityPreferences['motion'])
             }
-          >
-            <option value="system">Use device setting</option>
-            <option value="reduce">Reduce motion</option>
-            <option value="full">Full motion</option>
-          </select>
-        </label>
-        <label className="accessibility-settings__field">
-          <span>Contrast</span>
-          <select
+            options={[
+              { value: 'system', label: 'Use device setting' },
+              { value: 'reduce', label: 'Reduce motion' },
+              { value: 'full', label: 'Full motion' },
+            ]}
+          />
+        </div>
+        <div className="accessibility-settings__field">
+          <span className="accessibility-settings__label">
+            <label htmlFor="account-contrast">Contrast</label>
+          </span>
+          <SelectField
+            label="Contrast"
+            hideLabel
+            id="account-contrast"
             value={preferences.contrast}
-            onChange={(event) =>
-              change(
-                'contrast',
-                event.target.value as AccessibilityPreferences['contrast'],
-              )
+            onChange={(value) =>
+              change('contrast', value as AccessibilityPreferences['contrast'])
             }
-          >
-            <option value="standard">Standard</option>
-            <option value="high">High contrast</option>
-          </select>
-        </label>
-        <label className="accessibility-settings__field">
-          <span>Interface size</span>
-          <select
+            options={[
+              { value: 'standard', label: 'Standard' },
+              { value: 'high', label: 'High contrast' },
+            ]}
+          />
+        </div>
+        <div className="accessibility-settings__field">
+          <span className="accessibility-settings__label">
+            <label htmlFor="account-scale">Interface size</label>
+          </span>
+          <SelectField
+            label="Interface size"
+            hideLabel
+            id="account-scale"
             value={preferences.scale}
-            onChange={(event) =>
-              change(
-                'scale',
-                event.target.value as AccessibilityPreferences['scale'],
-              )
+            onChange={(value) =>
+              change('scale', value as AccessibilityPreferences['scale'])
             }
-          >
-            <option value="100">100%</option>
-            <option value="125">125%</option>
-            <option value="150">150%</option>
-          </select>
-        </label>
-        <label className="accessibility-settings__field">
-          <span>Reading layout</span>
-          <small id="accessibility-reading-help">
-            Comfortable adds spacing and shortens long lines of text.
-          </small>
-          <select
-            aria-label="Reading layout"
-            aria-describedby="accessibility-reading-help"
+            options={[
+              { value: '100', label: '100%' },
+              { value: '125', label: '125%' },
+              { value: '150', label: '150%' },
+            ]}
+          />
+        </div>
+        <div className="accessibility-settings__field">
+          <span className="accessibility-settings__label">
+            <label htmlFor="account-reading">Reading layout</label>
+            <small id="accessibility-reading-help">
+              Comfortable adds spacing and shorter lines.
+            </small>
+          </span>
+          <SelectField
+            label="Reading layout"
+            hideLabel
+            id="account-reading"
+            descriptionId="accessibility-reading-help"
             value={preferences.reading}
-            onChange={(event) =>
-              change(
-                'reading',
-                event.target.value as AccessibilityPreferences['reading'],
-              )
+            onChange={(value) =>
+              change('reading', value as AccessibilityPreferences['reading'])
             }
-          >
-            <option value="default">Default</option>
-            <option value="comfortable">Comfortable</option>
-          </select>
-        </label>
-        <label className="accessibility-settings__field">
-          <span>Font</span>
-          <select
+            options={[
+              { value: 'default', label: 'Default' },
+              { value: 'comfortable', label: 'Comfortable' },
+            ]}
+          />
+        </div>
+        <div className="accessibility-settings__field">
+          <span className="accessibility-settings__label">
+            <label htmlFor="account-font">Font</label>
+          </span>
+          <SelectField
+            label="Font"
+            hideLabel
+            id="account-font"
             value={preferences.font}
-            onChange={(event) =>
-              change(
-                'font',
-                event.target.value as AccessibilityPreferences['font'],
-              )
+            onChange={(value) =>
+              change('font', value as AccessibilityPreferences['font'])
             }
-          >
-            <option value="current">Current</option>
-            <option value="plain">Plain sans-serif</option>
-          </select>
-        </label>
+            options={[
+              { value: 'current', label: 'Current' },
+              { value: 'plain', label: 'Plain sans-serif' },
+            ]}
+          />
+        </div>
+      </div>
+      <div className="accessibility-settings__footer">
         <button
           className="button button--quiet"
           onClick={() => {
             resetAccessibilityPreferences();
             setStorageNotice(
               accessibilityPreferencesSaved()
-                ? 'Accessibility preferences reset to defaults.'
-                : 'Preferences reset for this page. This browser could not save the reset.',
+                ? 'Defaults restored.'
+                : 'Defaults restored for this page, but could not be saved.',
             );
           }}
           type="button"

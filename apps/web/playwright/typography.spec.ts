@@ -31,6 +31,11 @@ async function installTypographyFixture(page: Page) {
   });
 }
 
+async function chooseAccountSetting(page: Page, label: string, option: string) {
+  await page.getByRole('button', { name: new RegExp(label) }).click();
+  await page.getByRole('option', { name: option, exact: true }).click();
+}
+
 async function fontsReady(page: Page) {
   await page.evaluate(() => document.fonts.ready);
 }
@@ -79,8 +84,8 @@ test('loads the Source faces and applies reading and plain-font roles inside por
     .evaluate((el) => Number.parseFloat(getComputedStyle(el).lineHeight));
   await page.keyboard.press('Escape');
   await page.goto('/account');
-  await page.getByLabel('Font').selectOption('plain');
-  await page.getByLabel('Reading layout').selectOption('comfortable');
+  await chooseAccountSetting(page, 'Font', 'Plain sans-serif');
+  await chooseAccountSetting(page, 'Reading layout', 'Comfortable');
   await page.goto('/collection');
   await page
     .getByRole('button', { name: /View Campus Guardian 1 details/ })
@@ -109,7 +114,7 @@ test('enlarges navigation text and reflows card inspection without clipping copy
   await page.goto('/account');
   const sizes: number[] = [];
   for (const scale of ['100', '125', '150']) {
-    await page.getByLabel('Interface size').selectOption(scale);
+    await chooseAccountSetting(page, 'Interface size', `${scale}%`);
     sizes.push(
       await page
         .locator('.primary-navigation--mobile .primary-navigation__label')
@@ -164,8 +169,8 @@ test('notification typography follows the global size and reading preferences', 
   await installTypographyFixture(page);
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto('/account');
-  await page.getByLabel('Interface size').selectOption('150');
-  await page.getByLabel('Reading layout').selectOption('comfortable');
+  await chooseAccountSetting(page, 'Interface size', '150%');
+  await chooseAccountSetting(page, 'Reading layout', 'Comfortable');
   await page.evaluate(async () => {
     const moduleUrl = '/src/components/AppToaster.tsx';
     const { confirmAction } = await import(/* @vite-ignore */ moduleUrl);

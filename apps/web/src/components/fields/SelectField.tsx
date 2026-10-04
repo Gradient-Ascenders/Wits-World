@@ -23,6 +23,7 @@ interface SelectFieldProps {
   hideLabel?: boolean;
   className?: string;
   id?: string;
+  descriptionId?: string;
   disabled?: boolean;
   error?: string;
   preserveRouteFocus?: boolean;
@@ -36,6 +37,7 @@ export function SelectField({
   hideLabel = false,
   className = '',
   id,
+  descriptionId,
   disabled,
   error,
   preserveRouteFocus,
@@ -45,6 +47,7 @@ export function SelectField({
 }: SelectFieldProps) {
   return (
     <Select
+      aria-describedby={descriptionId}
       className={`shared-field shared-select ${className}`}
       isDisabled={disabled}
       isInvalid={Boolean(error)}

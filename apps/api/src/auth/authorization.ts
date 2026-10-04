@@ -1,4 +1,8 @@
-import { timeRequestStage } from '../request-timing.js';
+import {
+  getRequestPhaseTiming,
+  timePhase,
+  timeRequestStage,
+} from '../request-timing.js';
 import type { FastifyInstance } from 'fastify';
 
 import { ApiError } from '../errors/api-error.js';
@@ -82,12 +86,15 @@ export function registerAuthorization(
     request.player = player;
 
     if (rateProtection) {
-      await enforceRateProtection(
-        request,
-        reply,
-        rateProtection,
-        player.id,
-        request.routeOptions.config.rateLimitPolicy ?? 'player-general',
+      await timePhase(getRequestPhaseTiming(request), 'rate_ms', () =>
+        enforceRateProtection(
+          request,
+          reply,
+          rateProtection,
+          player.id,
+          request.routeOptions.config.rateLimitPolicy ?? 'player-general',
+          getRequestPhaseTiming(request),
+        ),
       );
     }
   };
