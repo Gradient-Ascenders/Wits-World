@@ -18,48 +18,47 @@ colors:
   danger-red: '#dc5b65'
 typography:
   display:
-    fontFamily: "'Playfair Display', Georgia, 'Times New Roman', serif"
-    fontSize: '3rem'
+    fontFamily: "'Source Serif 4', Georgia, 'Times New Roman', serif"
+    fontSize: 'clamp(2.75rem, 1.6rem + 5vw, 4.75rem)'
     fontWeight: 700
-    lineHeight: 0.98
-    letterSpacing: '-0.035em'
-  headline:
-    fontFamily: "'Playfair Display', Georgia, 'Times New Roman', serif"
-    fontSize: '2.25rem'
+    lineHeight: 1.2
+    letterSpacing: '-0.02em'
+  page-title:
+    fontFamily: "'Source Serif 4', Georgia, 'Times New Roman', serif"
+    fontSize: 'clamp(2rem, 1.5rem + 2.5vw, 3rem)'
     fontWeight: 700
-    lineHeight: 1.18
-  title:
-    fontFamily: "'Playfair Display', Georgia, 'Times New Roman', serif"
+    lineHeight: 1.2
+  entity:
+    fontFamily: "'Source Serif 4', Georgia, 'Times New Roman', serif"
     fontSize: '1.75rem'
     fontWeight: 700
-    lineHeight: 1.18
+    lineHeight: 1.2
+  reward:
+    fontFamily: "'Source Serif 4', Georgia, 'Times New Roman', serif"
+    fontSize: 'clamp(2.5rem, 1.5rem + 4vw, 4rem)'
+    fontWeight: 700
+    lineHeight: 1.2
   body:
-    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "'Source Sans 3', ui-sans-serif, system-ui, sans-serif"
     fontSize: '1rem'
     fontWeight: 400
-    lineHeight: 1.65
+    lineHeight: 1.6
+  operational:
+    fontFamily: "'Source Sans 3', ui-sans-serif, system-ui, sans-serif"
+    fontSize: '1.125rem'
+    fontWeight: 600
+    lineHeight: 1.35
   label:
-    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "'Source Sans 3', ui-sans-serif, system-ui, sans-serif"
     fontSize: '0.75rem'
-    fontWeight: 800
-    lineHeight: 1.1
-    letterSpacing: '0.14em'
-  live-ranked-label:
-    fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif'
-    fontSize: '1rem'
     fontWeight: 700
-    lineHeight: 1.5
-    letterSpacing: '0'
-  live-ranked-deck-title:
-    fontFamily: "'Old Standard TT', 'Playfair Display', Georgia, 'Times New Roman', serif"
-    fontSize: 'clamp(1.65rem, 4.5vw, 2.5rem)'
+    lineHeight: 1.35
+    letterSpacing: '0.06em'
+  metric:
+    fontFamily: "'Source Sans 3', ui-sans-serif, system-ui, sans-serif"
+    fontSize: '1.375rem'
     fontWeight: 700
     lineHeight: 1.15
-  live-ranked-rating:
-    fontFamily: "'Old Standard TT', 'Playfair Display', Georgia, 'Times New Roman', serif"
-    fontSize: 'clamp(2rem, 5.5vw, 3.25rem)'
-    fontWeight: 700
-    lineHeight: 1
 rounded:
   sm: '0.375rem'
   md: '0.625rem'
@@ -193,22 +192,42 @@ The palette combines Night Sky neutrals, Beacon Gold identity cues, and Trail Bl
 
 ## Typography
 
-**Display Font:** The declared stack begins with Playfair Display and falls back to Georgia and Times New Roman. **Body Font:** The declared stack begins with Inter and falls back to system sans-serif faces. The repository does not bundle or import Playfair Display or Inter, so the named faces are only available when installed in the runtime environment.
+The whole HTML interface uses two locally hosted variable families: **Source Serif 4** for the world and its entities, and **Source Sans 3** for reading and operating the app. Family selection follows meaning, not heading level. CSS family, weight, size, leading, and tracking tokens live in `src/styles/tokens.css`; `src/styles/fonts.css` supplies the WOFF2 faces. Source Serif uses automatic optical sizing. Font synthesis is disabled.
 
-Serif headings give the world its academic voice. Sans-serif body copy, labels, controls, and dense authoring interfaces keep tasks scannable. The frontmatter records existing size steps; page headings also use fluid `clamp()` sizing.
+| Meaning                                            | Family / role tokens                                                                  |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Display and marketing introductions                | Source Serif 4 / `--font-display`                                                     |
+| Player page titles                                 | Source Serif 4 / `--font-page-title`                                                  |
+| Card, deck, place, event, trail, and entity names  | Source Serif 4 / `--font-entity`                                                      |
+| Reward and completion announcements                | Source Serif 4 / `--font-reward`                                                      |
+| Descriptions and reading                           | Source Sans 3 / `--font-body`                                                         |
+| Navigation, buttons, inputs, statuses              | Source Sans 3 / `--font-navigation`, `--font-control`, `--font-form`, `--font-status` |
+| Scores, quantities, ratings, and charts            | Source Sans 3 / `--font-metric`; tabular numerals where columns benefit               |
+| Task, dialog, question, and section headings       | Source Sans 3 / `--font-operational`                                                  |
+| Author interface, including catalogue entity names | Source Sans 3 / `--font-author`                                                       |
+| Code, keyboard notation, and API secrets           | System monospace / `--font-code`                                                      |
 
-### Hierarchy
+Rendered collectible artifacts inside Author previews retain their player-facing entity roles. The Live Ranked deck name uses the entity role; its rating, season information, mode label, actions, and states use sans-serif roles. Error, authentication, and recovery headings are operational. Color emoji retain the system emoji stack for glyph presentation.
 
-- **Display:** Bold serif, tight tracking and line height, used for large page and hero headings; the global `h1` is fluid and balances lines.
-- **Headline / title:** Serif section hierarchy, with narrower sizes in task-heavy views.
-- **Body:** Regular sans-serif with generous line height for descriptions and status copy; readable content is capped at `44rem`.
-- **Label:** Small, heavy sans-serif with tracking for eyebrows and compact controls. Uppercase is used for eyebrows, not all interface text.
+### Weight, size, and reading system
 
-**The Reading and Doing Rule.** Use serif type to introduce places, sections, or rewards; use sans-serif type for actions, values, and forms.
+Use four named weights: regular **400** for body copy, medium **500** for secondary emphasis, semibold **600** for controls and structured labels, and bold **700** for strong hierarchy. Do not introduce intermediate or heavier local weights. The variable assets support the full font range, but the interface uses this four-weight contract.
 
-### Live Ranked extension
+The size ramp is `--text-xs` 0.75rem, `--text-sm` 0.875rem, `--text-md` 1rem, `--text-lg` 1.125rem, `--text-xl` 1.375rem, `--text-2xl` 1.75rem, `--text-3xl` 2.25rem, and `--text-4xl` 3rem. Ordinary body text starts at **1rem / 16px** with a default 16px root. Compact support text has an absolute design floor of **0.75rem / 12px**; prefer 0.875rem / 14px for labels that need sustained reading. These are rem values so user scaling increases them. Zero-sized hidden map-marker glyphs are not text. Display, page, and reward scales use `--type-display-size`, `--type-page-size`, and `--type-reward-size`; entity titles use the appropriate shared ramp step rather than a new local scale.
 
-The route self-hosts **Old Standard TT Bold** (weight 700, `font-display: swap`) from `src/assets/fonts/old-standard-tt/OldStandard-Bold.ttf`; its source README and SIL Open Font License 1.1 are adjacent. It leads the selected deck title and season rating stacks; the mode label uses the shared body face at 1rem. The season name retains the shared sans-serif stack. The normative scoped roles above record compact sizing; the tall portrait layout raises the deck title to `3.25rem` and rating to `3.75rem`. The compact mode label, controls, and state copy remain sans-serif.
+Default body leading is 1.6, heading leading 1.2, compact/control leading 1.35, and metric leading 1.15. Use shared leading and tracking tokens rather than hard-coded component values. Readable prose uses the existing 44rem measure, approximately within 45–75 characters for ordinary copy; comfortable reading changes the readable measure to 65ch.
+
+### Accessibility preferences
+
+Preferences are applied on `html`. Plain font remaps every serif role to Source Sans 3 at the root, including card nameplates and React portals; code and semantic emoji remain unchanged. Comfortable reading changes the global leading, tracking, word-spacing, and reading-measure tokens. The body consumes those tokens, and component typography inherits or selects an appropriate role token. Avoid `.main-content` descendant preference overrides.
+
+Interface sizes 100%, 125%, and 150% scale the root font. Preserve text size and let components reflow: mobile navigation labels wrap, card inspection switches from artwork/copy columns to one column when the available container is too narrow in rem, and analytics charts grow their geometry and allow keyboard-accessible horizontal scrolling. Keep dialog content and actions reachable by scrolling. Browser zoom and user root-font settings remain available.
+
+### Delivery, licensing, and exceptions
+
+The three local WOFF2 files cover Source Serif 4 Roman and Source Sans 3 upright/italic, with `font-display: swap` and no runtime font-provider request. The italic face is selected only when used; the existing service-worker WOFF2 rule precaches all three files. Both families are distributed under the **SIL Open Font License 1.1**; original copyright and license files, source commits, and SHA-256 hashes are retained under `src/assets/fonts/`. See the [font inventory and provenance](src/assets/fonts/README.md).
+
+Mapbox-rendered map labels are a cartographic exception: they use the map provider's glyph service and style-defined font stacks, which CSS role tokens and accessibility preferences cannot reach. Supplying Source glyphs requires a separate map-glyph hosting change. All surrounding HTML map information follows the shared typography system. Artwork is preserved, including lettering baked into images.
 
 ## Layout
 

@@ -2278,6 +2278,10 @@ async function installTrustReviewApi(
       await json(route, { cards: [], requestId: 'request-cards' });
       return;
     }
+    if (path === '/events' && method === 'GET') {
+      await json(route, { events: [], requestId: 'request-offline-events' });
+      return;
+    }
     if (path === '/author/trust-cases' && method === 'GET') {
       const url = new URL(request.url());
       const pageNumber = Number(url.searchParams.get('page') ?? 1);

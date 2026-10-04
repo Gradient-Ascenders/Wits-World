@@ -92,7 +92,7 @@
   border-radius: var(--radius-md);
   background: var(--colour-surface-default);
   color: var(--colour-text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-author);
 }
 
 .author-date-picker__dialog {
@@ -109,10 +109,10 @@
 .author-date-picker__calendar h2 {
   flex: 1;
   margin: 0;
-  font-family: var(--font-body);
+  font-family: var(--font-author);
   font-size: var(--text-md);
-  font-weight: 600;
-  line-height: 1.4;
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-compact);
 }
 
 .author-date-picker__grid {
@@ -124,7 +124,7 @@
 .author-date-picker__grid th {
   padding-bottom: var(--space-2);
   color: var(--colour-text-secondary);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .author-date-picker__grid td {
@@ -148,7 +148,7 @@
 .author-date-picker__day[data-selected] {
   background: var(--colour-focus);
   color: var(--colour-text-inverse);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .author-date-picker__zone {

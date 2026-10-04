@@ -3,9 +3,9 @@
 }
 
 .author-workspace--cards :is(h2, h3, h4) {
-  font-family: var(--font-body);
-  letter-spacing: -0.02em;
-  line-height: 1.3;
+  font-family: var(--font-author);
+  letter-spacing: var(--tracking-heading);
+  line-height: var(--leading-compact);
 }
 
 .author-workspace--cards :is(h2, h3) {
@@ -62,8 +62,8 @@
   ) {
   color: var(--colour-text-secondary);
   font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: 0;
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-body);
   text-transform: none;
 }
 
@@ -83,7 +83,7 @@
   border-spacing: 0;
   text-align: left;
   font-size: var(--text-sm);
-  line-height: 1.5;
+  line-height: var(--leading-compact);
 }
 
 .card-table :is(th, td) {
@@ -94,12 +94,12 @@
 
 .card-table thead th {
   color: var(--colour-text-secondary);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .card-table tbody th {
   width: 38%;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .card-table td {
@@ -171,8 +171,8 @@
   border-radius: 0;
   background: transparent;
   font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: 0;
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-body);
   text-transform: none;
   white-space: nowrap;
 }
@@ -210,7 +210,7 @@
   border-bottom: 2px solid transparent;
   color: var(--colour-text-secondary);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   text-decoration: none;
 }
 
@@ -268,12 +268,12 @@
 
 .card-editor-section > legend {
   padding: 0 var(--space-3) 0 0;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .author-workspace--cards .form-field label {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .card-move-editor {
@@ -414,7 +414,7 @@
 }
 
 .author-workspace--card-editor h3 {
-  font-family: var(--font-body);
+  font-family: var(--font-author);
   font-size: var(--text-2xl);
 }
 
@@ -437,7 +437,7 @@
 
 .author-card-editor__preview > h4 {
   margin: 0;
-  font-family: var(--font-body);
+  font-family: var(--font-author);
   font-size: var(--text-sm);
 }
 
@@ -490,4 +490,9 @@
   padding: var(--space-3);
   color: var(--colour-text-primary);
   text-align: center;
+}
+
+.author-workspace--cards .collectible-card__body > h4,
+.author-workspace--cards .collectible-card__heading :is(h2, h3, h4) {
+  font-family: var(--font-entity);
 }

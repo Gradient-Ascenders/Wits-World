@@ -1355,7 +1355,11 @@ function DeckEditor({
                           </span>
                         )}
                         <span>
-                          <strong>
+                          <strong
+                            className={
+                              card || fallback ? 'draft-card__name' : undefined
+                            }
+                          >
                             {card?.name ??
                               fallback?.name ??
                               'Unavailable owned copy'}

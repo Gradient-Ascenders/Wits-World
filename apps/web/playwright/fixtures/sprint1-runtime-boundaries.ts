@@ -167,8 +167,8 @@ export const mapFactory: MapFactory = async (
         border: `2px ${area.state === 'served' ? 'solid' : area.state === 'shortfall' ? 'dashed' : 'dotted'} ${color}`,
         color: '#f7f3e7',
         display: 'flex',
-        fontSize: '12px',
-        fontWeight: '800',
+        fontSize: 'var(--text-xs)',
+        fontWeight: 'var(--weight-bold)',
         margin: '3%',
         padding: '12px',
         textShadow: '0 1px 3px #050b16',
@@ -465,9 +465,9 @@ export const mapFactory: MapFactory = async (
             : 'Unclaimed'
       }`;
       Object.assign(label.style, {
-        fontSize: '0.76rem',
-        fontWeight: '700',
-        lineHeight: '1.35',
+        fontSize: 'var(--text-xs)',
+        fontWeight: 'var(--weight-bold)',
+        lineHeight: 'var(--leading-compact)',
         textShadow: '0 1px 4px #050b16',
         whiteSpace: 'pre-line',
       });

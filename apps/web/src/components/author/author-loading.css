@@ -20,7 +20,7 @@
   grid-column: 2;
   margin: 0;
   font-size: var(--text-lg);
-  line-height: 1.4;
+  line-height: var(--leading-compact);
 }
 
 .author-loading-state.state-message > .author-loading-state__description {
