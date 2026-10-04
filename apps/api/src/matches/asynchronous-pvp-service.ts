@@ -622,18 +622,11 @@ export function createAsyncPvpService(
           'invitation_accept',
           input.submissionId,
         );
-        const replay = await loadReceipt<{
+        const { replay, now } = await loadAcceptanceReceiptAndTime<{
           invitation: PvpInvitationView;
           match: AsyncPvpMatchView;
-        }>(
-          client,
-          input.playerId,
-          'invitation_accept',
-          input.submissionId,
-          payloadHash,
-        );
+        }>(client, input.playerId, input.submissionId, payloadHash);
         if (replay) return replay;
-        const now = await databaseNow(client);
         if (invitation.status === 'pending' && now >= invitation.expires_at) {
           await markInvitationExpired(client, invitation.id, now);
           deadlineExpired = true;
@@ -1595,6 +1588,50 @@ async function loadReceipt<T>(
     submissionId,
     payloadHash,
   );
+}
+
+async function loadAcceptanceReceiptAndTime<T>(
+  client: AsyncPvpClient,
+  actorId: string,
+  submissionId: string,
+  payloadHash: string,
+): Promise<{ replay: T | null; now: Date }> {
+  // A separate post-lock statement sees a receipt committed by a previous
+  // lock holder. The singleton also returns DB time when no receipt exists.
+  const result = await client.query<
+    NowRow & {
+      payload_hash: string | null;
+      committed_response: unknown;
+      invitation_id: string | null;
+      match_id: string | null;
+    }
+  >(
+    `
+      select receipt.payload_hash, receipt.committed_response,
+             receipt.invitation_id::text, receipt.match_id::text,
+             clock_timestamp() as now
+        from (values (1)) as singleton(value)
+        left join private.async_pvp_submission_receipts receipt
+          on receipt.actor_player_id = $1::uuid
+         and receipt.operation = 'invitation_accept'
+         and receipt.submission_id = $2::uuid
+    `,
+    [actorId, submissionId],
+  );
+  const row = result.rows[0];
+  const replay = readReceipt<T>(
+    row && row.payload_hash !== null
+      ? { ...row, payload_hash: row.payload_hash }
+      : undefined,
+    actorId,
+    'invitation_accept',
+    submissionId,
+    payloadHash,
+  );
+  if (!row?.now)
+    throw new Error('Database did not return its transaction time.');
+  // Acceptance must decide replay before using this clock to decide expiry.
+  return { replay, now: row.now };
 }
 
 async function loadActionReceiptAndTime<T>(
