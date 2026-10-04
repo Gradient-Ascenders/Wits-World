@@ -753,6 +753,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'testing/pvp-request-phase-timing',
+              label: 'PvP request phase timing',
+            },
+            {
+              type: 'doc',
               id: 'requirements/location-eligibility-field-test',
               label: 'On-campus location testing guide',
             },

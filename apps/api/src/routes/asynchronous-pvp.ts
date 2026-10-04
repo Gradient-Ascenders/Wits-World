@@ -24,6 +24,7 @@ import {
   pvpActionSchema,
 } from '../openapi/battle-schemas.js';
 import { InvalidCursorError } from '../security/signed-cursor.js';
+import { getRequestPhaseTiming } from '../request-timing.js';
 
 interface Options {
   service: AsyncPvpService;
@@ -527,11 +528,14 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
     },
     async (request) => {
       try {
-        const result = await service.acceptInvitation({
-          playerId: playerId(request),
-          invitationId: request.params.invitationId,
-          ...request.body,
-        });
+        const result = await service.acceptInvitation(
+          {
+            playerId: playerId(request),
+            invitationId: request.params.invitationId,
+            ...request.body,
+          },
+          getRequestPhaseTiming(request),
+        );
         return {
           invitation: invitationEnvelope(result.invitation, request),
           match: matchEnvelope(result.match, request),
@@ -758,6 +762,7 @@ function registerMatchRoutes(
         const match = await service.getMatch(
           playerId(request),
           request.params.matchId,
+          getRequestPhaseTiming(request),
         );
         if (
           !supportsPvpContract(request, 2) &&

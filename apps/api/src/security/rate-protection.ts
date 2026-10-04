@@ -3,6 +3,7 @@ import { Ratelimit } from '@upstash/ratelimit';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { ApiError } from '../errors/api-error.js';
+import { timePhase, type PhaseTimingSink } from '../request-timing.js';
 
 export const rateLimitPolicies = [
   'player-general',
@@ -37,6 +38,7 @@ export interface RateProtection {
   consume(
     subjectId: string,
     policy: RateLimitPolicy,
+    timing?: PhaseTimingSink,
   ): Promise<RateProtectionDecision>;
 }
 
@@ -84,10 +86,13 @@ export async function enforceRateProtection(
   protection: RateProtection,
   subjectId: string,
   policy: RateLimitPolicy,
+  timing?: PhaseTimingSink,
 ): Promise<void> {
   let decision: RateProtectionDecision;
   try {
-    decision = await protection.consume(subjectId, policy);
+    decision = timing
+      ? await protection.consume(subjectId, policy, timing)
+      : await protection.consume(subjectId, policy);
   } catch {
     const failClosed = failClosedPolicies.has(policy);
     request.log.warn(
@@ -169,10 +174,9 @@ export function createUpstashRateProtection({
   ) as Record<RateLimitPolicy, Ratelimit>;
 
   return {
-    async consume(subjectId, policy) {
-      const result = await withTimeout(
-        limiters[policy].limit(subjectId),
-        timeoutMs,
+    async consume(subjectId, policy, timing) {
+      const result = await timePhase(timing, 'upstash_client_ms', () =>
+        withTimeout(limiters[policy].limit(subjectId), timeoutMs),
       );
       if (result.reason === 'timeout')
         throw new Error('Rate-limit store timed out.');
