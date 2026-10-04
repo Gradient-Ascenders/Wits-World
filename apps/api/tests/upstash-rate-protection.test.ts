@@ -30,6 +30,7 @@ import {
   createUpstashRateProtection,
   type RateLimitPolicyConfigMap,
 } from '../src/security/rate-protection.js';
+import { createPhaseTiming } from '../src/request-timing.js';
 
 const policies: RateLimitPolicyConfigMap = {
   'player-general': { maxRequests: 120, windowMs: 60000 },
@@ -88,8 +89,37 @@ describe('Upstash rate-limit adapter', () => {
       timeoutMs: 5,
       policies,
     });
+    const timing = createPhaseTiming();
     await expect(
-      protection.consume('internal-uuid', 'critical-write'),
+      protection.consume('internal-uuid', 'critical-write', timing),
     ).rejects.toThrow(/timed out/u);
+    expect(timing.snapshot()).toEqual({
+      upstash_client_ms: expect.any(Number),
+    });
+  });
+  it('records only limiter elapsed time while retaining the decision and SDK call', async () => {
+    mocks.limit.mockResolvedValueOnce({
+      success: true,
+      limit: 30,
+      remaining: 29,
+      reset: Date.now() + 60000,
+    });
+    const protection = createUpstashRateProtection({
+      url: 'https://example.test',
+      token: 'private-token',
+      timeoutMs: 8000,
+      policies,
+    });
+    const timing = createPhaseTiming();
+    expect(
+      (await protection.consume('internal-uuid', 'gameplay-write', timing))
+        .allowed,
+    ).toBe(true);
+    expect(timing.snapshot()).toEqual({
+      upstash_client_ms: expect.any(Number),
+    });
+    expect(JSON.stringify(timing.snapshot())).not.toMatch(
+      /internal-uuid|private-token/,
+    );
   });
 });
