@@ -24,8 +24,9 @@ journey, account or resource identifier.
 
 Detailed phases remain **server logs only**. The browser `Server-Timing` header
 still contains only the existing coarse stages. Response schemas and bodies,
-SQL, query order, locks, transactions, rate policies and battle rules are
-unchanged. Repository implementation does not prove production deployment.
+locks, transactions, rate policies and battle rules remain unchanged. The
+match-detail read reduction below documents the current GET query changes.
+Repository implementation does not prove production deployment.
 
 ## Fields and boundaries
 
@@ -46,7 +47,7 @@ No field is filled with zero to imply that an unavailable phase was measured.
 | `match_construct_ms`                                                                                                     | Synchronous battle construction, both initial selections and active-phase validation; UUID/deadline preparation immediately afterwards remains residual work |
 | `match_insert_ms`, `participants_insert_ms`, `private_state_insert_ms`                                                   | Three separate existing awaited initial writes                                                                                                               |
 | `invitation_update_ms`, `invitation_view_ms`, `match_response_view_ms`, `receipt_write_ms`                               | Accepted invitation update, fresh invitation projection, combined match/card response hydration, replay receipt persistence                                  |
-| `get_locked_projection_ms`, `get_clock_ms`, `get_response_projection_ms`, `get_card_presentation_ms`, `project_match_ms` | Existing GET locked full projection, database clock, second full projection, separate card presentation, and synchronous client-view projection              |
+| `get_locked_projection_ms`, `get_clock_ms`, `get_response_projection_ms`, `get_card_presentation_ms`, `project_match_ms` | GET participant/deadline lock inputs, database clock, fresh combined response/card projection, separate card read when used, and synchronous view projection |
 | `sql_client_ms`, `sql_statement_count`                                                                                   | Sum/count of attempted calls on this service transaction's client, including BEGIN/COMMIT/ROLLBACK and failed calls                                          |
 | `serialize_hook_interval_ms`                                                                                             | preSerialization → onSend interval when the hook is reached; includes other intervening hooks, not pure serializer CPU                                       |
 | `request_residual_ms`                                                                                                    | Remaining elapsed time after subtracting only disjoint top-level intervals, as described below                                                               |
@@ -58,12 +59,36 @@ execute during COMMIT, so their work can appear in `commit_ms` rather than an
 insert's client time.
 
 The normal controlled transaction counts remain 18 for acceptance without
-optional production trust checks, 20 with its two restriction reads, 6 for a
-fresh active GET and 11 for the normal action control. These are expected
+optional production trust checks, 20 with its two restriction reads, 5 for a
+fresh active GET (previously 6) and 11 for the normal action control. These are expected
 controlled-path counts, not universal counts for error, replay, forfeit or
 history variants. Statement count excludes identity queries before the service,
 queries in post-transaction trust dependencies, and SQL inside database triggers.
 No extra query is issued to collect timings.
+
+## Match-detail read reduction
+
+The normal active GET retains BEGIN, participant-authorized `FOR UPDATE OF match`,
+a separate authoritative database clock, a fresh response query and COMMIT.
+The lock query now reads only match/participant inputs needed for authorization
+and deadline processing. The response query uses the existing combined
+match/history/card-presentation projection; there is no standalone card read.
+Completed GETs skip the clock and use four statements. Deadline-forfeit paths
+still perform their existing writes and then reload persisted response state.
+
+Reusing the original locked full projection is unsafe after a concurrent-action
+lock wait under Read Committed: the updated locked match row can accompany older
+joined battle-state/history data. The separate response statement obtains a new
+snapshot after acquiring the lock, including after any deadline mutation.
+No initial frontend GET is removed and no match state is cached.
+
+`get_locked_projection_ms` retains its historical field name but now measures
+the smaller authorization/deadline lock query. `get_response_projection_ms`
+includes card presentation in the combined response query. Standalone
+`get_card_presentation_ms` is absent on this GET path, not zero; compare the
+combined query against the two earlier reads without double-counting SQL time.
+This is a repository implementation description, not proof of deployment or
+a guaranteed production latency reduction.
 
 ## Overlap and limitations
 

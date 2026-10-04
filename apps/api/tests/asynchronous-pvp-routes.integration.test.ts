@@ -211,6 +211,13 @@ describe('asynchronous PvP routes', () => {
                 completion_reason: 'defeat',
                 battle_state: state,
                 latest_result: engineResult,
+                ...(sql.includes('card_presentation as')
+                  ? {
+                      card_presentation: {
+                        [CREATURE_ID]: { name: 'Arcayx', rarity: 'epic' },
+                      },
+                    }
+                  : {}),
                 turn_deadline: null,
                 started_at: new Date('2026-09-05T08:00:00Z'),
                 updated_at: new Date('2026-09-05T09:00:00Z'),
