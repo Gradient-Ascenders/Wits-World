@@ -1,6 +1,7 @@
 import { createRef } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 
 import {
   defaultAccessibilityPreferences,
@@ -25,15 +26,19 @@ afterEach(() => {
 });
 
 describe('accessibility preferences', () => {
-  it('updates the document, saves choices, and resets them', () => {
+  it('updates the document, saves choices, and resets them', async () => {
+    const user = userEvent.setup();
     initializeAccessibilityPreferences();
     const view = render(<AccessibilitySettings />);
-    fireEvent.change(screen.getByLabelText('Interface size'), {
-      target: { value: '150' },
-    });
-    fireEvent.change(screen.getByLabelText('Contrast'), {
-      target: { value: 'high' },
-    });
+    expect(
+      screen.getByRole('button', { name: /Read aloud/ }),
+    ).toHaveAccessibleDescription(
+      'Adds a read-aloud button. Select it to start listening.',
+    );
+    await user.click(screen.getByRole('button', { name: /Interface size/ }));
+    await user.click(screen.getByRole('option', { name: '150%' }));
+    await user.click(screen.getByRole('button', { name: /Contrast/ }));
+    await user.click(screen.getByRole('option', { name: 'High contrast' }));
     expect(document.documentElement.dataset.uiScale).toBe('150');
     expect(document.documentElement.dataset.contrast).toBe('high');
     expect(
@@ -43,7 +48,7 @@ describe('accessibility preferences', () => {
         ) ?? '{}',
       ),
     ).toMatchObject({ scale: '150', contrast: 'high' });
-    fireEvent.click(screen.getByRole('button', { name: 'Reset to defaults' }));
+    await user.click(screen.getByRole('button', { name: 'Reset to defaults' }));
     expect(document.documentElement.dataset.uiScale).toBe('100');
     expect(document.documentElement.dataset.contrast).toBe('standard');
     expect(

@@ -58,7 +58,7 @@ describe('player account page', () => {
     ).toBeVisible();
     expect(screen.getByText('test-player', { selector: 'dd' })).toBeVisible();
     expect(
-      screen.getByText('Your account information is read-only here.'),
+      screen.getByRole('heading', { name: 'Account details' }),
     ).toBeVisible();
     expect(screen.getByText('Auth0')).toBeVisible();
     expect(
@@ -80,7 +80,7 @@ describe('player account page', () => {
     renderAccount('/account?action=password-recovery');
 
     expect(
-      await screen.findByText(/Completion stays with Auth0/iu),
+      await screen.findByText(/cannot confirm whether your password changed/iu),
     ).toBeVisible();
     expect(window.location.pathname).toBe('/account');
     expect(window.location.search).toBe('');
@@ -103,7 +103,7 @@ describe('player account page', () => {
       }),
     );
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Auth0 password recovery could not open',
+      'Could not open password recovery',
     );
 
     await user.click(screen.getByRole('button', { name: 'Reset password' }));
@@ -116,7 +116,7 @@ describe('player account page', () => {
     renderAccount('/account');
 
     expect(
-      await screen.findByText(/password is managed by Google/iu),
+      await screen.findByText(/Google manages your password/iu),
     ).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Reset password' }),
@@ -131,6 +131,84 @@ describe('player account page', () => {
     expect(document.querySelector('input[type="password"]')).toBeNull();
   });
 
+  it('keeps developer controls collapsed until requested and reports the server key count', async () => {
+    const user = userEvent.setup();
+    mockAccountApi({ connectionStrategy: 'auth0' });
+    renderAccount('/account');
+
+    const disclosure = await screen.findByRole('button', {
+      name: 'Developer API access',
+    });
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    expect(await screen.findByText('0 of 5 active')).toBeVisible();
+    expect(
+      screen.queryByRole('textbox', { name: 'Key name' }),
+    ).not.toBeInTheDocument();
+
+    await user.click(disclosure);
+    expect(screen.getByRole('textbox', { name: 'Key name' })).toBeVisible();
+    await user.type(
+      screen.getByRole('textbox', { name: 'Key name' }),
+      'Draft integration',
+    );
+    await user.click(disclosure);
+    expect(
+      screen.queryByRole('textbox', { name: 'Key name' }),
+    ).not.toBeInTheDocument();
+    await user.click(disclosure);
+    expect(screen.getByRole('textbox', { name: 'Key name' })).toHaveValue(
+      'Draft integration',
+    );
+  });
+
+  it('keeps developer load errors and retry available while the controls are collapsed', async () => {
+    const user = userEvent.setup();
+    mockAccountApi({
+      connectionStrategy: 'auth0',
+      developerListResponses: [
+        { body: { requestId: 'keys-unavailable' }, status: 503 },
+      ],
+    });
+    renderAccount('/account');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'API keys are unavailable',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Developer API access' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('0 of 5 active')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('keeps developer mutation errors visible when controls are collapsed', async () => {
+    const user = userEvent.setup();
+    mockAccountApi({
+      connectionStrategy: 'auth0',
+      developerCreateResponse: {
+        body: { requestId: 'create-unavailable' },
+        status: 503,
+      },
+    });
+    renderAccount('/account');
+    const disclosure = await screen.findByRole('button', {
+      name: 'Developer API access',
+    });
+    await user.click(disclosure);
+    await user.type(
+      screen.getByRole('textbox', { name: 'Key name' }),
+      'Integration',
+    );
+    await user.click(screen.getByRole('button', { name: 'Generate API key' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'API keys are unavailable',
+    );
+    await user.click(disclosure);
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('alert')).toBeVisible();
+  });
+
   it('generates a named developer API key and shows the complete secret once', async () => {
     const user = userEvent.setup();
     const fetchMock = mockAccountApi({ connectionStrategy: 'auth0' });
@@ -140,6 +218,10 @@ describe('player account page', () => {
     expect(
       await screen.findByRole('heading', { name: 'Developer API access' }),
     ).toBeVisible();
+    const disclosure = screen.getByRole('button', {
+      name: 'Developer API access',
+    });
+    await user.click(disclosure);
     await user.type(
       screen.getByRole('textbox', { name: 'Key name' }),
       'Lecturer demo',
@@ -152,9 +234,7 @@ describe('player account page', () => {
     expect(
       screen.getByRole('textbox', { name: 'Generated API key' }),
     ).toHaveValue(developerApiKey);
-    expect(
-      screen.getByText(/cannot show the complete value again/iu),
-    ).toBeVisible();
+    expect(screen.getByText(/This key is shown only once/iu)).toBeVisible();
 
     const createCall = fetchMock.mock.calls.find(
       ([input, init]) =>
@@ -168,8 +248,17 @@ describe('player account page', () => {
     expect(window.sessionStorage.getItem('developerApiKey')).toBeNull();
 
     expect(screen.getByLabelText('Key name')).toBeDisabled();
+    expect(disclosure).toHaveAttribute('aria-disabled', 'true');
+    await user.click(disclosure);
+    expect(
+      screen.getByRole('textbox', { name: 'Generated API key' }),
+    ).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'I have saved it' }));
     expect(screen.getByLabelText('Key name')).toBeEnabled();
+    await waitFor(() =>
+      expect(screen.getByLabelText('Key name')).toHaveFocus(),
+    );
+    expect(disclosure).not.toHaveAttribute('aria-disabled');
   });
 
   it('requires explicit confirmation before revoking a developer API key', async () => {
@@ -181,10 +270,13 @@ describe('player account page', () => {
 
     renderAccount('/account');
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Developer API access' }),
+    );
     expect(await screen.findByText('Lecturer demo')).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Revoke' }));
     expect(
-      screen.getByText(/Applications using it will stop working immediately/iu),
+      screen.getByText(/Apps using it will lose access immediately/iu),
     ).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Revoke key' }));
 
@@ -207,6 +299,9 @@ describe('player account page', () => {
 
     renderAccount('/account');
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Developer API access' }),
+    );
     const revoke = await screen.findByRole('button', { name: 'Revoke' });
     await user.click(revoke);
     expect(revoke).toHaveAttribute('aria-expanded', 'true');
@@ -217,6 +312,7 @@ describe('player account page', () => {
   });
 
   it('disables generation when five developer API keys are active', async () => {
+    const user = userEvent.setup();
     mockAccountApi({
       connectionStrategy: 'auth0',
       developerKeys: Array.from({ length: 5 }, (_, index) => ({
@@ -228,7 +324,11 @@ describe('player account page', () => {
 
     renderAccount('/account');
 
+    const disclosure = await screen.findByRole('button', {
+      name: 'Developer API access',
+    });
     expect(await screen.findByText('5 of 5 active')).toBeVisible();
+    await user.click(disclosure);
     expect(
       screen.getByRole('button', { name: 'Generate API key' }),
     ).toBeDisabled();
@@ -253,7 +353,7 @@ describe('player account page', () => {
       screen.getByRole('heading', { name: 'Delete account?' }),
     ).toBeVisible();
     expect(
-      screen.getByText(/you’ll need to sign in again with Auth0/iu),
+      screen.getByText(/Nothing is deleted until you confirm the next step/iu),
     ).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Cancel deletion' }),
@@ -286,7 +386,7 @@ describe('player account page', () => {
       status: 'completed' as const,
     },
     {
-      heading: 'Your account is locked while cleanup retries',
+      heading: 'Account locked. Deletion pending.',
       responseStatus: 202,
       status: 'retry_pending' as const,
     },
@@ -440,16 +540,14 @@ describe('player account page', () => {
     await confirmPermanentDeletion(user);
 
     const errorHeading = await screen.findByRole('heading', {
-      name: 'Your identity check expired',
+      name: 'Sign in again to continue',
     });
     await waitFor(() => expect(errorHeading).toHaveFocus());
     expect(
       screen.getByText('Support reference: expired-request'),
     ).toBeVisible();
 
-    await user.click(
-      screen.getByRole('button', { name: 'Verify again with Auth0' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Sign in again' }));
     expect(loginWithRedirect).toHaveBeenCalledWith({
       appState: { returnTo: '/account?action=confirm-deletion' },
       authorizationParams: { max_age: 0, prompt: 'login' },
@@ -486,7 +584,7 @@ describe('player account page', () => {
     await confirmPermanentDeletion(user);
     expect(
       await screen.findByRole('heading', {
-        name: 'The deletion response could not be confirmed',
+        name: 'Could not confirm deletion',
       }),
     ).toHaveFocus();
 
@@ -551,15 +649,20 @@ function mockAccountApi({
   connectionStrategy,
   deletionResponses = [],
   developerKeys = [],
+  developerListResponses = [],
+  developerCreateResponse,
   playerName = 'test-player',
 }: {
   connectionStrategy: 'auth0' | 'google-oauth2';
   deletionResponses?: Array<{ body: object; status: number }>;
   developerKeys?: TestDeveloperKey[];
+  developerListResponses?: Array<{ body: object; status: number }>;
+  developerCreateResponse?: { body: object; status: number };
   playerName?: string | null;
 }) {
   let deletionIndex = 0;
   let currentDeveloperKeys = [...developerKeys];
+  let developerListIndex = 0;
 
   return vi
     .spyOn(globalThis, 'fetch')
@@ -583,6 +686,11 @@ function mockAccountApi({
       }
 
       if (url.endsWith('/developer/keys') && method === 'GET') {
+        const response = developerListResponses[developerListIndex++];
+        if (response)
+          return new Response(JSON.stringify(response.body), {
+            status: response.status,
+          });
         return new Response(
           JSON.stringify({
             activeKeyLimit: 5,
@@ -594,6 +702,10 @@ function mockAccountApi({
       }
 
       if (url.endsWith('/developer/keys') && method === 'POST') {
+        if (developerCreateResponse)
+          return new Response(JSON.stringify(developerCreateResponse.body), {
+            status: developerCreateResponse.status,
+          });
         currentDeveloperKeys = [developerKeyMetadata, ...currentDeveloperKeys];
         return new Response(
           JSON.stringify({
