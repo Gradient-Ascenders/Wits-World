@@ -1,5 +1,6 @@
 import type { LivePvpDeadlineProcessor } from './live-pvp-deadline-processor.js';
 import type { LivePvpService } from './live-pvp-service.js';
+import { createPoolRunObserver } from '../database/pool-observability.js';
 
 export const MIN_LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS = 250;
 export const MAX_LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS = 5_000;
@@ -41,12 +42,17 @@ export function createLivePvpRuntimeScheduler(
   let cleanupTimer: NodeJS.Timeout | undefined;
   let activeDeadlineRun: Promise<void> | undefined;
   let activeCleanupRun: Promise<void> | undefined;
+  const observation = createPoolRunObserver('live_deadline', logger);
 
   async function runDeadlines(): Promise<void> {
-    if (activeDeadlineRun) return activeDeadlineRun;
-    activeDeadlineRun = (async () => {
+    if (activeDeadlineRun) {
+      observation.skipped();
+      return activeDeadlineRun;
+    }
+    activeDeadlineRun = observation.run(async () => {
       try {
         const result = await deadlineProcessor.runOnce();
+        if (result.failures > 0) observation.failed();
         if (result.transitionsCommitted > 0 || result.failures > 0) {
           logger.info(
             {
@@ -58,9 +64,10 @@ export function createLivePvpRuntimeScheduler(
           );
         }
       } catch {
+        observation.failed();
         logger.error({}, 'Live PvP deadline sweep failed.');
       }
-    })();
+    });
     try {
       await activeDeadlineRun;
     } finally {

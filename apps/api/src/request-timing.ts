@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { withPoolObservation } from './database/pool-observability.js';
 
 export const phaseTimingFields = [
   'rate_ms',
@@ -141,7 +142,7 @@ export function getRequestPhaseTiming(
 
 /** Durations only: never record tokens, SQL, identifiers, or request bodies. */
 export function registerRequestTiming(app: FastifyInstance) {
-  app.addHook('onRequest', async (request) => {
+  app.addHook('onRequest', (request, _reply, done) => {
     const start = now();
     if (start !== undefined)
       timings.set(request, {
@@ -149,6 +150,7 @@ export function registerRequestTiming(app: FastifyInstance) {
         stages: {},
         ...(isPhaseRoute(request) ? { phases: createPhaseTiming() } : {}),
       });
+    withPoolObservation('request', done, request.log);
   });
   app.addHook('preSerialization', async (request, _reply, payload) => {
     const timing = timings.get(request);

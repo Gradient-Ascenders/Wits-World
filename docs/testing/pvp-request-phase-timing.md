@@ -217,6 +217,97 @@ Retain the coarse request timing/correlation. Remove unused diagnostic detail
 if its logging cost becomes material, but do not quietly disable fields during
 the comparative run or claim unavailable measurements are zero.
 
+## PostgreSQL pool pressure observations
+
+Pool observations supplement request timing; they do not identify the root cause
+of a production incident until correlated evidence is available. They change no
+pool limits, timeouts, scheduler cadence, LISTEN endpoint, SQL or HTTP behavior.
+
+The fixed message `PostgreSQL pool observation` carries allowlisted fields only.
+Request events use the existing request logger and request ID; process summaries
+are structured JSON. Retrieve only matching request events and narrowly bounded
+pool/scheduler/listener summaries from the same process and incident window in
+`/home/LogFiles/*_default_docker.log`. Do not export unrelated production logs.
+
+| Field                                                                                                 | Meaning                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `totalCount`                                                                                          | Current clients, including connecting and checked-out clients                                                                                                              |
+| `idleCount`                                                                                           | Clients immediately available for reuse                                                                                                                                    |
+| `waitingCount`                                                                                        | Checkouts waiting in the pool queue                                                                                                                                        |
+| `before_total/idle/waiting`, `after_total/idle/waiting`                                               | Snapshots before checkout and after success/failure; release events use acquisition and post-release snapshots                                                             |
+| `checkout_ms`                                                                                         | Time from native connect invocation to resolution/rejection; combines queue and connection establishment time                                                              |
+| `hold_ms`                                                                                             | Successful checkout to release; includes queries, locks, application work and persistent LISTEN retention                                                                  |
+| `active_holds_count`, `oldest_hold_ms`                                                                | Number and oldest age of tracked successful checkouts                                                                                                                      |
+| `listener/request/maintenance/other_holds_count`, corresponding `*_oldest_hold_ms`                    | Holder-category evidence without identifying clients or users                                                                                                              |
+| `checkout_count`, `checkout_failures_count`, `new_connections_count`, `suppressed_count`              | Counts since the previous pool summary                                                                                                                                     |
+| `run_started_unix_ms`, `run_ms`, `running_count`                                                      | Current/latest scheduler run start, elapsed duration and active state                                                                                                      |
+| `runs_count`, `skipped_count`                                                                         | Scheduler runs and active-run skips since its previous summary                                                                                                             |
+| `run_failures_count`, scheduler `checkout_count/checkout_failures_count/checkout_ms/contention_count` | Current/latest run failure flag (0/1), acquisitions, failures, summed checkout time and acquisitions finding contention; snapshots describe its last completed acquisition |
+
+Native promise and callback `connect()` overloads are delegated, including the
+callback used internally by native `pool.query()`. Query text is never wrapped or
+examined. An asynchronous scope assigns only `request`, `ranked_maintenance`,
+`live_deadline`, `listener` or `other`; unscoped work remains `other`. Hold timing
+applies to all acquired clients, including existing transaction helpers.
+
+Successful checkouts below 250 ms without observed contention remain quiet.
+Failures, slower checkouts, queued/saturated acquisitions and holds of at least
+1,000 ms are eligible for events, capped together at 20 per pool per minute.
+Listener releases are also eligible. A summary every 60 seconds reports activity,
+held clients and suppressed events; an inactive pool emits nothing. The timer is
+unreferenced and cleared on native pool shutdown. Connection counts measure
+successful physical connections, not connection attempts or separate handshake
+duration.
+
+Ranked maintenance and live-deadline summaries report slow (at least 1,000 ms),
+contended or failed runs at most once per 10 seconds and periodic activity every
+60 seconds. Runs skipped while an earlier run is active are counted. A prolonged
+active run can produce a periodic summary on a skipped invocation. Quiet short
+runs produce no per-second logs. Cleanup work outside these two run scopes remains
+`other`. Existing scheduler result/error logs retain their existing behavior.
+
+Listener events describe checkout start/success/failure, LISTEN success, client
+error, reconnect, recovery, release and destruction. A long listener hold is
+expected; it still explains occupied pool capacity. Recovery callback failures
+are not automatically classified as SQL failures. No payload or match identifier
+is included in listener telemetry or its fan-out failure warning.
+
+| `error_category`        | Evidence / interpretation                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| `checkout_timeout`      | Exact pg-pool pending checkout message `timeout exceeded when trying to connect`     |
+| `connection_timeout`    | Exact new-client message `Connection terminated due to connection timeout`           |
+| `connection_terminated` | Exact known connection termination messages                                          |
+| `query_error`           | Failure at a known query boundary, or a transaction error with SQLSTATE-shaped code  |
+| `rollback_failure`      | Existing rollback rejected; original rejection semantics preserved                   |
+| `client_error`          | Other client-error callback failures                                                 |
+| `unknown_db_error`      | Remaining errors, including transaction-domain errors without a SQLSTATE-shaped code |
+
+Exception contents are inspected only for classification and never serialized.
+The event constructor excludes SQL, parameters, bodies, credentials, tokens,
+cookies, URLs, provider hostnames, usernames, account/player/match/invitation IDs,
+backend PIDs, client objects, raw messages, stacks and arbitrary caller strings.
+Only finite nonnegative numeric fields and predefined categories are accepted.
+Existing server logger correlation/process metadata is unchanged. Telemetry logger
+failures do not fail database work.
+
+On recurrence, correlate identity/total timing with a checkout failure and its
+before/after queue counts, holder ages/categories, recent physical connection
+counts, listener lifecycle and overlapping maintenance summaries. A saturated
+pool with waiting requests and older request/maintenance holders supports checkout
+pressure; a `connection_timeout` supports establishment failure. Neither proves
+why a holder is slow, whether a query is blocked, or provider/network health.
+Counts are instantaneous, held clients become visible only after acquisition,
+and rate limiting intentionally omits individual events. No SQL tracing, query
+deadlines, stack capture or additional database queries are introduced.
+
+Validate with `pool-observability`, request-timing, identity, connection, listener
+and scheduler tests. The gated disposable PostgreSQL saturation test uses max=1
+and a short checkout timeout **only in its test pool**, occupies it, observes a
+pending timeout, releases the holder, and verifies native query/callback recovery.
+Full database-suite results and environment limitations belong in the handoff.
+A dedicated direct LISTEN connection remains a separately reviewed follow-up;
+this instrumentation does not move or add a connection endpoint.
+
 ## AI declaration
 
 Codex[GPT-6] assisted with the instrumentation implementation, tests and this

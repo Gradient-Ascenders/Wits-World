@@ -1,4 +1,12 @@
 import type pg from 'pg';
+import {
+  classifyDatabaseError,
+  emitPoolEvent,
+  poolSnapshot,
+  withPoolObservation,
+  type PoolEvent,
+  type PoolSnapshot,
+} from '../database/pool-observability.js';
 
 import {
   LIVE_PVP_NOTIFY_CHANNEL,
@@ -22,7 +30,7 @@ export interface LivePvpNotificationLogger {
 }
 
 export function createLivePvpNotificationListener(
-  database: Pick<pg.Pool, 'connect'>,
+  database: Pick<pg.Pool, 'connect'> & Partial<PoolSnapshot>,
   gateway: Pick<
     LivePvpGateway,
     'broadcastMatch' | 'broadcastPresence' | 'recoverNotificationGap'
@@ -34,11 +42,53 @@ export function createLivePvpNotificationListener(
   let stopped = true;
   let connecting: Promise<void> | undefined;
   let recoveryRequired = false;
+  const lifecycle = (
+    event: PoolEvent,
+    error?: unknown,
+    stage: 'checkout' | 'query' | 'client' | 'transaction' = 'checkout',
+    checkoutMs?: number,
+  ) => {
+    emitPoolEvent(logger, {
+      event,
+      category: 'listener',
+      ...(typeof database.totalCount === 'number'
+        ? poolSnapshot(database)
+        : {}),
+      ...(checkoutMs === undefined ? {} : { checkout_ms: checkoutMs }),
+      ...(error === undefined && event !== 'listener_client_error'
+        ? {}
+        : { error_category: classifyDatabaseError(error, stage) }),
+    });
+  };
 
   async function connectListener(): Promise<void> {
     if (stopped || client || connecting) return connecting;
     connecting = (async () => {
-      const next = await database.connect();
+      lifecycle('listener_checkout_start');
+      const checkoutStarted = performance.now();
+      let next: pg.PoolClient;
+      try {
+        next = await withPoolObservation(
+          'listener',
+          () => database.connect(),
+          logger,
+        );
+        lifecycle(
+          'listener_checkout_success',
+          undefined,
+          'checkout',
+          performance.now() - checkoutStarted,
+        );
+      } catch (error) {
+        lifecycle(
+          'listener_checkout_failed',
+          error,
+          'checkout',
+          performance.now() - checkoutStarted,
+        );
+        throw error;
+      }
+      let listening = false;
       try {
         next.on('notification', (notification: pg.Notification) => {
           if (
@@ -54,40 +104,40 @@ export function createLivePvpNotificationListener(
               ? gateway.broadcastMatch(event.matchId, event.version)
               : gateway.broadcastPresence(event.matchId);
           void broadcast.catch(() =>
-            logger.warn(
-              {
-                matchId: event.matchId,
-                version: event.version,
-                channel: notification.channel,
-              },
-              'Live PvP notification fan-out failed.',
-            ),
+            logger.warn({}, 'Live PvP notification fan-out failed.'),
           );
         });
-        next.on('error', () => {
+        next.on('error', (error: unknown) => {
           if (client !== next) return;
           client = undefined;
           recoveryRequired = true;
+          lifecycle('listener_client_error', error, 'client');
           next.release(true);
+          lifecycle('listener_destroy');
           if (!stopped) scheduleReconnect();
         });
 
         await next.query(`listen ${LIVE_PVP_NOTIFY_CHANNEL}`);
         await next.query(`listen ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`);
+        listening = true;
         client = next;
+        lifecycle('listener_listen_success');
         logger.info({}, 'Live PvP PostgreSQL notification listener started.');
 
         if (recoveryRequired) {
           recoveryRequired = false;
           await gateway.recoverNotificationGap();
+          lifecycle('listener_recovered');
           logger.info(
             {},
             'Live PvP sockets were reset after notification-listener recovery.',
           );
         }
       } catch (error) {
+        lifecycle('database_error', error, listening ? 'transaction' : 'query');
         if (client === next) client = undefined;
         next.release(true);
+        lifecycle('listener_destroy');
         throw error;
       }
     })();
@@ -102,6 +152,7 @@ export function createLivePvpNotificationListener(
     if (stopped || reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = undefined;
+      lifecycle('listener_reconnect');
       void connectListener().catch(() => {
         recoveryRequired = true;
         logger.error({}, 'Live PvP notification listener reconnect failed.');
@@ -141,8 +192,12 @@ export function createLivePvpNotificationListener(
       try {
         await active.query(`unlisten ${LIVE_PVP_NOTIFY_CHANNEL}`);
         await active.query(`unlisten ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`);
+      } catch (error) {
+        lifecycle('database_error', error, 'query');
+        throw error;
       } finally {
         active.release();
+        lifecycle('listener_release');
       }
     },
   };

@@ -1,10 +1,26 @@
 import pg from 'pg';
 
 import type { DatabaseConfig } from '../config/database.js';
+import {
+  classifyDatabaseError,
+  emitPoolEvent,
+  instrumentPool,
+  poolSnapshot,
+  type PoolTelemetryLogger,
+} from './pool-observability.js';
 
 const { Pool } = pg;
 
-export interface DatabasePoolLogger {
+const defaultLogger: DatabasePoolLogger = {
+  info(fields, message) {
+    console.info(JSON.stringify({ ...fields, msg: message }));
+  },
+  error(fields, message) {
+    console.error(fields, message);
+  },
+};
+
+export interface DatabasePoolLogger extends PoolTelemetryLogger {
   error(context: Record<string, unknown>, message: string): void;
 }
 
@@ -19,7 +35,7 @@ export type DatabaseClientRunner = <T>(
 
 export function createDatabasePool(
   databaseConfig: DatabaseConfig,
-  { logger = console }: CreateDatabasePoolOptions = {},
+  { logger = defaultLogger }: CreateDatabasePoolOptions = {},
 ) {
   const connectionUrl = new URL(databaseConfig.connectionString);
   const sslMode = connectionUrl.searchParams.get('sslmode');
@@ -40,6 +56,12 @@ export function createDatabasePool(
   });
 
   pool.on('error', (error) => {
+    emitPoolEvent(logger, {
+      event: 'database_error',
+      category: 'other',
+      error_category: classifyDatabaseError(error, 'client'),
+      ...poolSnapshot(pool),
+    });
     const databaseErrorCode = getSafeDatabaseErrorCode(error);
 
     logger.error(
@@ -48,6 +70,7 @@ export function createDatabasePool(
     );
   });
 
+  instrumentPool(pool, logger);
   return pool;
 }
 

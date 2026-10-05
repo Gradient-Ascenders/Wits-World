@@ -6,6 +6,10 @@ import {
 
 import type pg from 'pg';
 import {
+  observeDatabaseError,
+  observeRollback,
+} from '../database/pool-observability.js';
+import {
   applyBattleAction,
   createBattleState,
   getEffectDamageMultiplier,
@@ -1476,7 +1480,10 @@ async function withExistingClientTransaction<T>(
     await timePhase(timing, 'commit_ms', () => client.query('commit'));
     return result;
   } catch (error) {
-    await timePhase(timing, 'rollback_ms', () => client.query('rollback'));
+    observeDatabaseError(error, 'transaction');
+    await timePhase(timing, 'rollback_ms', () =>
+      observeRollback(() => client.query('rollback')),
+    );
     throw error;
   }
 }
