@@ -1483,7 +1483,10 @@ describe('asynchronous PvP battle', () => {
       } else {
         expect(within(result).getByText(message)).toBeVisible();
       }
-      expect(within(result).getByRole('heading', { level: 1 })).toHaveFocus();
+      // The result can mount before its effect moves keyboard focus.
+      await waitFor(() =>
+        expect(within(result).getByRole('heading', { level: 1 })).toHaveFocus(),
+      );
       expect(
         screen.queryByRole('region', { name: 'Current battlefield' }),
       ).toBeNull();
