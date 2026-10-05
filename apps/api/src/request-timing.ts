@@ -18,6 +18,7 @@ export const phaseTimingFields = [
   'snapshot_read_ms',
   'snapshot_write_ms',
   'match_construct_ms',
+  'initial_match_write_ms',
   'match_insert_ms',
   'participants_insert_ms',
   'private_state_insert_ms',

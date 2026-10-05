@@ -25,7 +25,7 @@ journey, account or resource identifier.
 Detailed phases remain **server logs only**. The browser `Server-Timing` header
 still contains only the existing coarse stages. Response schemas and bodies,
 locks, transactions, rate policies and battle rules remain unchanged. The
-match-detail read reduction below documents the current GET query changes.
+acceptance-write and match-detail reductions below document current query changes.
 Repository implementation does not prove production deployment.
 
 ## Fields and boundaries
@@ -45,7 +45,8 @@ No field is filled with zero to imply that an unavailable phase was measured.
 | `post_transaction_trust_ms`                                                                                              | Existing conflict reporting or completed-match opponent-pattern evaluation after the transaction, if that dependency is configured                           |
 | `deck_ms`, `snapshot_read_ms`, `snapshot_write_ms`                                                                       | Recipient deck loader, challenger snapshot hydration and recipient snapshot persistence                                                                      |
 | `match_construct_ms`                                                                                                     | Synchronous battle construction, both initial selections and active-phase validation; UUID/deadline preparation immediately afterwards remains residual work |
-| `match_insert_ms`, `participants_insert_ms`, `private_state_insert_ms`                                                   | Three separate existing awaited initial writes                                                                                                               |
+| `initial_match_write_ms`                                                                                                 | Single dependent CTE statement inserting the match, both participants and private state                                                                      |
+| `match_insert_ms`, `participants_insert_ms`, `private_state_insert_ms`                                                   | Historical separate initial-write fields; absent on the consolidated fresh acceptance path                                                                   |
 | `invitation_update_ms`, `invitation_view_ms`, `match_response_view_ms`, `receipt_write_ms`                               | Accepted invitation update, fresh invitation projection, combined match/card response hydration, replay receipt persistence                                  |
 | `get_locked_projection_ms`, `get_clock_ms`, `get_response_projection_ms`, `get_card_presentation_ms`, `project_match_ms` | GET participant/deadline lock inputs, database clock, fresh combined response/card projection, separate card read when used, and synchronous view projection |
 | `sql_client_ms`, `sql_statement_count`                                                                                   | Sum/count of attempted calls on this service transaction's client, including BEGIN/COMMIT/ROLLBACK and failed calls                                          |
@@ -58,13 +59,51 @@ includes JavaScript history transformation. Deferred constraints/validators may
 execute during COMMIT, so their work can appear in `commit_ms` rather than an
 insert's client time.
 
-The normal controlled transaction counts remain 18 for acceptance without
-optional production trust checks, 20 with its two restriction reads, 5 for a
+The normal controlled transaction counts are 16 for acceptance without
+optional production trust checks, 18 with its two restriction reads (previously
+18 and 20 respectively), 5 for a
 fresh active GET (previously 6) and 11 for the normal action control. These are expected
 controlled-path counts, not universal counts for error, replay, forfeit or
 history variants. Statement count excludes identity queries before the service,
 queries in post-transaction trust dependencies, and SQL inside database triggers.
 No extra query is issued to collect timings.
+
+## Acceptance initial-write consolidation
+
+Fresh acceptance uses one parameterized SQL statement for the three initial
+writes. The match CTE returns its authoritative ID/version; the participant CTE
+consumes that row to insert both existing player/snapshot/side tuples. The private
+state CTE consumes the match row and depends on the participant CTE returning two
+rows. A final projection returns integer counts for all three inserts; the
+service requires exactly one match, two participants and one private state or
+throws inside the existing transaction.
+
+Data flows through `RETURNING`, not same-statement reads of the modified tables.
+Immediate match/player foreign keys and unique/check constraints remain active;
+existing deferred snapshot, current-participant, state/version and integrity
+checks still validate the complete transaction at COMMIT. Invitation update,
+fresh response hydration and receipt persistence remain subsequent statements.
+Server-generated match ID, snapshot IDs, battle state and the post-lock database
+clock/deadline values are reused unchanged. No schema or constraint change is
+required.
+
+The invitation lock, submission lock, post-lock receipt/clock read and replay
+branches are unchanged. Insert, row-count, downstream receipt or COMMIT failures
+retain the existing rollback behavior. Real PostgreSQL tests force immediate
+insert constraints, a deferred snapshot violation, receipt uniqueness and
+incomplete CTE rows; they check pending invitation/snapshot/receipt state and
+the absence of orphan match, participant and private-state records, then retry
+acceptance and its replay successfully. Existing duplicate/racing acceptance,
+cancellation, expiry, authorization, viewer-relative response and action tests
+remain applicable.
+
+`initial_match_write_ms` replaces the three individual spans on this path;
+absent individual fields are not zero. Compare it with the old three-write sum
+within each request, then report SQL/transaction/request timings separately.
+The consolidated statement removes two client calls, reducing the production-style controlled
+count from 20 to 18. This describes local implementation, not a deployment or a
+guaranteed end-to-end saving. Reverify five fresh journeys, eight action controls
+and matching request-ID-filtered timing events after normal reviewed CI/CD.
 
 ## Match-detail read reduction
 

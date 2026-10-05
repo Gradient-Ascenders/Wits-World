@@ -615,9 +615,23 @@ describe.skipIf(!runIntegrationTests)(
       ).rejects.toMatchObject({ code: 'PVP_DECK_INVALID' });
       statementCount = 0;
       queryCategories = [];
-      const accepted = await service.acceptInvitation(acceptanceInput);
+      const acceptanceTiming = createPhaseTiming();
+      const accepted = await service.acceptInvitation(
+        acceptanceInput,
+        acceptanceTiming,
+      );
       // Includes BEGIN/COMMIT, validation, writes, and fresh response hydration.
-      expect(statementCount).toBe(18);
+      expect(statementCount).toBe(16);
+      expect(acceptanceTiming.snapshot()).toMatchObject({
+        initial_match_write_ms: expect.any(Number),
+        sql_statement_count: 16,
+      });
+      for (const phase of [
+        'match_insert_ms',
+        'participants_insert_ms',
+        'private_state_insert_ms',
+      ])
+        expect(acceptanceTiming.snapshot()).not.toHaveProperty(phase);
       expect(queryCategories.slice(0, 4)).toEqual([
         'begin',
         'invitation_lock',
@@ -870,6 +884,131 @@ describe.skipIf(!runIntegrationTests)(
       });
     });
 
+    it.each([
+      ['match_check', ['23514']],
+      ['participant_unique', ['23505']],
+      ['participant_fk', ['23503']],
+      ['state_check', ['23514']],
+      ['snapshot_fk', ['23503', '23514']],
+      ['receipt_unique', ['23505']],
+      ['partial_participants', []],
+      ['missing_state', []],
+    ] as const)(
+      'rolls back all acceptance records on %s failure',
+      async (failure, codes) => {
+        const { invitation, input } = await createAcceptanceInput(
+          pool,
+          cardDefinitions,
+        );
+        let attemptedMatchId: string | undefined;
+        let injected = false;
+        const database: AsyncPvpDatabase = {
+          async connect() {
+            const client = await pool.connect();
+            return {
+              async query<T extends pg.QueryResultRow>(
+                statement: string,
+                values?: unknown[],
+              ) {
+                let sql = statement;
+                const parameters = values ? [...values] : undefined;
+                if (statement.includes('with inserted_match as')) {
+                  attemptedMatchId = String(parameters![0]);
+                  injected = failure !== 'receipt_unique';
+                  if (failure === 'match_check')
+                    parameters![4] = parameters![3];
+                  if (failure === 'participant_unique')
+                    parameters![7] = parameters![5];
+                  if (failure === 'participant_fk')
+                    parameters![5] = randomUUID();
+                  if (failure === 'state_check') parameters![9] = '[]';
+                  if (failure === 'snapshot_fk') parameters![6] = randomUUID();
+                  // Real PostgreSQL writes, deliberately yielding fewer RETURNING
+                  // rows. The service must reject before publishing acceptance.
+                  if (failure === 'partial_participants')
+                    sql = sql.replace(
+                      'returning match_id',
+                      "where participant.engine_side = 'player' returning match_id",
+                    );
+                  if (failure === 'missing_state')
+                    sql = sql.replace(
+                      'where (select count(*) from inserted_participants) = 2',
+                      'where (select count(*) from inserted_participants) = 0',
+                    );
+                }
+                const result = await client.query<T>(sql, parameters);
+                if (
+                  failure === 'receipt_unique' &&
+                  statement.includes(
+                    'insert into private.async_pvp_submission_receipts',
+                  )
+                ) {
+                  injected = true;
+                  // The second real insert violates the unchanged receipt key
+                  // after match/state/invitation/first receipt writes completed.
+                  await client.query(statement, values);
+                }
+                return result;
+              },
+              release() {
+                client.release();
+              },
+            };
+          },
+        };
+        const service = createAsyncPvpService(database, {
+          cursorCodec: createSignedCursorCodec(
+            'database-test-only-cursor-key-with-32-bytes',
+          ),
+          randomInt: () => 0,
+        });
+        const error = await service
+          .acceptInvitation(input)
+          .catch((reason: unknown) => reason);
+        expect(injected).toBe(true);
+        expect(attemptedMatchId).toEqual(expect.any(String));
+        if (codes.length)
+          expect(codes).toContain((error as { code: string }).code);
+        else
+          expect(error).toMatchObject({
+            message: 'Accepted PvP match initial writes were incomplete.',
+          });
+        const persisted = await loadAcceptanceRecords(
+          pool,
+          invitation.invitationId,
+        );
+        expect(persisted).toMatchObject({
+          status: 'pending',
+          version: 0,
+          matches: 0,
+          snapshots: 1,
+          receipts: 0,
+          responded_at: null,
+        });
+        const orphans = await pool.query(
+          `select (select count(*)::integer from public.async_pvp_matches where id = $1::uuid) as matches,
+                (select count(*)::integer from public.async_pvp_match_participants where match_id = $1::uuid) as participants,
+                (select count(*)::integer from private.async_pvp_match_states where match_id = $1::uuid) as states`,
+          [attemptedMatchId],
+        );
+        expect(orphans.rows).toEqual([
+          { matches: 0, participants: 0, states: 0 },
+        ]);
+        // The unchanged normal path can still accept the same invitation/key.
+        const retry = createAsyncPvpService(pool, {
+          cursorCodec: createSignedCursorCodec(
+            'database-test-only-cursor-key-with-32-bytes',
+          ),
+          randomInt: () => 0,
+        });
+        const accepted = await retry.acceptInvitation(input);
+        await expect(
+          retry.getMatch(input.playerId, accepted.match.matchId),
+        ).resolves.toEqual(accepted.match);
+        await expect(retry.acceptInvitation(input)).resolves.toEqual(accepted);
+      },
+    );
+
     it('serializes competing acceptances and replays concurrent duplicates without creating another match', async () => {
       const service = createAsyncPvpService(pool, {
         cursorCodec: createSignedCursorCodec(
@@ -926,7 +1065,7 @@ describe.skipIf(!runIntegrationTests)(
         const statementCounts = timings
           .map((t) => t.snapshot().sql_statement_count!)
           .sort((a, b) => a - b);
-        expect(statementCounts).toEqual([5, 18]);
+        expect(statementCounts).toEqual([5, 16]);
         for (const timing of timings)
           expect(timing.snapshot()).toMatchObject({
             transaction_ms: expect.any(Number),
@@ -974,6 +1113,50 @@ describe.skipIf(!runIntegrationTests)(
           { version: 1, matches: 1, snapshots: 2, receipts: 1 },
         ]);
       }
+    });
+
+    it('rejects a challenger racing the authorized recipient acceptance', async () => {
+      const { invitation, input, challengerPlayerId } =
+        await createAcceptanceInput(pool, cardDefinitions);
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+        randomInt: () => 0,
+      });
+      const [recipient, challenger] = await Promise.allSettled([
+        service.acceptInvitation(input),
+        service.acceptInvitation({
+          ...input,
+          playerId: challengerPlayerId,
+          submissionId: randomUUID(),
+        }),
+      ]);
+      expect(recipient.status).toBe('fulfilled');
+      expect(challenger).toMatchObject({
+        status: 'rejected',
+        reason: { code: 'PVP_INVITATION_NOT_FOUND' },
+      });
+      if (recipient.status !== 'fulfilled') throw recipient.reason;
+      expect(
+        await loadAcceptanceRecords(pool, invitation.invitationId),
+      ).toMatchObject({
+        status: 'accepted',
+        version: 1,
+        matches: 1,
+        snapshots: 2,
+        receipts: 1,
+        response: recipient.value,
+      });
+      const persisted = await pool.query(
+        `select (select count(*)::integer from public.async_pvp_match_participants where match_id = $1::uuid) as participants,
+                (select count(*)::integer from private.async_pvp_match_states where match_id = $1::uuid) as states`,
+        [recipient.value.match.matchId],
+      );
+      expect(persisted.rows).toEqual([{ participants: 2, states: 1 }]);
+      await expect(
+        service.getMatch(input.playerId, recipient.value.match.matchId),
+      ).resolves.toEqual(recipient.value.match);
     });
 
     it('observes the committed acceptance receipt after waiting for the invitation lock', async () => {
@@ -3154,6 +3337,7 @@ async function createAcceptanceInput(
   });
   return {
     invitation,
+    challengerPlayerId,
     expiresAt: new Date(invitation.expiresAt),
     input: {
       playerId: recipientPlayerId,
