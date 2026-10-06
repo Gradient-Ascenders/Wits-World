@@ -150,6 +150,14 @@ export async function settleTerritoryWindow(
     kind: 'hourly' | 'season_final';
   },
 ): Promise<TerritorySettlementResult> {
+  return settleTerritoryWindowWithPolicy(client, input);
+}
+
+async function settleTerritoryWindowWithPolicy(
+  client: RankedClient,
+  input: Parameters<typeof settleTerritoryWindow>[1],
+  preloadedMinimumInfluence?: number,
+): Promise<TerritorySettlementResult> {
   const policyVersion = input.policyVersion ?? TERRITORY_POLICY_VERSION;
   const existing = await client.query<{
     id: string;
@@ -181,14 +189,18 @@ export async function settleTerritoryWindow(
     };
   }
 
-  const policyResult = await client.query<OwnershipPolicyRow>(
-    `select minimum_ownership_influence
-       from private.territory_policy_versions
-      where policy_version = $1`,
-    [policyVersion],
-  );
-  const policy = policyResult.rows[0];
-  if (!policy) throw new Error('Territory settlement policy is unavailable.');
+  let minimumInfluence = preloadedMinimumInfluence;
+  if (minimumInfluence === undefined) {
+    const policyResult = await client.query<OwnershipPolicyRow>(
+      `select minimum_ownership_influence
+         from private.territory_policy_versions
+        where policy_version = $1`,
+      [policyVersion],
+    );
+    const policy = policyResult.rows[0];
+    if (!policy) throw new Error('Territory settlement policy is unavailable.');
+    minimumInfluence = policy.minimum_ownership_influence;
+  }
 
   const initialOwnership = await loadCurrentOwnership(client, input.zoneId);
   if (!initialOwnership) {
@@ -285,7 +297,7 @@ export async function settleTerritoryWindow(
   const ownerAfter = selectTerritoryOwner(
     ownership.owner_player_id,
     totals,
-    policy.minimum_ownership_influence,
+    minimumInfluence,
   );
   const digest = territorySettlementDigest({
     zoneId: input.zoneId,
@@ -593,13 +605,20 @@ async function settleDueWindowsWithinTransaction(
         cursor.getTime() + policy.settlement_cadence_ms,
       );
       if (windowEnd.getTime() > boundary.getTime()) break;
-      await settleWithSavepointRetry(client, {
-        zoneId: zone.id,
-        seasonId,
-        windowStart: cursor,
-        windowEnd,
-        kind: 'hourly',
-      });
+      // The versioned policy is immutable (migration 0053). Reuse only this
+      // operation's authoritative load; standalone/final-partial calls still
+      // load their own policy, and no value survives a transaction or sweep.
+      await settleWithSavepointRetry(
+        client,
+        {
+          zoneId: zone.id,
+          seasonId,
+          windowStart: cursor,
+          windowEnd,
+          kind: 'hourly',
+        },
+        policy.minimum_ownership_influence,
+      );
       settled += 1;
     }
     if (settled >= maximumWindows) break;
@@ -720,12 +739,17 @@ async function loadSettlementTotals(
 async function settleWithSavepointRetry(
   client: RankedClient,
   input: Parameters<typeof settleTerritoryWindow>[1],
+  preloadedMinimumInfluence?: number,
 ): Promise<TerritorySettlementResult> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const savepoint = `territory_settle_${attempt}`;
     await client.query(`savepoint ${savepoint}`);
     try {
-      const result = await settleTerritoryWindow(client, input);
+      const result = await settleTerritoryWindowWithPolicy(
+        client,
+        input,
+        preloadedMinimumInfluence,
+      );
       await client.query(`release savepoint ${savepoint}`);
       return result;
     } catch (error) {

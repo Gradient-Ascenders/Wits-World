@@ -48,6 +48,18 @@ The live PvP deadline worker remains responsible for active match completion;
 ranked rating settlement and qualifying territory influence recording run inside
 the authoritative live terminal transaction.
 
+Hourly settlement reuses the minimum-influence value from the existing policy
+load inside each settlement operation. Migration `0053` prevents updates or
+deletes of versioned territory policies, so this value cannot change during the
+operation. It is passed through the hourly savepoint/retry path without a global
+cache or reuse across transactions or sweeps. Regular catch-up still commits
+each window separately and loads policy again in the next transaction. Season
+finalization reuses its operation's policy for complete hourly windows;
+standalone settlement calls and final partial windows retain their own lookup.
+Settlement ordering, player-before-zone locks, thresholds and transaction
+boundaries are unchanged. This reduces redundant SQL; it does not establish the
+cause of an authentication incident or prove a production latency improvement.
+
 A closing season now waits for both systems. Every ranked receipt must first have
 a rating settlement. The territory finalizer then catches up complete hourly
 windows, settles one final partial window per active zone, records the season
@@ -75,4 +87,5 @@ local focused test must use `TEST_DATABASE_URL` only.
 ## AI declaration
 
 This document was created and reviewed with assistance from Codex (GPT-5) and
-ChatGPT-Web[GPT-5.6 Sol].
+ChatGPT-Web[GPT-5.6 Sol]. The operation-scoped policy reuse documentation was
+updated with assistance from Codex (GPT-6).
