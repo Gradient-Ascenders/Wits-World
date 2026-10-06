@@ -2063,7 +2063,11 @@ describe('Basic author console', () => {
     });
     renderAuthorRoute(authorPaths.editCard(cardFixture().id));
 
-    await user.type(await screen.findByLabelText('Card name'), ' version 1');
+    await pasteFieldValue(
+      user,
+      await screen.findByLabelText('Card name'),
+      'Campus Owl version 1',
+    );
     await user.click(screen.getByRole('button', { name: 'Save card' }));
     await user.click(screen.getByRole('link', { name: 'Events' }));
     await user.click(
@@ -2074,7 +2078,11 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('link', { name: 'Cards' }));
     await user.click(await screen.findByRole('link', { name: /Campus Owl/ }));
     await user.click(await screen.findByRole('link', { name: 'Edit card' }));
-    await user.type(await screen.findByLabelText('Card name'), ' version 2');
+    await pasteFieldValue(
+      user,
+      await screen.findByLabelText('Card name'),
+      'Campus Owl version 2',
+    );
 
     await act(async () => {
       pending.resolve(
@@ -2490,27 +2498,25 @@ describe('Basic author console', () => {
       await screen.findByLabelText('Card name'),
       'Validation card',
     );
-    await user.clear(screen.getByLabelText('Power cost'));
-    await user.type(screen.getByLabelText('Power cost'), '-1');
-    await user.clear(screen.getByLabelText('Effect value (optional)'));
-    await user.type(screen.getByLabelText('Effect value (optional)'), '-1');
+    const moveName = screen.getByLabelText('Move name');
+    const powerCost = screen.getByLabelText('Power cost');
+    const effectValue = screen.getByLabelText('Effect value (optional)');
+    // Set numeric fixtures with one controlled change per value.
+    fireEvent.change(powerCost, { target: { value: '-1' } });
+    fireEvent.change(effectValue, { target: { value: '-1' } });
     await user.click(screen.getByRole('button', { name: 'Create draft card' }));
 
-    expect(screen.getByLabelText('Move name')).toHaveAccessibleDescription(
-      'Enter a move name.',
-    );
-    expect(screen.getByLabelText('Power cost')).toHaveAccessibleDescription(
+    expect(moveName).toHaveAccessibleDescription('Enter a move name.');
+    expect(powerCost).toHaveAccessibleDescription(
       'Enter a non-negative whole number.',
     );
-    expect(
-      screen.getByLabelText('Effect value (optional)'),
-    ).toHaveAccessibleDescription('Enter a non-negative whole number.');
+    expect(effectValue).toHaveAccessibleDescription(
+      'Enter a non-negative whole number.',
+    );
 
-    await pasteFieldValue(user, screen.getByLabelText('Move name'), 'Study');
-    await user.clear(screen.getByLabelText('Power cost'));
-    await user.type(screen.getByLabelText('Power cost'), '0');
-    await user.clear(screen.getByLabelText('Effect value (optional)'));
-    await user.type(screen.getByLabelText('Effect value (optional)'), '0');
+    await pasteFieldValue(user, moveName, 'Study');
+    fireEvent.change(powerCost, { target: { value: '0' } });
+    fireEvent.change(effectValue, { target: { value: '0' } });
     await selectOption(user, screen.getByLabelText('Effect type'), 'buff');
     await user.click(screen.getByRole('button', { name: 'Create draft card' }));
     expect(screen.getByLabelText('Modifier stat')).toHaveAccessibleDescription(
@@ -2522,7 +2528,9 @@ describe('Basic author console', () => {
       screen.getByLabelText('Modifier stat'),
       'damage_multiplier',
     );
-    await user.type(screen.getByLabelText('Duration in turns (optional)'), '0');
+    fireEvent.change(screen.getByLabelText('Duration in turns (optional)'), {
+      target: { value: '0' },
+    });
     await user.click(screen.getByRole('button', { name: 'Create draft card' }));
     expect(
       screen.getByLabelText('Duration in turns (optional)'),
