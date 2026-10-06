@@ -74,6 +74,9 @@ async function noOverflow(page: Page) {
   ).toBe(true);
 }
 
+// Use the full browser only for native Ctrl/Cmd-click tab creation.
+const nativeTabTest = test.extend({ channel: 'chromium' });
+
 for (const entry of [
   'Explore campus from Great Hall',
   'Find more challenges',
@@ -143,28 +146,34 @@ for (const entry of [
     });
   }
 
-  test(`homepage ${entry} retains modified-click new-tab semantics`, async ({
-    page,
-    context,
-  }) => {
-    await installEvents(context);
-    await page.goto('/');
-    const before = await page.evaluate(() => performance.timeOrigin);
-    const popupPromise = context.waitForEvent('page');
-    await page.getByRole('link', { name: entry, exact: true }).click({
-      modifiers: ['ControlOrMeta'],
-    });
-    const popup = await popupPromise;
-    try {
-      await popup.bringToFront();
-      await popup.waitForURL(/\/explore$/, { waitUntil: 'domcontentloaded' });
-      await expect(popup.locator('#campus-map-title')).toBeVisible();
-      await expect(page).toHaveURL(/\/$/);
-      expect(await page.evaluate(() => performance.timeOrigin)).toBe(before);
-    } finally {
-      await popup.close();
-    }
-  });
+  nativeTabTest(
+    `homepage ${entry} retains modified-click new-tab semantics`,
+    async ({ page, context }) => {
+      await installEvents(context);
+      await page.goto('/');
+      const link = page.getByRole('link', { name: entry, exact: true });
+      await expect(link).toHaveAttribute('href', '/explore', {
+        timeout: 30_000,
+      });
+      await link.scrollIntoViewIfNeeded();
+      const before = await page.evaluate(() => performance.timeOrigin);
+      const [popup] = await Promise.all([
+        context.waitForEvent('page'),
+        link.click({ modifiers: ['ControlOrMeta'] }),
+      ]);
+      try {
+        await popup.bringToFront();
+        await expect(popup).toHaveURL(/\/explore$/);
+        await expect(popup.locator('#campus-map-title')).toBeVisible();
+        await expect(popup.locator('.campus-map__canvas')).toHaveCount(1);
+        await expect(popup.locator('.event-marker')).toHaveCount(3);
+        await expect(page).toHaveURL(/\/$/);
+        expect(await page.evaluate(() => performance.timeOrigin)).toBe(before);
+      } finally {
+        await popup.close();
+      }
+    },
+  );
 }
 
 test('direct Explore and AppShell Explore navigation retain discovery', async ({
