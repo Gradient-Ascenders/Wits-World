@@ -190,11 +190,14 @@ export function observeDatabaseError(
   error: unknown,
   stage: 'query' | 'rollback' | 'transaction',
 ) {
+  const errorCategory = classifyDatabaseError(error, stage);
+  // Transaction callbacks can throw application/domain errors unrelated to DB access.
+  if (stage === 'transaction' && errorCategory === 'unknown_db_error') return;
   const scope = context.getStore();
   emitPoolEvent(scope?.logger, {
     event: 'database_error',
     category: scope?.category,
-    error_category: classifyDatabaseError(error, stage),
+    error_category: errorCategory,
   });
 }
 export async function observeRollback<T>(
@@ -388,7 +391,13 @@ export function createPoolRunObserver(
     lastReport = performance.now();
   let hasReported = false;
   let active:
-    | { started: number; unix: number; metrics: Metrics; failed: boolean }
+    | {
+        started: number;
+        unix: number;
+        metrics: Metrics;
+        failed: boolean;
+        runningReported: boolean;
+      }
     | undefined;
   const report = (running: boolean) => {
     if (!active) return;
@@ -403,6 +412,7 @@ export function createPoolRunObserver(
       run_failures_count: active.failed ? 1 : 0,
       ...active.metrics,
     });
+    if (running) active.runningReported = true;
     runs = skipped = 0;
     lastReport = performance.now();
     hasReported = true;
@@ -428,6 +438,7 @@ export function createPoolRunObserver(
         unix: Date.now(),
         metrics,
         failed: false,
+        runningReported: false,
       };
       let failed = false;
       try {
@@ -444,6 +455,7 @@ export function createPoolRunObserver(
           metrics.contention_count ||
           performance.now() - active.started >= 1_000;
         if (
+          active.runningReported ||
           (exceptional &&
             (!hasReported || performance.now() - lastReport >= 10_000)) ||
           performance.now() - lastReport >= 60_000

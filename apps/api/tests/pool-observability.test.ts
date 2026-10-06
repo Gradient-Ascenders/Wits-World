@@ -6,11 +6,16 @@ import {
   createPoolRunObserver,
   emitPoolEvent,
   instrumentPool,
+  observeDatabaseError,
   observeRollback,
   poolSnapshot,
   safePoolEvent,
   withPoolObservation,
 } from '../src/database/pool-observability.js';
+import {
+  RankedError,
+  rankedTransaction,
+} from '../src/matches/ranked-database.js';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -119,6 +124,72 @@ describe('privacy-safe pool observations', () => {
         'transaction',
       ),
     ).toBe('query_error');
+  });
+
+  it.each([
+    new Error('game validation failed'),
+    new RankedError(409, 'RANKED_STATE_CONFLICT', 'game conflict'),
+  ])(
+    'does not label transaction callback/domain failures as database errors',
+    async (failure) => {
+      const info = vi.fn();
+      const acquired = {
+        query: vi.fn().mockResolvedValue({ rows: [] }),
+        release: vi.fn(),
+      };
+      const database = {
+        connect: vi.fn().mockResolvedValue(acquired),
+        query: vi.fn(),
+      };
+      await expect(
+        withPoolObservation(
+          'request',
+          () =>
+            rankedTransaction(database as unknown as pg.Pool, async () => {
+              throw failure;
+            }),
+          { info },
+        ),
+      ).rejects.toBe(failure);
+      expect(info).not.toHaveBeenCalled();
+      expect(acquired.query.mock.calls.map(([sql]) => sql)).toEqual([
+        'begin',
+        'rollback',
+      ]);
+      expect(acquired.release).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('retains database evidence and errors at explicit query and rollback boundaries', () => {
+    const info = vi.fn();
+    withPoolObservation(
+      'request',
+      () => {
+        observeDatabaseError(
+          Object.assign(new Error('private SQL'), { code: '23505' }),
+          'transaction',
+        );
+        observeDatabaseError(
+          new Error('timeout exceeded when trying to connect'),
+          'transaction',
+        );
+        observeDatabaseError(
+          new Error('Connection terminated due to connection timeout'),
+          'transaction',
+        );
+        observeDatabaseError(new Error('private query failure'), 'query');
+        observeDatabaseError(new Error('private rollback failure'), 'rollback');
+      },
+      { info },
+    );
+    expect(info.mock.calls.map(([event]) => event.error_category)).toEqual([
+      'query_error',
+      'checkout_timeout',
+      'connection_timeout',
+      'query_error',
+      'rollback_failure',
+    ]);
+    expect(JSON.stringify(info.mock.calls)).not.toContain('private');
   });
 
   it('measures promise checkout and hold/release while preserving native double-release errors', async () => {
@@ -401,6 +472,59 @@ describe('privacy-safe pool observations', () => {
       'PostgreSQL pool observation',
     );
   });
+
+  it.each([
+    ['ranked_maintenance', false],
+    ['ranked_maintenance', true],
+    ['live_deadline', false],
+    ['live_deadline', true],
+  ] as const)(
+    'closes an active %s summary immediately after completion (failed=%s)',
+    async (category, failed) => {
+      vi.useFakeTimers();
+      const info = vi.fn(),
+        observation = createPoolRunObserver(category, { info });
+      const failure = new Error('private scheduler failure');
+      let settle!: () => void;
+      const pending = observation.run(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            settle = () => (failed ? reject(failure) : resolve());
+          }),
+      );
+      const finished = failed
+        ? expect(pending).rejects.toBe(failure)
+        : expect(pending).resolves.toBeUndefined();
+      await vi.advanceTimersByTimeAsync(60_000);
+      observation.skipped();
+      expect(info).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          event: 'scheduler_summary',
+          category,
+          running_count: 1,
+          run_ms: 60_000,
+        }),
+        'PostgreSQL pool observation',
+      );
+      await vi.advanceTimersByTimeAsync(1_000);
+      settle();
+      await finished;
+      expect(info).toHaveBeenCalledTimes(2);
+      expect(info).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          event: 'scheduler_summary',
+          category,
+          running_count: 0,
+          run_ms: 61_000,
+          run_failures_count: failed ? 1 : 0,
+        }),
+        'PostgreSQL pool observation',
+      );
+      await observation.run(async () => undefined);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(info).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it('summarizes caught scheduler failures and bounds repeated fast failures', async () => {
     vi.useFakeTimers();

@@ -263,7 +263,11 @@ Ranked maintenance and live-deadline summaries report slow (at least 1,000 ms),
 contended or failed runs at most once per 10 seconds and periodic activity every
 60 seconds. Runs skipped while an earlier run is active are counted. A prolonged
 active run can produce a periodic summary on a skipped invocation. Quiet short
-runs produce no per-second logs. Cleanup work outside these two run scopes remains
+runs produce no per-second logs. If a run has been reported as active, its
+completion always emits `running_count=0`, including failed completion, even
+within the ten-second exceptional-summary throttle. This completion transition
+is scoped to that run and does not make subsequent short runs noisy.
+Cleanup work outside these two run scopes remains
 `other`. Existing scheduler result/error logs retain their existing behavior.
 
 Listener events describe checkout start/success/failure, LISTEN success, client
@@ -272,15 +276,21 @@ expected; it still explains occupied pool capacity. Recovery callback failures
 are not automatically classified as SQL failures. No payload or match identifier
 is included in listener telemetry or its fan-out failure warning.
 
-| `error_category`        | Evidence / interpretation                                                            |
-| ----------------------- | ------------------------------------------------------------------------------------ |
-| `checkout_timeout`      | Exact pg-pool pending checkout message `timeout exceeded when trying to connect`     |
-| `connection_timeout`    | Exact new-client message `Connection terminated due to connection timeout`           |
-| `connection_terminated` | Exact known connection termination messages                                          |
-| `query_error`           | Failure at a known query boundary, or a transaction error with SQLSTATE-shaped code  |
-| `rollback_failure`      | Existing rollback rejected; original rejection semantics preserved                   |
-| `client_error`          | Other client-error callback failures                                                 |
-| `unknown_db_error`      | Remaining errors, including transaction-domain errors without a SQLSTATE-shaped code |
+| `error_category`        | Evidence / interpretation                                                                                                  |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `checkout_timeout`      | Exact pg-pool pending checkout message `timeout exceeded when trying to connect`                                           |
+| `connection_timeout`    | Exact new-client message `Connection terminated due to connection timeout`                                                 |
+| `connection_terminated` | Exact known connection termination messages                                                                                |
+| `query_error`           | Failure at a known query boundary, or a transaction error with SQLSTATE-shaped code                                        |
+| `rollback_failure`      | Existing rollback rejected; original rejection semantics preserved                                                         |
+| `client_error`          | Other client-error callback failures                                                                                       |
+| `unknown_db_error`      | Unclassified errors at known database boundaries; generic transaction/domain exceptions are not emitted as database errors |
+
+Generic transaction catches emit a database-error event only for a recognized
+connection failure or SQLSTATE-shaped error. Application/domain exceptions
+without that evidence emit no database-error event. Explicit query and rollback
+boundaries still report their failures; original rollback, release and error
+propagation behavior is unchanged.
 
 Exception contents are inspected only for classification and never serialized.
 The event constructor excludes SQL, parameters, bodies, credentials, tokens,
