@@ -5,6 +5,7 @@ import {
 } from './ranked-season-service.js';
 import type { RankedDatabase } from './ranked-database.js';
 import type { RankedReadService } from './ranked-read-service.js';
+import { createPoolRunObserver } from '../database/pool-observability.js';
 import {
   cancelExpiredTerritoryContenders,
   cleanupExpiredTerritoryGrants,
@@ -57,10 +58,14 @@ export function createRankedScheduler(
   let active: Promise<RankedSweepResult> | undefined;
   let lastSnapshotCleanupAt = 0;
   let lastTerritoryMaintenanceAt = 0;
+  const observation = createPoolRunObserver('ranked_maintenance', logger);
 
   async function runOnce(): Promise<RankedSweepResult> {
-    if (active) return active;
-    active = (async () => {
+    if (active) {
+      observation.skipped();
+      return active;
+    }
+    active = observation.run(async () => {
       const season = await maintainRankedSeasons(database);
       const expiredEntries = await service.expireQueueEntries();
       const resolvedProposals = await service.expireProposals();
@@ -110,7 +115,7 @@ export function createRankedScheduler(
         logger.info(result, 'Ranked maintenance sweep completed.');
       }
       return result;
-    })();
+    });
     try {
       return await active;
     } finally {
@@ -119,7 +124,10 @@ export function createRankedScheduler(
   }
 
   function triggerRun(): void {
-    if (active) return;
+    if (active) {
+      observation.skipped();
+      return;
+    }
     void runOnce().catch((error) =>
       logger.error(errorContext(error), 'Ranked maintenance sweep failed.'),
     );

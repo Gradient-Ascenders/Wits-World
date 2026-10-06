@@ -18,6 +18,10 @@ import {
   type RandomInt,
 } from '@wits-world/game-rules';
 import type pg from 'pg';
+import {
+  observeDatabaseError,
+  observeRollback,
+} from '../database/pool-observability.js';
 
 import type { TrustService } from '../trust/trust-service.js';
 import { settleRankedMatch } from './ranked-settlement.js';
@@ -1884,7 +1888,8 @@ async function withTransaction<T>(
     await client.query('commit');
     return result;
   } catch (error) {
-    await client.query('rollback');
+    observeDatabaseError(error, 'transaction');
+    await observeRollback(() => client.query('rollback'));
     throw error;
   } finally {
     client.release();
@@ -1904,7 +1909,8 @@ async function withProjectionSnapshot<T>(
     await client.query('commit');
     return result;
   } catch (error) {
-    await client.query('rollback');
+    observeDatabaseError(error, 'transaction');
+    await observeRollback(() => client.query('rollback'));
     throw error;
   } finally {
     client.release();

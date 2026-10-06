@@ -15,6 +15,10 @@ import type {
   PlayerRole,
 } from './types.js';
 import { lockPlayerIdentity } from './player-identity-lock.js';
+import {
+  observeDatabaseError,
+  observeRollback,
+} from '../database/pool-observability.js';
 
 interface PlayerRow {
   id: string;
@@ -308,7 +312,8 @@ async function withTransaction<T>(
     await client.query('commit');
     return result;
   } catch (error) {
-    await client.query('rollback');
+    observeDatabaseError(error, 'transaction');
+    await observeRollback(() => client.query('rollback'));
     throw error;
   } finally {
     connectedClient?.release();

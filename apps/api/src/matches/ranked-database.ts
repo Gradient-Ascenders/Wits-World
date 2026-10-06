@@ -1,4 +1,8 @@
 import type pg from 'pg';
+import {
+  observeDatabaseError,
+  observeRollback,
+} from '../database/pool-observability.js';
 
 export type RankedDatabase = Pick<pg.Pool, 'connect' | 'query'>;
 export type RankedClient = pg.PoolClient;
@@ -14,7 +18,8 @@ export async function rankedTransaction<T>(
     await client.query('commit');
     return result;
   } catch (error) {
-    await client.query('rollback');
+    observeDatabaseError(error, 'transaction');
+    await observeRollback(() => client.query('rollback'));
     throw error;
   } finally {
     client.release();

@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import { Writable } from 'node:stream';
+import { observeDatabaseError } from '../src/database/pool-observability.js';
 import { expect, it, vi } from 'vitest';
 import {
   registerRequestTiming,
@@ -11,6 +12,48 @@ import {
   timePhaseSync,
   type PhaseTimingField,
 } from '../src/request-timing.js';
+
+it('retains isolated request logger correlation through asynchronous database observations', async () => {
+  const events: Array<Record<string, unknown>> = [];
+  const stream = new Writable({
+    write(chunk, _encoding, done) {
+      events.push(JSON.parse(String(chunk)));
+      done();
+    },
+  });
+  const app = Fastify({ logger: { stream } });
+  registerRequestTiming(app);
+  app.get('/pool-observation', async () => {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    observeDatabaseError(new Error('private SQL and credentials'), 'query');
+    return { ok: true };
+  });
+  try {
+    await Promise.all([
+      app.inject({
+        url: '/pool-observation',
+        headers: { 'x-request-id': 'a' },
+      }),
+      app.inject({
+        url: '/pool-observation',
+        headers: { 'x-request-id': 'b' },
+      }),
+    ]);
+    const observations = events.filter(
+      (event) => event.msg === 'PostgreSQL pool observation',
+    );
+    expect(observations).toHaveLength(2);
+    expect(new Set(observations.map((event) => event.reqId)).size).toBe(2);
+    for (const event of observations)
+      expect(event).toMatchObject({
+        category: 'request',
+        error_category: 'query_error',
+      });
+    expect(JSON.stringify(observations)).not.toContain('private SQL');
+  } finally {
+    await app.close();
+  }
+});
 
 it('reports isolated stage timings for successful and failed requests without secrets', async () => {
   const app = Fastify();
