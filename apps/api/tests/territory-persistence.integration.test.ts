@@ -22,6 +22,12 @@ import {
   getSeedsDirectory,
 } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
+import {
+  rankedTransaction,
+  type RankedClient,
+  type RankedDatabase,
+} from '../src/matches/ranked-database.js';
+import { settleTerritoryWindow } from '../src/territory/territory-settlement.js';
 import { createTerritoryReadService } from '../src/territory/territory-read-service.js';
 
 const MIGRATION_NAME = '0053_persist_contested_territory.sql';
@@ -495,6 +501,10 @@ describe.skipIf(!runIntegrationTests)(
       const matchId = await createRankedMatch(pool, pair, cards);
       await completeRankedMatch(pool, seasonId, matchId, winner, loser);
       const eastZoneId = requireZone(zones, 'east_campus');
+      // Keep PostgreSQL's sub-millisecond precision for the window bounds.
+      const before = await pool.query<{ now: string }>(
+        'select clock_timestamp()::text as now',
+      );
 
       const concurrent = await Promise.allSettled([
         recordAcceptedContribution(pool, {
@@ -516,12 +526,16 @@ describe.skipIf(!runIntegrationTests)(
       expect(
         concurrent.filter((result) => result.status === 'rejected'),
       ).toHaveLength(1);
+      const after = await pool.query<{ now: string }>(
+        'select clock_timestamp()::text as now',
+      );
 
       const persisted = await pool.query<{
         contribution_count: number;
         decision_count: number;
         influence_points: number;
         local_date_matches: boolean;
+        timestamp_in_window: boolean;
       }>(
         `select
            (select count(*)::int
@@ -536,8 +550,14 @@ describe.skipIf(!runIntegrationTests)(
            (select contribution_date =
                     (contributed_at at time zone 'Africa/Johannesburg')::date
               from private.territory_influence_contributions
-             where source_match_id = $1::uuid) local_date_matches`,
-        [matchId],
+             where source_match_id = $1::uuid) local_date_matches,
+           (select contributed_at is not null
+                   and isfinite(contributed_at)
+                   and contributed_at >= $2::timestamptz
+                   and contributed_at < $3::timestamptz
+              from private.territory_influence_contributions
+             where source_match_id = $1::uuid) timestamp_in_window`,
+        [matchId, before.rows[0]!.now, after.rows[0]!.now],
       );
       expect(persisted.rows).toEqual([
         {
@@ -545,6 +565,7 @@ describe.skipIf(!runIntegrationTests)(
           decision_count: 1,
           influence_points: 1,
           local_date_matches: true,
+          timestamp_in_window: true,
         },
       ]);
 
@@ -827,6 +848,127 @@ describe.skipIf(!runIntegrationTests)(
         { transition_kind: 'settlement' },
         { transition_kind: 'suspended' },
       ]);
+    }, 60_000);
+
+    it('settles threshold boundaries with real policy reads and rolls back a failed standalone receipt', async () => {
+      const clock = await pool.query<{ start: Date; end: Date }>(
+        `select date_trunc('hour', now()) - interval '1 hour' as start,
+                date_trunc('hour', now()) as end`,
+      );
+      const window = clock.rows[0]!;
+      for (const influenceCount of [2, 3, 4]) {
+        const zone = await pool.query<{ id: string }>(
+          `insert into public.territory_zones (
+             policy_version, zone_key, definition_version, name, area,
+             status, source_urls, review_provenance, reviewed_at, activated_at,
+             created_at, updated_at
+           ) select $1, $2, 1, 'Settlement threshold fixture',
+                    st_translate(area, $3, 0), 'active', source_urls,
+                    'controlled_policy', $4, $4, $4, $4
+               from public.territory_zones where id = $5::uuid
+           returning id::text`,
+          [
+            TERRITORY_POLICY,
+            `threshold_${influenceCount}`,
+            0.2 + influenceCount * 0.05,
+            window.start,
+            requireZone(zones, 'east_campus'),
+          ],
+        );
+        const zoneId = zone.rows[0]!.id;
+        const winner = await createPlayer(pool, seasonId);
+        for (let index = 0; index < influenceCount; index += 1) {
+          const loser = await createPlayer(pool, seasonId);
+          const pair = await createAcceptedPair(pool, seasonId, winner, loser);
+          const matchId = await createRankedMatch(pool, pair, cards);
+          await completeRankedMatch(pool, seasonId, matchId, winner, loser);
+          await recordAcceptedContribution(pool, {
+            matchId,
+            seasonId,
+            playerId: winner.id,
+            zoneId,
+            contributedAt: new Date(window.start.getTime() + 300_000 + index),
+          });
+        }
+        let policyReads = 0;
+        let releases = 0;
+        let failTotals = true;
+        const database = {
+          async connect() {
+            const client = await pool.connect();
+            return {
+              async query(statement: string, values?: unknown[]) {
+                if (statement.includes('select minimum_ownership_influence'))
+                  policyReads += 1;
+                if (
+                  failTotals &&
+                  statement.includes(
+                    'insert into private.territory_settlement_totals',
+                  )
+                ) {
+                  // Abort a real PostgreSQL transaction after receipt creation.
+                  return client.query('select 1 / 0');
+                }
+                return client.query(statement, values);
+              },
+              release() {
+                releases += 1;
+                client.release();
+              },
+            } as RankedClient;
+          },
+          query: pool.query.bind(pool),
+        } as RankedDatabase;
+        const input = {
+          zoneId,
+          seasonId,
+          windowStart: window.start,
+          windowEnd: window.end,
+          kind: 'hourly' as const,
+        };
+        await expect(
+          rankedTransaction(database, (client) =>
+            settleTerritoryWindow(client, input),
+          ),
+        ).rejects.toThrow(/division by zero/u);
+        expect(await loadCurrentOwner(pool, zoneId)).toEqual({
+          owner_player_id: null,
+          state_version: '0',
+        });
+        const rolledBack = await pool.query<{ count: number }>(
+          `select count(*)::int as count from private.territory_settlement_receipts where zone_id = $1::uuid`,
+          [zoneId],
+        );
+        expect(rolledBack.rows[0]?.count).toBe(0);
+        expect(releases).toBe(1);
+        failTotals = false;
+        const result = await rankedTransaction(database, (client) =>
+          settleTerritoryWindow(client, input),
+        );
+        expect(result.ownerAfterPlayerId).toBe(
+          influenceCount < 3 ? null : winner.id,
+        );
+        expect(
+          await rankedTransaction(database, (client) =>
+            settleTerritoryWindow(client, input),
+          ),
+        ).toEqual(result);
+        // One failed attempt + one successful standalone lookup; receipt replay
+        // does not reload policy or append another ownership version.
+        expect(policyReads).toBe(2);
+        expect(releases).toBe(3);
+        expect(await loadCurrentOwner(pool, zoneId)).toEqual({
+          owner_player_id: result.ownerAfterPlayerId,
+          state_version: '1',
+        });
+        const totals = await pool.query<{ count: number }>(
+          `select accepted_influence_count as count from private.territory_settlement_totals where settlement_receipt_id = $1::uuid`,
+          [result.receiptId],
+        );
+        expect(totals.rows).toEqual([{ count: influenceCount }]);
+        expect(pool.waitingCount).toBe(0);
+        expect(pool.idleCount).toBe(pool.totalCount);
+      }
     }, 60_000);
 
     it('preserves ownership history when a zone is suspended and retired', async () => {
@@ -1334,6 +1476,7 @@ async function recordAcceptedContribution(
     seasonId: string;
     playerId: string;
     zoneId: string;
+    contributedAt?: Date;
   },
 ) {
   const client = await database.connect();
@@ -1360,14 +1503,18 @@ async function recordAcceptedContribution(
     await client.query(
       `insert into private.territory_influence_contributions (
          source_match_id, ranked_season_id, territory_policy_version,
-         zone_id, player_id, influence_points
-       ) values ($1::uuid, $2::uuid, $3, $4::uuid, $5::uuid, 1)`,
+         zone_id, player_id, influence_points, contributed_at
+       ) values (
+         $1::uuid, $2::uuid, $3, $4::uuid, $5::uuid, 1,
+         ${input.contributedAt === undefined ? 'default' : '$6::timestamptz'}
+       )`,
       [
         input.matchId,
         input.seasonId,
         TERRITORY_POLICY,
         input.zoneId,
         input.playerId,
+        ...(input.contributedAt === undefined ? [] : [input.contributedAt]),
       ],
     );
     await client.query('commit');
