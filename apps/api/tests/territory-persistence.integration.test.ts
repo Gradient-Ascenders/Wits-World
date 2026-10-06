@@ -501,6 +501,10 @@ describe.skipIf(!runIntegrationTests)(
       const matchId = await createRankedMatch(pool, pair, cards);
       await completeRankedMatch(pool, seasonId, matchId, winner, loser);
       const eastZoneId = requireZone(zones, 'east_campus');
+      // Keep PostgreSQL's sub-millisecond precision for the window bounds.
+      const before = await pool.query<{ now: string }>(
+        'select clock_timestamp()::text as now',
+      );
 
       const concurrent = await Promise.allSettled([
         recordAcceptedContribution(pool, {
@@ -522,12 +526,16 @@ describe.skipIf(!runIntegrationTests)(
       expect(
         concurrent.filter((result) => result.status === 'rejected'),
       ).toHaveLength(1);
+      const after = await pool.query<{ now: string }>(
+        'select clock_timestamp()::text as now',
+      );
 
       const persisted = await pool.query<{
         contribution_count: number;
         decision_count: number;
         influence_points: number;
         local_date_matches: boolean;
+        timestamp_in_window: boolean;
       }>(
         `select
            (select count(*)::int
@@ -542,8 +550,14 @@ describe.skipIf(!runIntegrationTests)(
            (select contribution_date =
                     (contributed_at at time zone 'Africa/Johannesburg')::date
               from private.territory_influence_contributions
-             where source_match_id = $1::uuid) local_date_matches`,
-        [matchId],
+             where source_match_id = $1::uuid) local_date_matches,
+           (select contributed_at is not null
+                   and isfinite(contributed_at)
+                   and contributed_at >= $2::timestamptz
+                   and contributed_at < $3::timestamptz
+              from private.territory_influence_contributions
+             where source_match_id = $1::uuid) timestamp_in_window`,
+        [matchId, before.rows[0]!.now, after.rows[0]!.now],
       );
       expect(persisted.rows).toEqual([
         {
@@ -551,6 +565,7 @@ describe.skipIf(!runIntegrationTests)(
           decision_count: 1,
           influence_points: 1,
           local_date_matches: true,
+          timestamp_in_window: true,
         },
       ]);
 
@@ -1489,14 +1504,17 @@ async function recordAcceptedContribution(
       `insert into private.territory_influence_contributions (
          source_match_id, ranked_season_id, territory_policy_version,
          zone_id, player_id, influence_points, contributed_at
-       ) values ($1::uuid, $2::uuid, $3, $4::uuid, $5::uuid, 1, $6::timestamptz)`,
+       ) values (
+         $1::uuid, $2::uuid, $3, $4::uuid, $5::uuid, 1,
+         ${input.contributedAt === undefined ? 'default' : '$6::timestamptz'}
+       )`,
       [
         input.matchId,
         input.seasonId,
         TERRITORY_POLICY,
         input.zoneId,
         input.playerId,
-        input.contributedAt ?? null,
+        ...(input.contributedAt === undefined ? [] : [input.contributedAt]),
       ],
     );
     await client.query('commit');
