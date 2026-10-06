@@ -1,5 +1,5 @@
 import { selectOption } from './select-option';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 const eventIds = [
   '17700000-0000-4000-8000-000000000010',
@@ -9,7 +9,7 @@ const eventIds = [
 const longTitle = 'Senate House and the story of student leadership at Wits';
 
 async function installEvents(
-  page: Page,
+  page: Page | BrowserContext,
   mode: 'ready' | 'empty' | 'error' = 'ready',
   eligibility = 'reachable',
 ) {
@@ -73,6 +73,123 @@ async function noOverflow(page: Page) {
     ),
   ).toBe(true);
 }
+
+for (const entry of [
+  'Explore campus from Great Hall',
+  'Find more challenges',
+]) {
+  for (const activation of ['mouse', 'touch', 'Enter'] as const) {
+    test(`homepage ${entry} preserves the runtime with ${activation} navigation`, async ({
+      browser,
+    }) => {
+      const context = await browser.newContext({
+        baseURL: 'http://127.0.0.1:5182',
+        viewport: { width: 412, height: 915 },
+        hasTouch: true,
+        isMobile: true,
+      });
+      try {
+        const page = await context.newPage();
+        await installEvents(page);
+        await page.goto('/');
+        const link = page.getByRole('link', { name: entry, exact: true });
+        await expect(link).toHaveAttribute('href', '/explore', {
+          timeout: 30_000,
+        });
+        await link.scrollIntoViewIfNeeded();
+        await link.focus();
+        await expect(link).toBeFocused();
+        const before = await page.evaluate(() => {
+          Object.assign(window, { homepageRuntime: {} });
+          return performance.timeOrigin;
+        });
+        let documents = 0;
+        let events = 0;
+        let identities = 0;
+        page.on('request', (request) => {
+          if (
+            request.isNavigationRequest() &&
+            request.frame() === page.mainFrame()
+          )
+            documents++;
+          const path = new URL(request.url()).pathname;
+          if (request.method() === 'GET' && path.endsWith('/events')) events++;
+          if (path.endsWith('/auth/me')) identities++;
+        });
+        if (activation === 'Enter') await page.keyboard.press('Enter');
+        else if (activation === 'touch') await link.tap();
+        else await link.click();
+        await expect(page).toHaveURL(/\/explore$/);
+        await expect(page.locator('#campus-map-title')).toBeVisible();
+        await expect(page.getByRole('main')).toBeFocused();
+        await expect(page.locator('.campus-map__canvas')).toHaveCount(1);
+        await expect(page.locator('.event-marker')).toHaveCount(3);
+        expect(await page.evaluate(() => performance.timeOrigin)).toBe(before);
+        expect(await page.evaluate(() => 'homepageRuntime' in window)).toBe(
+          true,
+        );
+        expect(documents).toBe(0);
+        expect(events).toBe(1);
+        expect(identities).toBe(0);
+        await page.goBack();
+        await expect(link).toBeVisible();
+        await page.goForward();
+        await expect(page.locator('#campus-map-title')).toBeVisible();
+        expect(await page.evaluate(() => performance.timeOrigin)).toBe(before);
+        expect(documents).toBe(0);
+      } finally {
+        await context.close();
+      }
+    });
+  }
+
+  test(`homepage ${entry} retains modified-click new-tab semantics`, async ({
+    page,
+    context,
+  }) => {
+    await installEvents(context);
+    await page.goto('/');
+    const before = await page.evaluate(() => performance.timeOrigin);
+    const popupPromise = context.waitForEvent('page');
+    await page.getByRole('link', { name: entry, exact: true }).click({
+      modifiers: ['ControlOrMeta'],
+    });
+    const popup = await popupPromise;
+    try {
+      await popup.bringToFront();
+      await popup.waitForURL(/\/explore$/, { waitUntil: 'domcontentloaded' });
+      await expect(popup.locator('#campus-map-title')).toBeVisible();
+      await expect(page).toHaveURL(/\/$/);
+      expect(await page.evaluate(() => performance.timeOrigin)).toBe(before);
+    } finally {
+      await popup.close();
+    }
+  });
+}
+
+test('direct Explore and AppShell Explore navigation retain discovery', async ({
+  page,
+}) => {
+  await installEvents(page);
+  await page.goto('/explore');
+  await expect(page.locator('#campus-map-title')).toBeVisible();
+  await expect(page.locator('.event-marker')).toHaveCount(3);
+  const before = await page.evaluate(() => performance.timeOrigin);
+  await page
+    .getByRole('link', { name: 'Wits World home', exact: true })
+    .first()
+    .click();
+  await expect(
+    page.getByRole('link', { name: 'Explore campus from Great Hall' }),
+  ).toBeVisible();
+  await page
+    .locator('.primary-navigation:visible')
+    .getByRole('link', { name: 'Explore', exact: true })
+    .click();
+  await expect(page.locator('#campus-map-title')).toBeVisible();
+  await expect(page.locator('.event-marker')).toHaveCount(3);
+  expect(await page.evaluate(() => performance.timeOrigin)).toBe(before);
+});
 
 test('event schedule times stay in Johannesburg on a device in another timezone', async ({
   browser,
