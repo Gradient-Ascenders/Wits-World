@@ -31,6 +31,7 @@ export interface LivePvpGateway {
   recoverNotificationGap(): Promise<void>;
   closeAll(): Promise<void>;
   connectionCount(): number;
+  refreshConnections(): Promise<void>;
 }
 
 interface GatewayConnection {
@@ -62,6 +63,10 @@ type ClientMessage = ActionSubmitMessage | ResignSubmitMessage;
 export function createLivePvpGateway(
   service: LivePvpService,
   logger: LivePvpGatewayLogger = console,
+  options: {
+    onActivity?: () => void;
+    prepareConnection?: () => Promise<void>;
+  } = {},
 ): LivePvpGateway {
   const connectionsByMatch = new Map<string, Set<GatewayConnection>>();
   let heartbeatTimer: NodeJS.Timeout | undefined;
@@ -92,6 +97,7 @@ export function createLivePvpGateway(
 
     matchConnections.add(connection);
     connectionsByMatch.set(connection.principal.matchId, matchConnections);
+    options.onActivity?.();
   }
 
   function removeConnection(connection: GatewayConnection): void {
@@ -103,6 +109,7 @@ export function createLivePvpGateway(
     if (matchConnections.size === 0) {
       connectionsByMatch.delete(connection.principal.matchId);
     }
+    options.onActivity?.();
   }
 
   function ensureHeartbeat(): void {
@@ -241,6 +248,9 @@ export function createLivePvpGateway(
     ensureHeartbeat();
 
     try {
+      // Subscribe before loading the snapshot so a concurrent remote commit
+      // cannot fall between the initial projection and notification fan-out.
+      await options.prepareConnection?.();
       const projection = await service.getProjectionForConnection(principal);
       if (connection.closed || socket.readyState !== 1) return;
       send(socket, {
@@ -611,6 +621,12 @@ export function createLivePvpGateway(
           await cleanup;
         }),
       );
+    },
+
+    async refreshConnections() {
+      for (const matchId of [...connectionsByMatch.keys()]) {
+        await gateway.broadcastPresence(matchId);
+      }
     },
 
     async closeAll() {

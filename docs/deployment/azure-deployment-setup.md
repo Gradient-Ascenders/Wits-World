@@ -334,6 +334,28 @@ and closed policy failures, multi-instance counters, latency, and command
 usage in a controlled deployment before load testing; local fake-store tests
 do not prove those properties. See [API rate limiting](../architecture/rate-limiting.md).
 
+Gameplay scheduling reuses these server-only Upstash credentials. Keep
+`GAMEPLAY_SCHEDULER_BACKEND=polling` until every producer of new persisted
+gameplay work sharing Neon publishes and validates durable pre-write intents.
+After first deploying that polling-mode writer support, retire all older or
+otherwise unaware producers, including old local servers, before promotion.
+Then set the repository Actions variable
+`PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and deploy/restart the API.
+CI maps this variable to the Azure API App Service setting
+`GAMEPLAY_SCHEDULER_BACKEND`; its default is `polling`. A manual Azure app
+setting change alone will be reset by the next deployment unless the Actions
+variable is also updated. The optional
+`GAMEPLAY_SCHEDULER_NAMESPACE` must be identical across all API replicas and
+writers sharing the database; when unset, it is derived from a hash of the
+canonical database endpoint, with Neon `-pooler` removed and port/path retained.
+Rollback sets the Actions variable to `polling` and redeploys/restarts the app. Do not enable
+Upstash mode during a rolling deployment with unaware writers. Redis activity
+keys are persistent, have no TTL, and contain only opaque tokens; never log
+player IDs or tokens, or delete keys to force idle. Publication failures block
+new ranked mutations, while invalidated delayed writers abort with `503` before
+database writes. This is a staged capability, not a claim that production has
+been promoted or that Neon has suspended.
+
 `AUTH0_DOMAIN`, `AUTH0_TENANT_DOMAIN`, `AUTH0_AUDIENCE`, and
 `AUTH0_SPA_CLIENT_ID` are environment-specific authentication configuration.
 Production `AUTH0_DOMAIN` is the custom hostname, while
@@ -1194,13 +1216,48 @@ The final command must print
 `BUILD_FLAGS`, enable App Service build automation, or change SCM Basic Auth.
 
 Before the database release, the workflow configures account-deletion retry,
-movement-evidence cleanup, and asynchronous-PvP deadline processing to the same
-`1800000` ms production interval. Coalescing these database-backed sweeps into
-one approximate wake window allows the Neon compute and the API connection pool
-to become idle between runs. The API rejects intervals shorter than `900000` ms
-to prevent a one-minute polling regression. Request-time checks remain
-authoritative, so this maintenance cadence does not extend persisted deadlines
-or make expired evidence valid.
+movement-evidence cleanup, asynchronous-PvP deadline processing, live-PvP
+transient cleanup, trust evaluation, and card-trade maintenance to the same
+`1800000` ms production interval. The six housekeeping settings remain at
+their existing `1800000` ms intervals; request-time checks remain authoritative,
+so this maintenance cadence does not extend persisted deadlines or make
+expired evidence valid.
+
+With `GAMEPLAY_SCHEDULER_BACKEND=polling` (the default), live PvP and ranked
+workers probe persisted work at their configured intervals even when idle
+(1000 ms by default; live 250–5000 ms, ranked 250–30000 ms). Live probes avoid
+full deadline processing when there is no active match. In staged `upstash`
+mode, active work keeps the configured database polling cadence; idle database
+probes may sleep for up to 30 minutes or until an earlier known work boundary.
+Each API instance reads one combined activity snapshot with direct `HMGET`
+every 10 seconds and wakes the affected local workers; initialization EVAL runs
+only if the epoch is missing. This is about 259,200
+snapshot reads per 30-day month per continuously running API instance, before
+counting additional mutation/initialization Lua commands and rate-limit traffic
+on the shared Redis plan. Same-process local wakes remain immediate. The
+PostgreSQL gateway listener still disconnects while no persisted active match or local socket requires it;
+a new socket waits for subscription before its initial snapshot. Other API,
+maintenance, and external database traffic may still wake Neon compute.
+
+The activity store is constructed when either `RATE_LIMIT_BACKEND=upstash` or
+`GAMEPLAY_SCHEDULER_BACKEND=upstash`; those API producers publish persistent
+pre-write intents in scheduler polling mode as well as Upstash mode. Valid
+credentials alone are insufficient: local rate limiting plus scheduler
+polling does not publish intents. Retire those unaware local/development
+writers or configure them for Upstash before enabling long idle sleeps. Work-producing transactions take shared
+transaction advisory locks and validate their intent before database writes.
+Idle confirmation uses an exclusive try-lock, removes intents older than 120
+seconds while holding that lock, rechecks PostgreSQL work, and clears active
+only if the store epoch/revision are unchanged and no intent remains. A delayed
+invalidated producer aborts with `503`; unavailable publication blocks new
+ranked mutations. Redis outages or monitoring/fallback signals force fast
+database scans. Existing queue/proposal expiry and due territory settlement
+use a shared PG-only guard and continue while season transitions and new pairing
+pause; cleanup throttles are preserved. Startup scans persisted work and marks it active. Upstash mode
+adds Redis commands and is not free; actual CU savings and deployed Neon
+suspension have not been measured. No schema migration is required. See the
+[ranked operations guide](ranked-operations.md) and [live-PvP contract](../architecture/live-pvp-api-contract.md)
+for lock, rollout, and rollback details.
 
 The Azure runner performs no API dependency installation, TypeScript build,
 production dependency materialization, or ZIP construction. Stage 1 proved the
@@ -1765,3 +1822,8 @@ Codex[GPT-5]
 Review the document against the current repository and Azure configuration before committing it. Keep the declaration if required by the project's AI attribution policy.
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Gameplay scheduler rollout guidance was updated with assistance from
+Codex[GPT-5], based on user-provided implementation requirements.
+
+Existing-work outage recovery documented with assistance from Codex-CLI[GPT-5].

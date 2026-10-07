@@ -431,8 +431,9 @@ The committed and deployed default is 30 minutes. The initial provider deletion
 still runs synchronously; this interval applies only after a provider or local
 cleanup failure. It is an operational retry cadence, not the
 recent-authentication security threshold. Database-backed maintenance intervals
-have a 15-minute floor so an otherwise idle serverless PostgreSQL compute can
-suspend between sweeps.
+have a 15-minute floor to avoid frequent housekeeping queries. Other database
+traffic, including correctness-safe live and ranked probes, can still prevent
+serverless PostgreSQL suspension; this retry setting alone does not enable it.
 
 Management credentials must never use a `VITE_` prefix.
 
@@ -567,3 +568,6 @@ Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-5].
 Page title clarified with assistance from Codex-CLI[GPT-6].
 
 This account-deletion update was edited with assistance from Codex[GPT-6].
+
+The housekeeping suspension caveat was clarified with assistance from
+Codex-CLI[GPT-5].

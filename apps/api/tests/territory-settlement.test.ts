@@ -4,6 +4,10 @@ import type {
   RankedClient,
   RankedDatabase,
 } from '../src/matches/ranked-database.js';
+import {
+  createGameplayExistingWorkGuard,
+  GameplayCoordinationUnavailable,
+} from '../src/matches/gameplay-coordination.js';
 
 import {
   maintainTerritorySettlements,
@@ -89,7 +93,7 @@ describe('territory-v1 deterministic settlement', () => {
 });
 
 describe('territory settlement maintenance transactions', () => {
-  it('commits each catch-up window before acquiring locks for the next window', async () => {
+  it('commits fenced catch-up windows independently even when the producer guard is unavailable', async () => {
     const seasonId = '00000000-0000-4000-8000-000000000020';
     const zoneId = '00000000-0000-4000-8000-000000000010';
     const now = new Date('2026-09-22T10:30:00.000Z');
@@ -101,13 +105,23 @@ describe('territory settlement maintenance transactions', () => {
     let policyLoads = 0;
     let duplicatePolicyReads = 0;
     let releases = 0;
+    let existingWorkFences = 0;
+    const beginProduction = vi
+      .fn()
+      .mockRejectedValue(new GameplayCoordinationUnavailable());
 
     const database = {
+      activityGuard: { begin: beginProduction },
+      existingWorkGuard: createGameplayExistingWorkGuard('ranked'),
       async connect() {
         const connectionIndex = connectionCount++;
         receiptInsertsByConnection[connectionIndex] = 0;
         return {
           async query(statement: string) {
+            if (statement === 'select pg_advisory_xact_lock_shared($1, $2)') {
+              existingWorkFences += 1;
+              return { rows: [] };
+            }
             if (
               statement === 'begin' ||
               statement === 'commit' ||
@@ -255,6 +269,8 @@ describe('territory settlement maintenance transactions', () => {
     expect(policyLoads).toBe(2);
     expect(duplicatePolicyReads).toBe(0);
     expect(releases).toBe(2);
+    expect(existingWorkFences).toBe(2);
+    expect(beginProduction).not.toHaveBeenCalled();
   });
 });
 

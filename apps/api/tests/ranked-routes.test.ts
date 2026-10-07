@@ -174,6 +174,26 @@ describe('ranked HTTP routes', () => {
     });
   });
 
+  it('returns a retryable error when durable scheduling cannot authorize a write', async () => {
+    join.mockRejectedValue(
+      new RankedError(
+        503,
+        'GAMEPLAY_COORDINATION_UNAVAILABLE',
+        'Gameplay scheduling is temporarily unavailable. Please try again.',
+      ),
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/ranked/queue',
+      headers: { authorization: 'Bearer test-token' },
+      payload: { deckId: DECK_ID },
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      code: 'GAMEPLAY_COORDINATION_UNAVAILABLE',
+    });
+  });
+
   it('requires authentication for profile reads', async () => {
     const response = await app.inject({
       method: 'GET',

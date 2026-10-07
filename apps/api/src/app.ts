@@ -62,6 +62,10 @@ import { cardTradeRoutes } from './routes/card-trades.js';
 import { livePvpRoutes } from './routes/live-pvp.js';
 import type { LivePvpService } from './matches/live-pvp-service.js';
 import type { LivePvpGateway } from './matches/live-pvp-gateway.js';
+import {
+  registerGameplayWorkerWake,
+  type GameplayWorkerWakes,
+} from './matches/gameplay-worker-wake.js';
 import type { RankedService } from './matches/ranked-service.js';
 import type { RankedReadService } from './matches/ranked-read-service.js';
 import { rankedRoutes } from './routes/ranked.js';
@@ -116,6 +120,7 @@ export interface EventServices {
 }
 
 export interface BuildAppOptions {
+  gameplayWorkers?: GameplayWorkerWakes;
   placementService?: PlacementService;
   offlineChallengeService?: OfflineChallengeService;
   authConfig: AuthConfig;
@@ -200,6 +205,7 @@ export interface TrailServices {
 }
 
 export async function buildApp({
+  gameplayWorkers,
   placementService,
   authConfig,
   config = {
@@ -303,6 +309,7 @@ export async function buildApp({
       },
     },
   });
+  if (gameplayWorkers) registerGameplayWorkerWake(app, gameplayWorkers);
 
   const verifier = accessTokenVerifier ?? createAccessTokenVerifier(authConfig);
 
