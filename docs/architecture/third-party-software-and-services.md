@@ -107,6 +107,15 @@ are the version and transitive-dependency inventory. Upstream licence files and
 service terms remain authoritative. This motivation inventory is not a completed
 licence audit or a claim that every declared dependency is actively used.
 
+## Documentation search
+
+`@easyops-cn/docusaurus-search-local` provides full-text search over the built
+documentation. It runs queries in the browser against a static index generated
+by the docs build, without sending search queries to an external service or
+requiring credentials. Its MIT licence and Docusaurus 3/React 19 compatibility
+fit the existing docs app. The docs workspace owns its configuration and index
+updates; see the [search maintenance guide](../development/documentation-site.md#search).
+
 ## Selection and review rule
 
 A significant new dependency or service should have a concrete repository need,
@@ -132,6 +141,8 @@ Direct-dependency coverage and motivations updated with assistance from Codex-CL
 Page title clarified with assistance from Codex-CLI[GPT-6].
 
 Mermaid integration and motivation documented with assistance from Codex-CLI[GPT-6].
+
+Local documentation search motivation documented with assistance from Codex[GPT-6].
 
 `@fastify/websocket` and `ws` realtime transport motivation documented with
 assistance from ChatGPT-Web[GPT-5.6 Sol].

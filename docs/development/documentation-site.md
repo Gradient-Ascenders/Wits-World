@@ -31,22 +31,26 @@ Do not broaden that audit into unrelated documentation cleanup.
 
 ## Choose the reader's section
 
-| Section         | Reader need                                                 |
-| --------------- | ----------------------------------------------------------- |
-| Introduction    | Understand the product and start the correct guide          |
-| Player Guide    | Learn exploration, challenges, cards, and battles           |
-| Author Guide    | Create, review, place, moderate, and evaluate content       |
-| Developer Guide | Set up, understand, test, deploy, and operate the system    |
-| API Reference   | Find authentication, endpoint, error, and feature contracts |
-| Project         | Review evidence, decisions, methodology, and sprint history |
+| Section    | Reader need                                                 |
+| ---------- | ----------------------------------------------------------- |
+| Start here | Understand the product and start the correct guide          |
+| Players    | Learn exploration, challenges, cards, and battles           |
+| Authors    | Create, review, place, moderate, and evaluate content       |
+| Developers | Set up, understand, test, deploy, and operate the system    |
+| API        | Find authentication, endpoint, error, and feature contracts |
+| Project    | Review evidence, decisions, methodology, and sprint history |
 
-Use sentence case and short, specific names that explain what the reader will
-find or do. Prefer “CPU battle storage” to “CPU Match Persistence”; retain
-useful identifiers such as API, Auth0 and ADR numbers. Label templates and
-historical records explicitly.
+Use short topic labels: “Decks” inside Database → Cards, or “Live PvP” inside
+Database → Battles. The category supplies context; omit repeated words such as
+“storage”, “persistence”, and “API contract”. Full page titles can be more specific.
+Retain useful identifiers such as Auth0 and ADR numbers, and label templates,
+proposals, and historical records accurately.
 
-Keep categories shallow and labels readable. Reference a page from other pages
-when it serves several needs; do not duplicate its sidebar entry.
+Keep each group to about eight entries or fewer. Split large lists into topic
+groups, and link a category heading to its overview instead of adding another
+“Overview” row. Sibling categories collapse automatically when another opens.
+Reference a page from other pages when it serves several needs; do not duplicate
+its sidebar entry.
 
 ## Add or update a document
 
@@ -68,8 +72,8 @@ than listing the same document in several sections. Existing document paths and
 public category URLs are preserved even when their navigation grouping changes.
 Custom document IDs require updating the path-based coverage check.
 
-The six main sections are Introduction, Player Guide, Author Guide, Developer
-Guide, API Reference, and Project. Use the
+The six main sections are Start here, Players, Authors, Developers, API, and
+Project. Use the
 [Sprint 3 overview](../sprint-3-overview.md) as the current milestone entry
 point. Keep Sprint 2 as a historical reference. Link dated results to their
 source revision instead of rewriting them as current evidence.
@@ -148,6 +152,21 @@ Ordinary prose edits do not require browser automation. The docs preview needs
 no API or sign-in; port 3000 is also the API default, so choose a free port if
 running both services.
 
+## Search
+
+Use the navbar search field or press Ctrl+K (⌘K on macOS) to search page titles,
+headings, and content. Arrow keys select a result; Enter opens it. Search covers
+all indexed documents under `/docs/`, including dated project records.
+
+The `@easyops-cn/docusaurus-search-local` theme builds the index with the site.
+Queries run in the browser; no search service or API credentials are needed.
+The index filename contains a content hash so a new deployment loads new results.
+
+To verify search after editing docs, run `npm run build --workspace @wits-world/docs`
+and `npm run serve --workspace @wits-world/docs -- --host 127.0.0.1 --port 4173`.
+Open `http://127.0.0.1:4173` and search for a changed heading or phrase. The
+development server does not generate the search index.
+
 ## Maintain diagrams
 
 The [visual guide](../architecture/diagrams/index.md) links the presentation
@@ -197,6 +216,11 @@ Prepared with assistance from Codex-CLI[GPT-6].
 Page title clarified with assistance from Codex-CLI[GPT-6].
 
 Sprint 3 entry-point guidance was edited with assistance from Codex-CLI[gpt-6-sol].
+
+Sidebar organisation guidance was updated with assistance from Codex[GPT-6].
+
+Local search setup and verification guidance were added with assistance from
+Codex[GPT-6].
 
 The navigation and clear-language rules were updated with assistance from
 Codex[GPT-5].

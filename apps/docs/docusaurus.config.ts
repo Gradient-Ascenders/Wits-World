@@ -1,6 +1,7 @@
 import { themes as prismThemes } from 'prism-react-renderer';
 import type { Config } from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+import type { PluginOptions as SearchOptions } from '@easyops-cn/docusaurus-search-local';
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
@@ -21,7 +22,21 @@ const config: Config = {
   onBrokenLinks: 'throw',
 
   markdown: { mermaid: true },
-  themes: ['@docusaurus/theme-mermaid'],
+  themes: [
+    '@docusaurus/theme-mermaid',
+    [
+      '@easyops-cn/docusaurus-search-local',
+      {
+        docsDir: '../../docs',
+        docsRouteBasePath: '/docs',
+        indexBlog: false,
+        // A new index filename prevents stale results after a docs deployment.
+        hashed: 'filename',
+        searchBarShortcut: true,
+        searchBarShortcutKeymap: 'mod+k',
+      } satisfies SearchOptions,
+    ],
+  ],
 
   i18n: {
     defaultLocale: 'en',
@@ -46,6 +61,11 @@ const config: Config = {
   ],
 
   themeConfig: {
+    docs: {
+      sidebar: {
+        autoCollapseCategories: true,
+      },
+    },
     mermaid: {
       theme: { light: 'neutral', dark: 'dark' },
       options: {
@@ -65,6 +85,10 @@ const config: Config = {
         src: 'img/wits-world-campus-seal.svg',
       },
       items: [
+        {
+          type: 'search',
+          position: 'right',
+        },
         {
           to: '/docs/',
           position: 'left',
