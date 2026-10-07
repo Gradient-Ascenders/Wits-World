@@ -7,7 +7,6 @@ import type { RankedDatabase } from './ranked-database.js';
 import type { RankedReadService } from './ranked-read-service.js';
 import { createPoolRunObserver } from '../database/pool-observability.js';
 import { createDemandScheduler } from '../database/demand-scheduler.js';
-import { DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS } from '../config/timers.js';
 import { nextRankedSweep } from './gameplay-work.js';
 import {
   cancelExpiredTerritoryContenders,
@@ -135,17 +134,31 @@ export function createRankedScheduler(
   }
 
   let forceMaintenance = true;
+  let nextBoundaryAt: number | undefined;
   const scheduler = createDemandScheduler({
     activeIntervalMs: intervalMs,
-    idleIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
+    idleIntervalMs: intervalMs,
     run: async () => {
-      const result = await runOnce(forceMaintenance);
       const next = await (options.nextSweep?.() ?? nextRankedSweep(database));
-      // A capped catch-up batch must drain before returning to idle.
-      const hasBacklog =
-        result.pairedPlayers >= 20 || result.territorySettlements >= 24;
-      forceMaintenance = next !== true || hasBacklog;
-      return hasBacklog ? true : next;
+      const now = Date.now();
+      // A fresh probe can already point to the following territory window.
+      const boundaryDue =
+        (nextBoundaryAt !== undefined && now >= nextBoundaryAt) ||
+        (typeof next === 'number' && next <= 1);
+      nextBoundaryAt = typeof next === 'number' ? now + next : undefined;
+      const maintenanceDue =
+        now - lastSnapshotCleanupAt >= 60_000 ||
+        now - lastTerritoryMaintenanceAt >= 60_000;
+      if (next === true || forceMaintenance || boundaryDue || maintenanceDue) {
+        const result = await runOnce(forceMaintenance || boundaryDue);
+        // A capped catch-up batch must drain before returning to idle probes.
+        forceMaintenance =
+          result.pairedPlayers >= 20 || result.territorySettlements >= 24;
+      }
+      if (forceMaintenance || next === true) return true;
+      // Without durable cross-instance wakes, keep discovering remote commits
+      // even when the next known season/territory boundary is much later.
+      return typeof next === 'number' ? Math.min(next, intervalMs) : false;
     },
     onError: (error) =>
       logger.error(errorContext(error), 'Ranked maintenance sweep failed.'),

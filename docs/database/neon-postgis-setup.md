@@ -127,18 +127,25 @@ release evidence.
 ## Serverless compute usage
 
 The API starts account-deletion retry, movement-evidence cleanup, and
-asynchronous-PvP deadline workers together. Production configures all three to
+asynchronous-PvP deadline workers together. Production configures these and
+live-PvP transient cleanup, trust evaluation, and card-trade maintenance to
 the same 30-minute interval, and the API rejects intervals shorter than 15
-minutes. This leaves an idle window between maintenance batches instead of
-querying the database every minute. Request-time checks remain authoritative;
-the background jobs only converge failed or inactive work.
+minutes. Request-time checks remain authoritative; the background jobs only
+converge failed or inactive work.
+
+These housekeeping intervals do not make the complete API idle. Live-PvP and
+ranked workers retain correctness-safe persisted-work probes at their configured
+cadences (one second by default), even with no local gameplay activity. Longer
+idle sleeps require durable cross-instance wake coordination and restart
+recovery, tracked in issue `#358`. See the [ranked operations guide](../deployment/ranked-operations.md)
+and [live-PvP contract](../architecture/live-pvp-api-contract.md). Do not claim
+scale-to-zero or reduced CU-hour usage from the housekeeping settings alone.
 
 In the Neon console, keep the production compute minimum at `0.25 CU` and keep
 scale-to-zero enabled with the five-minute inactivity delay. Review project
 consumption and branch computes after each release. Delete unused branch
-computes, and investigate any long continuous active period because normal
-idle maintenance should now appear as short, approximately 30-minute-spaced
-bursts.
+computes, and investigate long continuous active periods against all worker and
+request traffic, not only the housekeeping intervals.
 
 Do not run the full database suite repeatedly against the production project.
 Use PR CI for routine verification and reserve hosted test runs for release
@@ -198,3 +205,6 @@ Codex-CLI[GPT-5], Codex[GPT-5], Codex[GPT-5.6 Sol], and
 Codex[gpt-5.6-sol].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Gameplay-probe and compute-usage limitations were clarified with assistance
+from Codex-CLI[GPT-5].

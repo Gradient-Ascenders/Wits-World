@@ -1196,25 +1196,27 @@ The final command must print
 Before the database release, the workflow configures account-deletion retry,
 movement-evidence cleanup, asynchronous-PvP deadline processing, live-PvP
 transient cleanup, trust evaluation, and card-trade maintenance to the same
-`1800000` ms production interval. Coalescing these database-backed sweeps into
-one approximate wake window allows the Neon compute and the API connection pool
-to become idle between runs. The API rejects intervals shorter than `900000` ms
-to prevent a one-minute polling regression. Request-time checks remain
-authoritative, so this maintenance cadence does not extend persisted deadlines
-or make expired evidence valid.
+`1800000` ms production interval. The six housekeeping settings remain at
+their existing `1800000` ms intervals; request-time checks remain authoritative,
+so this maintenance cadence does not extend persisted deadlines or make
+expired evidence valid.
 
-Live-PvP deadline processing and ranked matchmaking retain their one-second
-active-work defaults. Empty workers instead sleep for up to 30 minutes, with
-earlier ranked wake-ups for known season and territory settlement boundaries.
-Authenticated gameplay requests wake the relevant local worker immediately,
-and every process scans persisted work at startup. The live notification
-listener also disconnects while no persisted active match or local socket
-requires it; a new socket waits for the subscription before its initial
-snapshot. See the [ranked operations guide](ranked-operations.md) and
-[live-PvP contract](../architecture/live-pvp-api-contract.md) for the
-process-local wake and cross-instance fallback limitations. These settings
-take effect on deployment; actual Neon compute savings require a subsequent
-usage measurement and depend on other database traffic and compute sizing.
+Live-PvP deadline processing and ranked matchmaking probe persisted work at
+their configured interval even when idle (1000 ms by default; live 250–5000 ms,
+ranked 250–30000 ms). Live probes avoid full deadline processing when there is
+no active match. Ranked probes are cheap; full maintenance runs only for
+pending work, known due season or territory boundaries, startup, capped
+backlog, or approximately 60-second maintenance, with known-boundary delays
+clamped to the configured probe cadence. Authenticated successful mutations
+can wake the relevant local worker; reads do not. Every process scans persisted
+work at startup. The live notification listener disconnects while no persisted
+active match or local socket requires it; a new socket waits for the
+subscription before its initial snapshot. These correctness-safe frequent
+gameplay probes mean the changes alone do not enable Neon scale-to-zero.
+Durable cross-instance wake/leader coordination and restart recovery remain
+follow-up work in issue `#358`. See the [ranked operations guide](ranked-operations.md)
+and [live-PvP contract](../architecture/live-pvp-api-contract.md) for worker
+and wake behavior. No deployment or measured database savings are claimed.
 
 The Azure runner performs no API dependency installation, TypeScript build,
 production dependency materialization, or ZIP construction. Stage 1 proved the

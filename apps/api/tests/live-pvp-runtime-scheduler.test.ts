@@ -7,7 +7,7 @@ afterEach(() => {
 });
 
 describe('live PvP runtime scheduler', () => {
-  it('stops querying when empty and resumes deadlines immediately after activity', async () => {
+  it('discovers a remote match without a local wake while skipping empty deadline processing', async () => {
     vi.useFakeTimers();
     const hasActiveWork = vi.fn().mockResolvedValue(false);
     const onWorkState = vi.fn().mockResolvedValue(undefined);
@@ -32,14 +32,14 @@ describe('live PvP runtime scheduler', () => {
       },
     );
     scheduler.start();
-    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(999);
     expect(hasActiveWork).toHaveBeenCalledOnce();
     expect(runOnce).not.toHaveBeenCalled();
     expect(onWorkState).toHaveBeenLastCalledWith(false);
 
+    // A different replica commits a match and crashes before sending a wake.
     hasActiveWork.mockResolvedValue(true);
-    scheduler.wake();
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1);
     expect(runOnce).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(1000);
     expect(runOnce).toHaveBeenCalledTimes(2);
@@ -47,8 +47,13 @@ describe('live PvP runtime scheduler', () => {
     hasActiveWork.mockResolvedValue(false);
     await vi.advanceTimersByTimeAsync(1000);
     expect(onWorkState).toHaveBeenLastCalledWith(false);
-    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(hasActiveWork).toHaveBeenCalledTimes(5);
     expect(runOnce).toHaveBeenCalledTimes(2);
+    hasActiveWork.mockResolvedValue(true);
+    scheduler.wake();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runOnce).toHaveBeenCalledTimes(3);
     await scheduler.stop();
   });
 
@@ -77,8 +82,8 @@ describe('live PvP runtime scheduler', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(error).toHaveBeenCalledOnce();
     expect(hasActiveWork).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
-    expect(hasActiveWork).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(hasActiveWork).toHaveBeenCalledTimes(3);
     await scheduler.stop();
   });
 

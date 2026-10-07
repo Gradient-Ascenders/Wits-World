@@ -34,26 +34,33 @@ not reverse a ranked migration after ranked matches have settled.
 `RANKED_SWEEP_INTERVAL_MS` defaults to 1000 and accepts 250–30000. It is the
 active-work scan interval for lease expiry, proposal expiry, pairing, and
 season transitions. Each API process scans immediately at startup to recover
-persisted work. While queue entries, proposals, or a closing season remain, it
-continues at the configured active interval. Once idle, it schedules the next
-persisted scan no later than 30 minutes away, or at the earlier known season
-boundary or hourly territory-settlement boundary. The season boundary is the
-active season's `active_ends_at`, or an eligible scheduled season's
-`intended_start_at`; the territory boundary uses the persisted policy cadence
-and `daily_cap_timezone` for active zones.
+persisted work. Idle probes retain the configured interval just as active
+probes do, without a 30-minute discovery gap. Each probe is cheap; full
+maintenance runs only for pending work, a known due season or
+territory boundary, startup, capped backlog, or the approximately 60-second
+maintenance cadence. A known season or territory boundary may bring work
+forward, but its delay is clamped to no more than the configured probe
+interval. The season boundary is the active season's `active_ends_at`, or an
+eligible scheduled season's `intended_start_at`; the territory boundary uses
+the persisted policy cadence and `daily_cap_timezone` for active zones.
 
-Authenticated ranked or territory HTTP responses wake the ranked worker on
-that same API process. Pairing a match also wakes that process's live deadline
-worker immediately. These are process-local hints, not durable cross-instance
-wake messages; each idle API process retains its own persisted-scan fallback
-bounded to 30 minutes while running, and startup performs an immediate scan
-after a restart. No measured database savings or deployed multi-instance
-behavior is asserted here. The existing server-only
+Only explicit successful authenticated mutations wake the ranked worker on
+that same API process: ranked queue `POST`, heartbeat `POST`, and queue `DELETE`,
+plus proposal accept and decline `POST` operations. Territory endpoints are
+`GET` reads and do not wake workers. These are process-local hints, not durable
+cross-instance wake messages; idle API processes keep probing at the configured
+interval while running, and startup performs an immediate scan after a
+restart. Ranked pairing activity invokes the local live-worker callback after
+creating a proposal; it does not itself create a match. Proposal acceptance is
+the match-creating operation and may also wake live processing. Cross-instance
+wake/leader coordination and restart recovery remain follow-up work in issue
+`#358`. No measured database savings or deployed multi-instance behavior is
+asserted here. The existing server-only
 `ASYNC_PVP_CURSOR_SIGNING_KEY` also signs viewer-bound ranked standings cursors.
 Keep that value stable across API instances and rotations during a traversal.
 It must never be a `VITE_*` value.
 
-On startup and each sweep, the worker checks the season, expires stale search
+On startup and each full sweep, the worker checks the season, expires stale search
 leases and proposals, claims eligible pairs, and once per minute drains expired
 ten-minute standings snapshots in 100-row delete batches. The same ranked worker
 throttles territory maintenance to approximately once per minute: it settles due

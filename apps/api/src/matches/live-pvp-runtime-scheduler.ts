@@ -2,7 +2,6 @@ import type { LivePvpDeadlineProcessor } from './live-pvp-deadline-processor.js'
 import type { LivePvpService } from './live-pvp-service.js';
 import { createPoolRunObserver } from '../database/pool-observability.js';
 import { createDemandScheduler } from '../database/demand-scheduler.js';
-import { DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS } from '../config/timers.js';
 
 export const MIN_LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS = 250;
 export const MAX_LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS = 5_000;
@@ -86,7 +85,8 @@ export function createLivePvpRuntimeScheduler(
 
   const deadlines = createDemandScheduler({
     activeIntervalMs: options.deadlineSweepIntervalMs,
-    idleIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
+    // Local wakes are only hints; another replica can commit work and exit.
+    idleIntervalMs: options.deadlineSweepIntervalMs,
     run: runDeadlines,
     onError: () => logger.error({}, 'Live PvP deadline sweep failed.'),
   });

@@ -67,16 +67,17 @@ describe('ranked scheduler', () => {
     return { scheduler, service, nextSweep, onMatchesCreated };
   }
 
-  it('does not repeatedly run empty matchmaking and wakes immediately for newly queued players', async () => {
+  it('discovers remotely queued players without a wake and skips repeated empty maintenance', async () => {
     vi.useFakeTimers();
     const { scheduler, service, nextSweep, onMatchesCreated } = setup();
     scheduler.start();
-    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(29_999);
     expect(service.pairOnce).toHaveBeenCalledOnce();
+    expect(nextSweep).toHaveBeenCalledTimes(30);
+    // Work committed by another replica must be found before its lease expires.
     service.pairOnce.mockResolvedValueOnce(true);
     nextSweep.mockResolvedValue(true);
-    scheduler.wake();
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1);
     expect(onMatchesCreated).toHaveBeenCalledOnce();
     const count = service.pairOnce.mock.calls.length;
     await vi.advanceTimersByTimeAsync(1000);
@@ -84,8 +85,13 @@ describe('ranked scheduler', () => {
     nextSweep.mockResolvedValue(1_800_000);
     await vi.advanceTimersByTimeAsync(1000);
     const idleCount = service.pairOnce.mock.calls.length;
-    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(10_000);
     expect(service.pairOnce).toHaveBeenCalledTimes(idleCount);
+    expect(maintenance.maintainTerritorySettlements).toHaveBeenCalledOnce();
+    nextSweep.mockResolvedValue(true);
+    scheduler.wake();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(service.pairOnce.mock.calls.length).toBeGreaterThan(idleCount);
     await scheduler.stop();
   });
 
@@ -118,6 +124,20 @@ describe('ranked scheduler', () => {
     await scheduler.stop();
   });
 
+  it('keeps minute-level housekeeping when empty without forcing it on every probe', async () => {
+    vi.useFakeTimers();
+    const { scheduler, service, nextSweep } = setup();
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(nextSweep).toHaveBeenCalledTimes(60);
+    expect(service.pairOnce).toHaveBeenCalledOnce();
+    expect(maintenance.maintainTerritorySettlements).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(service.pairOnce).toHaveBeenCalledTimes(2);
+    expect(maintenance.maintainTerritorySettlements).toHaveBeenCalledTimes(2);
+    await scheduler.stop();
+  });
+
   it('reports one privacy-safe error when interval ticks share a failed run', async () => {
     vi.useFakeTimers();
     let rejectMaintenance!: (error: Error) => void;
@@ -133,6 +153,7 @@ describe('ranked scheduler', () => {
       {} as RankedReadService,
       { info: vi.fn(), error },
       250,
+      { nextSweep: vi.fn().mockResolvedValue(true) },
     );
 
     scheduler.start();

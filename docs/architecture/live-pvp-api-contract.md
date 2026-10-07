@@ -542,30 +542,36 @@ generation no longer matches.
 Issue `#253` uses protocol version `1`, a 16 KiB WebSocket message limit, and a
 20-second transport ping interval. `LIVE_PVP_WEBSOCKET_URL` controls the public
 `ws://`/`wss://` endpoint returned by ticket minting;
-`LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS` controls the active-work scan interval
-and defaults to one second (250–5000 ms). While persisted active matches or
-local gateway sockets exist, the worker continues at that interval. With no
-active match and no local socket, its deadline scan sleeps for up to 30 minutes
-before checking persisted work again. The worker starts with an immediate
-persisted-work scan after API startup, so restart recovery does not wait for
-the idle interval. `LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS` schedules the
-idempotent 24-hour transient-data purge without changing the retention policy
-itself. The gateway
+`LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS` controls the worker probe interval and
+defaults to 1000 ms (250–5000 ms). Every running worker keeps this configured
+probe cadence, including while idle. The probe is cheap:
+when no active match exists it does not run full deadline processing. The
+worker starts with an immediate persisted-work scan after API startup;
+cross-instance wake coordination and restart recovery remain follow-up work in
+issue `#358`, so correctness continues to rely on these frequent probes. The
+PostgreSQL notification listener disconnects when there is no persisted active
+match and no local gateway socket. `LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS`
+schedules the idempotent 24-hour transient-data purge without changing the
+retention policy itself. The gateway
 redacts the `ticket` query value from application logs and production edge logs
 must apply the same rule.
 
 Each API instance maintains only local socket references. PostgreSQL state,
 participant connection generations, receipts, and versions remain authority.
-An authenticated HTTP response for a live-match route wakes the live worker on
-that API process. Gateway connection activity also wakes its local worker. The
-ranked scheduler wakes the live worker locally when it creates a match. These
-wake hints are process-local and do not publish a durable cross-instance
-scheduler event. Each idle API instance retains its own persisted-work scan
-fallback bounded to 30 minutes while running; startup also scans immediately.
-The idle scan does not disable, pause, extend, or reset any persisted decision
-deadline. After a wake, fallback scan, or restart, the deadline processor
-continues to use persisted deadlines and database-clock serialization, catching
-up elapsed decisions without resetting their clocks.
+Only explicit successful authenticated mutations wake a gameplay worker; reads,
+including `GET /matches/live/:matchId`, do not. For live PvP, minting a ticket
+with `POST /matches/live/:matchId/connection-tickets` wakes the live worker on
+that API process. Proposal acceptance can also wake live processing; ranked
+pairing activity may provide a local callback hint after a proposal is created,
+before any match exists. Gateway connection activity wakes its local worker.
+These wake hints are process-local and do not publish a durable cross-instance
+scheduler event. Every idle API instance continues its cheap persisted-work
+probe at the configured interval while running; startup also scans immediately.
+The probe does not disable, pause, extend, or reset any persisted decision
+deadline. Full deadline processing uses persisted deadlines and database-clock
+serialization, catching up elapsed decisions without resetting their clocks.
+Durable cross-instance wake/leader coordination and restart recovery remain
+follow-up work in issue `#358`.
 
 A dedicated PostgreSQL listener receives `live_pvp_match_changed` and
 `live_pvp_presence_changed` notifications. Gameplay notifications reload the
