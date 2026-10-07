@@ -60,6 +60,20 @@ fakes and never call a real Upstash service. Multi-instance behavior, deployed
 latency, Upstash outages and load behavior still need controlled deployment
 checks.
 
+The gameplay scheduler reuses these Redis credentials in a separate
+`ww:gameplay:v1:<database-namespace>` keyspace. Its persistent intents and
+activity snapshots are not rate-limit counters and must not be expired or
+deleted with counter cleanup. Ranked writes can therefore return
+`503 GAMEPLAY_COORDINATION_UNAVAILABLE` when their durable pre-write signal is
+unavailable, even if the general HTTP policy allowed the request. Existing
+battle processing falls back to fast database scans during coordination
+outages; the HTTP limiter's open/closed policy itself is unchanged. Include
+the scheduler's snapshot reads and Lua commands in the same Redis quota.
+See [ranked operations](../deployment/ranked-operations.md) for staged rollout,
+recovery, and command budgeting.
+
 ---
 
 This page was drafted with assistance from Codex[GPT-6].
+
+Gameplay coordination interaction documented with assistance from Codex-CLI[GPT-5].

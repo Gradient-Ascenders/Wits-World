@@ -4,7 +4,7 @@ import { DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS } from '../config/timers.js';
 import { TERRITORY_POLICY_VERSION } from '../territory/territory-grants.js';
 
 export async function hasLivePvpWork(
-  database: Pick<pg.Pool, 'query'>,
+  database: Pick<pg.Pool | pg.PoolClient, 'query'>,
 ): Promise<boolean> {
   const result = await database.query<{ pending: boolean }>(
     `select exists (
@@ -16,7 +16,7 @@ export async function hasLivePvpWork(
 }
 
 export async function nextRankedSweep(
-  database: Pick<pg.Pool, 'query'>,
+  database: Pick<pg.Pool | pg.PoolClient, 'query'>,
 ): Promise<boolean | number> {
   const result = await database.query<{ pending: boolean; delay_ms: number }>(
     `with sampled as (select clock_timestamp() as now),

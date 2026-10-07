@@ -100,6 +100,8 @@ describe('API configuration', () => {
       livePvpTransientCleanupIntervalMs:
         DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       rankedSweepIntervalMs: 1000,
+      gameplaySchedulerBackend: 'polling',
+      gameplaySchedulerNamespace: undefined,
       movementEvidenceCleanupIntervalMs:
         DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       movementEvidenceRetentionMs: 86400000,
@@ -136,6 +138,44 @@ describe('API configuration', () => {
       ).toThrow(/RANKED_SWEEP_INTERVAL_MS/u);
     },
   );
+
+  it('requires coordination credentials and a shared safe namespace before enabling idle sleep', () => {
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          GAMEPLAY_SCHEDULER_BACKEND: 'upstash',
+        },
+      }),
+    ).toThrow(/UPSTASH_REDIS_REST_URL/u);
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          GAMEPLAY_SCHEDULER_BACKEND: 'unknown',
+        },
+      }),
+    ).toThrow(/GAMEPLAY_SCHEDULER_BACKEND/u);
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          GAMEPLAY_SCHEDULER_NAMESPACE: 'private/database',
+        },
+      }),
+    ).toThrow(/GAMEPLAY_SCHEDULER_NAMESPACE/u);
+    const config = buildApiConfig({
+      env: {
+        ...validEnvironment,
+        GAMEPLAY_SCHEDULER_BACKEND: 'upstash',
+        GAMEPLAY_SCHEDULER_NAMESPACE: 'shared-test-db',
+        UPSTASH_REDIS_REST_URL: 'https://example.test',
+        UPSTASH_REDIS_REST_TOKEN: 'test-token',
+      },
+    });
+    expect(config.gameplaySchedulerBackend).toBe('upstash');
+    expect(config.gameplaySchedulerNamespace).toBe('shared-test-db');
+  });
 
   it.each([
     'HOST',

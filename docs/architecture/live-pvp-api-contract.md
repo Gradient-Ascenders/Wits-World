@@ -537,41 +537,68 @@ state. A receiving instance may therefore emit a complete snapshot rather than
 a new transition, and an older participant socket is closed when its persisted
 generation no longer matches.
 
-### Implemented runtime settings
+### Runtime settings and worker scheduling
 
 Issue `#253` uses protocol version `1`, a 16 KiB WebSocket message limit, and a
 20-second transport ping interval. `LIVE_PVP_WEBSOCKET_URL` controls the public
 `ws://`/`wss://` endpoint returned by ticket minting;
 `LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS` controls the worker probe interval and
-defaults to 1000 ms (250–5000 ms). Every running worker keeps this configured
-probe cadence, including while idle. The probe is cheap:
-when no active match exists it does not run full deadline processing. The
-worker starts with an immediate persisted-work scan after API startup;
-cross-instance wake coordination and restart recovery remain follow-up work in
-issue `#358`, so correctness continues to rely on these frequent probes. The
-PostgreSQL notification listener disconnects when there is no persisted active
-match and no local gateway socket. `LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS`
+defaults to 1000 ms (250–5000 ms). Once the gameplay scheduler implementation
+is deployed, `GAMEPLAY_SCHEDULER_BACKEND` selects `polling` (default) or
+`upstash`. In polling mode, every running worker keeps
+its configured persisted-work probe cadence while idle. In Upstash mode,
+active workers still poll at the configured cadence; idle database probes can
+sleep up to 30 minutes or until an earlier known work boundary. The activity
+store is constructed when either `RATE_LIMIT_BACKEND=upstash` or
+`GAMEPLAY_SCHEDULER_BACKEND=upstash`; those instances publish durable
+pre-write intents in either scheduler mode. Valid credentials alone do not
+construct the store. Upstash mode reads one combined live/ranked activity
+snapshot with a direct Redis `HMGET` every 10 seconds and wakes the relevant
+local worker when activity changes. Same-process work still has an immediate
+local wake; the Redis interval is for cross-instance observation and remains
+below the 30-second lease and 20-second proposal window. A continuously
+running API instance makes about 259,200 snapshot reads per 30-day month;
+multiply by replica count and budget for mutation/initialization Lua commands
+and rate-limit traffic on the same Redis. Initialization EVAL is only needed
+when the epoch is absent. Startup scans persisted work
+immediately and marks discovered work active. PostgreSQL listeners remain disconnected while there is no persisted
+active match and no local gateway socket. `LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS`
 schedules the idempotent 24-hour transient-data purge without changing the
-retention policy itself. The gateway
-redacts the `ticket` query value from application logs and production edge logs
-must apply the same rule.
+retention policy itself. The gateway redacts the `ticket` query value from
+application logs and production edge logs must apply the same rule.
 
 Each API instance maintains only local socket references. PostgreSQL state,
 participant connection generations, receipts, and versions remain authority.
-Only explicit successful authenticated mutations wake a gameplay worker; reads,
-including `GET /matches/live/:matchId`, do not. For live PvP, minting a ticket
-with `POST /matches/live/:matchId/connection-tickets` wakes the live worker on
-that API process. Proposal acceptance can also wake live processing; ranked
-pairing activity may provide a local callback hint after a proposal is created,
-before any match exists. Gateway connection activity wakes its local worker.
-These wake hints are process-local and do not publish a durable cross-instance
-scheduler event. Every idle API instance continues its cheap persisted-work
-probe at the configured interval while running; startup also scans immediately.
-The probe does not disable, pause, extend, or reset any persisted decision
-deadline. Full deadline processing uses persisted deadlines and database-clock
-serialization, catching up elapsed decisions without resetting their clocks.
-Durable cross-instance wake/leader coordination and restart recovery remain
-follow-up work in issue `#358`.
+Ranked mutation attempts, including acceptance that creates a new active live
+match, publish durable intents before PostgreSQL writes;
+this announcement is distinct from the successful local post-response wake
+allowlist. Existing-match live actions, tickets, and presence writes do not
+create or reactivate a match, so they do not need a new intent: persisted active
+matches already prevent the live worker from declaring idle. This also keeps
+Redis out of the ongoing live-action path. The activity store is constructed when either
+`RATE_LIMIT_BACKEND=upstash` or `GAMEPLAY_SCHEDULER_BACKEND=upstash`; valid
+credentials alone do not construct it. A domain-validation failure can
+therefore publish an intent and
+then remove it during `finally`; the worker remains active until a safe idle
+confirmation succeeds. Only successful allowlisted operations, such as live
+ticket creation or proposal acceptance, trigger their immediate local wake.
+Recovery scans can also mark persisted work active. Ordinary reads, including
+`GET /matches/live/:matchId`, neither publish intents nor wake workers. Durable
+pre-write intents are shared across API instances, while local wake callbacks
+remain an optimization. PostgreSQL shared transaction advisory locks serialize
+these work producers with idle confirmation, and a producer validates its durable intent after
+taking the lock before it can write. A delayed writer whose intent was
+invalidated aborts with `503`. The live worker's idle transition requires the exclusive
+try-lock, removes intents older than 120 seconds under that lock, rechecks
+persisted matches, and clears active only if the epoch and revision still
+match and there are no pending intents. If Redis is unavailable or monitoring
+requests fallback, fast PostgreSQL scans preserve recovery. The probe policy
+does not disable, pause, extend, or reset persisted decision deadlines. Full
+deadline processing uses persisted deadlines and database-clock serialization,
+catching up elapsed decisions without resetting their clocks. See the
+[ranked operations guide](../deployment/ranked-operations.md) for staged
+activation and rollback; all writers must understand durable intents before
+Upstash mode is enabled.
 
 A dedicated PostgreSQL listener receives `live_pvp_match_changed` and
 `live_pvp_presence_changed` notifications. Gameplay notifications reload the
@@ -588,7 +615,8 @@ intermediate transition.
 
 The PostgreSQL notification listener is stopped when the process has no
 persisted active match and no local gateway sockets, avoiding an idle listener
-connection and reconnect loop. When accepting a gateway connection, the
+connection and reconnect loop. This listener serves gateway fan-out and is
+separate from the optional activity-store scheduler. When accepting a gateway connection, the
 gateway starts the listener before loading and sending the initial persisted
 snapshot, preventing a concurrent remote commit from falling between snapshot
 load and subscription. PostgreSQL notifications support gateway fan-out only;
@@ -719,3 +747,5 @@ This contract was planned, generated, edited, and reviewed with the assistance
 of Codex[GPT-5.6 Sol], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-5]. The
 idle-aware scheduling update was prepared with assistance from Codex-CLI[GPT-5]
 and Codex-CLI[gpt-6-luna], based on source inspection and user direction.
+The durable activity-store and staged scheduler guidance was updated with
+assistance from Codex[GPT-5], based on user-provided implementation requirements.

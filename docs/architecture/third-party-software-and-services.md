@@ -73,6 +73,18 @@ the [testing strategy](../testing/testing-strategy.md).
 | Cloudflare Pages           | Public static hosting for Docusaurus                                                                                              | Supports the separately deployed, account-free documentation site through a path-filtered workflow.                                                                                            |
 | Wits SDP Gitea and Actions | Git hosting, backlog/issues, pull requests, reviews, CI artifacts, and delivery automation                                        | Keeps project-methodology evidence and code review connected to Git while providing repository and host runner labels for validation and deployment.                                           |
 
+Upstash Redis is also used through the existing `@upstash/ratelimit` and
+`@upstash/redis` SDKs for shared HTTP quotas and durable gameplay activity
+signals. The REST transport reuses server-only credentials; separate versioned
+keyspaces keep rate-limit counters apart from persistent scheduling intents.
+Gameplay state remains authoritative in PostgreSQL, whose advisory transaction
+locks fence safe idle transitions. This permits idle DB workers to sleep without
+depending on a process-local callback or a lossy notification. Redis command
+budgets, outage handling, and staged activation are documented in
+[rate limiting](./rate-limiting.md) and
+[ranked operations](../deployment/ranked-operations.md). Adding this use does
+not establish production CU savings or authorize a paid plan upgrade.
+
 ## Supporting dependencies and manifest coverage
 
 Reviewed against the root, Web, API, docs and shared-package manifests on
@@ -135,3 +147,6 @@ Mermaid integration and motivation documented with assistance from Codex-CLI[GPT
 
 `@fastify/websocket` and `ws` realtime transport motivation documented with
 assistance from ChatGPT-Web[GPT-5.6 Sol].
+
+Upstash gameplay coordination purpose and boundaries documented with assistance
+from Codex-CLI[GPT-5].

@@ -34,28 +34,80 @@ not reverse a ranked migration after ranked matches have settled.
 `RANKED_SWEEP_INTERVAL_MS` defaults to 1000 and accepts 250–30000. It is the
 active-work scan interval for lease expiry, proposal expiry, pairing, and
 season transitions. Each API process scans immediately at startup to recover
-persisted work. Idle probes retain the configured interval just as active
-probes do, without a 30-minute discovery gap. Each probe is cheap; full
-maintenance runs only for pending work, a known due season or
-territory boundary, startup, capped backlog, or the approximately 60-second
-maintenance cadence. A known season or territory boundary may bring work
-forward, but its delay is clamped to no more than the configured probe
-interval. The season boundary is the active season's `active_ends_at`, or an
+persisted work. With `GAMEPLAY_SCHEDULER_BACKEND=polling` (the default), idle
+probes retain the configured interval just as active probes do. In `upstash`
+mode, active work still scans at this configured interval; an idle process
+instead waits up to 30 minutes between PostgreSQL probes, or until an earlier
+known work boundary. Full maintenance runs only for pending work, a known due
+season or territory boundary, startup, capped backlog, or the approximately
+60-second maintenance throttle. A known season or territory boundary may bring
+work forward. Its delay is clamped to the configured probe interval in polling
+mode, or to 30 minutes in coordinated idle mode. The season boundary is the active season's `active_ends_at`, or an
 eligible scheduled season's `intended_start_at`; the territory boundary uses
 the persisted policy cadence and `daily_cap_timezone` for active zones.
 
-Only explicit successful authenticated mutations wake the ranked worker on
-that same API process: ranked queue `POST`, heartbeat `POST`, and queue `DELETE`,
-plus proposal accept and decline `POST` operations. Territory endpoints are
-`GET` reads and do not wake workers. These are process-local hints, not durable
-cross-instance wake messages; idle API processes keep probing at the configured
-interval while running, and startup performs an immediate scan after a
-restart. Ranked pairing activity invokes the local live-worker callback after
-creating a proposal; it does not itself create a match. Proposal acceptance is
-the match-creating operation and may also wake live processing. Cross-instance
-wake/leader coordination and restart recovery remain follow-up work in issue
-`#358`. No measured database savings or deployed multi-instance behavior is
-asserted here. The existing server-only
+The gameplay scheduler configuration accepts `polling` or `upstash` and
+defaults to `polling`. The activity store is constructed when either
+`RATE_LIMIT_BACKEND=upstash` or `GAMEPLAY_SCHEDULER_BACKEND=upstash`; those API
+instances publish persistent pre-write intents even while scheduler polling
+mode is selected. Valid credentials by themselves are insufficient. An
+instance configured with local rate limiting and scheduler polling is unaware
+of durable coordination; retire it or move it to Upstash before enabling long
+idle sleeps. In Upstash
+mode, each instance reads one combined live/ranked activity snapshot with a
+direct `HMGET` every 10 seconds and wakes the relevant local workers when
+activity changes; initialization EVAL runs only when the epoch is missing. A
+continuously running API instance therefore performs
+about 259,200 snapshot reads per 30-day month; total reads grow with replica
+count. Mutation and initialization Lua commands plus rate-limit traffic share
+the same Redis budget, so include all of them when checking the selected plan's
+quota. Same-process successful mutations still use immediate local wake-ups;
+the Redis interval is for cross-instance observation and remains below the
+30-second queue lease and 20-second proposal window. PostgreSQL listeners
+remain off while idle; known boundaries can still schedule earlier database
+work. Other API traffic, housekeeping, and external database clients can also
+wake Neon compute.
+
+An optional `GAMEPLAY_SCHEDULER_NAMESPACE` selects the shared private Redis key
+namespace. If unset, the API derives it as a hash of the canonical database
+endpoint, including normalized host, port, and path; Neon `-pooler` is removed
+so pooler and direct URLs for the same database resolve identically. Every API
+replica and producer that shares the database must use the same namespace.
+Activity keys are persistent and have no TTL; do not delete or reset them to
+force an idle state. They contain opaque intent tokens only, never player IDs,
+and tokens are not logged.
+
+Before a gameplay writer changes PostgreSQL state, it takes the worker's shared
+transaction advisory lock and confirms its durable intent still exists. An
+idle transition requires the exclusive try-lock, removes intents older than
+120 seconds while holding that lock, rechecks PostgreSQL work under the lock,
+then clears active only if the activity epoch and revision are unchanged and
+no intents remain. A delayed writer whose intent was invalidated aborts with
+503 before database writes. If publication is unavailable, new ranked
+mutations fail closed. Redis outages or monitoring/fallback signals force fast
+PostgreSQL scans so Redis cannot cause work to be missed. Startup also scans
+persisted work immediately and marks discovered work active.
+
+Roll out in stages: first deploy the API with polling mode and durable intent
+publishing; then retire every older or otherwise unaware producer, including
+old local servers that can write to the same Neon database. Only after all
+writers understand the protocol, set the repository Actions variable
+`PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and deploy/restart the API. CI
+maps this variable to the Azure API App Service setting and defaults it to
+`polling`; changing only the live Azure setting is temporary because the next
+deployment will reset it from the repository variable/default. Do not enable
+Upstash mode during a rolling deployment that still has unaware writers. Roll
+back by setting the Actions variable to `polling` and redeploying/restarting;
+polling remains the correctness fallback.
+Upstash mode adds Redis commands and is not free. No CU savings, Neon suspend
+behavior, or deployed multi-instance result has been measured yet. No schema
+migration is required.
+
+Ranked queue `POST`, heartbeat `POST`, queue `DELETE`, proposal accept and
+decline `POST`, and other valid gameplay producers publish before their
+database writes; territory `GET` reads do not publish. Ranked pairing activity
+may also create live work after a proposal, while proposal acceptance creates
+the match. The existing server-only
 `ASYNC_PVP_CURSOR_SIGNING_KEY` also signs viewer-bound ranked standings cursors.
 Keep that value stable across API instances and rotations during a traversal.
 It must never be a `VITE_*` value.
@@ -65,6 +117,10 @@ leases and proposals, claims eligible pairs, and once per minute drains expired
 ten-minute standings snapshots in 100-row delete batches. The same ranked worker
 throttles territory maintenance to approximately once per minute: it settles due
 `territory-v1` windows chronologically and removes expired short-lived grants.
+These approximately 60-second throttles are internal `runOnce` maintenance
+cadences, not an idle database wake interval. In polling mode and while active,
+the configured sweep cadence still drives database scans; Upstash idle scans
+can be separated by up to 30 minutes or an earlier known work boundary.
 The live PvP deadline worker remains responsible for active match completion;
 ranked rating settlement and qualifying territory influence recording run inside
 the authoritative live terminal transaction.
@@ -102,8 +158,35 @@ unmatched ranked receipts, territory windows awaiting settlement, failed stale
 state retries, and expired-grant cleanup. During a closing season, confirm a
 `territory_season_close_receipts` row exists before expecting the ranked archive
 to seal. Investigate an unsettled terminal match or territory window before
-attempting a season close. The full database test suite runs in Gitea CI; a
-local focused test must use `TEST_DATABASE_URL` only.
+attempting a season close.
+
+The gameplay coordination integration test is a small fixture, not the full
+database suite. It is gated on
+`GAMEPLAY_COORDINATION_TEST_DATABASE_URL` and either
+`GAMEPLAY_COORDINATION_TEST_REDIS_HOST` or
+`GAMEPLAY_COORDINATION_TEST_REDIS_CONTAINER`. The database URL must target an
+isolated local PostgreSQL instance; the test creates and drops only its own
+random schema and runs no migrations. The Redis target must be an isolated local test
+service/container. CI may use the `postgres` service alias only with
+`CI=true`, the isolated `wits_world_test` database and the unusable
+`DATABASE_URL=postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard`
+sentinel. For local Postgres and Redis listening on loopback:
+
+```bash
+GAMEPLAY_COORDINATION_TEST_DATABASE_URL='postgresql://test_user:replace-me@127.0.0.1:5432/gameplay_coord_test' \
+GAMEPLAY_COORDINATION_TEST_REDIS_HOST=127.0.0.1 \
+npm test --workspace @wits-world/api -- gameplay-coordination.integration.test.ts
+```
+
+For a local owned Redis container, set
+`GAMEPLAY_COORDINATION_TEST_REDIS_CONTAINER=<container-name>` instead of the
+host variable; the test invokes `redis-cli --json` inside that container. The
+test does not load `.env` or use production connection settings.
+
+The full hosted database test suite is separate and runs in Gitea CI. It uses
+`TEST_DATABASE_URL`, creates a temporary database, and applies the migration
+set; reserve manual hosted runs for authorized release smoke or recovery
+evidence. Never point either integration target at production.
 
 ## AI declaration
 
@@ -112,3 +195,5 @@ ChatGPT-Web[GPT-5.6 Sol]. The operation-scoped policy reuse documentation was
 updated with assistance from Codex (GPT-6). The idle-aware worker behavior
 update was prepared with assistance from Codex-CLI[GPT-5] and
 Codex-CLI[gpt-6-luna], based on source inspection and user direction.
+The durable activity-store rollout guidance was updated with assistance from
+Codex[GPT-5], based on user-provided implementation requirements.

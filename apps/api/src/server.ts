@@ -51,7 +51,15 @@ import { createLivePvpService } from './matches/live-pvp-service.js';
 import { createLivePvpGateway } from './matches/live-pvp-gateway.js';
 import { createLivePvpDeadlineProcessor } from './matches/live-pvp-deadline-processor.js';
 import { createLivePvpRuntimeScheduler } from './matches/live-pvp-runtime-scheduler.js';
-import { hasLivePvpWork } from './matches/gameplay-work.js';
+import { hasLivePvpWork, nextRankedSweep } from './matches/gameplay-work.js';
+import { createUpstashGameplayActivityStore } from './matches/gameplay-activity-store.js';
+import {
+  createGameplayCoordination,
+  createGameplayMutationGuard,
+  gameplayCoordinationNamespace,
+  type GameplayCoordination,
+} from './matches/gameplay-coordination.js';
+import type { RankedDatabase } from './matches/ranked-database.js';
 import { createLivePvpNotificationListener } from './matches/live-pvp-notifications.js';
 import { createTrustService } from './trust/trust-service.js';
 import { createTrustRestrictionService } from './trust/trust-restrictions.js';
@@ -94,6 +102,36 @@ async function startServer(): Promise<void> {
   const databaseConfig = buildDatabaseConfig();
 
   const database = createDatabasePool(databaseConfig);
+  const gameplayLogger = {
+    error(_context: Record<string, unknown>, message: string) {
+      console.error(message);
+    },
+  };
+  const activityStore =
+    config.rateLimitBackend === 'upstash' ||
+    config.gameplaySchedulerBackend === 'upstash'
+      ? createUpstashGameplayActivityStore({
+          url: config.upstashRedisRestUrl!,
+          token: config.upstashRedisRestToken!,
+          namespace:
+            config.gameplaySchedulerNamespace ??
+            gameplayCoordinationNamespace(databaseConfig.connectionString),
+          timeoutMs: config.rateLimitTimeoutMs,
+        })
+      : undefined;
+  // Producers announce work even during the initial, fast-polling rollout.
+  // Pure ranked page reads keep using the original, unguarded pool.
+  const rankedDatabase: RankedDatabase = activityStore
+    ? {
+        connect: database.connect.bind(database),
+        query: database.query.bind(database),
+        activityGuard: createGameplayMutationGuard(
+          activityStore,
+          ['ranked'],
+          gameplayLogger,
+        ),
+      }
+    : database;
 
   const auth0ManagementClient =
     createAuth0ManagementClient(authManagementConfig);
@@ -102,7 +140,10 @@ async function startServer(): Promise<void> {
   const trustReviewService = createTrustReviewService(database);
   const placementService = createPlacementService(database);
   const trustRestrictions = createTrustRestrictionService(database);
-  const rankedService = createRankedService(database, trustRestrictions);
+  const rankedService = createRankedService(rankedDatabase, trustRestrictions, {
+    activityStore,
+    logger: gameplayLogger,
+  });
   const rankedReadService = createRankedReadService(
     database,
     createSignedCursorCodec(config.asyncPvpCursorSigningKey),
@@ -286,6 +327,7 @@ async function startServer(): Promise<void> {
       analytics: authorAnalyticsService,
     },
   });
+  gameplayLogger.error = (context, message) => app.log.error(context, message);
 
   const accountDeletionRetryProcessor = createAccountDeletionRetryProcessor(
     auth0ManagementClient,
@@ -329,6 +371,7 @@ async function startServer(): Promise<void> {
     livePvpService,
     app.log,
   );
+  let gameplayCoordination: GameplayCoordination | undefined;
   const livePvpRuntimeScheduler = createLivePvpRuntimeScheduler(
     livePvpDeadlineProcessor,
     livePvpService,
@@ -336,12 +379,22 @@ async function startServer(): Promise<void> {
     {
       deadlineSweepIntervalMs: config.livePvpDeadlineSweepIntervalMs,
       transientCleanupIntervalMs: config.livePvpTransientCleanupIntervalMs,
+      coordinatedIdle: config.gameplaySchedulerBackend === 'upstash',
       hasActiveWork: async () => {
         const pending = await hasLivePvpWork(database);
         if (!pending && livePvpGateway.connectionCount() > 0) {
           await livePvpGateway.refreshConnections();
         }
-        return pending || livePvpGateway.connectionCount() > 0;
+        if (pending || livePvpGateway.connectionCount() > 0) {
+          await gameplayCoordination?.observeActive('live', true);
+          return true;
+        }
+        if (!gameplayCoordination) return false;
+        const confirmation = await gameplayCoordination.confirmIdle(
+          'live',
+          hasLivePvpWork,
+        );
+        return !confirmation.idle;
       },
       onWorkState: async (active) => {
         // No local sockets need fan-out while idle. Stop reconnect attempts too,
@@ -360,13 +413,37 @@ async function startServer(): Promise<void> {
     app.log,
   );
   const rankedScheduler = createRankedScheduler(
-    database,
+    rankedDatabase,
     rankedService,
     rankedReadService,
     app.log,
     config.rankedSweepIntervalMs,
-    { onMatchesCreated: () => livePvpRuntimeScheduler.wake() },
+    {
+      onMatchesCreated: () => livePvpRuntimeScheduler.wake(),
+      coordinatedIdle: config.gameplaySchedulerBackend === 'upstash',
+      nextSweep: async () => {
+        const next = await nextRankedSweep(database);
+        if (!gameplayCoordination) return next;
+        if (next === true) {
+          await gameplayCoordination.observeActive('ranked', true);
+          return true;
+        }
+        const confirmation = await gameplayCoordination.confirmIdle(
+          'ranked',
+          nextRankedSweep,
+        );
+        return confirmation.idle ? confirmation.nextSweep : true;
+      },
+    },
   );
+  if (config.gameplaySchedulerBackend === 'upstash') {
+    gameplayCoordination = createGameplayCoordination(
+      database,
+      activityStore!,
+      { live: livePvpRuntimeScheduler, ranked: rankedScheduler },
+      app.log,
+    );
+  }
   wakeLiveWorker = () => livePvpRuntimeScheduler.wake();
   wakeRankedWorker = () => rankedScheduler.wake();
   const cardTradeMaintenanceScheduler = createCardTradeMaintenanceScheduler(
@@ -376,6 +453,7 @@ async function startServer(): Promise<void> {
   );
 
   app.addHook('onClose', async () => {
+    await gameplayCoordination?.stop();
     await placementScheduler.stop();
     await livePvpRuntimeScheduler.stop();
     await rankedScheduler.stop();
@@ -397,6 +475,7 @@ async function startServer(): Promise<void> {
 
     livePvpRuntimeScheduler.start();
     rankedScheduler.start();
+    gameplayCoordination?.start();
     accountDeletionRetryScheduler.start();
     movementEvidenceCleanupScheduler.start();
     trustEvaluationScheduler.start();

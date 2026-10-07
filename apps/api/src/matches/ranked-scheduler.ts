@@ -7,6 +7,7 @@ import type { RankedDatabase } from './ranked-database.js';
 import type { RankedReadService } from './ranked-read-service.js';
 import { createPoolRunObserver } from '../database/pool-observability.js';
 import { createDemandScheduler } from '../database/demand-scheduler.js';
+import { DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS } from '../config/timers.js';
 import { nextRankedSweep } from './gameplay-work.js';
 import {
   cancelExpiredTerritoryContenders,
@@ -52,6 +53,7 @@ export function createRankedScheduler(
   options: {
     nextSweep?: () => Promise<boolean | number>;
     onMatchesCreated?: () => void;
+    coordinatedIdle?: boolean;
   } = {},
 ): RankedScheduler {
   if (
@@ -137,7 +139,9 @@ export function createRankedScheduler(
   let nextBoundaryAt: number | undefined;
   const scheduler = createDemandScheduler({
     activeIntervalMs: intervalMs,
-    idleIntervalMs: intervalMs,
+    idleIntervalMs: options.coordinatedIdle
+      ? DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS
+      : intervalMs,
     run: async () => {
       const next = await (options.nextSweep?.() ?? nextRankedSweep(database));
       const now = Date.now();
@@ -156,9 +160,15 @@ export function createRankedScheduler(
           result.pairedPlayers >= 20 || result.territorySettlements >= 24;
       }
       if (forceMaintenance || next === true) return true;
-      // Without durable cross-instance wakes, keep discovering remote commits
-      // even when the next known season/territory boundary is much later.
-      return typeof next === 'number' ? Math.min(next, intervalMs) : false;
+      // Only durable cross-instance coordination permits long idle DB sleeps.
+      return typeof next === 'number'
+        ? Math.min(
+            next,
+            options.coordinatedIdle
+              ? DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS
+              : intervalMs,
+          )
+        : false;
     },
     onError: (error) =>
       logger.error(errorContext(error), 'Ranked maintenance sweep failed.'),

@@ -77,8 +77,18 @@ database locks serialize claims and season changes. No season is created by
 deployment. An operator schedules seasons as described in
 [ranked operations](../deployment/ranked-operations.md).
 
+With shared gameplay coordination configured, ranked mutations publish a
+durable activity intent before database writes. If publication or intent
+validation fails, the mutation returns `503 GAMEPLAY_COORDINATION_UNAVAILABLE`
+without committing its change; the client can retry. Ordinary queue/profile
+reads do not publish intents. Activity detection does not extend queue leases
+or proposal deadlines. The operations guide describes the required staged
+rollout before enabling long idle database sleeps.
+
 ## AI declaration
 
 This document was created and reviewed with assistance from Codex (GPT-5).
 
 This account-deletion update was edited with assistance from Codex[GPT-6].
+
+Durable scheduling availability documented with assistance from Codex-CLI[GPT-5].

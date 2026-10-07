@@ -133,13 +133,61 @@ the same 30-minute interval, and the API rejects intervals shorter than 15
 minutes. Request-time checks remain authoritative; the background jobs only
 converge failed or inactive work.
 
-These housekeeping intervals do not make the complete API idle. Live-PvP and
-ranked workers retain correctness-safe persisted-work probes at their configured
-cadences (one second by default), even with no local gameplay activity. Longer
-idle sleeps require durable cross-instance wake coordination and restart
-recovery, tracked in issue `#358`. See the [ranked operations guide](../deployment/ranked-operations.md)
-and [live-PvP contract](../architecture/live-pvp-api-contract.md). Do not claim
-scale-to-zero or reduced CU-hour usage from the housekeeping settings alone.
+These housekeeping intervals do not by themselves make the complete API idle.
+`GAMEPLAY_SCHEDULER_BACKEND` defaults to `polling`, where live-PvP and ranked
+workers probe persisted work at their configured cadence (one second by
+default), even with no local gameplay activity. The scheduler implementation
+is being added with a staged `upstash` mode intended for use only after it is
+deployed and all database writers have durable-intent support. In that mode,
+active work continues polling at the configured interval, while idle PostgreSQL probes can
+sleep for up to 30 minutes or until an earlier known work boundary. Each API
+instance reads a combined Redis activity snapshot using one direct `HMGET`
+every 10 seconds and wakes the affected local worker; initialization EVAL runs
+only when the epoch is absent. At that cadence, one
+continuously running API instance performs about 259,200 snapshot reads per
+30-day month; multiply by the continuously running replica count. Mutation and
+initialization Lua commands, along with rate-limit traffic, use the same Redis
+budget and must be included when checking plan quota. Same-process local wakes
+remain immediate. The PostgreSQL gateway listener remains off while
+there is no persisted active match or local socket. Other API traffic,
+housekeeping, or external database clients can still wake Neon compute.
+
+The activity store is constructed when either `RATE_LIMIT_BACKEND=upstash` or
+`GAMEPLAY_SCHEDULER_BACKEND=upstash`; producers then publish persistent
+pre-write intents, including in scheduler polling mode. Merely configuring
+Upstash credentials while both backends remain local/polling does not publish
+intents, so those local/development writers are unaware of coordination and
+must be retired or moved to Upstash before enabling long idle sleeps. Writers
+take shared PostgreSQL transaction advisory
+locks and validate their intent before writing. Idle confirmation uses an
+exclusive try-lock, removes intents older than 120 seconds under that lock,
+rechecks database work, and clears active only when the activity epoch and
+revision are unchanged and no intents remain. Invalidated delayed writers abort
+with `503`; unavailable publication blocks new ranked mutations. Redis outages
+or monitoring/fallback signals trigger fast PostgreSQL scans, and startup scans
+persisted work immediately. Activity keys have no TTL and must not be deleted
+to force idle. No schema migration is required.
+
+Use the documented staged rollout: first deploy polling mode with durable
+writers, then retire all older/unaware producers (including old local servers)
+that can write to the same Neon database. Only then set the repository Actions
+variable `PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and deploy/restart;
+CI maps it to the Azure API setting `GAMEPLAY_SCHEDULER_BACKEND` and defaults
+that setting to `polling`. A manual Azure setting change alone is temporary;
+the next deployment reapplies the repository variable/default. Do not enable
+Upstash mode while an unaware writer is still running. Roll back by setting the
+Actions variable to `polling` and redeploying/restarting.
+`GAMEPLAY_SCHEDULER_NAMESPACE` is optional; its default is a hash of
+the canonical database endpoint with Neon `-pooler` removed and port/path
+retained. All replicas sharing the database must use the same namespace. The
+Upstash store reuses existing Redis credentials and adds Redis commands, so
+this is not zero-cost. CU savings and actual Neon suspension have not been
+measured or verified in deployment; scale-to-zero remains conditional on the
+mode being safely enabled and no other traffic or maintenance waking compute.
+See the [ranked operations guide](../deployment/ranked-operations.md),
+[Azure deployment setup](../deployment/azure-deployment-setup.md), and
+[live-PvP contract](../architecture/live-pvp-api-contract.md) for the protocol
+and operator sequence.
 
 In the Neon console, keep the production compute minimum at `0.25 CU` and keep
 scale-to-zero enabled with the five-minute inactivity delay. Review project
@@ -208,3 +256,6 @@ Page title clarified with assistance from Codex-CLI[GPT-6].
 
 Gameplay-probe and compute-usage limitations were clarified with assistance
 from Codex-CLI[GPT-5].
+
+The staged gameplay scheduler guidance was updated with assistance from
+Codex[GPT-5], based on user-provided implementation requirements.

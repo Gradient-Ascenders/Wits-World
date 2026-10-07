@@ -21,6 +21,11 @@ import {
 import { createRankedLiveMatch } from './ranked-match-creation.js';
 import { rankedSearchRange } from './ranked-policy.js';
 import {
+  createGameplayMutationGuard,
+  GameplayCoordinationUnavailable,
+} from './gameplay-coordination.js';
+import type { GameplayActivityStore } from './gameplay-activity-store.js';
+import {
   assertTerritoryQueueGrantAvailable,
   createTerritoryQueueGrant,
   loadTerritoryGrantForQueue,
@@ -119,7 +124,36 @@ export interface RankedService {
 export function createRankedService(
   database: RankedDatabase,
   trustRestrictions: TrustRestrictionService,
+  options: {
+    activityStore?: GameplayActivityStore;
+    logger?: { error(context: Record<string, unknown>, message: string): void };
+  } = {},
 ): RankedService {
+  async function mutation<T>(
+    operation: (client: RankedClient) => Promise<T>,
+    createsMatch = false,
+  ): Promise<T> {
+    const guard = options.activityStore
+      ? createGameplayMutationGuard(
+          options.activityStore,
+          createsMatch ? ['live', 'ranked'] : ['ranked'],
+          options.logger ?? { error: () => {} },
+        )
+      : undefined;
+    try {
+      return await rankedTransaction(database, operation, guard);
+    } catch (error) {
+      if (error instanceof GameplayCoordinationUnavailable) {
+        throw new RankedError(
+          503,
+          'GAMEPLAY_COORDINATION_UNAVAILABLE',
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
   async function status(playerId: string): Promise<RankedQueueView> {
     const client = await database.connect();
     try {
@@ -135,7 +169,7 @@ export function createRankedService(
     deckId: string,
     territoryClaim?: TerritoryClaim,
   ): Promise<RankedQueueView> {
-    return rankedTransaction(database, async (client) => {
+    return mutation(async (client) => {
       const player = await client.query<{ lifecycle_status: string }>(
         `select lifecycle_status from public.players
           where id = $1::uuid for update`,
@@ -260,7 +294,7 @@ export function createRankedService(
   }
 
   async function heartbeat(playerId: string): Promise<RankedQueueView> {
-    return rankedTransaction(database, async (client) => {
+    return mutation(async (client) => {
       const queue = await loadActiveQueue(client, playerId, true);
       const now = await rankedDatabaseNow(client);
       if (!queue || queue.status !== 'searching') {
@@ -298,7 +332,7 @@ export function createRankedService(
         if (result) return result;
         continue;
       }
-      const result = await rankedTransaction(database, async (client) => {
+      const result = await mutation(async (client) => {
         await lockPlayers(client, [playerId]);
         const queue = await loadActiveQueue(client, playerId, true);
         const now = await rankedDatabaseNow(client);
@@ -349,7 +383,7 @@ export function createRankedService(
     response: 'accepted' | 'declined',
     cancelIntent = false,
   ): Promise<RankedQueueView | null> {
-    return rankedTransaction(database, async (client) => {
+    return mutation(async (client) => {
       const proposalPreview = await client.query<ProposalRow>(
         `select id::text, season_id::text, status, acceptance_deadline
            from private.ranked_matchmaking_proposals
@@ -519,7 +553,7 @@ export function createRankedService(
         }
       }
       return finish();
-    });
+    }, response === 'accepted');
   }
 
   return {

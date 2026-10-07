@@ -47,7 +47,10 @@ afterEach(() => {
 });
 
 describe('ranked scheduler', () => {
-  function setup(nextSweep = vi.fn().mockResolvedValue(1_800_000)) {
+  function setup(
+    nextSweep = vi.fn().mockResolvedValue(1_800_000),
+    coordinatedIdle = false,
+  ) {
     const service = {
       expireQueueEntries: vi.fn().mockResolvedValue(0),
       expireProposals: vi.fn().mockResolvedValue(0),
@@ -62,10 +65,46 @@ describe('ranked scheduler', () => {
       } as unknown as RankedReadService,
       { info: vi.fn(), error: vi.fn() },
       1000,
-      { nextSweep, onMatchesCreated },
+      { nextSweep, onMatchesCreated, coordinatedIdle },
     );
     return { scheduler, service, nextSweep, onMatchesCreated };
   }
+
+  it('sleeps without DB probes in coordinated mode, but wakes immediately for shared queue activity', async () => {
+    vi.useFakeTimers();
+    const { scheduler, nextSweep, service } = setup(undefined, true);
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(nextSweep).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(900_000);
+    expect(nextSweep).toHaveBeenCalledOnce();
+    expect(service.pairOnce).toHaveBeenCalledOnce();
+    nextSweep.mockResolvedValue(true);
+    scheduler.wake();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(service.pairOnce).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(service.pairOnce).toHaveBeenCalledTimes(3);
+    await scheduler.stop();
+  });
+
+  it('uses bounded idle recovery and preserves earlier known boundaries in coordinated mode', async () => {
+    vi.useFakeTimers();
+    const nextSweep = vi
+      .fn()
+      .mockResolvedValueOnce(600_000)
+      .mockResolvedValue(1_800_000);
+    const { scheduler } = setup(nextSweep, true);
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(599_999);
+    expect(nextSweep).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(nextSweep).toHaveBeenCalledTimes(2);
+    expect(maintenance.maintainTerritorySettlements).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1_800_000);
+    expect(nextSweep).toHaveBeenCalledTimes(3);
+    await scheduler.stop();
+  });
 
   it('discovers remotely queued players without a wake and skips repeated empty maintenance', async () => {
     vi.useFakeTimers();
