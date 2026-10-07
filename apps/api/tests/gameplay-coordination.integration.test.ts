@@ -8,10 +8,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   createGameplayCoordination,
+  createGameplayExistingWorkGuard,
   createGameplayMutationGuard,
   GameplayCoordinationUnavailable,
 } from '../src/matches/gameplay-coordination.js';
 import { createUpstashGameplayActivityStore } from '../src/matches/gameplay-activity-store.js';
+import {
+  rankedTransaction,
+  type RankedDatabase,
+} from '../src/matches/ranked-database.js';
 
 const databaseUrl = process.env.GAMEPLAY_COORDINATION_TEST_DATABASE_URL;
 const redisContainer = process.env.GAMEPLAY_COORDINATION_TEST_REDIS_CONTAINER;
@@ -57,16 +62,16 @@ describe.skipIf(!enabled)('gameplay coordination integration', () => {
     return output.length > 0 ? JSON.parse(output) : null;
   }
 
-  function createStore() {
+  function createStore(adapter = redis) {
     if (!namespace) throw new Error('Redis test namespace is not initialized.');
-    if (!redis) throw new Error('Redis test adapter is not initialized.');
+    if (!adapter) throw new Error('Redis test adapter is not initialized.');
     return createUpstashGameplayActivityStore({
       url: 'https://redis.test.invalid',
       token: 'integration-test-only',
       namespace,
       timeoutMs: 10_000,
       orphanAfterMs,
-      redis,
+      redis: adapter,
     });
   }
 
@@ -375,6 +380,174 @@ describe.skipIf(!enabled)('gameplay coordination integration', () => {
     } finally {
       if (transaction) await writer.query('rollback');
       if (!writerReleased) writer.release();
+    }
+  });
+
+  it('commits existing-work expiry during a Redis outage only with the explicit PG guard', async () => {
+    const id = randomUUID();
+    await pool!.query(
+      `insert into ${workTable()} (id, worker) values ($1, 'ranked')`,
+      [id],
+    );
+    let redisCalls = 0;
+    const unavailableStore = createStore({
+      async eval() {
+        redisCalls += 1;
+        throw new Error('Redis offline in integration test.');
+      },
+      async hmget() {
+        redisCalls += 1;
+        throw new Error('Redis offline in integration test.');
+      },
+    });
+    const database: RankedDatabase = {
+      connect: pool!.connect.bind(pool!),
+      query: pool!.query.bind(pool!),
+      activityGuard: createGameplayMutationGuard(
+        unavailableStore,
+        ['ranked'],
+        logger(),
+      ),
+    };
+    let writes = 0;
+    async function expire(client: pg.PoolClient): Promise<number> {
+      writes += 1;
+      const result = await client.query<{ id: string }>(
+        `delete from ${workTable()} where id = $1 returning id`,
+        [id],
+      );
+      return result.rows.length;
+    }
+
+    try {
+      // An absent override must retain the fail-closed producer guard.
+      await expect(
+        rankedTransaction(database, expire, database.existingWorkGuard),
+      ).rejects.toBeInstanceOf(GameplayCoordinationUnavailable);
+      expect(writes).toBe(0);
+      expect(redisCalls).toBe(1);
+      const before = await pool!.query<{ pending: boolean }>(
+        `select exists (select 1 from ${workTable()} where id = $1) as pending`,
+        [id],
+      );
+      expect(before.rows[0]?.pending).toBe(true);
+
+      database.existingWorkGuard = createGameplayExistingWorkGuard('ranked');
+      await expect(
+        rankedTransaction(database, expire, database.existingWorkGuard),
+      ).resolves.toBe(1);
+      expect(writes).toBe(1);
+      expect(redisCalls).toBe(1);
+      const after = await pool!.query<{ pending: boolean }>(
+        `select exists (select 1 from ${workTable()} where id = $1) as pending`,
+        [id],
+      );
+      expect(after.rows[0]?.pending).toBe(false);
+    } finally {
+      await pool!.query(`delete from ${workTable()} where id = $1`, [id]);
+    }
+  });
+
+  it('serializes the existing-work PG guard with exclusive idle confirmation in both directions', async () => {
+    await pool!.query(`delete from ${workTable()}`);
+    const id = randomUUID();
+    await pool!.query(
+      `insert into ${workTable()} (id, worker) values ($1, 'ranked')`,
+      [id],
+    );
+    const permit = await createGameplayExistingWorkGuard('ranked').begin();
+    const idle = await pool!.connect();
+    const writer = await pool!.connect();
+    let idleTransaction = false;
+    let writerTransaction = false;
+    try {
+      await idle.query('begin');
+      idleTransaction = true;
+      await idle.query('select pg_advisory_xact_lock($1, $2)', [
+        advisoryLockClass,
+        workerId.ranked,
+      ]);
+      await writer.query('begin');
+      writerTransaction = true;
+      const backend = await writer.query<{ pid: number }>(
+        'select pg_backend_pid() as pid',
+      );
+      const entering = permit.enter(writer);
+      let settled = false;
+      void entering.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      let waiting = false;
+      const waitUntil = Date.now() + 1_000;
+      // Observe the blocked PostgreSQL lock request before releasing the fence.
+      while (!waiting && Date.now() < waitUntil) {
+        const locks = await pool!.query<{ waiting: boolean }>(
+          `select exists (
+             select 1 from pg_locks
+              where pid = $1 and locktype = 'advisory' and not granted
+           ) as waiting`,
+          [backend.rows[0]?.pid],
+        );
+        waiting = locks.rows[0]?.waiting ?? false;
+        if (!waiting) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(waiting).toBe(true);
+      expect(settled).toBe(false);
+
+      await idle.query('rollback');
+      idleTransaction = false;
+      await expect(entering).resolves.toBeUndefined();
+      await writer.query(`delete from ${workTable()} where id = $1`, [id]);
+      const coordinator = coordination();
+      let probes = 0;
+      async function probe(client: pg.PoolClient): Promise<boolean> {
+        probes += 1;
+        const result = await client.query<{ pending: boolean }>(
+          `select exists (
+             select 1 from ${workTable()} where worker = 'ranked'
+           ) as pending`,
+        );
+        return result.rows[0]?.pending ?? false;
+      }
+
+      await expect(coordinator.confirmIdle('ranked', probe)).resolves.toEqual({
+        idle: false,
+        nextSweep: true,
+      });
+      expect(probes).toBe(0);
+
+      await writer.query('commit');
+      writerTransaction = false;
+      await expect(coordinator.confirmIdle('ranked', probe)).resolves.toEqual({
+        idle: true,
+        nextSweep: false,
+      });
+      expect(probes).toBe(1);
+      expect((await store.read()).ranked.active).toBe(false);
+    } finally {
+      try {
+        if (idleTransaction) {
+          await idle.query('rollback');
+          idleTransaction = false;
+        }
+      } finally {
+        idle.release(idleTransaction);
+        try {
+          if (writerTransaction) {
+            await writer.query('rollback');
+            writerTransaction = false;
+          }
+        } finally {
+          writer.release(writerTransaction);
+          await permit.finish();
+          await pool!.query(`delete from ${workTable()} where id = $1`, [id]);
+        }
+      }
     }
   });
 });

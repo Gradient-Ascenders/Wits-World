@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RankedDatabase } from '../src/matches/ranked-database.js';
 import type { RankedReadService } from '../src/matches/ranked-read-service.js';
 import type { RankedService } from '../src/matches/ranked-service.js';
+import { GameplayCoordinationUnavailable } from '../src/matches/gameplay-coordination.js';
 
 const maintenance = vi.hoisted(() => ({
   maintainRankedSeasons: vi.fn(),
@@ -57,17 +58,17 @@ describe('ranked scheduler', () => {
       pairOnce: vi.fn().mockResolvedValue(false),
     };
     const onMatchesCreated = vi.fn();
+    const reads = { cleanupExpiredSnapshots: vi.fn().mockResolvedValue(0) };
+    const logger = { info: vi.fn(), error: vi.fn() };
     const scheduler = createRankedScheduler(
       {} as RankedDatabase,
       service as unknown as RankedService,
-      {
-        cleanupExpiredSnapshots: vi.fn().mockResolvedValue(0),
-      } as unknown as RankedReadService,
-      { info: vi.fn(), error: vi.fn() },
+      reads as unknown as RankedReadService,
+      logger,
       1000,
       { nextSweep, onMatchesCreated, coordinatedIdle },
     );
-    return { scheduler, service, nextSweep, onMatchesCreated };
+    return { scheduler, service, reads, logger, nextSweep, onMatchesCreated };
   }
 
   it('sleeps without DB probes in coordinated mode, but wakes immediately for shared queue activity', async () => {
@@ -175,6 +176,104 @@ describe('ranked scheduler', () => {
     expect(service.pairOnce).toHaveBeenCalledTimes(2);
     expect(maintenance.maintainTerritorySettlements).toHaveBeenCalledTimes(2);
     await scheduler.stop();
+  });
+
+  it('processes 20-second proposals and 30-second leases during a Redis outage, then resumes work creation', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-08T08:00:00.000Z'));
+    const startedAt = Date.now();
+    let pendingProposal = true;
+    let pendingLease = true;
+    const proposalExpiries: number[] = [];
+    const leaseExpiries: number[] = [];
+    const nextSweep = vi.fn(async () =>
+      pendingProposal || pendingLease ? true : 1_800_000,
+    );
+    const { scheduler, service, reads, logger, onMatchesCreated } = setup(
+      nextSweep,
+      true,
+    );
+    maintenance.maintainRankedSeasons.mockRejectedValue(
+      new GameplayCoordinationUnavailable(),
+    );
+    service.expireProposals.mockImplementation(async () => {
+      if (!pendingProposal || Date.now() - startedAt < 20_000) return 0;
+      pendingProposal = false;
+      proposalExpiries.push(Date.now() - startedAt);
+      return 1;
+    });
+    service.expireQueueEntries.mockImplementation(async () => {
+      if (!pendingLease || Date.now() - startedAt < 30_000) return 0;
+      pendingLease = false;
+      leaseExpiries.push(Date.now() - startedAt);
+      return 1;
+    });
+
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(proposalExpiries).toEqual([20_000]);
+    expect(leaseExpiries).toEqual([]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(leaseExpiries).toEqual([30_000]);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(service.pairOnce).not.toHaveBeenCalled();
+    expect(reads.cleanupExpiredSnapshots).toHaveBeenCalledTimes(2);
+    expect(maintenance.maintainTerritorySettlements).toHaveBeenCalledTimes(2);
+    expect(maintenance.cancelExpiredTerritoryContenders).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(maintenance.cleanupExpiredTerritoryGrants).toHaveBeenCalledTimes(2);
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(logger.error).toHaveBeenCalledWith(
+      {},
+      'Ranked work creation paused; existing-work maintenance continues.',
+    );
+
+    // Recovery must retry creation even if the DB probe now reports idle.
+    maintenance.maintainRankedSeasons.mockResolvedValue({
+      startedClosing: false,
+      closedSeason: false,
+      activatedSeason: true,
+    });
+    service.pairOnce.mockResolvedValueOnce(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onMatchesCreated).toHaveBeenCalledOnce();
+    expect(service.pairOnce).toHaveBeenCalledTimes(2);
+    const probesAfterRecovery = nextSweep.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(nextSweep).toHaveBeenCalledTimes(probesAfterRecovery);
+    await scheduler.stop();
+  });
+
+  it('keeps successful pairs and existing-work cleanup when Redis fails mid-pairing', async () => {
+    const { scheduler, service, reads, onMatchesCreated } = setup();
+    service.pairOnce
+      .mockResolvedValueOnce(true)
+      .mockRejectedValue(new GameplayCoordinationUnavailable());
+    service.expireQueueEntries.mockResolvedValue(1);
+    service.expireProposals.mockResolvedValue(2);
+    const result = await scheduler.runOnce();
+    expect(result).toMatchObject({
+      expiredEntries: 1,
+      resolvedProposals: 2,
+      pairedPlayers: 2,
+      workCreationPaused: true,
+    });
+    expect(onMatchesCreated).toHaveBeenCalledOnce();
+    expect(reads.cleanupExpiredSnapshots).toHaveBeenCalledOnce();
+    expect(maintenance.maintainTerritorySettlements).toHaveBeenCalledOnce();
+  });
+
+  it('does not disguise a pairing database error as a recoverable coordination outage', async () => {
+    const { scheduler, service, reads } = setup();
+    const failure = Object.assign(new Error('database unavailable'), {
+      code: '08006',
+    });
+    service.pairOnce.mockRejectedValue(failure);
+    await expect(scheduler.runOnce()).rejects.toBe(failure);
+    expect(service.expireQueueEntries).toHaveBeenCalledOnce();
+    expect(service.expireProposals).toHaveBeenCalledOnce();
+    expect(reads.cleanupExpiredSnapshots).not.toHaveBeenCalled();
   });
 
   it('reports one privacy-safe error when interval ticks share a failed run', async () => {

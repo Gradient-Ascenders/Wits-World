@@ -138,7 +138,8 @@ These housekeeping intervals do not by themselves make the complete API idle.
 workers probe persisted work at their configured cadence (one second by
 default), even with no local gameplay activity. The scheduler implementation
 is being added with a staged `upstash` mode intended for use only after it is
-deployed and all database writers have durable-intent support. In that mode,
+deployed and all producers of new persisted gameplay work have durable-intent
+support. In that mode,
 active work continues polling at the configured interval, while idle PostgreSQL probes can
 sleep for up to 30 minutes or until an earlier known work boundary. Each API
 instance reads a combined Redis activity snapshot using one direct `HMGET`
@@ -153,17 +154,25 @@ there is no persisted active match or local socket. Other API traffic,
 housekeeping, or external database clients can still wake Neon compute.
 
 The activity store is constructed when either `RATE_LIMIT_BACKEND=upstash` or
-`GAMEPLAY_SCHEDULER_BACKEND=upstash`; producers then publish persistent
+`GAMEPLAY_SCHEDULER_BACKEND=upstash`; work producers then publish persistent
 pre-write intents, including in scheduler polling mode. Merely configuring
 Upstash credentials while both backends remain local/polling does not publish
 intents, so those local/development writers are unaware of coordination and
-must be retired or moved to Upstash before enabling long idle sleeps. Writers
-take shared PostgreSQL transaction advisory
-locks and validate their intent before writing. Idle confirmation uses an
+must be retired or moved to Upstash before enabling long idle sleeps. Work
+producers take shared PostgreSQL transaction advisory locks and validate their
+durable intent before writing. Ranked API mutations, season transitions, and
+pairing fail closed if that Redis signal is unavailable. Existing queue and
+proposal expiry and due territory settlement instead use a shared PG-only
+transaction guard and continue without Redis publication or intent validation.
+The scheduler pauses the season and pairing phases on coordination errors,
+continues expiry and cleanup, and retries creation at the active cadence while
+preserving normal cleanup throttles. Existing live actions, tickets, and
+presence writes cannot introduce or reactivate an active match and do not need
+a new scheduler intent. Idle confirmation uses an
 exclusive try-lock, removes intents older than 120 seconds under that lock,
 rechecks database work, and clears active only when the activity epoch and
 revision are unchanged and no intents remain. Invalidated delayed writers abort
-with `503`; unavailable publication blocks new ranked mutations. Redis outages
+with `503`. Redis outages
 or monitoring/fallback signals trigger fast PostgreSQL scans, and startup scans
 persisted work immediately. Activity keys have no TTL and must not be deleted
 to force idle. No schema migration is required.
@@ -259,3 +268,4 @@ from Codex-CLI[GPT-5].
 
 The staged gameplay scheduler guidance was updated with assistance from
 Codex[GPT-5], based on user-provided implementation requirements.
+Existing-work outage behavior was clarified with assistance from Codex-CLI[gpt-6-luna].

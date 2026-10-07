@@ -335,8 +335,8 @@ usage in a controlled deployment before load testing; local fake-store tests
 do not prove those properties. See [API rate limiting](../architecture/rate-limiting.md).
 
 Gameplay scheduling reuses these server-only Upstash credentials. Keep
-`GAMEPLAY_SCHEDULER_BACKEND=polling` until every API producer that can write to
-the shared Neon database publishes and validates durable pre-write intents.
+`GAMEPLAY_SCHEDULER_BACKEND=polling` until every producer of new persisted
+gameplay work sharing Neon publishes and validates durable pre-write intents.
 After first deploying that polling-mode writer support, retire all older or
 otherwise unaware producers, including old local servers, before promotion.
 Then set the repository Actions variable
@@ -1244,14 +1244,16 @@ The activity store is constructed when either `RATE_LIMIT_BACKEND=upstash` or
 pre-write intents in scheduler polling mode as well as Upstash mode. Valid
 credentials alone are insufficient: local rate limiting plus scheduler
 polling does not publish intents. Retire those unaware local/development
-writers or configure them for Upstash before enabling long idle sleeps. Writers take shared
+writers or configure them for Upstash before enabling long idle sleeps. Work-producing transactions take shared
 transaction advisory locks and validate their intent before database writes.
 Idle confirmation uses an exclusive try-lock, removes intents older than 120
 seconds while holding that lock, rechecks PostgreSQL work, and clears active
 only if the store epoch/revision are unchanged and no intent remains. A delayed
 invalidated producer aborts with `503`; unavailable publication blocks new
 ranked mutations. Redis outages or monitoring/fallback signals force fast
-database scans. Startup scans persisted work and marks it active. Upstash mode
+database scans. Existing queue/proposal expiry and due territory settlement
+use a shared PG-only guard and continue while season transitions and new pairing
+pause; cleanup throttles are preserved. Startup scans persisted work and marks it active. Upstash mode
 adds Redis commands and is not free; actual CU savings and deployed Neon
 suspension have not been measured. No schema migration is required. See the
 [ranked operations guide](ranked-operations.md) and [live-PvP contract](../architecture/live-pvp-api-contract.md)
@@ -1823,3 +1825,5 @@ Page title clarified with assistance from Codex-CLI[GPT-6].
 
 Gameplay scheduler rollout guidance was updated with assistance from
 Codex[GPT-5], based on user-provided implementation requirements.
+
+Existing-work outage recovery documented with assistance from Codex-CLI[GPT-5].

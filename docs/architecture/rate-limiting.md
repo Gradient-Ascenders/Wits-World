@@ -63,11 +63,19 @@ checks.
 The gameplay scheduler reuses these Redis credentials in a separate
 `ww:gameplay:v1:<database-namespace>` keyspace. Its persistent intents and
 activity snapshots are not rate-limit counters and must not be expired or
-deleted with counter cleanup. Ranked writes can therefore return
+deleted with counter cleanup. Ranked API mutations can therefore return
 `503 GAMEPLAY_COORDINATION_UNAVAILABLE` when their durable pre-write signal is
-unavailable, even if the general HTTP policy allowed the request. Existing
-battle processing falls back to fast database scans during coordination
-outages; the HTTP limiter's open/closed policy itself is unchanged. Include
+unavailable, even if the general HTTP policy allowed the request. Season
+transitions and pairing also pause when Redis coordination is unavailable.
+Existing queue/proposal expiry and due territory settlement continue under a
+shared PostgreSQL transaction advisory lock without publishing or validating a
+Redis intent. This explicit existing-work guard cannot be used as an outage
+fallback for creating new work. The scheduler retries the paused creation
+phases at the active cadence while preserving cleanup throttles. Existing live
+actions do not introduce or reactivate matches and remain independent of Redis
+gameplay coordination; monitoring failures force fast database scans. The HTTP
+limiter's open/closed policy itself is unchanged, including the closed
+`live-ticket` policy. Include
 the scheduler's snapshot reads and Lua commands in the same Redis quota.
 See [ranked operations](../deployment/ranked-operations.md) for staged rollout,
 recovery, and command budgeting.
@@ -77,3 +85,4 @@ recovery, and command budgeting.
 This page was drafted with assistance from Codex[GPT-6].
 
 Gameplay coordination interaction documented with assistance from Codex-CLI[GPT-5].
+Existing-work outage behavior was clarified with assistance from Codex-CLI[gpt-6-luna].

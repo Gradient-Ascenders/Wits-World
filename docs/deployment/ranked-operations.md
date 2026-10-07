@@ -48,8 +48,8 @@ the persisted policy cadence and `daily_cap_timezone` for active zones.
 
 The gameplay scheduler configuration accepts `polling` or `upstash` and
 defaults to `polling`. The activity store is constructed when either
-`RATE_LIMIT_BACKEND=upstash` or `GAMEPLAY_SCHEDULER_BACKEND=upstash`; those API
-instances publish persistent pre-write intents even while scheduler polling
+`RATE_LIMIT_BACKEND=upstash` or `GAMEPLAY_SCHEDULER_BACKEND=upstash`; work producers
+on those API instances publish persistent pre-write intents even while scheduler polling
 mode is selected. Valid credentials by themselves are insufficient. An
 instance configured with local rate limiting and scheduler polling is unaware
 of durable coordination; retire it or move it to Upstash before enabling long
@@ -77,21 +77,39 @@ Activity keys are persistent and have no TTL; do not delete or reset them to
 force an idle state. They contain opaque intent tokens only, never player IDs,
 and tokens are not logged.
 
-Before a gameplay writer changes PostgreSQL state, it takes the worker's shared
-transaction advisory lock and confirms its durable intent still exists. An
+Work-producing transactions publish a durable pre-write intent, take the
+worker's shared PostgreSQL transaction advisory lock, and confirm the intent
+still exists before writing. Ranked API mutations, season transitions, and
+pairing retain this guard and fail closed when Redis publication or validation
+is unavailable. Queue and proposal expiry and due territory settlement instead
+take the shared transaction advisory lock without publishing or validating a
+Redis intent. Timed-out proposal resolution may requeue an already-proposed
+accepted entry, atomically replacing existing pending work rather than
+introducing work from an idle database; the shared fence covers that transition.
+These existing-work jobs continue during Redis outages; their explicit PG-only guard
+is not a fallback for creating new work. Without that
+explicit guard, transactions retain the default fail-closed producer guard. An
 idle transition requires the exclusive try-lock, removes intents older than
 120 seconds while holding that lock, rechecks PostgreSQL work under the lock,
 then clears active only if the activity epoch and revision are unchanged and
 no intents remain. A delayed writer whose intent was invalidated aborts with
-503 before database writes. If publication is unavailable, new ranked
-mutations fail closed. Redis outages or monitoring/fallback signals force fast
+503 before database writes. Redis outages or monitoring/fallback signals force fast
 PostgreSQL scans so Redis cannot cause work to be missed. Startup also scans
 persisted work immediately and marks discovered work active.
+
+During a coordination outage, the ranked scheduler pauses season transitions
+and pairing but still runs queue/proposal expiry and cleanup. It handles
+`GameplayCoordinationUnavailable` only in those work-producing phases;
+database and domain errors retain their normal failure handling. Paused work
+creation drives retries at the configured active interval without forcing
+standings or territory cleanup on every retry; those jobs retain their normal
+maintenance throttles. Healthy sweeps keep season maintenance first, followed
+by expiry and pairing.
 
 Roll out in stages: first deploy the API with polling mode and durable intent
 publishing; then retire every older or otherwise unaware producer, including
 old local servers that can write to the same Neon database. Only after all
-writers understand the protocol, set the repository Actions variable
+producers of new persisted work participate in the protocol, set the repository Actions variable
 `PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and deploy/restart the API. CI
 maps this variable to the Azure API App Service setting and defaults it to
 `polling`; changing only the live Azure setting is temporary because the next
@@ -104,10 +122,12 @@ behavior, or deployed multi-instance result has been measured yet. No schema
 migration is required.
 
 Ranked queue `POST`, heartbeat `POST`, queue `DELETE`, proposal accept and
-decline `POST`, and other valid gameplay producers publish before their
-database writes; territory `GET` reads do not publish. Ranked pairing activity
-may also create live work after a proposal, while proposal acceptance creates
-the match. The existing server-only
+decline `POST`, and other work-producing mutations publish before their
+database writes; territory `GET` reads do not publish. Pairing creates proposal
+work. Proposal acceptance is the only API path that creates an active live
+match and announces both live and ranked work. Existing-match live actions,
+tickets, and presence writes cannot create or reactivate a match and keep
+Redis out of their gameplay coordination path. The existing server-only
 `ASYNC_PVP_CURSOR_SIGNING_KEY` also signs viewer-bound ranked standings cursors.
 Keep that value stable across API instances and rotations during a traversal.
 It must never be a `VITE_*` value.
@@ -197,3 +217,4 @@ update was prepared with assistance from Codex-CLI[GPT-5] and
 Codex-CLI[gpt-6-luna], based on source inspection and user direction.
 The durable activity-store rollout guidance was updated with assistance from
 Codex[GPT-5], based on user-provided implementation requirements.
+Existing-work outage behavior was clarified with assistance from Codex-CLI[gpt-6-luna].

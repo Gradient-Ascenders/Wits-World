@@ -90,6 +90,25 @@ export function createGameplayMutationGuard(
   };
 }
 
+// Only for maintenance that cannot introduce pending work into an idle database.
+export function createGameplayExistingWorkGuard(
+  worker: GameplayWorkerKind,
+): GameplayMutationGuard {
+  return {
+    async begin() {
+      return {
+        async enter(client) {
+          await client.query('select pg_advisory_xact_lock_shared($1, $2)', [
+            ADVISORY_LOCK_CLASS,
+            workerIds[worker],
+          ]);
+        },
+        async finish() {},
+      };
+    },
+  };
+}
+
 export interface GameplayIdleResult {
   idle: boolean;
   nextSweep: boolean | number;

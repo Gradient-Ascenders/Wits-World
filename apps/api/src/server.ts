@@ -55,6 +55,7 @@ import { hasLivePvpWork, nextRankedSweep } from './matches/gameplay-work.js';
 import { createUpstashGameplayActivityStore } from './matches/gameplay-activity-store.js';
 import {
   createGameplayCoordination,
+  createGameplayExistingWorkGuard,
   createGameplayMutationGuard,
   gameplayCoordinationNamespace,
   type GameplayCoordination,
@@ -130,6 +131,7 @@ async function startServer(): Promise<void> {
           ['ranked'],
           gameplayLogger,
         ),
+        existingWorkGuard: createGameplayExistingWorkGuard('ranked'),
       }
     : database;
 

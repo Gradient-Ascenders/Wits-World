@@ -7,6 +7,7 @@ import type { GameplayMutationGuard } from './gameplay-coordination.js';
 
 export type RankedDatabase = Pick<pg.Pool, 'connect' | 'query'> & {
   activityGuard?: GameplayMutationGuard;
+  existingWorkGuard?: GameplayMutationGuard;
 };
 export type RankedClient = pg.PoolClient;
 

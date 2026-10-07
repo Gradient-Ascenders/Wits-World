@@ -7,6 +7,7 @@ import type {
 } from '../src/matches/gameplay-activity-store.js';
 import {
   createGameplayCoordination,
+  createGameplayExistingWorkGuard,
   createGameplayMutationGuard,
   GAMEPLAY_COORDINATION_POLL_INTERVAL_MS,
   GameplayCoordinationUnavailable,
@@ -14,6 +15,8 @@ import {
 } from '../src/matches/gameplay-coordination.js';
 import { createLivePvpRuntimeScheduler } from '../src/matches/live-pvp-runtime-scheduler.js';
 import { rankedTransaction } from '../src/matches/ranked-database.js';
+import { createRankedService } from '../src/matches/ranked-service.js';
+import type { TrustRestrictionService } from '../src/trust/trust-restrictions.js';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -211,6 +214,111 @@ describe('durable gameplay coordination', () => {
 });
 
 describe('pre-write gameplay mutation guard', () => {
+  it('expires existing queue entries without Redis while new pairing still fails closed', async () => {
+    const { store, database, client, logger } = setup();
+    store.begin.mockRejectedValue(new Error('Redis offline'));
+    client.query.mockImplementation(async (sql) => {
+      if (sql === 'select clock_timestamp() as now') {
+        return { rows: [{ now: new Date('2026-10-08T08:00:30.000Z') }] };
+      }
+      if (sql.includes('with due as')) return { rows: [{ id: 'expired' }] };
+      return { rows: [] };
+    });
+    const service = createRankedService(
+      {
+        ...database,
+        activityGuard: createGameplayMutationGuard(store, ['ranked'], logger),
+        existingWorkGuard: createGameplayExistingWorkGuard('ranked'),
+      },
+      {} as TrustRestrictionService,
+    );
+
+    expect(await service.expireQueueEntries()).toBe(1);
+    expect(store.begin).not.toHaveBeenCalled();
+    expect(client.query).toHaveBeenNthCalledWith(
+      2,
+      'select pg_advisory_xact_lock_shared($1, $2)',
+      [1_468_503_121, 2],
+    );
+    expect(client.query).toHaveBeenLastCalledWith('commit');
+    expect(client.release).toHaveBeenCalledOnce();
+    await expect(service.pairOnce()).rejects.toBeInstanceOf(
+      GameplayCoordinationUnavailable,
+    );
+    expect(database.connect).toHaveBeenCalledOnce();
+  });
+
+  it('resolves an existing timed-out proposal without a durable producer signal', async () => {
+    const { store, database, client, logger } = setup();
+    store.begin.mockRejectedValue(new Error('Redis offline'));
+    const proposalId = 'proposal';
+    const now = new Date('2026-10-08T08:00:20.000Z');
+    database.query.mockResolvedValue({ rows: [{ id: proposalId }] });
+    client.query.mockImplementation(async (sql) => {
+      if (sql === 'select clock_timestamp() as now') return { rows: [{ now }] };
+      if (sql.includes('from private.ranked_matchmaking_proposals')) {
+        return {
+          rows: [
+            {
+              id: proposalId,
+              season_id: 'season',
+              status: 'awaiting_acceptance',
+              acceptance_deadline: now,
+            },
+          ],
+        };
+      }
+      if (sql.includes('from public.ranked_seasons')) {
+        return {
+          rows: [
+            {
+              status: 'active',
+              active_ends_at: new Date(now.getTime() + 60_000),
+            },
+          ],
+        };
+      }
+      if (
+        sql.includes('from private.ranked_matchmaking_proposal_participants')
+      ) {
+        return {
+          rows: ['one', 'two'].map((playerId) => ({
+            player_id: playerId,
+            queue_entry_id: playerId,
+            acceptance_status: 'pending',
+            territory_contender: false,
+          })),
+        };
+      }
+      if (sql.includes('from public.players')) {
+        return { rows: [{ id: 'one' }, { id: 'two' }] };
+      }
+      return { rows: [] };
+    });
+    const service = createRankedService(
+      {
+        ...database,
+        activityGuard: createGameplayMutationGuard(store, ['ranked'], logger),
+        existingWorkGuard: createGameplayExistingWorkGuard('ranked'),
+      },
+      {} as TrustRestrictionService,
+    );
+    expect(await service.expireProposals()).toBe(1);
+    expect(store.begin).not.toHaveBeenCalled();
+    expect(client.query.mock.calls).toContainEqual([
+      expect.stringContaining('update private.ranked_matchmaking_proposals'),
+      [proposalId, 'expired', now],
+    ]);
+    for (const playerId of ['one', 'two']) {
+      expect(client.query.mock.calls).toContainEqual([
+        expect.stringContaining('update private.ranked_queue_entries'),
+        [playerId, 'expired', now],
+      ]);
+    }
+    expect(client.query).toHaveBeenLastCalledWith('commit');
+    expect(client.release).toHaveBeenCalledOnce();
+  });
+
   it('announces before checkout, fences before writes, and cleans up after commit and release', async () => {
     const { store, database, client, logger } = setup();
     const order: string[] = [];

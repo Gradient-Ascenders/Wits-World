@@ -9,6 +9,7 @@ import { createPoolRunObserver } from '../database/pool-observability.js';
 import { createDemandScheduler } from '../database/demand-scheduler.js';
 import { DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS } from '../config/timers.js';
 import { nextRankedSweep } from './gameplay-work.js';
+import { GameplayCoordinationUnavailable } from './gameplay-coordination.js';
 import {
   cancelExpiredTerritoryContenders,
   cleanupExpiredTerritoryGrants,
@@ -24,6 +25,7 @@ export interface RankedSweepResult {
   territorySettlements: number;
   cancelledTerritoryContenders: number;
   expiredTerritoryGrants: number;
+  workCreationPaused: boolean;
 }
 
 export interface RankedScheduler {
@@ -66,6 +68,7 @@ export function createRankedScheduler(
   let active: Promise<RankedSweepResult> | undefined;
   let lastSnapshotCleanupAt = 0;
   let lastTerritoryMaintenanceAt = 0;
+  let reportedCoordinationOutage = false;
   const observation = createPoolRunObserver('ranked_maintenance', logger);
 
   async function runOnce(forceMaintenance = false): Promise<RankedSweepResult> {
@@ -74,13 +77,31 @@ export function createRankedScheduler(
       return active;
     }
     active = observation.run(async () => {
-      const season = await maintainRankedSeasons(database);
+      let season: RankedSeasonMaintenanceResult = {
+        startedClosing: false,
+        closedSeason: false,
+        activatedSeason: false,
+      };
+      let workCreationPaused = false;
+      try {
+        season = await maintainRankedSeasons(database);
+      } catch (error) {
+        if (!(error instanceof GameplayCoordinationUnavailable)) throw error;
+        workCreationPaused = true;
+      }
       const expiredEntries = await service.expireQueueEntries();
       const resolvedProposals = await service.expireProposals();
       let pairedPlayers = 0;
-      for (let index = 0; index < 10; index += 1) {
-        if (!(await service.pairOnce())) break;
-        pairedPlayers += 2;
+      if (!workCreationPaused) {
+        try {
+          for (let index = 0; index < 10; index += 1) {
+            if (!(await service.pairOnce())) break;
+            pairedPlayers += 2;
+          }
+        } catch (error) {
+          if (!(error instanceof GameplayCoordinationUnavailable)) throw error;
+          workCreationPaused = true;
+        }
       }
       if (pairedPlayers > 0) options.onMatchesCreated?.();
       let expiredSnapshots = 0;
@@ -111,7 +132,15 @@ export function createRankedScheduler(
         territorySettlements,
         cancelledTerritoryContenders,
         expiredTerritoryGrants,
+        workCreationPaused,
       };
+      if (workCreationPaused && !reportedCoordinationOutage) {
+        logger.error(
+          {},
+          'Ranked work creation paused; existing-work maintenance continues.',
+        );
+      }
+      reportedCoordinationOutage = workCreationPaused;
       if (
         season.startedClosing ||
         season.closedSeason ||
@@ -136,6 +165,7 @@ export function createRankedScheduler(
   }
 
   let forceMaintenance = true;
+  let retryCreation = false;
   let nextBoundaryAt: number | undefined;
   const scheduler = createDemandScheduler({
     activeIntervalMs: intervalMs,
@@ -153,13 +183,20 @@ export function createRankedScheduler(
       const maintenanceDue =
         now - lastSnapshotCleanupAt >= 60_000 ||
         now - lastTerritoryMaintenanceAt >= 60_000;
-      if (next === true || forceMaintenance || boundaryDue || maintenanceDue) {
+      if (
+        next === true ||
+        forceMaintenance ||
+        boundaryDue ||
+        maintenanceDue ||
+        retryCreation
+      ) {
         const result = await runOnce(forceMaintenance || boundaryDue);
         // A capped catch-up batch must drain before returning to idle probes.
         forceMaintenance =
           result.pairedPlayers >= 20 || result.territorySettlements >= 24;
+        retryCreation = result.workCreationPaused;
       }
-      if (forceMaintenance || next === true) return true;
+      if (retryCreation || forceMaintenance || next === true) return true;
       // Only durable cross-instance coordination permits long idle DB sleeps.
       return typeof next === 'number'
         ? Math.min(
