@@ -1194,13 +1194,27 @@ The final command must print
 `BUILD_FLAGS`, enable App Service build automation, or change SCM Basic Auth.
 
 Before the database release, the workflow configures account-deletion retry,
-movement-evidence cleanup, and asynchronous-PvP deadline processing to the same
+movement-evidence cleanup, asynchronous-PvP deadline processing, live-PvP
+transient cleanup, trust evaluation, and card-trade maintenance to the same
 `1800000` ms production interval. Coalescing these database-backed sweeps into
 one approximate wake window allows the Neon compute and the API connection pool
 to become idle between runs. The API rejects intervals shorter than `900000` ms
 to prevent a one-minute polling regression. Request-time checks remain
 authoritative, so this maintenance cadence does not extend persisted deadlines
 or make expired evidence valid.
+
+Live-PvP deadline processing and ranked matchmaking retain their one-second
+active-work defaults. Empty workers instead sleep for up to 30 minutes, with
+earlier ranked wake-ups for known season and territory settlement boundaries.
+Authenticated gameplay requests wake the relevant local worker immediately,
+and every process scans persisted work at startup. The live notification
+listener also disconnects while no persisted active match or local socket
+requires it; a new socket waits for the subscription before its initial
+snapshot. See the [ranked operations guide](ranked-operations.md) and
+[live-PvP contract](../architecture/live-pvp-api-contract.md) for the
+process-local wake and cross-instance fallback limitations. These settings
+take effect on deployment; actual Neon compute savings require a subsequent
+usage measurement and depend on other database traffic and compute sizing.
 
 The Azure runner performs no API dependency installation, TypeScript build,
 production dependency materialization, or ZIP construction. Stage 1 proved the

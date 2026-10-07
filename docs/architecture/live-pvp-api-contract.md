@@ -542,15 +542,31 @@ generation no longer matches.
 Issue `#253` uses protocol version `1`, a 16 KiB WebSocket message limit, and a
 20-second transport ping interval. `LIVE_PVP_WEBSOCKET_URL` controls the public
 `ws://`/`wss://` endpoint returned by ticket minting;
-`LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS` controls the database-backed deadline
-worker and defaults to one second; and
-`LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS` schedules the idempotent 24-hour
-transient-data purge without changing the retention policy itself. The gateway
+`LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS` controls the active-work scan interval
+and defaults to one second (250–5000 ms). While persisted active matches or
+local gateway sockets exist, the worker continues at that interval. With no
+active match and no local socket, its deadline scan sleeps for up to 30 minutes
+before checking persisted work again. The worker starts with an immediate
+persisted-work scan after API startup, so restart recovery does not wait for
+the idle interval. `LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS` schedules the
+idempotent 24-hour transient-data purge without changing the retention policy
+itself. The gateway
 redacts the `ticket` query value from application logs and production edge logs
 must apply the same rule.
 
 Each API instance maintains only local socket references. PostgreSQL state,
 participant connection generations, receipts, and versions remain authority.
+An authenticated HTTP response for a live-match route wakes the live worker on
+that API process. Gateway connection activity also wakes its local worker. The
+ranked scheduler wakes the live worker locally when it creates a match. These
+wake hints are process-local and do not publish a durable cross-instance
+scheduler event. Each idle API instance retains its own persisted-work scan
+fallback bounded to 30 minutes while running; startup also scans immediately.
+The idle scan does not disable, pause, extend, or reset any persisted decision
+deadline. After a wake, fallback scan, or restart, the deadline processor
+continues to use persisted deadlines and database-clock serialization, catching
+up elapsed decisions without resetting their clocks.
+
 A dedicated PostgreSQL listener receives `live_pvp_match_changed` and
 `live_pvp_presence_changed` notifications. Gameplay notifications reload the
 role-specific persisted projection before delivery; presence notifications
@@ -563,6 +579,16 @@ persisted access; reconnect then reloads the latest authoritative projection.
 If a gameplay notification names an older version than the current persisted
 state, the gateway sends a complete snapshot instead of fabricating an
 intermediate transition.
+
+The PostgreSQL notification listener is stopped when the process has no
+persisted active match and no local gateway sockets, avoiding an idle listener
+connection and reconnect loop. When accepting a gateway connection, the
+gateway starts the listener before loading and sending the initial persisted
+snapshot, preventing a concurrent remote commit from falling between snapshot
+load and subscription. PostgreSQL notifications support gateway fan-out only;
+they are lossy and are not the cross-instance delivery mechanism for scheduler
+wake hints. An idle replica discovers persisted work through its own bounded
+fallback scan or immediate startup scan.
 
 ## Web experience and recovery policy
 
@@ -684,4 +710,6 @@ Before issue `#253` is merged:
 ## AI declaration
 
 This contract was planned, generated, edited, and reviewed with the assistance
-of Codex[GPT-5.6 Sol], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-5].
+of Codex[GPT-5.6 Sol], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-5]. The
+idle-aware scheduling update was prepared with assistance from Codex-CLI[GPT-5]
+and Codex-CLI[gpt-6-luna], based on source inspection and user direction.

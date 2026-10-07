@@ -31,10 +31,24 @@ deployment ordering already runs database release before API deployment. A
 database backup or point-in-time recovery plan should cover the release; do
 not reverse a ranked migration after ranked matches have settled.
 
-`RANKED_SWEEP_INTERVAL_MS` defaults to 1000 and accepts 250–30000. It controls
-lease expiry, proposal expiry, pairing, and season transitions. Every API
-instance runs the worker safely, although a one-second cadence keeps the Neon
-compute active and adds database traffic. The existing server-only
+`RANKED_SWEEP_INTERVAL_MS` defaults to 1000 and accepts 250–30000. It is the
+active-work scan interval for lease expiry, proposal expiry, pairing, and
+season transitions. Each API process scans immediately at startup to recover
+persisted work. While queue entries, proposals, or a closing season remain, it
+continues at the configured active interval. Once idle, it schedules the next
+persisted scan no later than 30 minutes away, or at the earlier known season
+boundary or hourly territory-settlement boundary. The season boundary is the
+active season's `active_ends_at`, or an eligible scheduled season's
+`intended_start_at`; the territory boundary uses the persisted policy cadence
+and `daily_cap_timezone` for active zones.
+
+Authenticated ranked or territory HTTP responses wake the ranked worker on
+that same API process. Pairing a match also wakes that process's live deadline
+worker immediately. These are process-local hints, not durable cross-instance
+wake messages; each idle API process retains its own persisted-scan fallback
+bounded to 30 minutes while running, and startup performs an immediate scan
+after a restart. No measured database savings or deployed multi-instance
+behavior is asserted here. The existing server-only
 `ASYNC_PVP_CURSOR_SIGNING_KEY` also signs viewer-bound ranked standings cursors.
 Keep that value stable across API instances and rotations during a traversal.
 It must never be a `VITE_*` value.
@@ -88,4 +102,6 @@ local focused test must use `TEST_DATABASE_URL` only.
 
 This document was created and reviewed with assistance from Codex (GPT-5) and
 ChatGPT-Web[GPT-5.6 Sol]. The operation-scoped policy reuse documentation was
-updated with assistance from Codex (GPT-6).
+updated with assistance from Codex (GPT-6). The idle-aware worker behavior
+update was prepared with assistance from Codex-CLI[GPT-5] and
+Codex-CLI[gpt-6-luna], based on source inspection and user direction.
