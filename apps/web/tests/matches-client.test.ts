@@ -4,6 +4,7 @@ import {
   createCpuMatch,
   forfeitCpuMatch,
   getActiveCpuMatch,
+  getActiveCpuMatchEntry,
   getCpuMatch,
   listCpuMatchHistory,
   MatchApiError,
@@ -42,6 +43,35 @@ function options() {
 }
 
 describe('CPU match API client', () => {
+  it.each(['read', 'create'])(
+    'does not send a %s after cancellation during token retrieval',
+    async (operation) => {
+      const controller = new AbortController();
+      let resolveToken!: (value: string) => void;
+      const token = new Promise<string>((resolve) => {
+        resolveToken = resolve;
+      });
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const request = {
+        apiBaseUrl,
+        getAccessToken: () => token,
+        signal: controller.signal,
+      };
+      const pending =
+        operation === 'read'
+          ? getActiveCpuMatch(request)
+          : createCpuMatch({ ...request, deckId: DECK_ID });
+      const rejected = expect(pending).rejects.toMatchObject({
+        name: 'AbortError',
+      });
+      controller.abort();
+      resolveToken('late-token');
+      await rejected;
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('recovers the active match with authentication and treats the owned 404 as no active match', async () => {
     const fetchMock = vi
       .fn()
@@ -65,6 +95,40 @@ describe('CPU match API client', () => {
         }),
         method: 'GET',
       }),
+    );
+  });
+
+  it('requests and validates the compact dashboard entry projection', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          matchId: MATCH_ID,
+          requestId: 'request-id',
+          startedAt: '2026-08-16T12:00:00.000Z',
+          status: 'active',
+          state: {
+            currentSide: 'player',
+            phase: 'active',
+            turnNumber: 3,
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getActiveCpuMatchEntry(options())).resolves.toEqual({
+      matchId: MATCH_ID,
+      startedAt: '2026-08-16T12:00:00.000Z',
+      status: 'active',
+      state: {
+        currentSide: 'player',
+        phase: 'active',
+        turnNumber: 3,
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/matches/cpu/entry`,
+      expect.objectContaining({ method: 'GET' }),
     );
   });
 

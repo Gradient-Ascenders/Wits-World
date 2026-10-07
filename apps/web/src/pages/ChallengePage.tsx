@@ -199,7 +199,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
 
     setViewState('loading');
     setError(null);
-    setStatusMessage('Loading your saved challenge.');
+    setStatusMessage('Loading saved challenge…');
 
     void fetchAttempt(controller.signal)
       .then((nextAttempt) => {
@@ -223,7 +223,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         setStatusMessage(
           nextQuestion
             ? `Challenge ready. Question ${nextQuestion.question.position} of ${nextAttempt.totalQuestions}.`
-            : 'All answers are saved. Checking your result…',
+            : 'Answers saved. Checking result…',
         );
         setViewState(timeoutMode.current ? 'expired' : 'ready');
       })
@@ -276,7 +276,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
     shouldFocusTimeout.current = true;
     setIsTimeoutChecking(true);
     setViewState('expired');
-    setStatusMessage('Time has ended. Checking your saved result…');
+    setStatusMessage('Time ended. Checking result…');
 
     try {
       const nextAttempt = await fetchAttempt(controller.signal);
@@ -455,14 +455,14 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         setStatusMessage('Your challenge result is ready.');
       } else if (timeoutMode.current) {
         setViewState('expired');
-        setStatusMessage('Time has ended. Checking your saved result…');
+        setStatusMessage('Time ended. Checking result…');
       } else {
         shouldFocusQuestion.current = true;
         const nextQuestion = findCurrentQuestion(nextAttempt);
         setStatusMessage(
           nextQuestion
             ? `Answer saved. Question ${nextQuestion.question.position} of ${nextAttempt.totalQuestions}.`
-            : 'Answer saved. Checking your result…',
+            : 'Answer saved. Checking result…',
         );
         setViewState('ready');
       }
@@ -499,7 +499,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
 
       if (timeoutMode.current) {
         setViewState('expired');
-        setStatusMessage('Time has ended. Checking your saved result…');
+        setStatusMessage('Time ended. Checking result…');
         return;
       }
 
@@ -551,8 +551,13 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
   if (attempt === null || viewState === 'loading') {
     return (
       <PageLoadingState
-        title="Loading your challenge"
-        description="Wits World is restoring your saved attempt."
+        title="Loading challenge"
+        onRetry={
+          attempt === null
+            ? () => setReloadRevision((value) => value + 1)
+            : undefined
+        }
+        resetKey={`${attemptId}:${reloadRevision}`}
       />
     );
   }
@@ -568,7 +573,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         <p className="eyebrow">Challenge time ended</p>
         {isTimeoutChecking ? <QuestMarker /> : null}
         <h1 className="status-title" ref={timeoutHeading} tabIndex={-1}>
-          Checking your result
+          Checking result
         </h1>
         <p>{statusMessage}</p>
         <button
@@ -590,8 +595,8 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
     return (
       <PageLoadingState
         className="challenge-result-loading"
-        title="Checking your result"
-        description="All answers are saved. Wits World is loading the final result."
+        title="Checking result"
+        description="Answers saved."
       >
         <button
           className="button"

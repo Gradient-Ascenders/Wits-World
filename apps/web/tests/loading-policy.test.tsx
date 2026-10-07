@@ -1,0 +1,275 @@
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  ActionLoadingFeedback,
+  PageLoadingState,
+  RegionLoadingState,
+  UpdatingIndicator,
+} from '../src/components/LoadingState';
+import { RoutePreparation } from '../src/App';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { TradeConfirmationDialog } from '../src/components/trades/TradeConfirmationDialog';
+import { createRef } from 'react';
+import {
+  LOADING_DELAY_MS,
+  LONG_WAIT_MS,
+} from '../src/components/loading-policy';
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
+
+describe('shared loading policy', () => {
+  it('uses the animated seal without imposing a minimum wait', () => {
+    const view = render(
+      <PageLoadingState
+        title="Loading trades"
+        description="Checking your offers."
+      />,
+    );
+    expect(view.container.querySelector('.loading-seal')).toHaveStyle({
+      visibility: 'visible',
+    });
+    expect(view.container.querySelector('.startup-seal')).toHaveAttribute(
+      'data-animate',
+      'true',
+    );
+    act(() => vi.advanceTimersByTime(LOADING_DELAY_MS - 1));
+    view.rerender(<h1>Your trades</h1>);
+    act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
+    expect(screen.getByRole('heading', { name: 'Your trades' })).toBeVisible();
+    expect(screen.queryByText(/longer than usual/)).not.toBeInTheDocument();
+  });
+
+  it('keeps secondary waits quiet and restores quest markers for actionable feedback', () => {
+    const view = render(<RegionLoadingState label="Loading nearby events…" />);
+    expect(view.container.querySelector('.quest-marker')).toBeNull();
+    expect(screen.getByRole('status')).toHaveClass('sr-only');
+    act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
+    expect(
+      screen.getByText('Loading nearby events…').querySelector('.quest-marker'),
+    ).not.toBeNull();
+    expect(screen.getByRole('link', { name: 'Return home' })).toBeVisible();
+    view.rerender(
+      <RegionLoadingState immediate label="Checking your location…" />,
+    );
+    expect(screen.getByRole('status')).not.toHaveClass('sr-only');
+    expect(
+      screen.getByRole('status').querySelector('.quest-marker'),
+    ).not.toBeNull();
+    expect(screen.queryByText(/longer than usual/)).not.toBeInTheDocument();
+  });
+
+  it('offers slow read retry and escape without moving keyboard focus', () => {
+    const retry = vi.fn();
+    const view = render(
+      <>
+        <button>Keep focus</button>
+        <PageLoadingState
+          title="Loading trades"
+          description="Checking your offers."
+          onRetry={retry}
+        />
+      </>,
+    );
+    const focus = screen.getByRole('button', { name: 'Keep focus' });
+    focus.focus();
+    act(() => vi.advanceTimersByTime(LOADING_DELAY_MS));
+    expect(view.container.querySelector('.loading-seal')).toHaveStyle({
+      visibility: 'visible',
+    });
+    act(() => vi.advanceTimersByTime(LONG_WAIT_MS - LOADING_DELAY_MS));
+    expect(
+      screen.getByRole('link', { name: 'Open saved events' }),
+    ).toHaveAttribute('href', '/offline');
+    expect(screen.getByRole('link', { name: 'Return home' })).toHaveAttribute(
+      'href',
+      '/',
+    );
+    expect(screen.getByText('Taking longer than usual.')).toHaveAttribute(
+      'role',
+      'status',
+    );
+    expect(focus).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('resets a slow status on a new navigation and uses the shared page presentation', () => {
+    const view = render(<RoutePreparation pathname="/matches" />);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(LOADING_DELAY_MS));
+    expect(screen.getByRole('status')).toHaveTextContent('Opening battle…');
+    expect(view.container.querySelector('.page-loading-state')).not.toBeNull();
+    act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
+    view.rerender(<RoutePreparation pathname="/collection/trades/new" />);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(LOADING_DELAY_MS));
+    expect(screen.getByRole('status')).toHaveTextContent('Opening trade…');
+    expect(screen.queryByText(/longer than usual/)).not.toBeInTheDocument();
+  });
+
+  it('does not replay a mutation when confirmation is slow and resets for the next action', () => {
+    const view = render(
+      <ActionLoadingFeedback active label="Sending your trade offer" />,
+    );
+    act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Still awaiting confirmation',
+    );
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Return home' })).toHaveAttribute(
+      'href',
+      '/',
+    );
+    view.rerender(
+      <ActionLoadingFeedback active={false} label="Sending your trade offer" />,
+    );
+    view.rerender(
+      <ActionLoadingFeedback active label="Sending your trade offer" />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Sending your trade offer…',
+    );
+    expect(screen.getByRole('status')).not.toHaveTextContent(
+      'longer than usual',
+    );
+  });
+
+  it('makes a slow mutation dialog escapable by keyboard without resubmitting', () => {
+    const confirm = vi.fn();
+    const cancel = vi.fn();
+    render(
+      <TradeConfirmationDialog
+        busy
+        confirmLabel="Send offer"
+        description="Review these cards."
+        onCancel={cancel}
+        onConfirm={confirm}
+        returnFocusRef={createRef<HTMLButtonElement>()}
+        title="Send this offer?"
+      />,
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveFocus();
+    act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(screen.getByRole('link', { name: 'Return home' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Send offer…' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Leaving does not cancel',
+    );
+    expect(confirm).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('keeps module failures inside the shell with recovery', () => {
+    const logged = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    function FailedModule(): never {
+      throw new Error('fixture module load failed');
+    }
+    render(
+      <>
+        <nav>Safe navigation</nav>
+        <ErrorBoundary withinShell>
+          <FailedModule />
+        </ErrorBoundary>
+      </>,
+    );
+    expect(screen.getByRole('navigation')).toHaveTextContent('Safe navigation');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'This page could not be opened',
+    );
+    expect(screen.getByRole('link', { name: 'Return home' })).toBeVisible();
+    expect(
+      screen.queryByText('fixture module load failed'),
+    ).not.toBeInTheDocument();
+    logged.mockRestore();
+  });
+
+  it('preserves healthy workspace state across navigation and resets terminal errors', () => {
+    const logged = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    function Workspace({ fail = false }: { fail?: boolean }) {
+      if (fail) throw new Error('fixture failure');
+      return <input aria-label="Unsaved draft" defaultValue="Original" />;
+    }
+    const view = render(
+      <ErrorBoundary withinShell resetKey="/author/cards/1/edit">
+        <Workspace />
+      </ErrorBoundary>,
+    );
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'User draft' },
+    });
+    view.rerender(
+      <ErrorBoundary withinShell resetKey="/author/cards/1">
+        <Workspace />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole('textbox')).toHaveValue('User draft');
+    view.rerender(
+      <ErrorBoundary withinShell resetKey="/author/cards/1">
+        <Workspace fail />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole('alert')).toBeVisible();
+    view.rerender(
+      <ErrorBoundary withinShell resetKey="/author/events">
+        <Workspace />
+      </ErrorBoundary>,
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toBeVisible();
+    logged.mockRestore();
+  });
+});
+
+it('keeps ordinary refresh feedback brief, including during a slow update', () => {
+  render(<UpdatingIndicator active label="Updating nearby events" />);
+  expect(screen.getByRole('status').textContent).toBe(
+    'Updating nearby events…',
+  );
+  act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
+  expect(screen.getByRole('status').textContent).toBe(
+    'Updating nearby events…',
+  );
+});
+
+it('keeps refresh feedback local, labels previous queries, and preserves focus through recovery', () => {
+  const retry = vi.fn();
+  const tree = (active: boolean, error?: string) => (
+    <>
+      <input aria-label="Draft" defaultValue="Unsaved" />
+      <UpdatingIndicator
+        active={active}
+        previous
+        label="Updating standings"
+        error={error}
+        onRetry={retry}
+      />
+    </>
+  );
+  const view = render(tree(true));
+  screen.getByRole('textbox').focus();
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'Showing previous results',
+  );
+  expect(view.container.querySelector('.quest-marker')).toBeNull();
+  act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
+  expect(screen.getByRole('button', { name: 'Retry update' })).toBeVisible();
+  expect(screen.getByRole('textbox')).toHaveFocus();
+  view.rerender(tree(false, 'Could not update standings.'));
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'Could not update standings.',
+  );
+  expect(view.container.querySelector('.quest-marker')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry update' }));
+  expect(retry).toHaveBeenCalledOnce();
+  view.rerender(tree(false));
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(screen.getByRole('textbox')).toHaveValue('Unsaved');
+});

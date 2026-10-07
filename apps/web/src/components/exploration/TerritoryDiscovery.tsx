@@ -1,3 +1,4 @@
+import { UpdatingIndicator } from '../LoadingState';
 import { createAppDateTimeFormatter } from '../../date-time';
 import {
   ArrowClockwise,
@@ -118,6 +119,11 @@ export function TerritoryDiscovery({
       </div>
       {modeNavigation}
       <div className="event-panel__scroll">
+        <UpdatingIndicator
+          active={list.refreshing}
+          label="Updating territories"
+          onRetry={onRefreshZones}
+        />
         {list.stale && list.message ? (
           <TerritoryStaleNotice
             lastUpdatedAt={list.lastUpdatedAt}
@@ -127,7 +133,7 @@ export function TerritoryDiscovery({
         ) : null}
 
         {list.status === 'loading' ? (
-          <ExplorationLoadingPanel label="Loading campus territories…" />
+          <ExplorationLoadingPanel label="Loading territories…" />
         ) : list.status === 'error' ? (
           <div
             className="territory-state state-message state-message--error"
@@ -260,6 +266,11 @@ function TerritoryDetail({
         </p>
       </header>
 
+      <UpdatingIndicator
+        active={detail.refreshing}
+        label="Updating territory activity"
+        onRetry={onRefresh}
+      />
       {detail.stale ? (
         <TerritoryStaleNotice
           lastUpdatedAt={detail.lastUpdatedAt}
@@ -308,7 +319,7 @@ function TerritoryDetail({
               </div>
               <UsersThree aria-hidden="true" size={22} />
             </div>
-            {failed.has('standings') || detail.standings === null ? (
+            {detail.standings === null ? (
               <SectionUnavailable section="standings" onRetry={onRefresh} />
             ) : detail.standings.seasonId === null ? (
               <p className="territory-section__empty">
@@ -379,7 +390,7 @@ function TerritoryDetail({
                 <h3 id="territory-history-heading">History</h3>
               </div>
             </div>
-            {failed.has('history') || detail.history === null ? (
+            {detail.history === null ? (
               <SectionUnavailable section="history" onRetry={onRefresh} />
             ) : historyEntries.length === 0 ? (
               <p className="territory-section__empty">

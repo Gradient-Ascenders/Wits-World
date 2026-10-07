@@ -128,6 +128,18 @@ export function useTerritoryDiscovery({
         return;
       }
 
+      if (
+        [zoneResult, standingsResult, historyResult].some(
+          (result) =>
+            result.status === 'rejected' &&
+            result.reason instanceof TerritoryApiError &&
+            result.reason.failure === 'authorization',
+        )
+      ) {
+        setDetail({ ...initialDetailState, status: 'error', zoneId });
+        return;
+      }
+
       const failedSections: TerritoryDetailSection[] = [];
       if (zoneResult.status === 'rejected') failedSections.push('detail');
       if (standingsResult.status === 'rejected') {
@@ -147,17 +159,23 @@ export function useTerritoryDiscovery({
           };
         }
         return {
-          detail: zoneResult.status === 'fulfilled' ? zoneResult.value : null,
+          detail:
+            zoneResult.status === 'fulfilled'
+              ? zoneResult.value
+              : current.detail,
           failedSections,
           history:
-            historyResult.status === 'fulfilled' ? historyResult.value : null,
-          lastUpdatedAt: allFailed ? null : Date.now(),
+            historyResult.status === 'fulfilled'
+              ? historyResult.value
+              : current.history,
+          lastUpdatedAt:
+            failedSections.length > 0 ? current.lastUpdatedAt : Date.now(),
           refreshing: false,
-          stale: allFailed,
+          stale: failedSections.length > 0,
           standings:
             standingsResult.status === 'fulfilled'
               ? standingsResult.value
-              : null,
+              : current.standings,
           status: allFailed ? 'error' : 'ready',
           zoneId,
         };
@@ -208,7 +226,11 @@ export function useTerritoryDiscovery({
             ? 'Your session could not load territories. Sign in again, then retry.'
             : 'Territories could not be refreshed. Check your connection and retry.';
         setList((current) =>
-          current.zones.length > 0
+          !(
+            error instanceof TerritoryApiError &&
+            error.failure === 'authorization'
+          ) &&
+          (current.status === 'ready' || current.status === 'empty')
             ? {
                 ...current,
                 message,

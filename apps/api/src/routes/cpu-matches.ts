@@ -589,6 +589,36 @@ const activeMatchResponseSchema = {
   },
 } as const;
 
+const activeMatchEntryResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['matchId', 'status', 'startedAt', 'state', 'requestId'],
+  properties: {
+    matchId: { type: 'string', format: 'uuid' },
+    status: { const: 'active' },
+    startedAt: { type: 'string', format: 'date-time' },
+    state: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['phase', 'turnNumber', 'currentSide'],
+      properties: {
+        phase: {
+          type: 'string',
+          enum: ['active', 'completed', 'initial_selection', 'replacement'],
+        },
+        turnNumber: { type: 'integer', minimum: 0 },
+        currentSide: {
+          anyOf: [
+            { type: 'string', enum: ['player', 'cpu'] },
+            { type: 'null' },
+          ],
+        },
+      },
+    },
+    requestId: { type: 'string' },
+  },
+} as const;
+
 const historyResponseSchema = {
   type: 'object',
   additionalProperties: false,
@@ -665,6 +695,41 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
             match,
             acceptsBattleSwaps(request, CPU_SWAP_MEDIA_TYPE),
           ),
+          requestId: request.id,
+        });
+      } catch (error) {
+        throw mapMatchError(error);
+      }
+    },
+  );
+
+  app.get(
+    '/matches/cpu/entry',
+    {
+      preHandler: [app.authenticate, app.requireActivePlayer],
+      schema: {
+        operationId: 'getActiveCpuMatchEntry',
+        summary: 'Read the current active CPU match dashboard entry',
+        description:
+          "Returns only the authenticated player's unfinished CPU match fields needed by the battle-mode dashboard.",
+        tags: ['Matches'],
+        security: [{ bearerAuth: [] }],
+        querystring: emptyQuerySchema,
+        response: {
+          200: activeMatchEntryResponseSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+          404: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const player = requirePlayer(request);
+
+      try {
+        const entry = await service.getActiveMatchEntry(player.id);
+        return reply.status(200).send({
+          ...entry,
           requestId: request.id,
         });
       } catch (error) {

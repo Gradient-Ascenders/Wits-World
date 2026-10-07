@@ -262,7 +262,11 @@ export default function ExplorePage({
 
   useEffect(() => {
     const controller = new AbortController();
-    setDiscovery({ status: 'loading' });
+    setDiscovery((current) =>
+      current.status === 'ready' || current.status === 'empty'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
 
     void listPlayerEvents({
       apiBaseUrl,
@@ -276,10 +280,19 @@ export default function ExplorePage({
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setDiscovery({
-            message: getFailureMessage(error),
-            status: 'error',
-          });
+          setDiscovery((current) =>
+            !(
+              error instanceof EventDiscoveryError &&
+              error.failure === 'authorization'
+            ) &&
+            (current.status === 'ready' || current.status === 'empty')
+              ? {
+                  ...current,
+                  refreshing: false,
+                  refreshError: getFailureMessage(error),
+                }
+              : { message: getFailureMessage(error), status: 'error' },
+          );
         }
       });
 
@@ -290,7 +303,11 @@ export default function ExplorePage({
     trailListRequest.current?.abort();
     const controller = new AbortController();
     trailListRequest.current = controller;
-    setTrailDiscovery({ status: 'loading' });
+    setTrailDiscovery((current) =>
+      current.status === 'ready' || current.status === 'empty'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
 
     void listPlayerTrails({
       apiBaseUrl,
@@ -308,13 +325,26 @@ export default function ExplorePage({
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted && mounted.current) {
-          setTrailDiscovery({
-            failure:
-              error instanceof TrailDiscoveryError
-                ? error.failure
-                : 'unavailable',
-            status: 'error',
-          });
+          setTrailDiscovery((current) =>
+            !(
+              error instanceof TrailDiscoveryError &&
+              error.failure === 'authorization'
+            ) &&
+            (current.status === 'ready' || current.status === 'empty')
+              ? {
+                  ...current,
+                  refreshing: false,
+                  refreshError:
+                    'Trails could not be refreshed. Retry to confirm current progress.',
+                }
+              : {
+                  failure:
+                    error instanceof TrailDiscoveryError
+                      ? error.failure
+                      : 'unavailable',
+                  status: 'error',
+                },
+          );
         }
       })
       .finally(() => {
@@ -525,7 +555,11 @@ export default function ExplorePage({
       nearbyRequest.current?.abort();
       const controller = new AbortController();
       nearbyRequest.current = controller;
-      setNearbyDiscovery({ status: 'loading' });
+      setNearbyDiscovery((current) =>
+        current.status === 'ready' || current.status === 'empty'
+          ? { ...current, refreshing: true, refreshError: undefined }
+          : { status: 'loading' },
+      );
 
       void listNearbyUnvisited({
         apiBaseUrl,
@@ -550,7 +584,17 @@ export default function ExplorePage({
                 ? error.failure
                 : 'unavailable';
             nearbyNeedsFreshClaimRef.current = failure === 'location-retry';
-            setNearbyDiscovery({ failure, status: 'error' });
+            setNearbyDiscovery((current) =>
+              failure === 'unavailable' &&
+              (current.status === 'ready' || current.status === 'empty')
+                ? {
+                    ...current,
+                    refreshing: false,
+                    refreshError:
+                      'Nearby events could not be refreshed. Retry to confirm results for your current location.',
+                  }
+                : { failure, status: 'error' },
+            );
           }
         })
         .finally(() => {
@@ -651,7 +695,11 @@ export default function ExplorePage({
 
     if (needsFreshClaim) {
       nearbyRequestedRef.current = true;
-      setNearbyDiscovery({ status: 'loading' });
+      setNearbyDiscovery((current) =>
+        current.status === 'ready' || current.status === 'empty'
+          ? { ...current, refreshing: true, refreshError: undefined }
+          : { status: 'loading' },
+      );
       void acquireNewerReportedLocation(latestClaim)
         .then((claim) => {
           if (mounted.current && nearbyRequestedRef.current) {

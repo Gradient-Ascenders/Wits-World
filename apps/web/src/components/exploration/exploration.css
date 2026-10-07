@@ -14,6 +14,29 @@
   isolation: isolate;
 }
 
+.exploration-view--preparing > :not(.exploration-page-loading) {
+  visibility: hidden;
+}
+
+.exploration-view > .exploration-page-loading {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  left: 50%;
+  width: min(36rem, calc(100% - 2 * var(--space-4)));
+  max-height: 100%;
+  margin: 0;
+  overflow: auto;
+  transform: translate(-50%, -50%);
+}
+
+.map-state.region-loading-state:not(.region-loading-state--slow) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .campus-map,
 .campus-map > .campus-map__canvas {
   position: absolute;
@@ -2111,39 +2134,6 @@
 
 .territory-state.state-message {
   margin: var(--space-4);
-}
-
-.exploration-loading-panel.state-message.state-message {
-  display: grid;
-  grid-template-columns: 2.75rem minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-1) var(--space-4);
-  padding-block: var(--space-5);
-  margin: var(--space-4);
-}
-
-.exploration-loading-panel.state-message.exploration-loading-panel--inline {
-  margin: 0;
-}
-
-.exploration-loading-panel > .exploration-loading-panel__marker {
-  width: 2.25rem;
-  height: 3rem;
-  grid-row: 1 / span 2;
-  color: var(--colour-gold-400);
-  filter: drop-shadow(0 0.25rem 0.75rem rgb(212 175 55 / 20%));
-}
-
-.exploration-loading-panel.state-message.state-message > strong {
-  align-self: end;
-  margin: 0;
-}
-
-.exploration-loading-panel.state-message
-  > .exploration-loading-panel__description {
-  grid-column: 2;
-  align-self: start;
-  margin: 0;
 }
 
 .territory-stale {

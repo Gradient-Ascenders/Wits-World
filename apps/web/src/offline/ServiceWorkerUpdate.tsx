@@ -19,11 +19,16 @@ export function registerAutomaticUpdates(
   let retry: ReturnType<typeof setTimeout> | undefined;
   let registration: ServiceWorkerRegistration | undefined;
   const observed = new Set<ServiceWorker>();
+  const canReplaceDocument = () =>
+    ['/', '/about'].includes(window.location.pathname) &&
+    !document.activeElement?.matches(
+      'input, textarea, [contenteditable="true"]',
+    );
 
   const controllerChanged = () => {
     if (active && activating) {
       activating = false;
-      if (replacingController) reload();
+      if (replacingController && canReplaceDocument()) reload();
       replacingController = false;
     }
   };
@@ -37,6 +42,9 @@ export function registerAutomaticUpdates(
         if (
           !active ||
           !registration?.waiting ||
+          // Only public Home is a safe automatic document replacement boundary.
+          // Author drafts, online challenges and mutations may not be in IDB.
+          !canReplaceDocument() ||
           state.attempts.some((attempt) => attempt.status === 'active')
         )
           return;

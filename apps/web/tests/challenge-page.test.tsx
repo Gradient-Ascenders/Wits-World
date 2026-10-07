@@ -516,7 +516,7 @@ describe('timed player challenge', () => {
     });
 
     expect(
-      screen.getByRole('heading', { name: 'Checking your result' }),
+      screen.getByRole('heading', { name: 'Checking result' }),
     ).toHaveFocus();
     expect(screen.getByText(/server is still confirming/i)).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -658,7 +658,7 @@ describe('timed player challenge', () => {
     });
 
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Time has ended. Checking your saved result…',
+      'Time ended. Checking result…',
     );
     expect(
       screen.queryByText(/server is still confirming/i),
@@ -703,7 +703,7 @@ describe('timed player challenge', () => {
     });
 
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Time has ended. Checking your saved result…',
+      'Time ended. Checking result…',
     );
   });
 
@@ -744,7 +744,7 @@ describe('timed player challenge', () => {
         await Promise.resolve();
       });
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Time has ended. Checking your saved result…',
+        'Time ended. Checking result…',
       );
 
       await act(async () => {
@@ -754,7 +754,7 @@ describe('timed player challenge', () => {
 
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Time has ended. Checking your saved result…',
+        'Time ended. Checking result…',
       );
     },
   );

@@ -57,11 +57,16 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
 
   await eastZone.focus();
   await page.keyboard.press('Enter');
-  const territoryLoading = page.getByRole('status').filter({
-    hasText: 'Loading territory activity',
-  });
+  const territoryLoading = page
+    .locator('.exploration-loading-panel')
+    .filter({ hasText: 'Loading territory activity' });
   await expect(territoryLoading).toBeVisible();
-  await expect(territoryLoading.locator('.quest-marker')).toBeVisible();
+  await expect(
+    territoryLoading.locator('.region-loading-state__placeholder'),
+  ).toBeVisible();
+  await expect(territoryLoading.locator('[role="status"]')).toHaveClass(
+    /sr-only/,
+  );
   await page.screenshot({
     animations: 'disabled',
     path: testInfo.outputPath('territory-loading-desktop.png'),

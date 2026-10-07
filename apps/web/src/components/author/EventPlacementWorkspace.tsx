@@ -1,3 +1,5 @@
+import { UpdatingIndicator } from '../LoadingState';
+import { useAuthorRetainedResource } from './AuthorRetainedReads';
 import { createAppDateTimeFormatter } from '../../date-time';
 import {
   ArrowClockwiseIcon,
@@ -94,8 +96,23 @@ export function EventPlacementWorkspace({
   const stateRef = useRef<AuthorPlacementState | null>(null);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [loadError, setLoadError] = useState('');
-  const [state, setState] = useState<AuthorPlacementState | null>(null);
-  const [history, setHistory] = useState<AuthorPlacementHistoryItem[]>([]);
+  const {
+    value: state,
+    setValue: setState,
+    confirmed,
+    confirm,
+    revoke,
+    beginRead,
+  } = useAuthorRetainedResource<AuthorPlacementState | null>('placement', null);
+  const {
+    value: history,
+    setValue: setHistory,
+    confirmed: historyConfirmed,
+    confirm: confirmHistory,
+  } = useAuthorRetainedResource<AuthorPlacementHistoryItem[]>(
+    'placement-history',
+    [],
+  );
   const [historyLoadState, setHistoryLoadState] =
     useState<HistoryLoadState>('loading');
   const [historyError, setHistoryError] = useState('');
@@ -123,6 +140,7 @@ export function EventPlacementWorkspace({
 
   const loadPlacementHistory = useCallback(async (): Promise<boolean> => {
     historyAbortRef.current?.abort();
+    const canApplyRead = beginRead();
     const controller = new AbortController();
     historyAbortRef.current = controller;
     setHistoryLoadState('loading');
@@ -132,13 +150,15 @@ export function EventPlacementWorkspace({
         getAccessToken,
         signal: controller.signal,
       });
-      if (controller.signal.aborted) return false;
+      if (controller.signal.aborted || !canApplyRead()) return false;
       setHistory(nextHistory);
+      confirmHistory();
       setHistoryError('');
       setHistoryLoadState('ready');
       return true;
     } catch (error) {
-      if (controller.signal.aborted) return false;
+      if (controller.signal.aborted || !canApplyRead()) return false;
+      revoke(error);
       setHistoryError(
         error instanceof AuthorApiError
           ? placementErrorDetail(error)
@@ -147,14 +167,22 @@ export function EventPlacementWorkspace({
       setHistoryLoadState('error');
       return false;
     }
-  }, [apiBaseUrl, getAccessToken]);
+  }, [
+    apiBaseUrl,
+    getAccessToken,
+    confirmHistory,
+    revoke,
+    setHistory,
+    beginRead,
+  ]);
 
   const loadAuthoritativeState =
     useCallback(async (): Promise<AuthorPlacementState | null> => {
       loadAbortRef.current?.abort();
+      const canApplyRead = beginRead();
       const controller = new AbortController();
       loadAbortRef.current = controller;
-      if (stateRef.current === null) setLoadState('loading');
+      setLoadState('loading');
 
       try {
         const nextState = await getAuthorPlacementState({
@@ -162,9 +190,10 @@ export function EventPlacementWorkspace({
           getAccessToken,
           signal: controller.signal,
         });
-        if (controller.signal.aborted) return null;
+        if (controller.signal.aborted || !canApplyRead()) return null;
         stateRef.current = nextState;
         setState(nextState);
+        confirm();
         setLoadState('ready');
         setLoadError('');
         setSelectedSiteId((current) =>
@@ -178,11 +207,14 @@ export function EventPlacementWorkspace({
         );
         return nextState;
       } catch (error) {
-        if (controller.signal.aborted) return null;
+        if (controller.signal.aborted || !canApplyRead()) return null;
+        if (revoke(error)) stateRef.current = null;
         const message =
           error instanceof AuthorApiError
             ? placementErrorDetail(error)
             : 'Placement could not load. Try again.';
+        setLoadState('error');
+        setLoadError(message);
         if (stateRef.current === null) {
           setLoadState('error');
           setLoadError(message);
@@ -191,7 +223,7 @@ export function EventPlacementWorkspace({
         }
         return null;
       }
-    }, [apiBaseUrl, getAccessToken]);
+    }, [apiBaseUrl, getAccessToken, confirm, revoke, setState, beginRead]);
 
   useEffect(() => {
     void loadAuthoritativeState();
@@ -247,7 +279,7 @@ export function EventPlacementWorkspace({
 
   async function createPreview() {
     const currentState = stateRef.current;
-    if (currentState === null) return;
+    if (currentState === null || loadState !== 'ready') return;
     const controller = new AbortController();
     mutationAbortRef.current?.abort();
     mutationAbortRef.current = controller;
@@ -339,7 +371,8 @@ export function EventPlacementWorkspace({
   }
 
   async function confirmAction() {
-    if (pendingAction === null || state === null) return;
+    if (pendingAction === null || state === null || loadState !== 'ready')
+      return;
     if (!reason.trim()) return;
     const action = pendingAction;
     if (action.kind === 'apply') {
@@ -472,7 +505,7 @@ export function EventPlacementWorkspace({
     });
   }
 
-  if (loadState === 'loading' || state === null) {
+  if ((loadState === 'loading' && !confirmed) || state === null) {
     return (
       <section aria-labelledby="placement-title" className="author-workspace">
         <div className="author-workspace__heading">
@@ -518,6 +551,7 @@ export function EventPlacementWorkspace({
   const changeSummary = placementChangeSummary(state, plan);
   const planHasChanges = previewHasChanges(changeSummary);
   const canApplyPlan =
+    loadState === 'ready' &&
     plan !== null &&
     plan.status !== 'unserved' &&
     !planExpired &&
@@ -542,7 +576,7 @@ export function EventPlacementWorkspace({
         </div>
         <button
           className="button button--quiet"
-          disabled={busyAction !== null}
+          disabled={loadState !== 'ready' || busyAction !== null}
           onClick={() => void refreshWorkspace()}
           type="button"
         >
@@ -550,6 +584,12 @@ export function EventPlacementWorkspace({
         </button>
       </div>
 
+      <UpdatingIndicator
+        active={loadState === 'loading'}
+        label="Updating live placement…"
+        error={loadState === 'error' ? loadError : undefined}
+        onRetry={() => void refreshWorkspace()}
+      />
       <PlacementStateRibbon state={state} />
 
       {feedback ? (
@@ -558,6 +598,15 @@ export function EventPlacementWorkspace({
         </StatusMessage>
       ) : null}
 
+      {historyConfirmed ? (
+        <UpdatingIndicator
+          active={historyLoadState === 'loading'}
+          label="Updating placement history…"
+          error={historyLoadState === 'error' ? historyError : undefined}
+          onRetry={() => void loadPlacementHistory()}
+          announce={false}
+        />
+      ) : null}
       <div className="placement-stage">
         <aside
           aria-label="Preview and validate placement changes"
@@ -618,7 +667,9 @@ export function EventPlacementWorkspace({
                 <button
                   className={`button placement-preview__primary${placementHealthy ? ' button--quiet' : ''}`}
                   disabled={
-                    busyAction !== null || state.metrics.activeZoneCount === 0
+                    loadState !== 'ready' ||
+                    busyAction !== null ||
+                    state.metrics.activeZoneCount === 0
                   }
                   onClick={() => void createPreview()}
                   type="button"
@@ -650,7 +701,7 @@ export function EventPlacementWorkspace({
                   {canApplyPlan ? (
                     <button
                       className="button placement-preview__primary"
-                      disabled={busyAction !== null}
+                      disabled={loadState !== 'ready' || busyAction !== null}
                       onClick={() => setPendingAction({ kind: 'apply' })}
                       ref={reviewApplyRef}
                       type="button"
@@ -661,7 +712,7 @@ export function EventPlacementWorkspace({
                   ) : null}
                   <button
                     className="button button--quiet"
-                    disabled={busyAction !== null}
+                    disabled={loadState !== 'ready' || busyAction !== null}
                     onClick={() => void createPreview()}
                     type="button"
                   >
@@ -669,7 +720,7 @@ export function EventPlacementWorkspace({
                   </button>
                   <button
                     className="button button--quiet"
-                    disabled={busyAction !== null}
+                    disabled={loadState !== 'ready' || busyAction !== null}
                     onClick={() => {
                       setPlan(null);
                       setFeedback(null);
@@ -781,7 +832,11 @@ export function EventPlacementWorkspace({
                 currentPlanId={state.currentPlanId}
                 error={historyError}
                 history={history}
-                loadState={historyLoadState}
+                loadState={
+                  historyConfirmed && historyLoadState !== 'ready'
+                    ? 'ready'
+                    : historyLoadState
+                }
                 onRetry={() => void loadPlacementHistory()}
                 onRollback={(historyPlan) =>
                   setPendingAction({ kind: 'rollback', plan: historyPlan })
@@ -796,7 +851,9 @@ export function EventPlacementWorkspace({
         <AuthorConfirmationDialog
           busy={busyAction !== null}
           cancelLabel="Keep reviewing"
-          confirmDisabled={!reason.trim() || applyBlocked}
+          confirmDisabled={
+            loadState !== 'ready' || !reason.trim() || applyBlocked
+          }
           confirmLabel={confirmation.confirmLabel}
           confirmTone={confirmation.tone}
           description={

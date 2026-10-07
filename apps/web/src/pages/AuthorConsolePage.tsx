@@ -1,3 +1,7 @@
+import {
+  AuthorRetainedReads,
+  useAuthorRetainedResource,
+} from '../components/author/AuthorRetainedReads';
 import { AuthorReviewNavigationProvider } from '../components/author/AuthorReviewNavigation';
 import { authorErrorDetail } from '../components/author/author-error-copy';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -38,7 +42,7 @@ interface AuthorConsolePageProps {
   mapboxAccessToken: string;
 }
 
-export default function AuthorConsolePage({
+function AuthorConsoleWorkspace({
   apiBaseUrl,
   mapFactory,
   mapboxAccessToken,
@@ -46,7 +50,14 @@ export default function AuthorConsolePage({
   const getAccessToken = useApiAccessToken();
   const [pathname, navigate] = useLocation();
   const route = parseAuthorWorkspaceRoute(pathname);
-  const [cards, setCards] = useState<AuthorCard[]>([]);
+  const {
+    value: cards,
+    setValue: setCards,
+    confirmed: cardsConfirmed,
+    confirm: confirmCards,
+    revoke: revokeCards,
+    beginRead,
+  } = useAuthorRetainedResource<AuthorCard[]>('cards', []);
   const [cardsState, setCardsState] = useState<'error' | 'loading' | 'ready'>(
     'loading',
   );
@@ -58,6 +69,7 @@ export default function AuthorConsolePage({
 
   const loadCards = useCallback(async () => {
     cardRequestRef.current?.abort();
+    const canApplyRead = beginRead();
     const controller = new AbortController();
     cardRequestRef.current = controller;
     const loadStartedAt = mutationCoordinator.beginCollectionLoad();
@@ -70,7 +82,7 @@ export default function AuthorConsolePage({
         signal: controller.signal,
       });
 
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && canApplyRead()) {
         mutationCoordinator.completeCollectionLoad('cards', loadStartedAt);
         setCards(
           reconcileAuthorMutationResults(
@@ -81,11 +93,13 @@ export default function AuthorConsolePage({
             true,
           ),
         );
+        confirmCards();
         setCardsState('ready');
         setCardsError('');
       }
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && canApplyRead()) {
+        revokeCards(error);
         setCardsError(
           error instanceof AuthorApiError
             ? authorErrorDetail(error)
@@ -94,7 +108,15 @@ export default function AuthorConsolePage({
         setCardsState('error');
       }
     }
-  }, [apiBaseUrl, getAccessToken, mutationCoordinator]);
+  }, [
+    apiBaseUrl,
+    getAccessToken,
+    mutationCoordinator,
+    confirmCards,
+    revokeCards,
+    setCards,
+    beginRead,
+  ]);
 
   useEffect(() => {
     void loadCards();
@@ -116,7 +138,7 @@ export default function AuthorConsolePage({
         appliedCardResultsRef.current,
       ),
     );
-  }, [mutationCoordinator, mutationRevision]);
+  }, [mutationCoordinator, mutationRevision, setCards]);
 
   return (
     <AuthorReviewNavigationProvider>
@@ -173,6 +195,7 @@ export default function AuthorConsolePage({
               onReload={loadCards}
               route={route}
               state={cardsState}
+              confirmed={cardsConfirmed}
             />
           ) : route.section === 'campaigns' ? (
             <CampaignWorkspace
@@ -208,5 +231,13 @@ export default function AuthorConsolePage({
         </div>
       </section>
     </AuthorReviewNavigationProvider>
+  );
+}
+
+export default function AuthorConsolePage(props: AuthorConsolePageProps) {
+  return (
+    <AuthorRetainedReads key={props.apiBaseUrl}>
+      <AuthorConsoleWorkspace {...props} />
+    </AuthorRetainedReads>
   );
 }

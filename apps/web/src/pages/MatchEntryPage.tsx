@@ -1,15 +1,22 @@
-import { PageLoadingState } from '../components/LoadingState';
+import { LoadingState } from '../components/LoadingState';
+import { READ_TIMEOUT_MS } from '../components/loading-policy';
 import { useAuth0 } from '@auth0/auth0-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
 import { Link, useLocation } from 'wouter';
 
 import { DeckApiError, listSavedDecks, type SavedDeck } from '../api/decks';
 import {
-  getActiveCpuMatch,
+  getActiveCpuMatchEntry,
   listCpuMatchHistory,
   MatchApiError,
   recoverOrCreateCpuMatch,
-  type CpuMatch,
+  type CpuMatchEntry,
   type CpuMatchHistoryItem,
 } from '../api/matches';
 import {
@@ -31,7 +38,7 @@ import './matches.css';
 type EntryState =
   | { status: 'loading' }
   | {
-      activeMatch: CpuMatch | null;
+      activeMatch: CpuMatchEntry | null;
       deck: SavedDeck | null;
       status: 'ready';
     }
@@ -73,7 +80,7 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const loadEntry = useCallback(
     async (signal: AbortSignal) => {
-      const active = await getActiveCpuMatch({
+      const active = await getActiveCpuMatchEntry({
         apiBaseUrl,
         getAccessToken,
         signal,
@@ -108,14 +115,34 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     const controller = new AbortController();
     request.current = controller;
     setState({ status: 'loading' });
+    const timeout = window.setTimeout(() => {
+      controller.abort();
+      setState({
+        error: new MatchApiError('unavailable', {
+          code: 'MATCH_ENTRY_TIMEOUT',
+        }),
+        status: 'error',
+      });
+    }, READ_TIMEOUT_MS);
+
+    void loadEntry(controller.signal)
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setState({ error: toMatchError(error), status: 'error' });
+        }
+      })
+      .finally(() => window.clearTimeout(timeout));
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [loadEntry, revision]);
+
+  useEffect(() => {
+    const controller = new AbortController();
     setRecentResults({ status: 'loading' });
     setPlayerBattles({ status: 'loading' });
-
-    void loadEntry(controller.signal).catch((error: unknown) => {
-      if (!controller.signal.aborted) {
-        setState({ error: toMatchError(error), status: 'error' });
-      }
-    });
 
     void listActivePvpMatches({
       apiBaseUrl,
@@ -149,10 +176,10 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     });
 
     return () => controller.abort();
-  }, [apiBaseUrl, getAccessToken, loadEntry, revision]);
+  }, [apiBaseUrl, getAccessToken]);
 
   useEffect(() => {
-    if (state.status !== 'loading') {
+    if (state.status === 'error' && document.activeElement === document.body) {
       stateHeading.current?.focus();
     }
   }, [state.status]);
@@ -201,41 +228,10 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     }
   }
 
-  if (state.status === 'loading') {
-    return (
-      <PageLoadingState
-        title="Checking for an active match"
-        description="Loading your current battle and selected deck…"
-      />
-    );
-  }
-
-  if (state.status === 'error') {
-    return (
-      <div className="matches-page">
-        <MatchErrorState
-          error={state.error}
-          onRetry={() => setRevision((value) => value + 1)}
-          onSignIn={startSignIn}
-          reauthFailed={reauthFailed}
-          ref={stateHeading}
-          title="Battles could not be prepared"
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="matches-page match-dashboard-page">
       <header className="matches-page__header">
-        <h1
-          ref={(node) => {
-            stateHeading.current = node;
-          }}
-          tabIndex={-1}
-        >
-          Battles
-        </h1>
+        <h1>Battles</h1>
       </header>
 
       <div className="match-dashboard">
@@ -243,8 +239,12 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           <LiveBattlePanel />
           <PlayerBattlePanel state={playerBattles} />
           <StartMatchPanel
-            activeMatch={state.activeMatch}
-            deck={state.deck}
+            state={state}
+            revision={revision}
+            onRetry={() => setRevision((value) => value + 1)}
+            onSignIn={startSignIn}
+            reauthFailed={reauthFailed}
+            errorRef={stateHeading}
             isStarting={isStarting}
             onStart={startMatch}
           />
@@ -276,16 +276,26 @@ function LiveBattlePanel() {
 }
 
 function StartMatchPanel({
-  activeMatch,
-  deck,
+  state,
+  revision,
+  onRetry,
+  onSignIn,
+  reauthFailed,
+  errorRef,
   isStarting,
   onStart,
 }: {
-  activeMatch: CpuMatch | null;
-  deck: SavedDeck | null;
+  state: EntryState;
+  revision: number;
+  onRetry: () => void;
+  onSignIn: () => Promise<void>;
+  reauthFailed: boolean;
+  errorRef: RefObject<HTMLElement | null>;
   isStarting: boolean;
   onStart: (deck: SavedDeck) => Promise<void>;
 }) {
+  const activeMatch = state.status === 'ready' ? state.activeMatch : null;
+  const deck = state.status === 'ready' ? state.deck : null;
   return (
     <section aria-labelledby="cpu-battle-title" className="battle-mode-card">
       <div className="battle-mode-card__intro">
@@ -293,7 +303,29 @@ function StartMatchPanel({
         <p>Practise against the computer.</p>
       </div>
 
-      {activeMatch ? (
+      {state.status === 'loading' ? (
+        <LoadingState
+          label="Preparing CPU battle…"
+          onRetry={onRetry}
+          resetKey={revision}
+        />
+      ) : state.status === 'error' ? (
+        <MatchErrorState
+          error={state.error}
+          onRetry={onRetry}
+          onSignIn={onSignIn}
+          reauthFailed={reauthFailed}
+          ref={errorRef}
+          headingLevel={3}
+          compact
+          title="CPU battle could not be prepared"
+          description={
+            state.error.options.code === 'MATCH_ENTRY_TIMEOUT'
+              ? 'Checking your current CPU battle and selected deck timed out. Retry this read or choose another battle mode.'
+              : undefined
+          }
+        />
+      ) : activeMatch ? (
         <>
           <div className="battle-mode-card__state">
             <strong>
@@ -367,9 +399,7 @@ function PlayerBattlePanel({ state }: { state: PlayerBattlesState }) {
         <p>Challenge a player and take turns.</p>
       </div>
       {state.status === 'loading' ? (
-        <div className="battle-mode-card__state" role="status">
-          <strong>Checking active battles…</strong>
-        </div>
+        <LoadingState label="Checking active battles…" />
       ) : state.status === 'unavailable' ? (
         <div className="battle-mode-card__state" role="status">
           <strong>Battle status unavailable</strong>
@@ -429,9 +459,7 @@ function RecentResults({ state }: { state: RecentResultsState }) {
       </div>
 
       {state.status === 'loading' ? (
-        <div aria-live="polite" className="recent-results__empty" role="status">
-          <p>Loading recent results</p>
-        </div>
+        <LoadingState label="Loading recent results" />
       ) : state.status === 'unavailable' ? (
         <div className="recent-results__empty" role="status">
           <p>
@@ -507,7 +535,7 @@ async function loadRecentBattles({
   };
 }
 
-function formatMatchPhase(match: CpuMatch) {
+function formatMatchPhase(match: CpuMatchEntry) {
   if (match.state.phase === 'initial_selection') {
     return 'Opening selection';
   }

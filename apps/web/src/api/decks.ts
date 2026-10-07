@@ -219,6 +219,7 @@ async function deckRequest({
   path,
   signal,
 }: RequestOptions): Promise<unknown> {
+  signal.throwIfAborted();
   let accessToken: string;
 
   try {
@@ -226,6 +227,7 @@ async function deckRequest({
   } catch {
     throw new DeckApiError('authorization');
   }
+  signal.throwIfAborted();
 
   let response: Response;
 

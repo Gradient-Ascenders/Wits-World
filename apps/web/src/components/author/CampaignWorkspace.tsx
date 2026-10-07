@@ -1,3 +1,8 @@
+import { UpdatingIndicator } from '../LoadingState';
+import {
+  AuthorReadFreshness,
+  useAuthorRetainedResource,
+} from './AuthorRetainedReads';
 import {
   AuthorRecordBackLink,
   ReviewSubmissionMeta,
@@ -24,6 +29,7 @@ import './author-campaigns.css';
 import {
   useCallback,
   useEffect,
+  useContext,
   useMemo,
   useRef,
   useState,
@@ -69,12 +75,28 @@ export function CampaignWorkspace({
   navigate,
   route,
 }: CampaignWorkspaceProps) {
-  const [campaigns, setCampaigns] = useState<AuthorCampaign[]>([]);
-  const [events, setEvents] = useState<AuthorEvent[]>([]);
-  const [trails, setTrails] = useState<AuthorTrail[]>([]);
+  const {
+    value: campaigns,
+    setValue: setCampaigns,
+    confirmed,
+    confirm,
+    revoke,
+    beginRead,
+  } = useAuthorRetainedResource<AuthorCampaign[]>('campaigns', []);
+  const {
+    value: events,
+    setValue: setEvents,
+    confirm: confirmEvents,
+  } = useAuthorRetainedResource<AuthorEvent[]>('campaign-events', []);
+  const {
+    value: trails,
+    setValue: setTrails,
+    confirm: confirmTrails,
+  } = useAuthorRetainedResource<AuthorTrail[]>('campaign-trails', []);
   const [state, setState] = useState<LoadState>('loading');
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [message, setMessage] = useState('');
+  const [editorReloadVersion, setEditorReloadVersion] = useState(0);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const requestRef = useRef<AbortController | null>(null);
@@ -93,6 +115,7 @@ export function CampaignWorkspace({
 
   const load = useCallback(async () => {
     requestRef.current?.abort();
+    const canApplyRead = beginRead();
     const controller = new AbortController();
     requestRef.current = controller;
     setState('loading');
@@ -115,19 +138,33 @@ export function CampaignWorkspace({
           signal: controller.signal,
         }),
       ]);
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && canApplyRead()) {
         setCampaigns(nextCampaigns);
         setEvents(nextEvents);
         setTrails(nextTrails);
+        confirm();
+        confirmEvents();
+        confirmTrails();
         setState('ready');
+        return true;
       }
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && canApplyRead()) {
+        revoke(error);
         setApiError(toAuthorError(error));
         setState('error');
       }
     }
-  }, [apiBaseUrl, getAccessToken]);
+    return false;
+  }, [
+    apiBaseUrl,
+    getAccessToken,
+    confirm,
+    confirmEvents,
+    confirmTrails,
+    revoke,
+    beginRead,
+  ]);
 
   useEffect(() => {
     void load();
@@ -179,13 +216,11 @@ export function CampaignWorkspace({
     setMessage(notice);
   }
 
-  if (state === 'loading') {
-    return (
-      <AuthorLoadingState label="Loading campaigns and available members…" />
-    );
+  if (state === 'loading' && !confirmed) {
+    return <AuthorLoadingState label="Loading campaigns…" />;
   }
 
-  if (state === 'error') {
+  if (state === 'error' && !confirmed) {
     return (
       <section
         className="author-state author-state--error state-message state-message--error"
@@ -207,11 +242,19 @@ export function CampaignWorkspace({
     );
   }
 
-  return (
+  const workspace = (
     <section
       className="author-workspace author-workspace--campaigns"
       aria-label="Campaign workspace"
     >
+      {confirmed ? (
+        <UpdatingIndicator
+          active={state === 'loading'}
+          label="Updating campaigns…"
+          error={state === 'error' ? authorErrorDetail(apiError!) : undefined}
+          onRetry={load}
+        />
+      ) : null}
       {route.mode === 'list' ? (
         <>
           <header className="author-workspace__heading">
@@ -348,9 +391,12 @@ export function CampaignWorkspace({
                 campaign={selected}
                 events={events}
                 getAccessToken={getAccessToken}
-                key={`campaign-form:${selected.campaignId}:${selected.version}`}
+                key={`campaign-form:${selected.campaignId}:${editorReloadVersion}`}
                 navigate={navigate}
-                onReloadServer={load}
+                onReloadServer={async () => {
+                  if (await load())
+                    setEditorReloadVersion((version) => version + 1);
+                }}
                 onSaved={(campaign) => {
                   applyCampaign(campaign, 'Campaign changes saved.');
                   navigate(authorPaths.campaign(campaign.campaignId));
@@ -393,6 +439,11 @@ export function CampaignWorkspace({
         </div>
       )}
     </section>
+  );
+  return (
+    <AuthorReadFreshness value={state === 'ready'}>
+      {workspace}
+    </AuthorReadFreshness>
   );
 }
 
@@ -653,7 +704,9 @@ function CampaignForm({
   onSaved: (campaign: AuthorCampaign) => void;
   trails: AuthorTrail[];
 }) {
-  const initial = useMemo(() => campaignDraft(campaign), [campaign]);
+  const fresh = useContext(AuthorReadFreshness);
+  const editVersion = useRef(campaign?.version).current;
+  const initial = useRef(campaignDraft(campaign)).current;
   const [draft, setDraft] = useState<CampaignDraft>(initial);
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [validation, setValidation] = useState<Record<string, string>>({});
@@ -735,6 +788,7 @@ function CampaignForm({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!fresh) return;
     if (busy || staleEdit) return;
     const nextValidation = validateCampaignDraft(draft);
     setValidation(nextValidation);
@@ -757,7 +811,7 @@ function CampaignForm({
         ? await updateAuthorCampaign({
             apiBaseUrl,
             campaignId: campaign.campaignId,
-            expectedVersion: campaign.version,
+            expectedVersion: editVersion!,
             getAccessToken,
             input,
             signal: controller.signal,
@@ -941,9 +995,13 @@ function CampaignForm({
         failed={Boolean(apiError) || Object.values(validation).some(Boolean)}
         isNew={!campaign}
       >
-        <button className="button" disabled={busy || staleEdit} type="submit">
+        <button
+          className="button"
+          disabled={!fresh || busy || staleEdit}
+          type="submit"
+        >
           {busy
-            ? 'Saving…'
+            ? 'Saving campaign draft…'
             : campaign
               ? 'Save campaign'
               : 'Create draft campaign'}

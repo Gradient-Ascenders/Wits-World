@@ -4,6 +4,7 @@ import {
   PlusIcon,
 } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { READ_TIMEOUT_MS } from '../loading-policy';
 
 const initialCrop = { zoom: 1, x: 50, y: 50 };
 const clamp = (value: number, min: number, max: number) =>
@@ -53,15 +54,21 @@ export function AvatarCrop({
     setDragging(false);
     const source = URL.createObjectURL(file);
     const photo = new Image();
+    const timeout = window.setTimeout(() => {
+      if (active) errorRef.current();
+    }, READ_TIMEOUT_MS);
     photo.onload = () => {
+      window.clearTimeout(timeout);
       if (active) setImage(photo);
     };
     photo.onerror = () => {
+      window.clearTimeout(timeout);
       if (active) errorRef.current();
     };
     photo.src = source;
     return () => {
       active = false;
+      window.clearTimeout(timeout);
       URL.revokeObjectURL(source);
     };
   }, [file]);
@@ -185,7 +192,9 @@ export function AvatarCrop({
           <span className="avatar-crop-mask" />
         </span>
         {!image ? (
-          <span className="avatar-crop-loading">Preparing picture…</span>
+          <span className="avatar-crop-loading" role="status">
+            Preparing picture…
+          </span>
         ) : null}
       </button>
       <div className="avatar-crop-toolbar">

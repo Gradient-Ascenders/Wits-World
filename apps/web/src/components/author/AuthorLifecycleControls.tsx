@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AuthorReadFreshness } from './AuthorRetainedReads';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { CheckIcon, ArrowUUpLeftIcon } from '@phosphor-icons/react';
 
 import type { AuthorTransitionAction, AuthoringStatus } from '../../api/author';
@@ -36,6 +37,7 @@ export function AuthorLifecycleControls({
   status,
   submittedBy,
 }: AuthorLifecycleControlsProps) {
+  const fresh = useContext(AuthorReadFreshness);
   const { state } = useCurrentPlayer();
   const [dialog, setDialog] = useState<'retire' | 'return' | null>(null);
   const [reason, setReason] = useState('');
@@ -55,6 +57,7 @@ export function AuthorLifecycleControls({
   }, [status]);
 
   function submitReturn() {
+    if (!fresh) return;
     const normalized = reason.trim();
     if (normalized.length === 0) {
       setReasonError('Add a reason.');
@@ -80,12 +83,12 @@ export function AuthorLifecycleControls({
         {status === 'draft' ? (
           <button
             className={reviewPackage ? 'button' : 'button button--quiet'}
-            disabled={busy || submitDisabled}
+            disabled={!fresh || busy || submitDisabled}
             onClick={() => onAction('submit')}
             type="button"
           >
             {busy
-              ? 'Submitting…'
+              ? `Submitting ${noun}…`
               : reviewPackage
                 ? 'Submit event and questions'
                 : 'Submit for review'}
@@ -96,7 +99,7 @@ export function AuthorLifecycleControls({
             <button
               aria-label={`Approve ${reviewPackage ? 'event package' : noun}`}
               className="button"
-              disabled={busy}
+              disabled={!fresh || busy}
               onClick={() => onAction('approve')}
               type="button"
             >
@@ -105,7 +108,7 @@ export function AuthorLifecycleControls({
             </button>
             <button
               className="button button--quiet"
-              disabled={busy}
+              disabled={!fresh || busy}
               onClick={() => setDialog('return')}
               ref={returnButtonRef}
               type="button"
@@ -118,7 +121,7 @@ export function AuthorLifecycleControls({
           <>
             <button
               className="button"
-              disabled={busy}
+              disabled={!fresh || busy}
               onClick={() => onAction('publish')}
               type="button"
             >
@@ -129,7 +132,7 @@ export function AuthorLifecycleControls({
             {canReview ? (
               <button
                 className="button button--quiet"
-                disabled={busy}
+                disabled={!fresh || busy}
                 onClick={() => setDialog('return')}
                 ref={returnButtonRef}
                 type="button"
@@ -146,7 +149,7 @@ export function AuthorLifecycleControls({
               retirementDisabled ? `retire-${noun}-blocked` : undefined
             }
             className="button button--danger"
-            disabled={busy || retirementDisabled}
+            disabled={!fresh || busy || retirementDisabled}
             onClick={() => setDialog('retire')}
             ref={retireButtonRef}
             type="button"
@@ -174,7 +177,7 @@ export function AuthorLifecycleControls({
 
       {dialog === 'return' ? (
         <AuthorConfirmationDialog
-          busy={busy}
+          busy={busy || !fresh}
           cancelLabel="Cancel"
           confirmLabel={
             busy
@@ -215,7 +218,7 @@ export function AuthorLifecycleControls({
 
       {dialog === 'retire' ? (
         <AuthorConfirmationDialog
-          busy={busy}
+          busy={busy || !fresh}
           cancelLabel={`Keep ${noun}`}
           confirmLabel={busy ? 'Retiring…' : `Retire ${noun}`}
           description={retirementDescription}

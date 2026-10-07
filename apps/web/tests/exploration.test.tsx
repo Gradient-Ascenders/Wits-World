@@ -721,7 +721,7 @@ describe('map-first campus exploration', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('keeps challenge-start status copy in separate mobile sheet rows', async () => {
+  it('keeps challenge-start status to one short mobile sheet row', async () => {
     const controller = createController();
     const mapFactory: MapFactory = vi.fn(async () => controller);
 
@@ -733,13 +733,15 @@ describe('map-first campus exploration', () => {
       />,
     );
 
-    const status = await screen.findByRole('status');
+    const status = (await screen.findByRole('status')).closest(
+      '.exploration-loading-panel',
+    )!;
     expect(status.querySelector(':scope > strong')).toHaveTextContent(
       'Starting challenge…',
     );
     expect(
-      status.querySelector('.exploration-loading-panel__description'),
-    ).toHaveTextContent('Checking your location before starting.');
+      status.querySelector('.region-loading-state__description'),
+    ).toBeNull();
   });
 
   it('connects an interactive map marker selection to the shared selection state', async () => {

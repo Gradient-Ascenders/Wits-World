@@ -6,7 +6,10 @@ import { Link } from 'wouter';
 import { listTrades, TradeApiError, type TradeSummary } from '../api/trades';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { CollectionSectionNavigation } from '../components/cards/CollectionSectionNavigation';
-import { PageLoadingState } from '../components/LoadingState';
+import {
+  PageLoadingState,
+  UpdatingIndicator,
+} from '../components/LoadingState';
 import { StateIcon } from '../components/StatusMessage';
 import './trades.css';
 
@@ -20,13 +23,17 @@ type InboxState =
       openItems: TradeSummary[];
       openPage: number;
       status: 'ready';
+      refreshing?: boolean;
+      refreshError?: string;
     }
   | { error: TradeApiError; status: 'error' };
 
 export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const getAccessToken = useApiAccessToken();
   const [state, setState] = useState<InboxState>({ status: 'loading' });
+  const [readRetry, setReadRetry] = useState(0);
   const [view, setView] = useState<'open' | 'history'>('open');
+  const [pageError, setPageError] = useState<string | undefined>();
   const [loadingMore, setLoadingMore] = useState(false);
   const request = useRef<AbortController | null>(null);
 
@@ -34,7 +41,13 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
-    setState({ status: 'loading' });
+    setLoadingMore(false);
+    setPageError(undefined);
+    setState((current) =>
+      current.status === 'ready'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
     try {
       const [openResult, recentResult] = await Promise.all([
         listTrades({
@@ -67,13 +80,20 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       });
     } catch (error) {
       if (!controller.signal.aborted) {
-        setState({
-          error:
-            error instanceof TradeApiError
-              ? error
-              : new TradeApiError('unavailable'),
-          status: 'error',
-        });
+        const failure =
+          error instanceof TradeApiError
+            ? error
+            : new TradeApiError('unavailable');
+        setState((current) =>
+          current.status === 'ready' && failure.failure !== 'authorization'
+            ? {
+                ...current,
+                refreshing: false,
+                refreshError:
+                  'Trades could not be updated. Showing your previous offers.',
+              }
+            : { error: failure, status: 'error' },
+        );
       }
     } finally {
       if (request.current === controller) request.current = null;
@@ -81,11 +101,12 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   }, [apiBaseUrl, getAccessToken]);
 
   const loadMore = useCallback(async () => {
-    if (state.status !== 'ready') return;
+    if (state.status !== 'ready' || loadingMore || state.refreshing) return;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     setLoadingMore(true);
+    setPageError(undefined);
     const loadingOpen = view === 'open';
     const page = loadingOpen ? state.openPage + 1 : state.historyPage + 1;
     try {
@@ -123,19 +144,22 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       });
     } catch (error) {
       if (!controller.signal.aborted) {
-        setState({
-          error:
-            error instanceof TradeApiError
-              ? error
-              : new TradeApiError('unavailable'),
-          status: 'error',
-        });
+        const failure =
+          error instanceof TradeApiError
+            ? error
+            : new TradeApiError('unavailable');
+        if (failure.failure === 'authorization')
+          setState({ error: failure, status: 'error' });
+        else
+          setPageError(
+            'More trades could not be loaded. Your previous offers are still available.',
+          );
       }
     } finally {
       if (request.current === controller) request.current = null;
       if (!controller.signal.aborted) setLoadingMore(false);
     }
-  }, [apiBaseUrl, getAccessToken, state, view]);
+  }, [apiBaseUrl, getAccessToken, loadingMore, state, view]);
 
   useEffect(() => {
     void loadInitial();
@@ -147,7 +171,11 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       <div className="trades-page">
         <CollectionSectionNavigation />
         <PageLoadingState
-          description="Checking your offers."
+          onRetry={() => {
+            setReadRetry((value) => value + 1);
+            void loadInitial();
+          }}
+          resetKey={readRetry}
           title="Loading trades"
         />
       </div>
@@ -162,6 +190,22 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   return (
     <div className="trades-page">
       <CollectionSectionNavigation />
+      {state.status === 'ready' ? (
+        <UpdatingIndicator
+          active={Boolean(state.refreshing)}
+          label="Updating trades"
+          error={state.refreshError}
+          onRetry={() => void loadInitial()}
+        />
+      ) : null}
+      {pageError ? (
+        <UpdatingIndicator
+          active={false}
+          label="Loading more trades"
+          error={pageError}
+          onRetry={() => void loadMore()}
+        />
+      ) : null}
       <header className="trades-page__header">
         <h1>Card trades</h1>
         <Link
@@ -222,7 +266,7 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           onClick={() => void loadMore()}
           type="button"
         >
-          {loadingMore ? 'Loading…' : 'Load more'}
+          {loadingMore ? 'Loading more trades…' : 'Load more'}
         </button>
       ) : null}
     </div>

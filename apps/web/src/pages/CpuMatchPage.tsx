@@ -69,7 +69,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [presentedMatch, setPresentedMatch] = useState<CpuMatch | null>(null);
   const [error, setError] = useState<MatchApiError | null>(null);
   const [requestStatus, setRequestStatus] = useState<RequestStatus>('loading');
-  const [statusMessage, setStatusMessage] = useState('Loading your battle.');
+  const [statusMessage, setStatusMessage] = useState('Loading battle…');
   const [requestKind, setRequestKind] = useState<RequestKind>('action');
   const [forfeitOpen, setForfeitOpen] = useState(false);
   const [battleBeats, setBattleBeats] = useState<BattleLogEvent[]>([]);
@@ -260,7 +260,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       const stateRevisionAtStart = appliedRevision.current;
       if (announceLoading) {
         setRequestStatus('loading');
-        setStatusMessage('Loading your battle.');
+        setStatusMessage('Loading battle…');
       }
 
       try {
@@ -365,7 +365,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       ) {
         setRequestStatus('reconciling');
         setStatusMessage(
-          'The battle changed while you were choosing. Checking the latest battle; your action will not be repeated.',
+          'Battle changed. Updating without repeating your action…',
         );
         const reconciliationGeneration = ++nextGeneration.current;
         try {
@@ -453,9 +453,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         matchError.failure === 'completed'
       ) {
         setRequestStatus('reconciling');
-        setStatusMessage(
-          'The battle changed before the forfeit was confirmed. Checking the saved result…',
-        );
+        setStatusMessage('Forfeit unconfirmed. Checking result…');
         const reconciliationGeneration = ++nextGeneration.current;
         try {
           const reconciled = await getCpuMatch({
@@ -503,8 +501,9 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (requestStatus === 'loading' && match === null) {
     return (
       <PageLoadingState
-        title="Loading your CPU battle"
-        description="Restoring your cards and current turn…"
+        title="Loading battle"
+        onRetry={() => setRevision((value) => value + 1)}
+        resetKey={`${matchId}:${revision}`}
       />
     );
   }

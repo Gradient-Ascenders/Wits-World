@@ -1,3 +1,8 @@
+import { UpdatingIndicator } from '../LoadingState';
+import {
+  AuthorReadFreshness,
+  useAuthorRetainedResource,
+} from './AuthorRetainedReads';
 import './author-player-review.css';
 import { SelectField } from '../fields/SelectField';
 import { SearchField } from '../fields/SearchField';
@@ -18,6 +23,7 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useContext,
   useRef,
   useState,
 } from 'react';
@@ -103,12 +109,42 @@ export function TrustReviewWorkspace({
   const queueEntryRef = useRef<{ caseId: string; scrollY: number } | null>(
     null,
   );
-  const [queue, setQueue] = useState<AuthorPage<TrustCaseQueueItem> | null>(
+  const queueKey = JSON.stringify([
+    band,
+    openedFrom,
+    openedTo,
+    page,
+    restrictionState,
+    search,
+    signalType,
+    status,
+    updatedFrom,
+    updatedTo,
+  ]);
+  const {
+    value: queue,
+    setValue: setQueue,
+    confirmed: queueConfirmed,
+    previous: queuePrevious,
+    confirm: confirmQueue,
+    revoke,
+    beginRead,
+  } = useAuthorRetainedResource<AuthorPage<TrustCaseQueueItem> | null>(
+    `trust-queue:${queueKey}`,
     null,
+    'trust-queue',
   );
   const [queueState, setQueueState] = useState<LoadState>('loading');
   const [queueError, setQueueError] = useState<AuthorApiError | null>(null);
-  const [detail, setDetail] = useState<TrustCaseDetail | null>(null);
+  const {
+    value: detail,
+    setValue: setDetail,
+    confirmed: detailConfirmed,
+    confirm: confirmDetail,
+  } = useAuthorRetainedResource<TrustCaseDetail | null>(
+    `trust-detail:${route.caseId ?? ''}`,
+    null,
+  );
   const [detailState, setDetailState] = useState<LoadState>('ready');
   const [detailError, setDetailError] = useState<AuthorApiError | null>(null);
   const queueRequestRef = useRef<AbortController | null>(null);
@@ -116,6 +152,7 @@ export function TrustReviewWorkspace({
 
   const loadQueue = useCallback(async () => {
     queueRequestRef.current?.abort();
+    const canApplyRead = beginRead();
     const controller = new AbortController();
     queueRequestRef.current = controller;
     setQueueState('loading');
@@ -138,16 +175,18 @@ export function TrustReviewWorkspace({
         updatedFrom: dateBoundary(updatedFrom, 'start'),
         updatedTo: dateBoundary(updatedTo, 'end'),
       });
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && canApplyRead()) {
         if (page > Math.max(1, result.totalPages)) {
           setPage(Math.max(1, result.totalPages));
           return;
         }
         setQueue(result);
+        confirmQueue();
         setQueueState('ready');
       }
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && canApplyRead()) {
+        revoke(error);
         setQueueError(toAuthorError(error));
         setQueueState('error');
       }
@@ -165,6 +204,10 @@ export function TrustReviewWorkspace({
     status,
     updatedFrom,
     updatedTo,
+    confirmQueue,
+    revoke,
+    setQueue,
+    beginRead,
   ]);
 
   const loadDetail = useCallback(async () => {
@@ -175,6 +218,7 @@ export function TrustReviewWorkspace({
       return;
     }
     detailRequestRef.current?.abort();
+    const canApplyRead = beginRead();
     const controller = new AbortController();
     detailRequestRef.current = controller;
     setDetailState('loading');
@@ -186,18 +230,27 @@ export function TrustReviewWorkspace({
         getAccessToken,
         signal: controller.signal,
       });
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && canApplyRead()) {
         setDetail(result);
+        confirmDetail();
         setDetailState('ready');
       }
     } catch (error) {
-      if (!controller.signal.aborted) {
-        setDetail(null);
+      if (!controller.signal.aborted && canApplyRead()) {
+        revoke(error);
         setDetailError(toAuthorError(error));
         setDetailState('error');
       }
     }
-  }, [apiBaseUrl, getAccessToken, route.caseId]);
+  }, [
+    apiBaseUrl,
+    getAccessToken,
+    route.caseId,
+    confirmDetail,
+    revoke,
+    setDetail,
+    beginRead,
+  ]);
 
   useEffect(() => {
     if (!route.caseId) void loadQueue();
@@ -464,17 +517,21 @@ export function TrustReviewWorkspace({
                   queueEntryRef.current = { caseId, scrollY: window.scrollY };
                 }}
                 state={queueState}
+                confirmed={queueConfirmed}
+                previous={queuePrevious}
               />
             </div>
 
-            {queueState === 'ready' && queue && queue.totalPages > 1 ? (
+            {(queueState === 'ready' || queueConfirmed) &&
+            queue &&
+            queue.totalPages > 1 ? (
               <nav
                 aria-label="Trust case queue pages"
                 className="author-pagination"
               >
                 <button
                   className="button button--quiet"
-                  disabled={queue.page <= 1}
+                  disabled={queueState === 'loading' || queue.page <= 1}
                   onClick={() => setPage((value) => Math.max(1, value - 1))}
                   type="button"
                 >
@@ -485,7 +542,9 @@ export function TrustReviewWorkspace({
                 </span>
                 <button
                   className="button button--quiet"
-                  disabled={queue.page >= queue.totalPages}
+                  disabled={
+                    queueState === 'loading' || queue.page >= queue.totalPages
+                  }
                   onClick={() => setPage((value) => value + 1)}
                   type="button"
                 >
@@ -501,24 +560,33 @@ export function TrustReviewWorkspace({
             <ArrowLeftIcon aria-hidden="true" size={18} />
             Back to case queue
           </Link>
-          {detailState === 'loading' ? (
+          {detailState === 'loading' && !detailConfirmed ? (
             <AuthorLoadingState label="Loading case details…" />
+          ) : null}
+          {detailConfirmed ? (
+            <UpdatingIndicator
+              active={detailState === 'loading'}
+              label="Updating case details…"
+              onRetry={loadDetail}
+            />
           ) : null}
           {detailState === 'error' ? (
             <CaseError error={detailError} onReload={() => void loadDetail()} />
           ) : null}
-          {detailState === 'ready' && detail ? (
-            <TrustCasePanel
-              key={detail.caseId}
-              apiBaseUrl={apiBaseUrl}
-              caseDetail={detail}
-              getAccessToken={getAccessToken}
-              onChanged={(next) => {
-                setDetail(next);
-                void loadQueue();
-              }}
-              onReload={() => void loadDetail()}
-            />
+          {(detailState === 'ready' || detailConfirmed) && detail ? (
+            <AuthorReadFreshness value={detailState === 'ready'}>
+              <TrustCasePanel
+                key={detail.caseId}
+                apiBaseUrl={apiBaseUrl}
+                caseDetail={detail}
+                getAccessToken={getAccessToken}
+                onChanged={(next) => {
+                  setDetail(next);
+                  void loadQueue();
+                }}
+                onReload={() => void loadDetail()}
+              />
+            </AuthorReadFreshness>
           ) : null}
         </section>
       )}
@@ -553,16 +621,20 @@ function QueueContents({
   queue,
   onOpen,
   state,
+  confirmed,
+  previous,
 }: {
+  confirmed: boolean;
+  previous: boolean;
   error: AuthorApiError | null;
   onReload: () => void;
   queue: AuthorPage<TrustCaseQueueItem> | null;
   onOpen: (caseId: string) => void;
   state: LoadState;
 }) {
-  if (state === 'loading')
+  if (state === 'loading' && !confirmed)
     return <AuthorLoadingState label="Loading case queue…" />;
-  if (state === 'error') {
+  if (state === 'error' && !confirmed) {
     return (
       <section
         className={`author-state state-message ${error?.failure === 'forbidden' ? 'state-message--permission' : 'state-message--error'}`}
@@ -591,12 +663,34 @@ function QueueContents({
     return (
       <section className="author-state author-state--empty state-message state-message--empty">
         <StateIcon tone="empty" />
-        <strong>No cases match these filters.</strong>
+        <UpdatingIndicator
+          active={state === 'loading'}
+          label="Updating case queue…"
+          previous={previous}
+          error={
+            state === 'error' && error ? authorErrorDetail(error) : undefined
+          }
+          onRetry={onReload}
+        />
+        <strong>
+          {previous
+            ? 'No cases matched the previous filters.'
+            : 'No cases match these filters.'}
+        </strong>
       </section>
     );
   }
   return (
     <div className="trust-table-wrap">
+      <UpdatingIndicator
+        active={state === 'loading'}
+        label="Updating case queue…"
+        previous={previous}
+        error={
+          state === 'error' && error ? authorErrorDetail(error) : undefined
+        }
+        onRetry={onReload}
+      />
       <table className="trust-table">
         <caption className="sr-only">
           Player cases for human review. Review priority is not proof of
@@ -734,6 +828,7 @@ function TrustCasePanel({
   );
 
   const evidence = useTrustCollection({
+    resourceKey: `trust-evidence:${caseDetail.caseId}`,
     initialItems: caseDetail.evidencePreview,
     keyOf: evidenceKey,
     loadPage: loadEvidence,
@@ -741,6 +836,7 @@ function TrustCasePanel({
     totalItems: caseDetail.evidenceTotalItems,
   });
   const restrictions = useTrustCollection({
+    resourceKey: `trust-restrictions:${caseDetail.caseId}`,
     initialItems: caseDetail.restrictionPreview,
     keyOf: restrictionKey,
     loadPage: loadRestrictions,
@@ -748,6 +844,7 @@ function TrustCasePanel({
     totalItems: caseDetail.restrictionTotalItems,
   });
   const history = useTrustCollection({
+    resourceKey: `trust-history:${caseDetail.caseId}`,
     initialItems: caseDetail.recentHistory,
     keyOf: historyKey,
     loadPage: loadHistory,
@@ -861,7 +958,7 @@ function TrustCasePanel({
             type="button"
           >
             <DownloadSimpleIcon aria-hidden="true" size={18} />
-            {exporting ? 'Preparing…' : 'Export'}
+            {exporting ? 'Preparing case export…' : 'Export'}
           </button>
         </div>
       </header>
@@ -1131,6 +1228,7 @@ function ScoreExplanation({ caseDetail }: { caseDetail: TrustCaseDetail }) {
 }
 
 interface TrustCollection<T> {
+  confirmed: boolean;
   announcement: string;
   error: AuthorApiError | null;
   items: T[];
@@ -1478,7 +1576,16 @@ function CollectionFeedback<T>({
         {collection.announcement}
       </p>
       {collection.state === 'loading' ? (
-        <AuthorLoadingState label={`Loading complete ${label}s…`} />
+        collection.confirmed ? (
+          <UpdatingIndicator
+            active
+            label={`Updating ${label}s`}
+            onRetry={collection.reload}
+            announce={false}
+          />
+        ) : (
+          <AuthorLoadingState label={`Loading ${label}s…`} />
+        )
       ) : null}
       {collection.state === 'error' ? (
         <StatusMessage tone="error">
@@ -1516,7 +1623,9 @@ function CollectionLoadMore<T>({
       onClick={collection.loadMore}
       type="button"
     >
-      {collection.state === 'loading' ? 'Loading…' : `Load more ${label}`}
+      {collection.state === 'loading'
+        ? `Loading more ${label}…`
+        : `Load more ${label}`}
     </button>
   );
 }
@@ -1536,6 +1645,7 @@ function DecisionSection({
   onChanged: (detail: TrustCaseDetail) => void;
   onReload: () => void;
 }) {
+  const fresh = useContext(AuthorReadFreshness);
   const [action, setAction] = useState<TrustReviewAction>(
     'continue_monitoring',
   );
@@ -1580,6 +1690,7 @@ function DecisionSection({
 
   function requestDecision(event: FormEvent) {
     event.preventDefault();
+    if (!fresh) return;
     setError(null);
     setSuccess('');
     const message = validateDecision();
@@ -1596,6 +1707,7 @@ function DecisionSection({
   }
 
   async function submitDecision() {
+    if (!fresh) return;
     const controller = new AbortController();
     setSubmitting(true);
     setError(null);
@@ -1668,7 +1780,7 @@ function DecisionSection({
               <label key={value}>
                 <input
                   checked={action === value}
-                  disabled={controlsDisabled}
+                  disabled={!fresh || controlsDisabled}
                   name="review-action"
                   onChange={() => {
                     setAction(value);
@@ -1692,7 +1804,7 @@ function DecisionSection({
                     <label key={item.evidenceId}>
                       <input
                         checked={evidenceIds.includes(item.evidenceId)}
-                        disabled={controlsDisabled}
+                        disabled={!fresh || controlsDisabled}
                         onChange={() =>
                           setEvidenceIds(
                             toggleValue(evidenceIds, item.evidenceId),
@@ -1720,7 +1832,7 @@ function DecisionSection({
                   <label key={scope}>
                     <input
                       checked={scopes.includes(scope)}
-                      disabled={controlsDisabled}
+                      disabled={!fresh || controlsDisabled}
                       onChange={() => setScopes(toggleValue(scopes, scope))}
                       type="checkbox"
                     />
@@ -1731,7 +1843,7 @@ function DecisionSection({
               <SelectField
                 label="Duration"
                 className="author-filter"
-                disabled={controlsDisabled}
+                disabled={!fresh || controlsDisabled}
                 onChange={(value) => setDurationHours(Number(value))}
                 value={String(durationHours)}
                 options={[
@@ -1747,7 +1859,7 @@ function DecisionSection({
             <span>Reason and context</span>
             <textarea
               aria-describedby="decision-reason-hint"
-              disabled={controlsDisabled}
+              disabled={!fresh || controlsDisabled}
               maxLength={1000}
               onChange={(event) => setReason(event.target.value)}
               ref={reasonRef}
@@ -1796,7 +1908,7 @@ function DecisionSection({
             className={
               action === 'restrict' ? 'button button--danger' : 'button'
             }
-            disabled={controlsDisabled}
+            disabled={!fresh || controlsDisabled}
             ref={restrictButtonRef}
             type="submit"
           >
@@ -1914,18 +2026,27 @@ function DecisionSection({
 
 function useTrustCollection<T>({
   initialItems,
+  resourceKey,
   keyOf,
   loadPage,
   refreshKey,
   totalItems,
 }: {
   initialItems: T[];
+  resourceKey: string;
   keyOf: (item: T) => string;
   loadPage: (page: number, signal: AbortSignal) => Promise<AuthorPage<T>>;
   refreshKey: string;
   totalItems: number;
 }): TrustCollection<T> {
-  const [items, setItems] = useState(initialItems);
+  const {
+    value: items,
+    setValue: setItems,
+    confirmed,
+    confirm,
+    revoke,
+    beginRead,
+  } = useAuthorRetainedResource<T[]>(resourceKey, initialItems);
   const [page, setPage] = useState(initialItems.length ? 1 : 0);
   const [totalPages, setTotalPages] = useState(initialItems.length ? 1 : 0);
   const [knownTotal, setKnownTotal] = useState(totalItems);
@@ -1937,16 +2058,18 @@ function useTrustCollection<T>({
   const load = useCallback(
     async (requestedPage: number, append: boolean) => {
       requestRef.current?.abort();
+      const canApplyRead = beginRead();
       const controller = new AbortController();
       requestRef.current = controller;
       setState('loading');
       setError(null);
       try {
         const result = await loadPage(requestedPage, controller.signal);
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || !canApplyRead()) return;
         setItems((current) =>
           append ? mergeUnique(current, result.items, keyOf) : result.items,
         );
+        confirm();
         setPage(result.page);
         setKnownTotal(result.totalItems);
         setTotalPages(result.totalPages);
@@ -1957,17 +2080,17 @@ function useTrustCollection<T>({
             : `${result.totalItems} records available.`,
         );
       } catch (caught) {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && canApplyRead()) {
+          revoke(caught);
           setError(toAuthorError(caught));
           setState('error');
         }
       }
     },
-    [keyOf, loadPage],
+    [keyOf, loadPage, confirm, revoke, setItems, beginRead],
   );
 
   useEffect(() => {
-    setItems(initialItems);
     setPage(initialItems.length ? 1 : 0);
     setTotalPages(initialItems.length ? 1 : 0);
     setKnownTotal(totalItems);
@@ -1981,6 +2104,7 @@ function useTrustCollection<T>({
 
   return {
     announcement,
+    confirmed,
     error,
     items,
     loadMore,

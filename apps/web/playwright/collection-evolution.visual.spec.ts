@@ -221,7 +221,7 @@ for (const reducedMotion of [false, true]) {
         await expect(loading.locator('.loading-seal')).toHaveCount(1);
         await expect(loading.locator('.quest-marker')).toHaveCount(0);
         await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-          'Loading your evolutions',
+          'Loading evolutions',
         );
         await expect(
           page.getByRole('navigation', { name: 'Collection sections' }),

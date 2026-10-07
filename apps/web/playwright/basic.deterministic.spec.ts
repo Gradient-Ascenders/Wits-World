@@ -577,7 +577,7 @@ test('keeps the authenticated shared application shell responsive and accessible
       });
       return;
     }
-    if (pathname.endsWith('/matches/cpu')) {
+    if (pathname.endsWith('/matches/cpu/entry')) {
       await json(
         route,
         {

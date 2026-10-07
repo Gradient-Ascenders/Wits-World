@@ -8,6 +8,7 @@ import {
 } from 'react';
 
 import { useModalFocus } from '../useModalFocus';
+import { ActionLoadingFeedback } from '../LoadingState';
 import './author-confirmation-dialog.css';
 
 interface AuthorConfirmationDialogProps {
@@ -61,7 +62,6 @@ export function AuthorConfirmationDialog({
   return createPortal(
     <div className="author-dialog-backdrop">
       <div
-        aria-busy={busy || undefined}
         aria-describedby={descriptionId}
         aria-labelledby={titleId}
         aria-modal="true"
@@ -76,7 +76,8 @@ export function AuthorConfirmationDialog({
         <div className="author-dialog__description" id={descriptionId}>
           {description}
         </div>
-        <div className="author-dialog__actions">
+        <ActionLoadingFeedback active={busy} label={confirmLabel} />
+        <div className="author-dialog__actions" aria-busy={busy || undefined}>
           <button
             className="button button--quiet"
             disabled={busy}

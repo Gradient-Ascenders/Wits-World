@@ -510,3 +510,55 @@ test('charts enlarge their text and geometry for comfortable reading', async ({
   }
   expect(before.fontSize).toBe(12);
 });
+
+test('Author reports retain previous-query content through a delayed failed update and retry', async ({
+  page,
+}) => {
+  const state = await installAnalyticsApi(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/author/analytics');
+  const results = page.getByRole('region', { name: 'Event attention results' });
+  await expect(results).toBeVisible();
+  let release: () => void = () => {};
+  const paused = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/author/analytics/attention?**', async (route) => {
+    await paused;
+    await route.fallback();
+  });
+  state.failOverview(true);
+  await selectOption(page.getByLabel('Reporting period'), '7');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Showing previous results' }),
+  ).toBeVisible();
+  await expect(results).toBeVisible();
+  await expect(
+    results.getByRole('link', { name: 'Great Hall Discovery' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Events', exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: test.info().outputPath('author-retained-query.png'),
+    fullPage: true,
+  });
+  release();
+  await expect(
+    page.getByRole('button', { name: 'Retry update' }),
+  ).toBeVisible();
+  await expect(results).toBeVisible();
+  state.failOverview(false);
+  await page.getByRole('button', { name: 'Retry update' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Showing previous results' }),
+  ).toHaveCount(0);
+  await expect(results).toBeVisible();
+  // A workspace revisit uses the console-owned snapshot, then confirms it again.
+  await page.getByRole('link', { name: 'Events', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Events', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Analytics', exact: true }).click();
+  await expect(results).toBeVisible();
+});

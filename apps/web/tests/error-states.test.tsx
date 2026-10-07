@@ -9,15 +9,19 @@ function BrokenComponent(): never {
 }
 
 describe('application status states', () => {
-  it('announces local loading with the subtle marker', () => {
+  it('announces local loading with a quiet placeholder', () => {
     render(<LoadingState />);
 
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Loading this Wits World page…',
-    );
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
     expect(
       screen.getByRole('status').querySelector('.quest-marker'),
-    ).toBeTruthy();
+    ).toBeNull();
+    expect(screen.getByRole('status')).toHaveClass('sr-only');
+    expect(
+      screen
+        .getByRole('status')
+        .parentElement?.querySelector('.region-loading-state__placeholder'),
+    ).not.toBeNull();
     expect(
       screen.getByRole('status').querySelector('.loading-seal'),
     ).toBeNull();
@@ -27,7 +31,9 @@ describe('application status states', () => {
     render(<LoadingState prominent />);
 
     expect(
-      screen.getByRole('status').querySelector('.loading-seal svg'),
+      screen
+        .getByRole('status')
+        .parentElement?.querySelector('.loading-seal svg'),
     ).toBeTruthy();
   });
 

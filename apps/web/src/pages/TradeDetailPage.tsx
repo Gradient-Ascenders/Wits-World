@@ -23,8 +23,12 @@ import {
   type CardTrade,
 } from '../api/trades';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
+import { useCollectionReads } from '../components/cards/CollectionReadProvider';
 import { CollectionSectionNavigation } from '../components/cards/CollectionSectionNavigation';
-import { PageLoadingState } from '../components/LoadingState';
+import {
+  PageLoadingState,
+  UpdatingIndicator,
+} from '../components/LoadingState';
 import { StateIcon } from '../components/StatusMessage';
 import {
   ConsentState,
@@ -38,7 +42,12 @@ import './trades.css';
 type DetailState =
   | { status: 'loading' }
   | { error: TradeApiError; status: 'error' }
-  | { trade: CardTrade; status: 'ready' };
+  | {
+      trade: CardTrade;
+      status: 'ready';
+      refreshing?: boolean;
+      refreshError?: string;
+    };
 
 type Confirmation = 'accept' | 'cancel' | 'decline' | null;
 
@@ -49,9 +58,11 @@ export default function TradeDetailPage({
 }) {
   const { tradeId = '' } = useParams<{ tradeId: string }>();
   const getAccessToken = useApiAccessToken();
+  const retainedReads = useCollectionReads();
   const { getIdTokenClaims, loginWithRedirect } = useAuth0();
   const [catalogue, setCatalogue] = useState<TradingCatalogueCard[]>([]);
   const [state, setState] = useState<DetailState>({ status: 'loading' });
+  const [readRetry, setReadRetry] = useState(0);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<TradeApiError | null>(null);
@@ -73,7 +84,11 @@ export default function TradeDetailPage({
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
-    setState({ status: 'loading' });
+    setState((current) =>
+      current.status === 'ready' && current.trade.tradeId === tradeId
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
     setActionError(null);
     try {
       const trade = await getTrade({
@@ -85,18 +100,27 @@ export default function TradeDetailPage({
       if (!controller.signal.aborted) setState({ status: 'ready', trade });
     } catch (error) {
       if (!controller.signal.aborted) {
-        setState({
-          error:
-            error instanceof TradeApiError
-              ? error
-              : new TradeApiError('unavailable'),
-          status: 'error',
-        });
+        const failure =
+          error instanceof TradeApiError
+            ? error
+            : new TradeApiError('unavailable');
+        if (failure.failure === 'authorization') retainedReads?.clearCards();
+        setState((current) =>
+          current.status === 'ready' &&
+          !['authorization', 'not-found'].includes(failure.failure)
+            ? {
+                ...current,
+                refreshing: false,
+                refreshError:
+                  'The trade could not be updated. Showing the previously confirmed offer.',
+              }
+            : { error: failure, status: 'error' },
+        );
       }
     } finally {
       if (request.current === controller) request.current = null;
     }
-  }, [apiBaseUrl, getAccessToken, tradeId]);
+  }, [apiBaseUrl, getAccessToken, retainedReads, tradeId]);
 
   const refreshCollection = useCallback(async () => {
     collectionRequest.current?.abort();
@@ -201,11 +225,18 @@ export default function TradeDetailPage({
     }
   }, [collectionRefresh, refreshCollection, state]);
 
-  if (state.status === 'loading') {
+  if (
+    state.status === 'loading' ||
+    (state.status === 'ready' && state.trade.tradeId !== tradeId)
+  ) {
     return (
       <PageLoadingState
-        description="Loading the latest offer."
-        title="Loading card trade"
+        onRetry={() => {
+          setReadRetry((value) => value + 1);
+          void load();
+        }}
+        resetKey={readRetry}
+        title="Loading trade"
       />
     );
   }
@@ -246,6 +277,7 @@ export default function TradeDetailPage({
   }
 
   const trade = state.trade;
+  const readOutdated = Boolean(state.refreshing || state.refreshError);
   const open = trade.status === 'open';
   const canAccept =
     open &&
@@ -256,10 +288,12 @@ export default function TradeDetailPage({
   async function applyMutation(
     action: 'accept' | 'acknowledge' | 'cancel' | 'decline',
   ) {
-    if (state.status !== 'ready') return;
+    if (state.status !== 'ready' || state.refreshing || state.refreshError)
+      return;
     const controller = new AbortController();
     request.current?.abort();
     request.current = controller;
+    retainedReads?.clearCards();
     setPendingAction(action);
     setActionError(null);
     let reconciliationError: TradeApiError | null = null;
@@ -344,6 +378,12 @@ export default function TradeDetailPage({
         All trades
       </Link>
 
+      <UpdatingIndicator
+        active={Boolean(state.refreshing)}
+        label="Updating trade"
+        error={state.refreshError}
+        onRetry={() => void load()}
+      />
       <header className="trade-detail-header">
         <div>
           <h1>Trade with {trade.counterpartyPlayerName}</h1>
@@ -402,7 +442,7 @@ export default function TradeDetailPage({
               {formatDate(trade.settlement?.completedAt ?? trade.terminalAt!)}.
             </p>
             {collectionRefresh === 'loading' ? (
-              <p role="status">Refreshing your collection…</p>
+              <p role="status">Updating cards…</p>
             ) : null}
             {collectionRefresh === 'ready' ? (
               <p role="status">Your collection is up to date.</p>
@@ -464,7 +504,7 @@ export default function TradeDetailPage({
               <label>
                 <input
                   checked={acknowledged}
-                  disabled={pendingAction !== null}
+                  disabled={pendingAction !== null || readOutdated}
                   onChange={(event) => setAcknowledged(event.target.checked)}
                   type="checkbox"
                 />
@@ -479,12 +519,14 @@ export default function TradeDetailPage({
             {!trade.self.imbalanceAcknowledged && open ? (
               <button
                 className="button button--quiet"
-                disabled={!acknowledged || pendingAction !== null}
+                disabled={
+                  !acknowledged || pendingAction !== null || readOutdated
+                }
                 onClick={() => void applyMutation('acknowledge')}
                 type="button"
               >
                 {pendingAction === 'acknowledge'
-                  ? 'Saving…'
+                  ? 'Confirming trade warning…'
                   : 'Confirm warning'}
               </button>
             ) : null}
@@ -504,7 +546,7 @@ export default function TradeDetailPage({
             </Link>
             <button
               className="button"
-              disabled={!canAccept || pendingAction !== null}
+              disabled={!canAccept || pendingAction !== null || readOutdated}
               onClick={() => void startAcceptance()}
               ref={acceptanceTrigger}
               type="button"
@@ -517,7 +559,7 @@ export default function TradeDetailPage({
             </button>
             <button
               className="button button--danger"
-              disabled={pendingAction !== null}
+              disabled={pendingAction !== null || readOutdated}
               onClick={() =>
                 setConfirmation(trade.role === 'sender' ? 'cancel' : 'decline')
               }

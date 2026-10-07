@@ -1,3 +1,5 @@
+import { AuthorReadFreshness } from './AuthorRetainedReads';
+import { UpdatingIndicator } from '../LoadingState';
 import {
   AuthorRecordBackLink,
   ReviewSubmissionMeta,
@@ -12,6 +14,7 @@ import { ArrowLeftIcon, CaretDownIcon, ImageIcon } from '@phosphor-icons/react';
 import { AuthorSaveBar } from './AuthorSaveBar';
 import {
   useEffect,
+  useContext,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -71,6 +74,7 @@ interface CardWorkspaceProps {
   onReload: () => Promise<void> | void;
   route: Extract<AuthorWorkspaceRoute, { section: 'cards' }>;
   state: 'error' | 'loading' | 'ready';
+  confirmed?: boolean;
 }
 
 export function CardWorkspace({
@@ -82,6 +86,7 @@ export function CardWorkspace({
   navigate,
   onCardsChange,
   onReload,
+  confirmed = false,
   route,
   state,
 }: CardWorkspaceProps) {
@@ -204,7 +209,7 @@ export function CardWorkspace({
       );
   }
 
-  return (
+  const workspace = (
     <section
       aria-labelledby="cards-workspace-title"
       className={`author-workspace author-workspace--cards${route.mode === 'new' || route.mode === 'edit' ? ' author-workspace--card-editor' : ''}`}
@@ -238,8 +243,8 @@ export function CardWorkspace({
         </p>
       ) : null}
 
-      {state === 'loading' ? (
-        <AuthorLoadingState label="Loading card definitions…" />
+      {state === 'loading' && !confirmed ? (
+        <AuthorLoadingState label="Loading cards…" />
       ) : null}
       {state === 'error' ? (
         <div
@@ -258,7 +263,14 @@ export function CardWorkspace({
           </button>
         </div>
       ) : null}
-      {state === 'ready' ? (
+      {confirmed ? (
+        <UpdatingIndicator
+          active={state === 'loading'}
+          label="Updating cards…"
+          onRetry={onReload}
+        />
+      ) : null}
+      {state === 'ready' || confirmed ? (
         <div
           className={`author-management-view author-management-view--cards${route.mode === 'list' || route.mode === 'detail' ? ' author-management-view--card-catalogue' : ' author-management-view--card-editor'}${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}`}
         >
@@ -379,7 +391,7 @@ export function CardWorkspace({
                   card={selected}
                   getAccessToken={getAccessToken}
                   interaction={interactionRef.current}
-                  key={`card-form:${selected.id}:${selected.version}`}
+                  key={`card-form:${selected.id}`}
                   mutationCoordinator={mutationCoordinator}
                   onCancel={() => navigate(authorPaths.card(selected.id))}
                   onSaved={updateCard}
@@ -411,6 +423,11 @@ export function CardWorkspace({
         </div>
       ) : null}
     </section>
+  );
+  return (
+    <AuthorReadFreshness value={state === 'ready'}>
+      {workspace}
+    </AuthorReadFreshness>
   );
 }
 
@@ -896,6 +913,9 @@ function CardForm({
   onCancel,
   onSaved,
 }: CardFormProps) {
+  const fresh = useContext(AuthorReadFreshness);
+  const editVersion = useRef(card?.version).current;
+  const initialDraft = useRef(cardDraft(card)).current;
   const [draft, setDraft] = useState<CardDraft>(() => cardDraft(card));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
@@ -927,13 +947,14 @@ function CardForm({
       setActiveMove(Number(invalidMove.match(/^move(\d+)/)?.[1]));
   }, [errors]);
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(cardDraft(card));
+  const dirty = JSON.stringify(draft) !== JSON.stringify(initialDraft);
   const recordKey = `card:${card?.id ?? 'new'}` as AuthorRecordKey;
   useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
   const clearNavigationGuard = useUnsavedAuthorChanges(dirty, 'card draft');
 
   async function save(submission: FormEvent) {
     submission.preventDefault();
+    if (!fresh) return;
     const result = validateCardDraft(draft);
 
     if (!result.input) {
@@ -960,7 +981,7 @@ function CardForm({
         ? await updateAuthorCard({
             apiBaseUrl,
             cardId: card.id,
-            expectedVersion: card.version,
+            expectedVersion: editVersion!,
             getAccessToken,
             input: result.input,
             signal: controller.signal,
@@ -1423,8 +1444,12 @@ function CardForm({
           failed={Boolean(apiError) || Object.values(errors).some(Boolean)}
           isNew={!card}
         >
-          <button className="button" disabled={busy} type="submit">
-            {busy ? 'Saving…' : card ? 'Save card' : 'Create draft card'}
+          <button className="button" disabled={!fresh || busy} type="submit">
+            {busy
+              ? 'Saving card draft…'
+              : card
+                ? 'Save card'
+                : 'Create draft card'}
           </button>
           <button
             className="button button--quiet"
@@ -1499,7 +1524,7 @@ function ArtworkPreview({
         />
       ) : null}
       {url && (status === 'waiting' || status === 'loading') ? (
-        <AuthorLoadingState label="Loading artwork preview…" />
+        <AuthorLoadingState label="Loading preview…" />
       ) : status !== 'ready' ? (
         <p role="status">
           {!url

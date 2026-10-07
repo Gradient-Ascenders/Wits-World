@@ -211,6 +211,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       pollRequest.current = controller;
       try {
         const collections = await loadCollections(controller.signal);
+        if (controller.signal.aborted) return null;
         setState((current) =>
           current.status === 'ready'
             ? {
@@ -605,7 +606,12 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   }
 
   if (state.status === 'loading') {
-    return <PlayerBattlesLoading />;
+    return (
+      <PlayerBattlesLoading
+        onRetry={() => setRevision((value) => value + 1)}
+        revision={revision}
+      />
+    );
   }
 
   if (state.status === 'error') {
@@ -963,11 +969,18 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   );
 }
 
-function PlayerBattlesLoading() {
+function PlayerBattlesLoading({
+  onRetry,
+  revision,
+}: {
+  onRetry: () => void;
+  revision: number;
+}) {
   return (
     <PageLoadingState
       title="Loading Player Battles"
-      description="Checking battles and challenges…"
+      onRetry={onRetry}
+      resetKey={revision}
     />
   );
 }
@@ -1382,7 +1395,7 @@ function LoadMoreButton({
       onClick={onClick}
       type="button"
     >
-      {loading ? 'Loading…' : 'Load more'}
+      {loading ? `Loading more ${label}…` : 'Load more'}
     </button>
   );
 }

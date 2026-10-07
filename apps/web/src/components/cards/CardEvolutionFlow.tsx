@@ -21,7 +21,7 @@ import {
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import { useAccessibilityPreferences } from '../../accessibility/preferences';
-import { LoadingState } from '../LoadingState';
+import { ActionLoadingFeedback, LoadingState } from '../LoadingState';
 import { CardArtwork, CollectibleCard } from './CollectibleCard';
 import { CardPresentationDialog } from './CardPresentationDialog';
 import { useCardTilt } from './useCardTilt';
@@ -299,7 +299,6 @@ export function CardEvolutionFlow({
           role="alertdialog"
           aria-modal="true"
           aria-describedby="evolution-confirmation-description"
-          aria-busy={isSubmitting}
           aria-labelledby="evolution-confirmation-title"
           className="evolution-confirmation"
         >
@@ -328,7 +327,10 @@ export function CardEvolutionFlow({
           ) : null}
 
           <div className="evolution-action-bar">
-            {isSubmitting ? <p role="status">Evolving your card…</p> : null}
+            <ActionLoadingFeedback
+              active={isSubmitting}
+              label="Evolving card"
+            />
             <div className="evolution-confirmation__actions">
               <button
                 className="button button--quiet"
@@ -361,7 +363,10 @@ export function CardEvolutionFlow({
         aria-hidden={stage === 'confirm' ? true : undefined}
       >
         {previewState.status === 'loading' ? (
-          <LoadingState label="Checking evolution availability…" />
+          <LoadingState
+            label="Checking evolution…"
+            onRetry={() => void loadPreview()}
+          />
         ) : previewState.status === 'error' ? (
           <StatusMessage tone="error" className="evolution-availability__error">
             {mutationError ? (

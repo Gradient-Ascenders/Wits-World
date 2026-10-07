@@ -168,6 +168,57 @@ afterEach(() => {
 });
 
 describe('live reported-location permission and lifecycle', () => {
+  it('prepares the map behind one initial page wait and reveals events without waiting for it', async () => {
+    let finishEvents!: (response: Response) => void;
+    let finishMap!: () => void;
+    const fetch = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          finishEvents = resolve;
+        }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const mapController = createMapController();
+    mapController.onLoad = vi.fn((listener) => {
+      finishMap = listener;
+    });
+    const view = renderExplore({ mapController });
+
+    await waitFor(() => expect(mapController.onLoad).toHaveBeenCalled());
+    expect(view.mapFactory).toHaveBeenCalledOnce();
+    expect(view.container.querySelector('.exploration-view')).toHaveClass(
+      'exploration-view--preparing',
+    );
+    expect(view.container.querySelectorAll('.page-loading-state')).toHaveLength(
+      1,
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Opening Explore…' }),
+    ).toBeInTheDocument();
+
+    await act(async () => finishEvents(discoveryResponse()));
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: /^Events/ }));
+    expect(await screen.findByText(event.title)).toBeInTheDocument();
+    expect(view.container.querySelector('.exploration-view')).not.toHaveClass(
+      'exploration-view--preparing',
+    );
+    expect(view.container.querySelector('.page-loading-state')).toBeNull();
+    expect(view.container.querySelector('.campus-map__canvas')).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+    expect(screen.getByText('Loading map…')).toHaveClass('sr-only');
+
+    act(() => finishMap());
+    expect(view.container.querySelector('.campus-map__canvas')).toHaveAttribute(
+      'aria-busy',
+      'false',
+    );
+    expect(view.mapFactory).toHaveBeenCalledOnce();
+  });
+
   it('waits for a player gesture when permission is prompt or unknown', async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
@@ -383,9 +434,7 @@ describe('selected-event authoritative eligibility', () => {
     expect(
       await screen.findByText('Location accuracy is too low.'),
     ).toBeVisible();
-    expect(
-      screen.getByText('Waiting for a more accurate location…'),
-    ).toBeVisible();
+    expect(screen.getByText('Improving location accuracy…')).toBeVisible();
     expect(mapController.setReportedLocation).toHaveBeenCalled();
   });
 
@@ -903,6 +952,52 @@ describe('trails and nearby vertical discovery', () => {
         method: 'POST',
       }),
     );
+  });
+
+  it('retains confirmed nearby results while refreshing and after a connection failure', async () => {
+    const user = userEvent.setup();
+    let rejectRefresh: (error: Error) => void = () => undefined;
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) => {
+        if (!String(input).endsWith('/events/nearby-unvisited'))
+          return Promise.resolve(discoveryResponse());
+        calls += 1;
+        if (calls === 1)
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ events: [], requestId: 'nearby-empty' }),
+              { headers: { 'Content-Type': 'application/json' }, status: 200 },
+            ),
+          );
+        return new Promise<Response>((_resolve, reject) => {
+          rejectRefresh = reject;
+        });
+      }),
+    );
+    const observation = createObservationHarness();
+    renderExplore({ observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(freshClaim()));
+    await user.click(await screen.findByRole('button', { name: /^Events/ }));
+    await user.click(screen.getByRole('button', { name: 'Nearby' }));
+    expect(
+      await screen.findByText('No nearby unvisited events.'),
+    ).toBeVisible();
+    const refreshButton = screen.getByRole('button', {
+      name: 'Refresh nearby',
+    });
+    await user.click(refreshButton);
+    expect(screen.getByText('No nearby unvisited events.')).toBeVisible();
+    expect(screen.getByText(/Updating nearby events/)).toBeVisible();
+    expect(refreshButton).toHaveFocus();
+    await act(async () => rejectRefresh(new TypeError('offline')));
+    expect(
+      await screen.findByText(/Nearby events could not be refreshed/),
+    ).toBeVisible();
+    expect(screen.getByText('No nearby unvisited events.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retry update' })).toBeEnabled();
   });
 
   it('resumes a pending nearby retry when the location watcher later recovers', async () => {

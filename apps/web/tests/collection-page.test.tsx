@@ -20,6 +20,7 @@ import {
   resetAccessibilityPreferences,
   updateAccessibilityPreferences,
 } from '../src/accessibility/preferences';
+import { CollectionReadProvider } from '../src/components/cards/CollectionReadProvider';
 import CollectionPage from '../src/pages/CollectionPage';
 import {
   buildCard,
@@ -331,15 +332,13 @@ describe('card collection page', () => {
 
     renderCollection();
 
-    expect(screen.getByRole('status')).toHaveTextContent('Loading your cards');
+    expect(screen.getByRole('status')).toHaveTextContent('Loading cards');
     expect(
       await screen.findByRole('heading', {
         name: 'Choose your starter affinity',
       }),
     ).toBeVisible();
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Loading your choices',
-    );
+    expect(screen.getByRole('status')).toHaveTextContent('Loading starters');
     await waitFor(() => expect(resolveOptions).toBeTypeOf('function'));
     resolveOptions(starterOptionsResponse());
 
@@ -1410,5 +1409,147 @@ describe('card collection page', () => {
       }),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('retained collection revisits', () => {
+  it('retains confirmed cards across route unmounts, reports a refresh failure, and retries the read', async () => {
+    const card = buildCard(901, { name: 'Retained Guardian' });
+    let resolveRefresh!: (response: Response) => void;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(collectionResponse([card]))
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveRefresh = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(collectionResponse([card]));
+    vi.stubGlobal('fetch', fetchMock);
+    const auth = createAuthValue();
+    function Tree({ visible }: { visible: boolean }) {
+      return (
+        <Auth0Context.Provider value={auth}>
+          <CollectionReadProvider>
+            {visible ? (
+              <CollectionPage apiBaseUrl={apiBaseUrl} />
+            ) : (
+              <p>Another route</p>
+            )}
+          </CollectionReadProvider>
+        </Auth0Context.Provider>
+      );
+    }
+    const view = render(<Tree visible />);
+    await screen.findByRole('button', {
+      name: 'View Retained Guardian details',
+    });
+    view.rerender(<Tree visible={false} />);
+    view.rerender(<Tree visible />);
+    expect(
+      screen.getByRole('button', { name: 'View Retained Guardian details' }),
+    ).toBeVisible();
+    expect(screen.getByText(/Updating cards/u)).toBeVisible();
+    expect(
+      screen.queryByRole('heading', { name: 'Loading cards' }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      resolveRefresh(new Response(null, { status: 503 }));
+    });
+    expect(
+      await screen.findByText(/Your cards could not be updated/u),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'View Retained Guardian details' }),
+    ).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Retry update' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/Your cards could not be updated/u),
+      ).not.toBeInTheDocument(),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('expires the revisit snapshot before a fresh route visit', async () => {
+    const card = buildCard(903, { name: 'Expired Snapshot Card' });
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(collectionResponse([card]))
+        .mockImplementation(() => new Promise<Response>(() => {})),
+    );
+    const auth = createAuthValue();
+    function Tree({ visible }: { visible: boolean }) {
+      return (
+        <Auth0Context.Provider value={auth}>
+          <CollectionReadProvider>
+            {visible ? (
+              <CollectionPage apiBaseUrl={apiBaseUrl} />
+            ) : (
+              <p>Another route</p>
+            )}
+          </CollectionReadProvider>
+        </Auth0Context.Provider>
+      );
+    }
+    const view = render(<Tree visible />);
+    await screen.findByRole('button', {
+      name: 'View Expired Snapshot Card details',
+    });
+    view.rerender(<Tree visible={false} />);
+    clock.mockReturnValue(now + 120001);
+    view.rerender(<Tree visible />);
+    expect(
+      screen.queryByRole('button', {
+        name: 'View Expired Snapshot Card details',
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Loading cards' }),
+    ).toBeVisible();
+  });
+
+  it('clears the revisit snapshot on a player binding change', async () => {
+    const card = buildCard(902, { name: 'Previous Player Card' });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(collectionResponse([card]))
+      .mockImplementation(() => new Promise<Response>(() => {}));
+    vi.stubGlobal('fetch', fetchMock);
+    const auth = createAuthValue();
+    function Tree({ visible }: { visible: boolean }) {
+      return (
+        <Auth0Context.Provider value={auth}>
+          <CollectionReadProvider>
+            {visible ? (
+              <CollectionPage apiBaseUrl={apiBaseUrl} />
+            ) : (
+              <p>Another route</p>
+            )}
+          </CollectionReadProvider>
+        </Auth0Context.Provider>
+      );
+    }
+    const view = render(<Tree visible />);
+    await screen.findByRole('button', {
+      name: 'View Previous Player Card details',
+    });
+    view.rerender(<Tree visible={false} />);
+    act(() => window.dispatchEvent(new Event('wits-player-binding-change')));
+    view.rerender(<Tree visible />);
+    expect(
+      screen.queryByRole('button', {
+        name: 'View Previous Player Card details',
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Loading cards' }),
+    ).toBeVisible();
   });
 });

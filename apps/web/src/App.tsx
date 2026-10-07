@@ -1,5 +1,5 @@
 import { AppToaster } from './components/AppToaster';
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { Redirect, Route, Switch, useLocation } from 'wouter';
 
 import { MatchModuleLoadError } from './api/match-errors';
@@ -12,13 +12,17 @@ import {
 } from './offline/OfflineProvider';
 import { ServiceWorkerUpdate } from './offline/ServiceWorkerUpdate';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { PageLoadingState } from './components/LoadingState';
+import { LoadingState } from './components/LoadingState';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { StartupGate, StartupSettler } from './components/auth/startup-state';
 import { AuthorRoute } from './components/auth/AuthorRoute';
 import { AuthorLoadingState } from './components/author/AuthorLoadingState';
 import { GuardedRouter } from './components/author/AuthorNavigationGuard';
-import { CurrentPlayerProvider } from './auth/CurrentPlayerProvider';
+import {
+  CurrentPlayerProvider,
+  useCurrentPlayer,
+} from './auth/CurrentPlayerProvider';
+import { CollectionReadProvider } from './components/cards/CollectionReadProvider';
 import { NotFoundPage } from './pages/NotFoundPage';
 import type {
   LocationClaimProvider,
@@ -58,6 +62,69 @@ const PvpHubPage = lazy(() => import('./pages/PvpHubPage'));
 const PvpMatchPage = lazy(() => import('./pages/PvpMatchPage'));
 const AccountPage = lazy(() => import('./pages/AccountPage'));
 
+// Start the destination module while identity checks run. Importing code does
+// not mount protected components or start their data requests.
+function prepareRoute(path: string) {
+  if (path.startsWith('/author')) return import('./pages/AuthorConsolePage');
+  if (path.startsWith('/offline')) return OfflinePages();
+  if (path.startsWith('/challenge-attempts/'))
+    return import('./pages/ChallengePage');
+  if (path === '/explore') return import('./pages/ExplorePage');
+  if (path === '/collection/trades/new' || /\/trades\/[^/]+\/edit$/.test(path))
+    return import('./pages/TradeEditorPage');
+  if (path === '/collection/trades') return import('./pages/TradeInboxPage');
+  if (path.startsWith('/collection/trades/'))
+    return import('./pages/TradeDetailPage');
+  if (path === '/decks' || path === '/collection/decks')
+    return import('./pages/DecksPage');
+  if (path.startsWith('/collection')) return import('./pages/CollectionPage');
+  if (path === '/matches/history') return import('./pages/MatchHistoryPage');
+  if (path === '/matches/live') return import('./pages/LiveLobbyPage');
+  if (path.startsWith('/matches/live/')) return import('./pages/LiveMatchPage');
+  if (path === '/matches/pvp') return import('./pages/PvpHubPage');
+  if (path.startsWith('/matches/pvp/')) return import('./pages/PvpMatchPage');
+  if (path === '/matches') return import('./pages/MatchEntryPage');
+  if (path.startsWith('/matches/')) return import('./pages/CpuMatchPage');
+  if (path === '/profile' || path.startsWith('/players/'))
+    return import('./pages/ProfilePage');
+  if (path === '/leaderboard') return import('./pages/LeaderboardPage');
+  if (path === '/account') return import('./pages/AccountPage');
+  if (path === '/' || path === '/about') return import('./pages/HomePage');
+}
+
+export function RoutePreparation({ pathname }: { pathname: string }) {
+  const destination = pathname.startsWith('/author')
+    ? 'author console'
+    : pathname.startsWith('/matches')
+      ? 'battle'
+      : pathname.startsWith('/collection/trades')
+        ? 'trade'
+        : pathname.startsWith('/collection') || pathname === '/decks'
+          ? 'collection'
+          : pathname === '/explore'
+            ? 'Explore'
+            : pathname.startsWith('/offline')
+              ? 'saved events'
+              : pathname.startsWith('/challenge')
+                ? 'challenge'
+                : pathname === '/account'
+                  ? 'account settings'
+                  : pathname === '/leaderboard'
+                    ? 'leaderboard'
+                    : pathname.startsWith('/profile') ||
+                        pathname.startsWith('/players')
+                      ? 'profile'
+                      : 'home';
+  return (
+    <LoadingState
+      delayed
+      prominent
+      label={`Opening ${destination}…`}
+      resetKey={pathname}
+    />
+  );
+}
+
 interface AppRoutesProps {
   apiBaseUrl: string;
   locationClaimProvider?: LocationClaimProvider;
@@ -76,183 +143,198 @@ export function AppRoutes({
   mapboxAccessToken,
 }: AppRoutesProps) {
   const [pathname] = useLocation();
-  const isAuthorRoute =
-    pathname === '/author' || pathname.startsWith('/author/');
+
+  useEffect(() => {
+    // Lazy rendering sends rejected module reads to the route error boundary.
+    void prepareRoute(pathname)?.catch(() => undefined);
+  }, [pathname]);
 
   return (
     <CurrentPlayerProvider apiBaseUrl={apiBaseUrl}>
       <OfflineProvider apiBaseUrl={apiBaseUrl}>
-        <AppShell>
+        <SessionCollectionShell apiBaseUrl={apiBaseUrl}>
           <AppToaster />
           <OfflineStatus />
           <ServiceWorkerUpdate />
-          <Suspense
-            fallback={
-              isAuthorRoute ? (
-                <AuthorLoadingState page label="Loading author console…" />
-              ) : (
-                <PageLoadingState
-                  title="Loading Wits World"
-                  description="Preparing this page…"
+          <StartupSettler />
+          <ErrorBoundary resetKey={pathname} withinShell>
+            <Suspense fallback={<RoutePreparation pathname={pathname} />}>
+              <Switch>
+                <Route path="/" component={HomePage} />
+                <Route path="/explore">
+                  <OfflineExploreGate>
+                    <ProtectedRoute>
+                      <ExplorePage
+                        apiBaseUrl={apiBaseUrl}
+                        locationClaimProvider={locationClaimProvider}
+                        locationObservationProvider={
+                          locationObservationProvider
+                        }
+                        locationPermissionProvider={locationPermissionProvider}
+                        mapFactory={mapFactory}
+                        mapboxAccessToken={mapboxAccessToken}
+                      />
+                    </ProtectedRoute>
+                  </OfflineExploreGate>
+                </Route>
+                <Route path="/offline" component={OfflineExplorePage} />
+                <Route
+                  path="/offline-attempts/:clientAttemptId"
+                  component={OfflineAttemptPage}
                 />
-              )
-            }
-          >
-            <StartupSettler />
-            <Switch>
-              <Route path="/" component={HomePage} />
-              <Route path="/explore">
-                <OfflineExploreGate>
+                <Route path="/challenge-attempts/:attemptId">
                   <ProtectedRoute>
-                    <ExplorePage
+                    <ChallengePage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/collection/trades/new">
+                  <ProtectedRoute destination="start a card trade">
+                    <TradeEditorPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/collection/trades/:tradeId/edit">
+                  <ProtectedRoute destination="edit a card trade">
+                    <TradeEditorPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/collection/trades/:tradeId">
+                  <ProtectedRoute destination="review a card trade">
+                    <TradeDetailPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/collection/trades">
+                  <ProtectedRoute destination="manage your card trades">
+                    <TradeInboxPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path={/^\/collection(?:\/evolutions)?\/?$/}>
+                  <ProtectedRoute destination="view your collection">
+                    <CollectionPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/decks">
+                  <Redirect replace to="/collection/decks" />
+                </Route>
+                <Route path="/collection/decks">
+                  <ProtectedRoute destination="manage your saved decks">
+                    <DecksRoute apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/leaderboard">
+                  <ProtectedRoute destination="view the leaderboard">
+                    <LeaderboardPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/matches/history">
+                  <ProtectedRoute destination="view your match history">
+                    <MatchHistoryPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/matches/live/:matchId">
+                  <ProtectedRoute destination="open a live battle">
+                    <LiveMatchPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/matches/live">
+                  <ProtectedRoute destination="play or watch a live battle">
+                    <LiveLobbyPage
                       apiBaseUrl={apiBaseUrl}
                       locationClaimProvider={locationClaimProvider}
-                      locationObservationProvider={locationObservationProvider}
-                      locationPermissionProvider={locationPermissionProvider}
-                      mapFactory={mapFactory}
-                      mapboxAccessToken={mapboxAccessToken}
                     />
                   </ProtectedRoute>
-                </OfflineExploreGate>
-              </Route>
-              <Route path="/offline" component={OfflineExplorePage} />
-              <Route
-                path="/offline-attempts/:clientAttemptId"
-                component={OfflineAttemptPage}
-              />
-              <Route path="/challenge-attempts/:attemptId">
-                <ProtectedRoute>
-                  <ChallengePage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/collection/trades/new">
-                <ProtectedRoute destination="start a card trade">
-                  <TradeEditorPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/collection/trades/:tradeId/edit">
-                <ProtectedRoute destination="edit a card trade">
-                  <TradeEditorPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/collection/trades/:tradeId">
-                <ProtectedRoute destination="review a card trade">
-                  <TradeDetailPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/collection/trades">
-                <ProtectedRoute destination="manage your card trades">
-                  <TradeInboxPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path={/^\/collection(?:\/evolutions)?\/?$/}>
-                <ProtectedRoute destination="view your collection">
-                  <CollectionPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/decks">
-                <Redirect replace to="/collection/decks" />
-              </Route>
-              <Route path="/collection/decks">
-                <ProtectedRoute destination="manage your saved decks">
-                  <DecksRoute apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/leaderboard">
-                <ProtectedRoute destination="view the leaderboard">
-                  <LeaderboardPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/matches/history">
-                <ProtectedRoute destination="view your match history">
-                  <MatchHistoryPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/matches/live/:matchId">
-                <ProtectedRoute destination="open a live battle">
-                  <LiveMatchPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/matches/live">
-                <ProtectedRoute destination="play or watch a live battle">
-                  <LiveLobbyPage
-                    apiBaseUrl={apiBaseUrl}
-                    locationClaimProvider={locationClaimProvider}
-                  />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/matches/pvp/:matchId">
-                <ProtectedRoute destination="continue your asynchronous PvP match">
-                  <PvpMatchPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/matches/pvp">
-                <ProtectedRoute destination="play asynchronous PvP">
-                  <PvpHubPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/matches/:matchId">
-                <ProtectedRoute destination="continue your CPU battle">
-                  <CpuMatchPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/matches">
-                <ProtectedRoute destination="play a CPU battle">
-                  <MatchEntryPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/profile">
-                <ProtectedRoute destination="view your progression profile">
-                  <ProfilePage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/players/:playerName">
-                {(params) => (
-                  <ProtectedRoute destination="view a player profile">
-                    <ProfilePage
-                      apiBaseUrl={apiBaseUrl}
-                      playerName={params.playerName}
-                    />
+                </Route>
+                <Route path="/matches/pvp/:matchId">
+                  <ProtectedRoute destination="continue your asynchronous PvP match">
+                    <PvpMatchPage apiBaseUrl={apiBaseUrl} />
                   </ProtectedRoute>
-                )}
-              </Route>
-              <Route path="/account">
-                <ProtectedRoute
-                  allowPlayerNameSetupRequired
-                  destination="manage your player account"
-                >
-                  <AccountPage apiBaseUrl={apiBaseUrl} />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/author/*?">
-                <ProtectedRoute
-                  destination="open the author console"
-                  loadingFallback={
-                    <AuthorLoadingState
-                      page
-                      label="Checking author access"
-                      description="The console opens only after Wits World confirms your current role."
-                    />
-                  }
-                >
-                  <AuthorRoute>
-                    <AuthorConsolePage
-                      apiBaseUrl={apiBaseUrl}
-                      mapFactory={mapFactory}
-                      mapboxAccessToken={mapboxAccessToken}
-                    />
-                  </AuthorRoute>
-                </ProtectedRoute>
-              </Route>
-              <Route path="/about">
-                <Redirect replace to="/" />
-              </Route>
-              <Route component={NotFoundPage} />
-            </Switch>
-          </Suspense>
-        </AppShell>
+                </Route>
+                <Route path="/matches/pvp">
+                  <ProtectedRoute destination="play asynchronous PvP">
+                    <PvpHubPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/matches/:matchId">
+                  <ProtectedRoute destination="continue your CPU battle">
+                    <CpuMatchPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/matches">
+                  <ProtectedRoute destination="play a CPU battle">
+                    <MatchEntryPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/profile">
+                  <ProtectedRoute destination="view your progression profile">
+                    <ProfilePage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/players/:playerName">
+                  {(params) => (
+                    <ProtectedRoute destination="view a player profile">
+                      <ProfilePage
+                        apiBaseUrl={apiBaseUrl}
+                        playerName={params.playerName}
+                      />
+                    </ProtectedRoute>
+                  )}
+                </Route>
+                <Route path="/account">
+                  <ProtectedRoute
+                    allowPlayerNameSetupRequired
+                    destination="manage your player account"
+                  >
+                    <AccountPage apiBaseUrl={apiBaseUrl} />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/author/*?">
+                  <ProtectedRoute
+                    destination="open the author console"
+                    loadingFallback={
+                      <AuthorLoadingState
+                        page
+                        recovery={false}
+                        label="Checking author access"
+                      />
+                    }
+                  >
+                    <AuthorRoute>
+                      <AuthorConsolePage
+                        apiBaseUrl={apiBaseUrl}
+                        mapFactory={mapFactory}
+                        mapboxAccessToken={mapboxAccessToken}
+                      />
+                    </AuthorRoute>
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/about">
+                  <Redirect replace to="/" />
+                </Route>
+                <Route component={NotFoundPage} />
+              </Switch>
+            </Suspense>
+          </ErrorBoundary>
+        </SessionCollectionShell>
       </OfflineProvider>
     </CurrentPlayerProvider>
+  );
+}
+
+function SessionCollectionShell({
+  apiBaseUrl,
+  children,
+}: {
+  apiBaseUrl: string;
+  children: ReactNode;
+}) {
+  const { state } = useCurrentPlayer();
+  const scope =
+    state.status === 'ready'
+      ? `${apiBaseUrl}:${state.player.id}:${state.player.role}`
+      : `${apiBaseUrl}:${state.status}`;
+  return (
+    <CollectionReadProvider key={scope}>
+      <AppShell>{children}</AppShell>
+    </CollectionReadProvider>
   );
 }
 

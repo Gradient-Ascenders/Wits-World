@@ -30,6 +30,7 @@ const originalServiceWorker = Object.getOwnPropertyDescriptor(
 );
 
 beforeEach(() => {
+  window.history.replaceState({}, '', '/');
   vi.useFakeTimers();
   reload = vi.fn();
   registration = Object.assign(new EventTarget(), {
@@ -63,6 +64,35 @@ async function start() {
 }
 
 describe('automatic application updates', () => {
+  it('does not reload if a task starts while an approved update is activating', async () => {
+    await start();
+    window.history.replaceState({}, '', '/author/events/new');
+    container.dispatchEvent(new Event('controllerchange'));
+    expect(reload).not.toHaveBeenCalled();
+  });
+  it.each([
+    '/challenge-attempts/active',
+    '/author/events/new',
+    '/collection/trades/new',
+  ])('defers document replacement while using %s', async (path) => {
+    window.history.replaceState({}, '', path);
+    await start();
+    expect(registration.waiting?.postMessage).not.toHaveBeenCalled();
+    window.history.replaceState({}, '', '/');
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(registration.waiting?.postMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not replace the document while a text field has focus', async () => {
+    const input = document.createElement('input');
+    document.body.append(input);
+    input.focus();
+    await start();
+    expect(registration.waiting?.postMessage).not.toHaveBeenCalled();
+    input.remove();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(registration.waiting?.postMessage).toHaveBeenCalledTimes(1);
+  });
   it('renders no update banner or button', () => {
     expect(render(<ServiceWorkerUpdate />).container).toBeEmptyDOMElement();
   });

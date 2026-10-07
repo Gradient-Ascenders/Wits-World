@@ -240,6 +240,8 @@ describe.skipIf(!runIntegrationTests)(
 
       const recoveredAfterLostResponse =
         await service.getActiveMatch(PLAYER_ID);
+      const entryAfterLostResponse =
+        await service.getActiveMatchEntry(PLAYER_ID);
 
       expect(recoveredAfterLostResponse).toMatchObject({
         matchId: created.matchId,
@@ -251,6 +253,16 @@ describe.skipIf(!runIntegrationTests)(
         lastAction: created.lastAction,
       });
       expect(recoveredAfterLostResponse.matchId).toBe(matchId);
+      expect(entryAfterLostResponse).toEqual({
+        matchId,
+        startedAt: created.startedAt,
+        status: 'active',
+        state: {
+          currentSide: created.state.currentSide,
+          phase: created.state.phase,
+          turnNumber: created.state.turnNumber,
+        },
+      });
 
       const activeMatchCount = await pool.query<{ count: string }>(
         `
@@ -460,6 +472,9 @@ describe.skipIf(!runIntegrationTests)(
       await expect(
         service.getMatch(fixture.playerId, fixture.matchId),
       ).resolves.toEqual(response);
+      await expect(service.getActiveMatch(fixture.playerId)).resolves.toEqual(
+        response,
+      );
       expect(persisted.actions.map(({ sequence }) => sequence)).toEqual([1, 2]);
       expect(persisted.actions.map(({ side }) => side)).toEqual([
         'player',
@@ -503,6 +518,9 @@ describe.skipIf(!runIntegrationTests)(
         fixture.matchId,
       );
       expect(legacyDuplicate).toEqual(response);
+      await expect(service.getActiveMatch(fixture.playerId)).resolves.toEqual(
+        response,
+      );
       expect(afterLegacyDuplicate.actions).toHaveLength(2);
       expect(afterLegacyDuplicate.rounds).toHaveLength(1);
     });

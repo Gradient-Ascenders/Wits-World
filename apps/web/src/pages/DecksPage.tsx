@@ -2,7 +2,10 @@ import { SelectField } from '../components/fields/SelectField';
 import { SearchField } from '../components/fields/SearchField';
 import { StateIcon } from '../components/StatusMessage';
 import { confirmAction } from '../components/AppToaster';
-import { PageLoadingState } from '../components/LoadingState';
+import {
+  PageLoadingState,
+  UpdatingIndicator,
+} from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   CaretDown,
@@ -39,6 +42,7 @@ import {
 } from '../api/decks';
 import { MatchApiError, MatchModuleLoadError } from '../api/match-errors';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
+import { useCollectionReads } from '../components/cards/CollectionReadProvider';
 import { CollectionSectionNavigation } from '../components/cards/CollectionSectionNavigation';
 import { CardThumbnail } from '../components/cards/CollectibleCard';
 import {
@@ -59,7 +63,13 @@ interface DecksPageProps {
 type DecksState =
   | { status: 'loading' }
   | { error: DeckApiError; status: 'error' }
-  | { cards: OwnedCard[]; decks: SavedDeck[]; status: 'ready' };
+  | {
+      cards: OwnedCard[];
+      decks: SavedDeck[];
+      status: 'ready';
+      refreshing?: boolean;
+      refreshError?: string;
+    };
 
 interface DeckDraft {
   deckId?: string;
@@ -103,6 +113,7 @@ export default function DecksPage({
   onStartMatch,
 }: DecksPageProps) {
   const getAccessToken = useApiAccessToken();
+  const retainedReads = useCollectionReads();
   const { loginWithRedirect } = useAuth0();
   const [state, setState] = useState<DecksState>({ status: 'loading' });
   const [revision, setRevision] = useState(0);
@@ -128,7 +139,11 @@ export default function DecksPage({
   useEffect(() => {
     const controller = new AbortController();
 
-    setState({ status: 'loading' });
+    setState((current) =>
+      current.status === 'ready'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
 
     void Promise.all([
       listSavedDecks({
@@ -144,17 +159,29 @@ export default function DecksPage({
     ])
       .then(([decks, cards]) => {
         if (!controller.signal.aborted) {
+          retainedReads?.rememberCards(apiBaseUrl, cards);
           setState({ cards, decks, status: 'ready' });
         }
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setState({ error: toDeckApiError(error), status: 'error' });
+          const failure = toDeckApiError(error);
+          if (failure.failure === 'authorization') retainedReads?.clearCards();
+          setState((current) =>
+            current.status === 'ready' && failure.failure !== 'authorization'
+              ? {
+                  ...current,
+                  refreshing: false,
+                  refreshError:
+                    'Your decks could not be updated. Showing previously saved decks.',
+                }
+              : { error: failure, status: 'error' },
+          );
         }
       });
 
     return () => controller.abort();
-  }, [apiBaseUrl, getAccessToken, revision]);
+  }, [apiBaseUrl, getAccessToken, retainedReads, revision]);
 
   useEffect(() => () => mutationRequest.current?.abort(), []);
 
@@ -174,7 +201,11 @@ export default function DecksPage({
     setActionError(null);
     setMatchError(null);
     setReauthFailed(false);
-    setState({ status: 'loading' });
+    setState((current) =>
+      current.status === 'ready'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
     setRevision((value) => value + 1);
   }, []);
 
@@ -229,7 +260,13 @@ export default function DecksPage({
   async function submitDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (draft === null || state.status !== 'ready' || pending !== null) {
+    if (
+      draft === null ||
+      state.status !== 'ready' ||
+      state.refreshing ||
+      state.refreshError ||
+      pending !== null
+    ) {
       return;
     }
 
@@ -249,6 +286,7 @@ export default function DecksPage({
     setActionError(null);
     setNotice(null);
     setReauthFailed(false);
+    retainedReads?.clearCards();
     setPending({ deckId: draft.deckId, kind: 'save' });
 
     try {
@@ -294,7 +332,13 @@ export default function DecksPage({
   }
 
   async function activateDeck(deck: SavedDeck) {
-    if (pending !== null || deck.isSelected) {
+    if (
+      pending !== null ||
+      state.status !== 'ready' ||
+      state.refreshing ||
+      state.refreshError ||
+      deck.isSelected
+    ) {
       return;
     }
 
@@ -304,6 +348,7 @@ export default function DecksPage({
     setMatchError(null);
     setNotice(null);
     setReauthFailed(false);
+    retainedReads?.clearCards();
     setPending({ deckId: deck.deckId, kind: 'select' });
 
     try {
@@ -341,7 +386,12 @@ export default function DecksPage({
   }
 
   async function confirmDelete(deck: SavedDeck) {
-    if (pending !== null) {
+    if (
+      pending !== null ||
+      state.status !== 'ready' ||
+      state.refreshing ||
+      state.refreshError
+    ) {
       return;
     }
 
@@ -351,6 +401,7 @@ export default function DecksPage({
     setMatchError(null);
     setNotice(null);
     setReauthFailed(false);
+    retainedReads?.clearCards();
     setPending({ deckId: deck.deckId, kind: 'delete' });
 
     try {
@@ -391,7 +442,14 @@ export default function DecksPage({
   }
 
   async function startMatch(deck: SavedDeck) {
-    if (pending !== null || mutationRequest.current !== null || !onStartMatch) {
+    if (
+      pending !== null ||
+      state.status !== 'ready' ||
+      state.refreshing ||
+      state.refreshError ||
+      mutationRequest.current !== null ||
+      !onStartMatch
+    ) {
       return;
     }
 
@@ -443,8 +501,9 @@ export default function DecksPage({
       <div className="decks-page">
         <CollectionSectionNavigation />
         <PageLoadingState
-          title="Loading your decks and collection"
-          description="Loading your saved decks and cards…"
+          title="Loading decks"
+          onRetry={reload}
+          resetKey={revision}
         />
       </div>
     );
@@ -492,7 +551,8 @@ export default function DecksPage({
     activeDeck ??
     state.decks[0] ??
     null;
-  const isMutationPending = pending !== null;
+  const isMutationPending =
+    pending !== null || Boolean(state.refreshing || state.refreshError);
 
   function showDeckDetails(deck: SavedDeck) {
     if (pending !== null) {
@@ -509,6 +569,12 @@ export default function DecksPage({
   return (
     <div className={`decks-page${draft ? ' decks-page--editing' : ''}`}>
       <CollectionSectionNavigation />
+      <UpdatingIndicator
+        active={Boolean(state.refreshing)}
+        label="Updating decks"
+        error={state.refreshError}
+        onRetry={reload}
+      />
       {draft === null ? (
         <PageHeader onCreate={beginCreate} disabled={isMutationPending} />
       ) : null}
@@ -1651,7 +1717,7 @@ function DeckEditor({
                 <strong>{readiness}</strong>
                 <span>
                   {isSaving
-                    ? 'Saving…'
+                    ? 'Saving deck…'
                     : hasSaveError
                       ? 'Save failed'
                       : isDirty
@@ -1679,7 +1745,7 @@ function DeckEditor({
                 type="submit"
               >
                 {isSaving
-                  ? 'Saving…'
+                  ? 'Saving deck…'
                   : draft.mode === 'create'
                     ? 'Create deck'
                     : 'Save deck'}

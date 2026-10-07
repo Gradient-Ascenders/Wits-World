@@ -15,13 +15,7 @@ export function AuthorRoute({ children }: AuthorRouteProps) {
   }, []);
 
   if (state.status === 'anonymous' || state.status === 'loading') {
-    return (
-      <AuthorLoadingState
-        page
-        label="Checking author access"
-        description="The console opens only after Wits World confirms your current role."
-      />
-    );
+    return <AuthorLoadingState page label="Checking author access" />;
   }
 
   if (state.status === 'error') {

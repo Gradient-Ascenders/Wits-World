@@ -1,29 +1,28 @@
-import { QuestMarker } from '../branding/QuestMarker';
+import { RegionLoadingState } from '../LoadingState';
 
 export function ExplorationLoadingPanel({
   className = '',
   description,
+  immediate = false,
   label,
+  onRetry,
+  placeholder = true,
 }: {
   className?: string;
   description?: string;
+  immediate?: boolean;
   label: string;
+  onRetry?: () => void;
+  placeholder?: boolean;
 }) {
   return (
-    <div
-      aria-atomic="true"
-      aria-busy="true"
-      aria-live="polite"
-      className={`exploration-loading-panel state-message ${className}`}
-      role="status"
-    >
-      <QuestMarker className="exploration-loading-panel__marker" />
-      <strong>{label}</strong>
-      {description ? (
-        <span className="exploration-loading-panel__description">
-          {description}
-        </span>
-      ) : null}
-    </div>
+    <RegionLoadingState
+      className={`exploration-loading-panel ${className}`}
+      immediate={immediate}
+      label={label}
+      description={description}
+      onRetry={onRetry}
+      placeholder={placeholder}
+    />
   );
 }

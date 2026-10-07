@@ -302,9 +302,7 @@ describe('saved deck management page', () => {
       '/collection/decks',
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Loading your decks and collection',
-    );
+    expect(screen.getByRole('status')).toHaveTextContent('Loading decks');
 
     await waitFor(() => expect(requests).toHaveLength(2));
     requests[0]!(deckListResponse([]));

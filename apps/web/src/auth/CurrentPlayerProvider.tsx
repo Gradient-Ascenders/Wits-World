@@ -19,12 +19,13 @@ import {
 } from '../api/authentication';
 import { useApiAccessToken } from './useApiAccessToken';
 import { bindAuthenticatedPlayer } from './player-session-binding';
+import { READ_TIMEOUT_MS } from '../components/loading-policy';
 
 type CurrentPlayerState =
   | { status: 'anonymous' }
   | {
       status: 'error';
-      failure: CurrentPlayerFailure | 'identity_changed';
+      failure: CurrentPlayerFailure | 'identity_changed' | 'timeout';
     }
   | { status: 'loading' }
   | { player: CurrentPlayer; status: 'ready' };
@@ -76,6 +77,11 @@ export function CurrentPlayerProvider({
 
     const controller = new AbortController();
     setState({ status: 'loading' });
+    // Token retrieval can also stall, so bound the whole identity check.
+    const timeout = window.setTimeout(() => {
+      controller.abort();
+      setState({ failure: 'timeout', status: 'error' });
+    }, READ_TIMEOUT_MS);
 
     void getCurrentPlayer({
       apiBaseUrl,
@@ -116,9 +122,13 @@ export function CurrentPlayerProvider({
             status: 'error',
           });
         }
-      });
+      })
+      .finally(() => window.clearTimeout(timeout));
 
-    return () => controller.abort();
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, [apiBaseUrl, attempt, isAuthenticated, isLoading]);
 
   const value = useMemo<CurrentPlayerContextValue>(

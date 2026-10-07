@@ -220,6 +220,11 @@ describe('CPU match service', () => {
     });
 
     expect(match.matchId).toBe(MATCH_ID);
+    const matchInsert = query.mock.calls.find(([statement]) =>
+      statement.includes('insert into public.cpu_matches'),
+    );
+    expect(matchInsert?.[0]).toContain('started_at');
+    expect(matchInsert?.[1]?.[3]).toBe(match.startedAt);
     const inserts = query.mock.calls.filter(([statement]) =>
       statement.includes('insert into public.cpu_match_cards'),
     );
@@ -1079,11 +1084,50 @@ describe('CPU match service', () => {
     expect(query).not.toHaveBeenCalledWith('commit');
   });
 
-  it('recovers one active match and its ordered log in one read snapshot', async () => {
+  it('loads the dashboard entry from the indexed active row without battle history', async () => {
+    const query = vi.fn(async (statement: string, values?: unknown[]) => {
+      expect(values).toEqual([PLAYER_ID]);
+      expect(statement).toContain("and match.status = 'active'");
+      expect(statement).toContain("match.state ->> 'phase'");
+      expect(statement).not.toContain('cpu_match_actions');
+      expect(statement).not.toContain('cpu_match_cards');
+      return {
+        rows: [
+          {
+            current_side: 'player',
+            id: MATCH_ID,
+            phase: 'active',
+            started_at: new Date('2026-08-15T23:59:00.000Z'),
+            turn_number: 3,
+          },
+        ],
+      };
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    await expect(service.getActiveMatchEntry(PLAYER_ID)).resolves.toEqual({
+      matchId: MATCH_ID,
+      startedAt: '2026-08-15T23:59:00.000Z',
+      status: 'active',
+      state: {
+        currentSide: 'player',
+        phase: 'active',
+        turnNumber: 3,
+      },
+    });
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers a legacy active match and its ordered log in one read snapshot', async () => {
     const state = createBattleState(deck('player'), deck('cpu'));
     const query = vi.fn(async (statement: string, values?: unknown[]) => {
-      expect(values).toEqual([PLAYER_ID, null, true]);
-      expect(statement).toContain("match.status = 'active'");
+      expect(values).toEqual([PLAYER_ID]);
+      expect(statement).toContain("and match.status = 'active'");
+      expect(statement).not.toContain('$3::boolean');
+      expect(statement).toContain('action.response is not null');
+      expect(statement).toContain(
+        "jsonb_typeof(latest.response -> 'battleLog')",
+      );
       expect(statement).toContain('jsonb_agg');
       expect(statement).toContain('order by action.sequence');
 
@@ -1100,7 +1144,9 @@ describe('CPU match service', () => {
             winner: null,
             started_at: new Date('2026-08-15T23:59:00.000Z'),
             completed_at: null,
-            log_actions: [],
+            latest_battle_log: null,
+            latest_last_action: null,
+            legacy_log_actions: [],
           },
         ],
       };
@@ -1127,6 +1173,64 @@ describe('CPU match service', () => {
         /\b(begin|commit|update|insert|delete)\b/i.test(statement),
       ),
     ).toBe(false);
+  });
+
+  it('reuses the latest complete receipt for an active match log', async () => {
+    const state = createBattleState(deck('player'), deck('cpu'));
+    const latestBattleLog = [
+      {
+        events: [
+          {
+            id: '3:0',
+            kind: 'turn' as const,
+            message: 'Turn 1 ended. Player is next.',
+            sequence: 3,
+            side: 'player' as const,
+          },
+        ],
+        id: 'turn-1',
+        label: 'Turn 1',
+        turnNumber: 1,
+      },
+    ];
+    const latestLastAction = createLogResult('cpu', { type: 'timeout' });
+    const query = vi.fn(async () => ({
+      rows: [
+        {
+          id: MATCH_ID,
+          player_id: PLAYER_ID,
+          status: 'active',
+          state,
+          version: 3,
+          turn_started_at: new Date('2026-08-16T00:00:00.000Z'),
+          turn_deadline: new Date('2026-08-16T00:01:30.000Z'),
+          winner: null,
+          started_at: new Date('2026-08-15T23:59:00.000Z'),
+          completed_at: null,
+          latest_battle_log: latestBattleLog,
+          latest_last_action: latestLastAction,
+          legacy_log_actions: [
+            {
+              sequence: 999,
+              roundNumber: 999,
+              roundStateBefore: state,
+              roundStateAfter: state,
+              result: createLogResult('player', { type: 'timeout' }),
+            },
+          ],
+        },
+      ],
+    }));
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    const recovered = await service.getActiveMatch(PLAYER_ID);
+
+    expect(recovered.battleLog).toEqual(latestBattleLog);
+    expect(recovered.lastAction).toEqual(latestLastAction);
+    expect(recovered.battleLog).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'turn-999' })]),
+    );
+    expect(query).toHaveBeenCalledTimes(1);
   });
 
   it('serializes ordered effects, zero cost, stacked modifiers, and a clamped 150% debuff', async () => {

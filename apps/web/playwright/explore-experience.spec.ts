@@ -481,17 +481,27 @@ test('map and event loading preserve discovery space', async ({
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/explore?map-loading', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByText('Loading the campus map…')).toBeVisible();
-  await expect(page.getByText('Loading events…')).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Events —/ })).toBeInViewport({
-    ratio: 1,
-  });
+  const mapLoading = page
+    .locator('.map-state.exploration-loading-panel')
+    .filter({ hasText: 'Loading map…' });
+  await expect(page.locator('.campus-map__canvas')).toHaveAttribute(
+    'aria-busy',
+    'true',
+  );
+  await expect(mapLoading.locator('[role="status"]')).toHaveClass(/sr-only/);
+  await expect(
+    page.getByRole('heading', { name: 'Opening Explore…' }),
+  ).toBeVisible();
+  await expect(page.locator('.page-loading-state')).toHaveCount(1);
   await page.screenshot({
     animations: 'disabled',
     path: info.outputPath('mobile-loading.png'),
   });
   release();
-  await page.getByRole('button', { name: /^Events —/ }).click();
+  await expect(page.locator('.page-loading-state')).toHaveCount(0);
+  const eventsTrigger = page.getByRole('button', { name: /^Events —/ });
+  await expect(eventsTrigger).toBeInViewport({ ratio: 1 });
+  await eventsTrigger.click();
   await expect(page.getByText('No events available.')).toBeVisible();
 
   let releaseTrails: () => void = () => undefined;
@@ -504,45 +514,12 @@ test('map and event loading preserve discovery space', async ({
   });
   await page.getByRole('button', { name: 'Trails', exact: true }).click();
   const trailLoading = page
-    .getByRole('status')
+    .locator('.exploration-loading-panel')
     .filter({ hasText: 'Loading trails…' });
-  await expect(trailLoading).toHaveClass(/exploration-loading-panel/);
-  await expect(trailLoading).toHaveAttribute('aria-busy', 'true');
-  await expect(trailLoading.locator('.quest-marker')).toHaveCSS(
-    'width',
-    '36px',
-  );
-  await expect(trailLoading).toHaveCSS('border-top-width', '1px');
-  const pin = trailLoading.locator('.quest-marker svg');
-  await expect(pin).toHaveCSS('animation-name', 'quest-marker-glow');
-  await expect(pin.locator('.quest-marker__base')).toHaveCSS(
-    'stroke-dasharray',
-    'none',
-  );
-  await pin.evaluate((element) => {
-    const animation = element.getAnimations()[0]!;
-    animation.pause();
-    animation.currentTime = 900;
-  });
-  await page.screenshot({
-    animations: 'allow',
-    path: info.outputPath('mobile-loader-glow-peak.png'),
-  });
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect(pin).toHaveCSS('animation-name', 'none');
-  await page.evaluate(() => {
-    document.documentElement.dataset.motion = 'full';
-  });
-  await expect(pin).toHaveCSS('animation-name', 'quest-marker-glow');
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.evaluate(() => {
-    document.documentElement.dataset.motion = 'reduce';
-  });
-  await expect(pin).toHaveCSS('animation-name', 'none');
-  await page.evaluate(() => {
-    document.documentElement.dataset.motion = 'system';
-  });
-  await expect(pin).toHaveCSS('animation-name', 'quest-marker-glow');
+  await expect(
+    trailLoading.locator('.region-loading-state__placeholder'),
+  ).toBeVisible();
+  await expect(trailLoading.locator('[role="status"]')).toHaveClass(/sr-only/);
   await page.screenshot({
     animations: 'disabled',
     path: info.outputPath('mobile-trails-loading.png'),

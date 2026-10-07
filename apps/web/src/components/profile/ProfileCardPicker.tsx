@@ -1,3 +1,4 @@
+import { LoadingState } from '../LoadingState';
 import { CheckIcon, DotsSixIcon, XIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -281,7 +282,11 @@ export function ProfileCardPicker({
           </button>
         </div>
       ) : !collection ? (
-        <p role="status">Loading your cards…</p>
+        <LoadingState
+          label="Loading cards…"
+          onRetry={() => setRevision((value) => value + 1)}
+          resetKey={revision}
+        />
       ) : !collection.length ? (
         <p>
           No cards yet. Complete a challenge or choose your starter cards in

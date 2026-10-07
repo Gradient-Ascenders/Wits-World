@@ -1,4 +1,4 @@
-import { LoadingState, PageLoadingState } from '../components/LoadingState';
+import { LoadingState, UpdatingIndicator } from '../components/LoadingState';
 import { createAppDateTimeFormatter } from '../date-time';
 import { StatusMessage } from '../components/StatusMessage';
 import { useEffect, useRef, useState } from 'react';
@@ -28,8 +28,11 @@ function useLocalState() {
   const { revision } = useOffline();
   const [state, setState] = useState<LocalState | null>(null);
   const [error, setError] = useState('');
+  const [reading, setReading] = useState(true);
   useEffect(() => {
     let active = true;
+    setError('');
+    setReading(true);
     void readOfflineState()
       .then((value) => {
         if (active) setState(value);
@@ -37,6 +40,9 @@ function useLocalState() {
       .catch(() => {
         if (active)
           setError('Device storage is unavailable. Connect to play online.');
+      })
+      .finally(() => {
+        if (active) setReading(false);
       });
     return () => {
       active = false;
@@ -48,12 +54,20 @@ function useLocalState() {
         ? { session: undefined, packs: [], attempts: [], receipts: [] }
         : state,
     error,
+    reading,
   };
 }
 
 export function OfflineExplorePage() {
-  const { state, error } = useLocalState();
-  const { refresh, sync, online } = useOffline();
+  const { state, error, reading } = useLocalState();
+  const {
+    refresh,
+    revision,
+    online,
+    syncing,
+    syncFailed,
+    attemptSync = {},
+  } = useOffline();
   const [, navigate] = useLocation();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -83,18 +97,39 @@ export function OfflineExplorePage() {
     }
   }
   return (
-    <section className="challenge-page offline-page">
-      <h1>Saved campus events</h1>
+    <section
+      aria-labelledby="saved-events-title"
+      className="challenge-page offline-page"
+    >
+      <h1 id="saved-events-title">Saved campus events</h1>
       <p>
         Answers stay on this device until the server can check them. Reconnect
         within 12 hours of completing a challenge.
       </p>
       {(error || message) && (
-        <StatusMessage tone="error">{error || message}</StatusMessage>
+        <StatusMessage tone="error">
+          {error || message}
+          {error && (
+            <button
+              className="button button--secondary"
+              onClick={refresh}
+              type="button"
+            >
+              Retry device storage
+            </button>
+          )}
+        </StatusMessage>
+      )}
+      {(state?.session || syncing || syncFailed) && (
+        <SyncFeedback label="Sync saved attempts" />
       )}
       {!state ? (
         error ? null : (
-          <LoadingState label="Loading saved events…" />
+          <LoadingState
+            label="Loading saved events…"
+            onRetry={refresh}
+            resetKey={revision}
+          />
         )
       ) : !state.session ? (
         <p>
@@ -109,9 +144,11 @@ export function OfflineExplorePage() {
               ? 'Network detected; server connection not guaranteed.'
               : 'No connection.'}
           </p>
-          <button className="button" onClick={() => void sync()} type="button">
-            Sync saved attempts
-          </button>
+          <UpdatingIndicator
+            active={reading}
+            label="Updating saved events"
+            onRetry={refresh}
+          />
           <EventSchematic packs={state.packs} />
           {state.packs.length === 0 && (
             <p>
@@ -153,9 +190,10 @@ export function OfflineExplorePage() {
                   {attempt.cached.pack.event.title}
                 </Link>{' '}
                 —{' '}
-                {attempt.status === 'pending'
-                  ? 'waiting for server validation'
-                  : 'in progress'}
+                {attemptSync[attempt.clientAttemptId]?.message ??
+                  (attempt.status === 'pending'
+                    ? 'Saved locally — pending server validation; no reward confirmed.'
+                    : 'in progress')}
               </li>
             ))}
           </ul>
@@ -176,6 +214,42 @@ export function OfflineExplorePage() {
         </>
       )}
     </section>
+  );
+}
+
+function SyncFeedback({ label }: { label: string }) {
+  const { syncing, syncMessage, syncFailed, sync, cancelSync, online } =
+    useOffline();
+  return (
+    <div aria-busy={syncing}>
+      {syncMessage && (
+        <StatusMessage tone={syncFailed ? 'error' : 'info'} role={undefined}>
+          {syncMessage}
+        </StatusMessage>
+      )}
+      <button
+        className="button"
+        disabled={syncing || !online}
+        onClick={() => void sync()}
+        type="button"
+      >
+        {syncing
+          ? 'Syncing saved attempts…'
+          : syncFailed
+            ? 'Retry sync'
+            : label}
+      </button>
+      {syncing && (
+        <button
+          className="button button--secondary"
+          onClick={cancelSync}
+          type="button"
+        >
+          Cancel sync
+        </button>
+      )}
+      {!online && <p>Reconnect to check saved attempts with the server.</p>}
+    </div>
   );
 }
 
@@ -228,7 +302,7 @@ function EventSchematic({ packs }: { packs: CachedPack[] }) {
 export function OfflineAttemptPage() {
   const { clientAttemptId } = useParams<{ clientAttemptId: string }>();
   const { state, error } = useLocalState();
-  const { refresh, sync } = useOffline();
+  const { refresh, revision, sync, attemptSync = {} } = useOffline();
   const attempt = state?.attempts.find(
     (item) => item.clientAttemptId === clientAttemptId,
   );
@@ -310,10 +384,14 @@ export function OfflineAttemptPage() {
   }
   if (!state && !error)
     return (
-      <PageLoadingState
-        title="Loading saved attempt"
-        description="Restoring this challenge from your device…"
-      />
+      <section className="challenge-page challenge-panel">
+        <h1>Saved attempt</h1>
+        <LoadingState
+          label="Loading saved challenge…"
+          onRetry={refresh}
+          resetKey={revision}
+        />
+      </section>
     );
   if (!attempt)
     return (
@@ -329,6 +407,15 @@ export function OfflineAttemptPage() {
               ? rejectionMessage(receipt.outcome)
               : 'This attempt is not available for the current local account.')}
         </p>
+        {error && (
+          <button
+            className="button button--secondary"
+            onClick={refresh}
+            type="button"
+          >
+            Retry device storage
+          </button>
+        )}
         {receipt?.attemptId && (
           <Link href={`/challenge-attempts/${receipt.attemptId}`}>
             View confirmed result
@@ -346,10 +433,11 @@ export function OfflineAttemptPage() {
       </p>
       {attempt.status === 'pending' ? (
         <>
-          <p>Saved on this device. Waiting for server validation.</p>
-          <button className="button" onClick={() => void sync()} type="button">
-            Sync now
-          </button>
+          <p>
+            {attemptSync[attempt.clientAttemptId]?.message ??
+              'Saved on this device. Pending server validation; no reward confirmed.'}
+          </p>
+          <SyncFeedback label="Sync now" />
         </>
       ) : expired || !question ? (
         <>

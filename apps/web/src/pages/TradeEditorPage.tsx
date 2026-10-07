@@ -36,9 +36,13 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { useUnsavedAuthorChanges } from '../components/author/AuthorNavigationGuard';
 import { CardArtwork } from '../components/cards/CollectibleCard';
+import { useCollectionReads } from '../components/cards/CollectionReadProvider';
 import { CollectionSectionNavigation } from '../components/cards/CollectionSectionNavigation';
 import { useCardTilt } from '../components/cards/useCardTilt';
-import { PageLoadingState } from '../components/LoadingState';
+import {
+  PageLoadingState,
+  UpdatingIndicator,
+} from '../components/LoadingState';
 import { StateIcon } from '../components/StatusMessage';
 import {
   RequestedCardList,
@@ -56,6 +60,8 @@ type EditorState =
       originalTrade: CardTrade | null;
       preview: TradeSelectionPreview;
       status: 'ready';
+      refreshing?: boolean;
+      refreshError?: string;
     }
   | { error: TradeApiError; status: 'error' };
 
@@ -67,8 +73,10 @@ export default function TradeEditorPage({
   const { tradeId } = useParams<{ tradeId?: string }>();
   const editing = Boolean(tradeId);
   const getAccessToken = useApiAccessToken();
+  const retainedReads = useCollectionReads();
   const [, navigate] = useLocation();
   const [state, setState] = useState<EditorState>({ status: 'loading' });
+  const [readRetry, setReadRetry] = useState(0);
   const [choosingPlayer, setChoosingPlayer] = useState(!editing);
   const [recipientBusy, setRecipientBusy] = useState(false);
   const [recipientError, setRecipientError] = useState<string | null>(null);
@@ -97,10 +105,25 @@ export default function TradeEditorPage({
   const builderHeading = useRef<HTMLHeadingElement>(null);
   const clearNavigationGuard = useUnsavedAuthorChanges(dirty, 'card trade');
 
+  const draftSnapshot = useRef({
+    state,
+    offeredOwnedCardIds,
+    requestedDefinitions,
+  });
+  draftSnapshot.current = { state, offeredOwnedCardIds, requestedDefinitions };
+
   useEffect(() => {
     const controller = new AbortController();
     request.current = controller;
-    setState({ status: 'loading' });
+    const previous = draftSnapshot.current;
+    const retained =
+      previous.state.status === 'ready' &&
+      (previous.state.originalTrade?.tradeId ?? undefined) === tradeId;
+    setState((current) =>
+      retained && current.status === 'ready'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
     void Promise.all([
       listTradingCatalogue({
         apiBaseUrl,
@@ -118,17 +141,24 @@ export default function TradeEditorPage({
     ])
       .then(async ([catalogue, originalTrade]) => {
         if (controller.signal.aborted) return;
-        const initialOffered =
-          originalTrade?.self.offeredCopies.map((copy) => copy.ownedCardId) ??
-          [];
-        const initialRequested =
-          originalTrade?.self.requestedDefinitions.map((definition) => ({
-            cardDefinitionId: definition.cardDefinitionId,
-            quantity: definition.quantity,
-          })) ?? [];
+        const initialOffered = retained
+          ? previous.offeredOwnedCardIds
+          : (originalTrade?.self.offeredCopies.map(
+              (copy) => copy.ownedCardId,
+            ) ?? []);
+        const initialRequested = retained
+          ? previous.requestedDefinitions
+          : (originalTrade?.self.requestedDefinitions.map((definition) => ({
+              cardDefinitionId: definition.cardDefinitionId,
+              quantity: definition.quantity,
+            })) ?? []);
+        const draftTrade =
+          retained && previous.state.status === 'ready'
+            ? previous.state.originalTrade
+            : originalTrade;
         const preview = await previewTradeSelection({
           apiBaseUrl,
-          expectedVersion: originalTrade?.version,
+          expectedVersion: draftTrade?.version,
           getAccessToken,
           offeredOwnedCardIds: initialOffered,
           requestedDefinitions: initialRequested,
@@ -136,20 +166,36 @@ export default function TradeEditorPage({
           tradeId,
         });
         if (controller.signal.aborted) return;
-        setRecipientPlayerName(originalTrade?.counterpartyPlayerName ?? '');
-        setOfferedOwnedCardIds(initialOffered);
-        setRequestedDefinitions(initialRequested);
-        setState({ catalogue, originalTrade, preview, status: 'ready' });
+        if (!retained) {
+          setRecipientPlayerName(originalTrade?.counterpartyPlayerName ?? '');
+          setOfferedOwnedCardIds(initialOffered);
+          setRequestedDefinitions(initialRequested);
+        }
+        setState({
+          catalogue,
+          originalTrade: draftTrade,
+          preview,
+          status: 'ready',
+        });
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
-          setState({
-            error:
-              error instanceof TradeApiError
-                ? error
-                : new TradeApiError('unavailable'),
-            status: 'error',
-          });
+          const failure =
+            error instanceof TradeApiError
+              ? error
+              : new TradeApiError('unavailable');
+          setState((current) =>
+            retained &&
+            current.status === 'ready' &&
+            failure.failure !== 'authorization'
+              ? {
+                  ...current,
+                  refreshing: false,
+                  refreshError:
+                    'The trade could not be refreshed. Your draft is preserved; refresh before submitting.',
+                }
+              : { error: failure, status: 'error' },
+          );
         }
       });
     return () => {
@@ -157,7 +203,7 @@ export default function TradeEditorPage({
       previewRequest.current?.abort();
       recipientRequest.current?.abort();
     };
-  }, [apiBaseUrl, getAccessToken, tradeId]);
+  }, [apiBaseUrl, getAccessToken, tradeId, readRetry]);
 
   useEffect(() => {
     if (state.status !== 'ready' || !previewOutdated) return;
@@ -218,11 +264,16 @@ export default function TradeEditorPage({
     if (!choosingPlayer) builderHeading.current?.focus();
   }, [choosingPlayer, state.status]);
 
-  if (state.status === 'loading') {
+  if (
+    state.status === 'loading' ||
+    (state.status === 'ready' &&
+      (state.originalTrade?.tradeId ?? undefined) !== tradeId)
+  ) {
     return (
       <PageLoadingState
-        description="Loading your collection and the active card catalogue."
-        title={editing ? 'Loading trade editor' : 'Preparing a new trade'}
+        onRetry={() => setReadRetry((value) => value + 1)}
+        resetKey={`${tradeId ?? 'new'}:${readRetry}`}
+        title={editing ? 'Loading trade' : 'Preparing trade'}
       />
     );
   }
@@ -355,6 +406,7 @@ export default function TradeEditorPage({
   async function publish() {
     if (
       !readyState.preview.valid ||
+      Boolean(readyState.refreshing || readyState.refreshError) ||
       previewBusy ||
       previewOutdated ||
       submitting
@@ -363,6 +415,7 @@ export default function TradeEditorPage({
     }
     const controller = new AbortController();
     request.current = controller;
+    retainedReads?.clearCards();
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -408,6 +461,12 @@ export default function TradeEditorPage({
   return (
     <div className="trades-page trade-editor-page">
       <CollectionSectionNavigation />
+      <UpdatingIndicator
+        active={Boolean(state.refreshing)}
+        label="Updating cards"
+        error={state.refreshError}
+        onRetry={() => setReadRetry((value) => value + 1)}
+      />
       <Link
         className="trade-back-link"
         href={tradeId ? `/collection/trades/${tradeId}` : '/collection/trades'}
@@ -522,7 +581,9 @@ export default function TradeEditorPage({
           }
           onToggleOffered={updateOffered}
           preview={state.preview}
-          previewBusy={previewBusy}
+          previewBusy={
+            previewBusy || Boolean(state.refreshing || state.refreshError)
+          }
           previewFailed={Boolean(
             submitError && previewOutdated && !previewBusy,
           )}
@@ -854,7 +915,7 @@ function TradeBuilder({
           <div className="trade-builder__review-bar">
             <span className="trade-builder__check" role="status">
               {previewUpdating
-                ? 'Checking…'
+                ? 'Checking trade availability…'
                 : preview.valid
                   ? 'Ready'
                   : 'Add cards to both sides'}

@@ -1,8 +1,11 @@
 import { StateIcon } from './StatusMessage';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Link } from 'wouter';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
+  withinShell?: boolean;
+  resetKey?: string;
 }
 
 interface ErrorBoundaryState {
@@ -27,12 +30,45 @@ export class ErrorBoundary extends Component<
     );
   }
 
+  public componentDidUpdate(previous: ErrorBoundaryProps) {
+    if (this.state.hasError && previous.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false });
+    }
+  }
+
   private readonly reloadPage = () => {
     window.location.reload();
   };
 
   public render() {
     if (this.state.hasError) {
+      if (this.props.withinShell) {
+        return (
+          <section className="state-message state-message--error" role="alert">
+            <h1>This page could not be opened</h1>
+            <p>
+              Check your connection and try reloading. Any submitted action may
+              still have completed; check its latest status before submitting
+              again.
+            </p>
+            <div className="state-message__actions">
+              <button
+                className="button"
+                onClick={this.reloadPage}
+                type="button"
+              >
+                Reload this page
+              </button>
+              <Link className="button button--quiet" href="/">
+                Return home
+              </Link>
+              <Link className="button button--quiet" href="/offline">
+                Open saved events
+              </Link>
+            </div>
+          </section>
+        );
+      }
       return (
         <main
           aria-labelledby="unexpected-error-title"

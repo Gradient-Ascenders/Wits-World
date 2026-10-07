@@ -1,6 +1,7 @@
+import { LoadingState, UpdatingIndicator } from '../LoadingState';
 import { createAppDateTimeFormatter } from '../../date-time';
 import { CaretDown } from '@phosphor-icons/react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   createDeveloperApiKey,
@@ -9,6 +10,7 @@ import {
   revokeDeveloperApiKey,
   type DeveloperApiKeyList,
 } from '../../api/developer';
+import { READ_TIMEOUT_MS } from '../loading-policy';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 
 interface DeveloperApiAccessProps {
@@ -37,68 +39,111 @@ export function DeveloperApiAccess({
   const [mutationError, setMutationError] = useState<DeveloperApiError | null>(
     null,
   );
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<DeveloperApiError | null>(
+    null,
+  );
+  const [revoking, setRevoking] = useState(false);
+  const readRequest = useRef<AbortController | null>(null);
+  const mutationRequest = useRef<AbortController | null>(null);
   const secretHeading = useRef<HTMLHeadingElement>(null);
   const disclosureTrigger = useRef<HTMLButtonElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
   const revokeTrigger = useRef<HTMLButtonElement | null>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(async () => {
+    readRequest.current?.abort();
     const controller = new AbortController();
-    setState({ status: 'loading' });
-    void listDeveloperApiKeys({
-      apiBaseUrl,
-      getAccessToken,
-      signal: controller.signal,
-    })
-      .then((data) => {
-        if (!controller.signal.aborted) setState({ status: 'ready', data });
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          setState({
-            status: 'error',
-            error:
-              error instanceof DeveloperApiError
-                ? error
-                : new DeveloperApiError('unavailable'),
-          });
-        }
+    readRequest.current = controller;
+    setRefreshing(true);
+    setRefreshError(null);
+    const failed = (error: unknown) => {
+      const failure =
+        error instanceof DeveloperApiError
+          ? error
+          : new DeveloperApiError('unavailable');
+      if (failure.failure === 'authorization') {
+        setState({ status: 'error', error: failure });
+        setCreatedSecret(null);
+      } else {
+        setState((current) =>
+          current.status === 'ready'
+            ? current
+            : { status: 'error', error: failure },
+        );
+      }
+      setRefreshError(failure);
+    };
+    const timeout = window.setTimeout(() => {
+      controller.abort();
+      failed(new DeveloperApiError('unavailable'));
+      setRefreshing(false);
+    }, READ_TIMEOUT_MS);
+    controller.signal.addEventListener(
+      'abort',
+      () => window.clearTimeout(timeout),
+      { once: true },
+    );
+    let rejectAborted: () => void = () => {};
+    const aborted = new Promise<never>((_, reject) => {
+      rejectAborted = () =>
+        reject(new DOMException('Read cancelled', 'AbortError'));
+      controller.signal.addEventListener('abort', rejectAborted, {
+        once: true,
       });
-    return () => controller.abort();
+    });
+    try {
+      const data = await Promise.race([
+        listDeveloperApiKeys({
+          apiBaseUrl,
+          getAccessToken,
+          signal: controller.signal,
+        }),
+        aborted,
+      ]);
+      if (!controller.signal.aborted) setState({ status: 'ready', data });
+    } catch (error) {
+      if (!controller.signal.aborted) failed(error);
+    } finally {
+      window.clearTimeout(timeout);
+      controller.signal.removeEventListener('abort', rejectAborted);
+      if (readRequest.current === controller) {
+        readRequest.current = null;
+        setRefreshing(false);
+      }
+    }
   }, [apiBaseUrl, getAccessToken]);
+
+  useEffect(() => {
+    setState({ status: 'loading' });
+    setCreatedSecret(null);
+    void refresh();
+    return () => {
+      readRequest.current?.abort();
+      mutationRequest.current?.abort();
+    };
+  }, [refresh]);
 
   useEffect(() => {
     if (createdSecret) secretHeading.current?.focus();
   }, [createdSecret]);
 
-  async function refresh() {
-    const controller = new AbortController();
-    try {
-      const data = await listDeveloperApiKeys({
-        apiBaseUrl,
-        getAccessToken,
-        signal: controller.signal,
-      });
-      setState({ status: 'ready', data });
-    } catch (error) {
-      setState({
-        status: 'error',
-        error:
-          error instanceof DeveloperApiError
-            ? error
-            : new DeveloperApiError('unavailable'),
-      });
-    }
-  }
-
   async function createKey() {
     const trimmedName = name.trim();
-    if (!trimmedName || creating) return;
+    if (
+      !trimmedName ||
+      mutationRequest.current ||
+      state.status !== 'ready' ||
+      refreshing ||
+      refreshError
+    )
+      return;
     setCreating(true);
     setMutationError(null);
     setCreatedSecret(null);
     setCopyState('idle');
     const controller = new AbortController();
+    mutationRequest.current = controller;
     try {
       const created = await createDeveloperApiKey({
         apiBaseUrl,
@@ -106,23 +151,40 @@ export function DeveloperApiAccess({
         name: trimmedName,
         signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
       setName('');
       setCreatedSecret(created.apiKey);
       await refresh();
     } catch (error) {
-      setMutationError(
+      if (controller.signal.aborted) return;
+      const failure =
         error instanceof DeveloperApiError
           ? error
-          : new DeveloperApiError('unavailable'),
-      );
+          : new DeveloperApiError('unavailable');
+      if (failure.failure === 'authorization') {
+        setState({ status: 'error', error: failure });
+        setCreatedSecret(null);
+      }
+      setMutationError(failure);
     } finally {
-      setCreating(false);
+      if (mutationRequest.current === controller)
+        mutationRequest.current = null;
+      if (!controller.signal.aborted) setCreating(false);
     }
   }
 
   async function revokeKey(keyId: string) {
+    if (
+      mutationRequest.current ||
+      refreshing ||
+      refreshError ||
+      state.status !== 'ready'
+    )
+      return;
+    setRevoking(true);
     setMutationError(null);
     const controller = new AbortController();
+    mutationRequest.current = controller;
     try {
       await revokeDeveloperApiKey({
         apiBaseUrl,
@@ -130,14 +192,24 @@ export function DeveloperApiAccess({
         keyId,
         signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
       setRevokingId(null);
       await refresh();
     } catch (error) {
-      setMutationError(
+      if (controller.signal.aborted) return;
+      const failure =
         error instanceof DeveloperApiError
           ? error
-          : new DeveloperApiError('unavailable'),
-      );
+          : new DeveloperApiError('unavailable');
+      if (failure.failure === 'authorization') {
+        setState({ status: 'error', error: failure });
+        setCreatedSecret(null);
+      }
+      setMutationError(failure);
+    } finally {
+      if (mutationRequest.current === controller)
+        mutationRequest.current = null;
+      if (!controller.signal.aborted) setRevoking(false);
     }
   }
 
@@ -151,6 +223,8 @@ export function DeveloperApiAccess({
     }
   }
 
+  const controlsUnavailable =
+    state.status !== 'ready' || refreshing || refreshError !== null || revoking;
   const activeCount =
     state.status === 'ready'
       ? state.data.keys.filter((key) => key.status === 'active').length
@@ -189,7 +263,7 @@ export function DeveloperApiAccess({
               {state.status === 'ready'
                 ? `${activeCount} of ${state.data.activeKeyLimit} active`
                 : state.status === 'loading'
-                  ? 'Loading keys…'
+                  ? 'Loading API keys…'
                   : 'Keys unavailable'}
             </span>
             <CaretDown aria-hidden="true" size={18} />
@@ -199,6 +273,15 @@ export function DeveloperApiAccess({
           Read-only access to public events, cards, and standings.
         </p>
       </div>
+
+      {state.status === 'ready' ? (
+        <UpdatingIndicator
+          active={refreshing}
+          label="Updating API keys"
+          error={refreshError ? 'Could not update your API keys.' : undefined}
+          onRetry={() => void refresh()}
+        />
+      ) : null}
 
       {mutationError ? (
         <DeveloperApiErrorMessage error={mutationError} />
@@ -294,7 +377,12 @@ export function DeveloperApiAccess({
           <div className="developer-api-form__controls">
             <input
               autoComplete="off"
-              disabled={creating || atLimit || hasUnacknowledgedSecret}
+              disabled={
+                controlsUnavailable ||
+                creating ||
+                atLimit ||
+                hasUnacknowledgedSecret
+              }
               id="developer-api-key-name"
               maxLength={80}
               onChange={(event) => setName(event.target.value)}
@@ -307,11 +395,15 @@ export function DeveloperApiAccess({
             <button
               className="button"
               disabled={
-                creating || atLimit || hasUnacknowledgedSecret || !name.trim()
+                controlsUnavailable ||
+                creating ||
+                atLimit ||
+                hasUnacknowledgedSecret ||
+                !name.trim()
               }
               type="submit"
             >
-              {creating ? 'Generating…' : 'Generate API key'}
+              {creating ? 'Generating API key…' : 'Generate API key'}
             </button>
           </div>
           {atLimit ? (
@@ -322,9 +414,7 @@ export function DeveloperApiAccess({
         </form>
 
         {state.status === 'loading' ? (
-          <p aria-live="polite" className="account-inline-status" role="status">
-            Loading keys…
-          </p>
+          <LoadingState label="Loading API keys…" />
         ) : null}
 
         {state.status === 'ready' ? (
@@ -352,6 +442,7 @@ export function DeveloperApiAccess({
                     {key.status === 'active' ? (
                       <>
                         <button
+                          disabled={controlsUnavailable || creating}
                           aria-controls={`developer-api-revoke-${key.id}`}
                           aria-expanded={revokingId === key.id}
                           className="button button--quiet"
@@ -374,6 +465,7 @@ export function DeveloperApiAccess({
                             </p>
                             <div>
                               <button
+                                disabled={controlsUnavailable || creating}
                                 className="button button--danger"
                                 onClick={() => void revokeKey(key.id)}
                                 type="button"
