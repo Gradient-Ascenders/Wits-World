@@ -118,6 +118,75 @@ afterEach(async () => {
 });
 
 describe('live PvP WebSocket gateway', () => {
+  it('waits for the notification subscription before loading the initial snapshot', async () => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 1,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+    let subscribed!: () => void;
+    const prepareConnection = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          subscribed = resolve;
+        }),
+    );
+    const onActivity = vi.fn();
+    const { gateway, connect } = await registerGateway(service, {
+      prepareConnection,
+      onActivity,
+    });
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+    expect(prepareConnection).toHaveBeenCalledOnce();
+    expect(gateway.connectionCount()).toBe(1);
+    expect(onActivity).toHaveBeenCalledOnce();
+    expect(service.getProjectionForConnection).not.toHaveBeenCalled();
+    expect(messages(socket)).toEqual([]);
+    subscribed();
+    await flushAsyncWork();
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({ type: 'connection.ready', version: 7 }),
+    );
+  });
+
+  it('releases sockets after a terminal notification was missed instead of keeping idle work alive', async () => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 1,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+    const onActivity = vi.fn();
+    const { gateway, connect } = await registerGateway(service, { onActivity });
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+    service.getProjectionForConnection.mockResolvedValue(
+      completedParticipantProjection,
+    );
+    await gateway.refreshConnections();
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({
+        type: 'match.snapshot',
+        match: expect.objectContaining({ status: 'completed' }),
+      }),
+    );
+    expect(socket.closeCode).toBe(1000);
+    expect(gateway.connectionCount()).toBe(0);
+    expect(onActivity).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     { battleSwaps: undefined, expectsSwap: false },
     { battleSwaps: '1', expectsSwap: true },
@@ -766,7 +835,10 @@ function createService(): ServiceMock {
   };
 }
 
-async function registerGateway(service: ServiceMock): Promise<{
+async function registerGateway(
+  service: ServiceMock,
+  options: Parameters<typeof createLivePvpGateway>[2] = {},
+): Promise<{
   gateway: LivePvpGateway;
   connect: (socket: FakeSocket, request: FastifyRequest) => void;
 }> {
@@ -783,10 +855,14 @@ async function registerGateway(service: ServiceMock): Promise<{
       },
     ),
   } as unknown as FastifyInstance;
-  const gateway = createLivePvpGateway(service as unknown as LivePvpService, {
-    warn: vi.fn(),
-    error: vi.fn(),
-  });
+  const gateway = createLivePvpGateway(
+    service as unknown as LivePvpService,
+    {
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+    options,
+  );
   await gateway.register(app);
   if (!handler)
     throw new Error('Gateway did not register its WebSocket route.');

@@ -51,6 +51,7 @@ import { createLivePvpService } from './matches/live-pvp-service.js';
 import { createLivePvpGateway } from './matches/live-pvp-gateway.js';
 import { createLivePvpDeadlineProcessor } from './matches/live-pvp-deadline-processor.js';
 import { createLivePvpRuntimeScheduler } from './matches/live-pvp-runtime-scheduler.js';
+import { hasLivePvpWork } from './matches/gameplay-work.js';
 import { createLivePvpNotificationListener } from './matches/live-pvp-notifications.js';
 import { createTrustService } from './trust/trust-service.js';
 import { createTrustRestrictionService } from './trust/trust-restrictions.js';
@@ -191,8 +192,17 @@ async function startServer(): Promise<void> {
     database,
     eventDiscoveryService,
   );
-  const livePvpGateway = createLivePvpGateway(livePvpService);
+  let wakeLiveWorker = () => {};
+  let wakeRankedWorker = () => {};
+  const livePvpGateway = createLivePvpGateway(livePvpService, undefined, {
+    onActivity: () => wakeLiveWorker(),
+    prepareConnection: () => livePvpNotificationListener.start(true),
+  });
   const app = await buildApp({
+    gameplayWorkers: {
+      live: { wake: () => wakeLiveWorker() },
+      ranked: { wake: () => wakeRankedWorker() },
+    },
     placementService,
     offlineChallengeService: process.env.OFFLINE_PACK_SIGNING_KEY
       ? createOfflineChallengeService(database, {
@@ -326,6 +336,22 @@ async function startServer(): Promise<void> {
     {
       deadlineSweepIntervalMs: config.livePvpDeadlineSweepIntervalMs,
       transientCleanupIntervalMs: config.livePvpTransientCleanupIntervalMs,
+      hasActiveWork: async () => {
+        const pending = await hasLivePvpWork(database);
+        if (!pending && livePvpGateway.connectionCount() > 0) {
+          await livePvpGateway.refreshConnections();
+        }
+        return pending || livePvpGateway.connectionCount() > 0;
+      },
+      onWorkState: async (active) => {
+        // No local sockets need fan-out while idle. Stop reconnect attempts too,
+        // otherwise a suspended compute would be woken by the listener itself.
+        if (active || livePvpGateway.connectionCount() > 0) {
+          await livePvpNotificationListener.start();
+        } else {
+          await livePvpNotificationListener.stop();
+        }
+      },
     },
   );
   const livePvpNotificationListener = createLivePvpNotificationListener(
@@ -339,7 +365,10 @@ async function startServer(): Promise<void> {
     rankedReadService,
     app.log,
     config.rankedSweepIntervalMs,
+    { onMatchesCreated: () => livePvpRuntimeScheduler.wake() },
   );
+  wakeLiveWorker = () => livePvpRuntimeScheduler.wake();
+  wakeRankedWorker = () => rankedScheduler.wake();
   const cardTradeMaintenanceScheduler = createCardTradeMaintenanceScheduler(
     cardTradeService,
     app.log,
@@ -348,9 +377,9 @@ async function startServer(): Promise<void> {
 
   app.addHook('onClose', async () => {
     await placementScheduler.stop();
-    await livePvpNotificationListener.stop();
     await livePvpRuntimeScheduler.stop();
     await rankedScheduler.stop();
+    await livePvpNotificationListener.stop();
     await livePvpGateway.closeAll();
     await accountDeletionRetryScheduler.stop();
     await movementEvidenceCleanupScheduler.stop();
@@ -366,7 +395,6 @@ async function startServer(): Promise<void> {
       port: config.port,
     });
 
-    await livePvpNotificationListener.start();
     livePvpRuntimeScheduler.start();
     rankedScheduler.start();
     accountDeletionRetryScheduler.start();

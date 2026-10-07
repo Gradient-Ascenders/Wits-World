@@ -7,6 +7,81 @@ afterEach(() => {
 });
 
 describe('live PvP runtime scheduler', () => {
+  it('stops querying when empty and resumes deadlines immediately after activity', async () => {
+    vi.useFakeTimers();
+    const hasActiveWork = vi.fn().mockResolvedValue(false);
+    const onWorkState = vi.fn().mockResolvedValue(undefined);
+    const runOnce = vi.fn().mockResolvedValue({
+      matchesScanned: 0,
+      transitionsCommitted: 0,
+      failures: 0,
+    });
+    const scheduler = createLivePvpRuntimeScheduler(
+      { runOnce },
+      {
+        purgeTransientAccess: vi
+          .fn()
+          .mockResolvedValue({ accessRowsDeleted: 0, ticketRowsDeleted: 0 }),
+      },
+      { info: vi.fn(), error: vi.fn() },
+      {
+        deadlineSweepIntervalMs: 1000,
+        transientCleanupIntervalMs: 1_800_000,
+        hasActiveWork,
+        onWorkState,
+      },
+    );
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+    expect(hasActiveWork).toHaveBeenCalledOnce();
+    expect(runOnce).not.toHaveBeenCalled();
+    expect(onWorkState).toHaveBeenLastCalledWith(false);
+
+    hasActiveWork.mockResolvedValue(true);
+    scheduler.wake();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runOnce).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(runOnce).toHaveBeenCalledTimes(2);
+
+    hasActiveWork.mockResolvedValue(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onWorkState).toHaveBeenLastCalledWith(false);
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+    expect(runOnce).toHaveBeenCalledTimes(2);
+    await scheduler.stop();
+  });
+
+  it('retries failed work probes at the active cadence instead of hiding them in idle sleep', async () => {
+    vi.useFakeTimers();
+    const hasActiveWork = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue(false);
+    const error = vi.fn();
+    const scheduler = createLivePvpRuntimeScheduler(
+      { runOnce: vi.fn() },
+      {
+        purgeTransientAccess: vi
+          .fn()
+          .mockResolvedValue({ accessRowsDeleted: 0, ticketRowsDeleted: 0 }),
+      },
+      { info: vi.fn(), error },
+      {
+        deadlineSweepIntervalMs: 1000,
+        transientCleanupIntervalMs: 1_800_000,
+        hasActiveWork,
+      },
+    );
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(error).toHaveBeenCalledOnce();
+    expect(hasActiveWork).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+    expect(hasActiveWork).toHaveBeenCalledTimes(2);
+    await scheduler.stop();
+  });
+
   it('runs deadline and cleanup work immediately and repeatedly without overlap', async () => {
     vi.useFakeTimers();
     let releaseDeadline!: () => void;

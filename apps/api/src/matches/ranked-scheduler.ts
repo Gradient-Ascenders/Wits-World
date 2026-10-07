@@ -6,6 +6,9 @@ import {
 import type { RankedDatabase } from './ranked-database.js';
 import type { RankedReadService } from './ranked-read-service.js';
 import { createPoolRunObserver } from '../database/pool-observability.js';
+import { createDemandScheduler } from '../database/demand-scheduler.js';
+import { DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS } from '../config/timers.js';
+import { nextRankedSweep } from './gameplay-work.js';
 import {
   cancelExpiredTerritoryContenders,
   cleanupExpiredTerritoryGrants,
@@ -26,6 +29,7 @@ export interface RankedSweepResult {
 export interface RankedScheduler {
   runOnce(): Promise<RankedSweepResult>;
   start(): void;
+  wake(): void;
   stop(): Promise<void>;
 }
 
@@ -46,6 +50,10 @@ export function createRankedScheduler(
     error(context: Record<string, unknown>, message: string): void;
   },
   intervalMs: number,
+  options: {
+    nextSweep?: () => Promise<boolean | number>;
+    onMatchesCreated?: () => void;
+  } = {},
 ): RankedScheduler {
   if (
     !Number.isSafeInteger(intervalMs) ||
@@ -54,13 +62,12 @@ export function createRankedScheduler(
   ) {
     throw new Error('RANKED_SWEEP_INTERVAL_MS must be between 250 and 30000.');
   }
-  let timer: NodeJS.Timeout | undefined;
   let active: Promise<RankedSweepResult> | undefined;
   let lastSnapshotCleanupAt = 0;
   let lastTerritoryMaintenanceAt = 0;
   const observation = createPoolRunObserver('ranked_maintenance', logger);
 
-  async function runOnce(): Promise<RankedSweepResult> {
+  async function runOnce(forceMaintenance = false): Promise<RankedSweepResult> {
     if (active) {
       observation.skipped();
       return active;
@@ -74,15 +81,19 @@ export function createRankedScheduler(
         if (!(await service.pairOnce())) break;
         pairedPlayers += 2;
       }
+      if (pairedPlayers > 0) options.onMatchesCreated?.();
       let expiredSnapshots = 0;
-      if (Date.now() - lastSnapshotCleanupAt >= 60_000) {
+      if (forceMaintenance || Date.now() - lastSnapshotCleanupAt >= 60_000) {
         expiredSnapshots = await reads.cleanupExpiredSnapshots();
         lastSnapshotCleanupAt = Date.now();
       }
       let territorySettlements = 0;
       let cancelledTerritoryContenders = 0;
       let expiredTerritoryGrants = 0;
-      if (Date.now() - lastTerritoryMaintenanceAt >= 60_000) {
+      if (
+        forceMaintenance ||
+        Date.now() - lastTerritoryMaintenanceAt >= 60_000
+      ) {
         cancelledTerritoryContenders =
           await cancelExpiredTerritoryContenders(database);
         territorySettlements = (await maintainTerritorySettlements(database))
@@ -123,27 +134,29 @@ export function createRankedScheduler(
     }
   }
 
-  function triggerRun(): void {
-    if (active) {
-      observation.skipped();
-      return;
-    }
-    void runOnce().catch((error) =>
+  let forceMaintenance = true;
+  const scheduler = createDemandScheduler({
+    activeIntervalMs: intervalMs,
+    idleIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
+    run: async () => {
+      const result = await runOnce(forceMaintenance);
+      const next = await (options.nextSweep?.() ?? nextRankedSweep(database));
+      // A capped catch-up batch must drain before returning to idle.
+      const hasBacklog =
+        result.pairedPlayers >= 20 || result.territorySettlements >= 24;
+      forceMaintenance = next !== true || hasBacklog;
+      return hasBacklog ? true : next;
+    },
+    onError: (error) =>
       logger.error(errorContext(error), 'Ranked maintenance sweep failed.'),
-    );
-  }
+  });
 
   return {
     runOnce,
-    start() {
-      if (timer) return;
-      triggerRun();
-      timer = setInterval(triggerRun, intervalMs);
-      timer.unref();
-    },
+    start: scheduler.start,
+    wake: scheduler.wake,
     async stop() {
-      if (timer) clearInterval(timer);
-      timer = undefined;
+      await scheduler.stop();
       await active;
     },
   };
