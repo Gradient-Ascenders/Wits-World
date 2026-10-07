@@ -13,10 +13,45 @@
       sizes="any"
       type="image/svg+xml"
     />
+    <link rel="stylesheet" href="/src/boot.css" />
     <title>Wits World</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="boot-screen" id="app-boot" aria-labelledby="boot-title">
+        <div class="boot-screen__content">
+          <img
+            class="boot-screen__seal"
+            src="/branding/wits-world-campus-seal-transparent.svg"
+            width="80"
+            height="80"
+            alt=""
+          />
+          <h1 id="boot-title">Wits World</h1>
+          <p class="boot-screen__status" role="status">Opening Wits World…</p>
+          <noscript><p>Enable JavaScript to open Wits World.</p></noscript>
+          <div class="boot-screen__recovery">
+            <p>
+              Check your connection and reload this page, or return home and try
+              again.
+            </p>
+            <div class="boot-screen__actions">
+              <a class="boot-screen__link" href="" role="link"
+                >Reload this page</a
+              >
+              <a class="boot-screen__link boot-screen__link--quiet" href="/"
+                >Return home</a
+              >
+              <a
+                class="boot-screen__link boot-screen__link--quiet"
+                href="/offline"
+                >Open saved events</a
+              >
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
     <script type="module" src="/src/bootstrap.ts"></script>
   </body>
 </html>

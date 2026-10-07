@@ -120,7 +120,7 @@ describe('asynchronous player battle lobby', () => {
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
 
     const loadingState = screen.getByRole('status');
-    expect(loadingState).toHaveClass('page-loading-state');
+    expect(loadingState.closest('section')).toHaveClass('page-loading-state');
     expect(
       screen.getByRole('heading', {
         level: 1,

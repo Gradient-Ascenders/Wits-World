@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from 'react';
 import { Link } from 'wouter';
+import { StatusMessage } from '../components/StatusMessage';
+import { READ_TIMEOUT_MS } from '../components/loading-policy';
 import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { listPlayerEvents } from '../api/events';
@@ -21,12 +23,34 @@ import {
   type CachedPack,
 } from './store';
 
-const Context = createContext({
+export type AttemptSyncState = {
+  status: 'pending' | 'syncing' | 'confirmed' | 'failed';
+  message: string;
+};
+
+type OfflineContext = {
+  online: boolean;
+  revision: number;
+  message: string;
+  syncing: boolean;
+  syncMessage: string;
+  syncFailed: boolean;
+  attemptSync: Record<string, AttemptSyncState>;
+  refresh: () => void;
+  sync: () => Promise<void>;
+  cancelSync: () => void;
+};
+const Context = createContext<OfflineContext>({
   online: true,
   revision: 0,
   message: '',
+  syncing: false,
+  syncMessage: '',
+  syncFailed: false,
+  attemptSync: {},
   refresh: () => {},
   sync: async () => {},
+  cancelSync: () => {},
 });
 export const useOffline = () => useContext(Context);
 
@@ -43,6 +67,25 @@ export function OfflineProvider({
   const [revision, setRevision] = useState(0);
   const [message, setMessage] = useState('');
   const busy = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState('');
+  const [syncFailed, setSyncFailed] = useState(false);
+  const [attemptSync, setAttemptSync] = useState<
+    Record<string, AttemptSyncState>
+  >({});
+  const attemptSyncRef = useRef(attemptSync);
+  const syncController = useRef<AbortController | null>(null);
+  const cancelSync = useCallback(
+    () => syncController.current?.abort('cancelled'),
+    [],
+  );
   const playerId =
     state.status === 'ready' && !state.player.playerNameSetupRequired
       ? state.player.id
@@ -50,7 +93,9 @@ export function OfflineProvider({
   const playerName = state.status === 'ready' ? state.player.playerName : null;
   const currentPlayer = useRef(playerId);
   currentPlayer.current = playerId;
-  const refresh = useCallback(() => setRevision((value) => value + 1), []);
+  const refresh = useCallback(() => {
+    if (mounted.current) setRevision((value) => value + 1);
+  }, []);
   useEffect(() => {
     window.addEventListener('wits-player-binding-change', refresh);
     window.addEventListener('storage', refresh);
@@ -59,90 +104,222 @@ export function OfflineProvider({
       window.removeEventListener('storage', refresh);
     };
   }, [refresh]);
-  const sync = useCallback(async () => {
-    if (
-      !playerId ||
-      !navigator.onLine ||
-      busy.current ||
-      boundOfflinePlayer() !== playerId
-    )
-      return;
-    busy.current = true;
-    try {
-      const token = await getToken();
-      const local = await readOfflineState();
-      for (const attempt of local.attempts.sort((a, b) =>
-        a.startedAt.localeCompare(b.startedAt),
-      )) {
-        if (
-          currentPlayer.current !== playerId ||
-          boundOfflinePlayer() !== playerId
-        )
-          break;
-        if (attempt.status !== 'pending' || !attempt.finishLocation) continue;
-        const response = await fetch(
-          `${apiBaseUrl}/offline-challenge-attempts`,
-          {
-            method: 'POST',
-            cache: 'no-store',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-              'X-Wits-Offline-Contract-Version': '1',
-            },
-            body: JSON.stringify({
-              clientAttemptId: attempt.clientAttemptId,
-              packToken: attempt.cached.packToken,
-              startedAt: attempt.startedAt,
-              finishedAt: attempt.finishedAt,
-              answers: attempt.answers,
-              startLocation: attempt.startLocation,
-              finishLocation: attempt.finishLocation,
-            }),
-          },
-        );
-        const body = (await response.json()) as {
-          code?: string;
-          attempt?: { attemptId?: string; status?: string };
-        };
-        if (
-          currentPlayer.current !== playerId ||
-          boundOfflinePlayer() !== playerId
-        )
-          break;
-        if (
-          response.ok &&
-          body.attempt?.status === 'completed' &&
-          typeof body.attempt.attemptId === 'string'
-        ) {
-          await recordOfflineReceipt(
-            attempt,
-            'accepted',
-            body.attempt.attemptId,
-          );
-        } else if (
-          response.status === 422 ||
-          (response.status === 409 && body.code === 'OFFLINE_ATTEMPT_CONFLICT')
-        ) {
-          await recordOfflineReceipt(attempt, body.code ?? 'OFFLINE_REJECTED');
-        } else {
-          setMessage(
-            response.status === 401 || response.status === 403
-              ? 'Sign in with the original account to sync.'
-              : 'Sync is unavailable. Your attempts remain saved on this device.',
-          );
-          break;
-        }
-        refresh();
-      }
-    } catch {
-      setMessage(
-        'Sync is unavailable. Your attempts remain saved on this device.',
+  const sync = useCallback(
+    async (retryFailed = false) => {
+      if (
+        !mounted.current ||
+        !playerId ||
+        !navigator.onLine ||
+        busy.current ||
+        boundOfflinePlayer() !== playerId
+      )
+        return;
+      busy.current = true;
+      setSyncing(true);
+      const controller = new AbortController();
+      syncController.current = controller;
+      const timer = window.setTimeout(
+        () => controller.abort('timeout'),
+        READ_TIMEOUT_MS,
       );
-    } finally {
+      const remaining = new Set<string>();
+      const serverOutcomes = new Map<string, AttemptSyncState>();
+      const updateAttempt = (id: string, value: AttemptSyncState) => {
+        if (
+          !mounted.current ||
+          currentPlayer.current !== playerId ||
+          boundOfflinePlayer() !== playerId
+        )
+          return;
+        attemptSyncRef.current = { ...attemptSyncRef.current, [id]: value };
+        setAttemptSync(attemptSyncRef.current);
+      };
+      try {
+        const local = await syncWork(readOfflineState(), controller.signal);
+        const attempts = local.attempts
+          .filter(
+            (attempt) =>
+              attempt.status === 'pending' &&
+              attempt.finishLocation &&
+              (retryFailed ||
+                !['failed', 'confirmed'].includes(
+                  attemptSyncRef.current[attempt.clientAttemptId]?.status ?? '',
+                )),
+          )
+          .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+        if (!attempts.length) return;
+        setSyncMessage(
+          'Syncing saved attempts. Answers remain provisional until confirmed.',
+        );
+        setSyncFailed(false);
+        for (const attempt of attempts) {
+          remaining.add(attempt.clientAttemptId);
+          updateAttempt(attempt.clientAttemptId, {
+            status: 'pending',
+            message: 'Pending — queued for server validation.',
+          });
+        }
+        const token = await syncWork(getToken(), controller.signal);
+        for (const attempt of attempts) {
+          if (
+            !mounted.current ||
+            currentPlayer.current !== playerId ||
+            boundOfflinePlayer() !== playerId
+          )
+            break;
+          controller.signal.throwIfAborted();
+          updateAttempt(attempt.clientAttemptId, {
+            status: 'syncing',
+            message: 'Syncing — awaiting server confirmation.',
+          });
+          const response = await syncWork(
+            fetch(`${apiBaseUrl}/offline-challenge-attempts`, {
+              method: 'POST',
+              signal: controller.signal,
+              cache: 'no-store',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'X-Wits-Offline-Contract-Version': '1',
+              },
+              body: JSON.stringify({
+                clientAttemptId: attempt.clientAttemptId,
+                packToken: attempt.cached.packToken,
+                startedAt: attempt.startedAt,
+                finishedAt: attempt.finishedAt,
+                answers: attempt.answers,
+                startLocation: attempt.startLocation,
+                finishLocation: attempt.finishLocation,
+              }),
+            }),
+            controller.signal,
+          );
+          const body = (await syncWork(response.json(), controller.signal)) as {
+            code?: string;
+            attempt?: { attemptId?: string; status?: string };
+          };
+          if (
+            !mounted.current ||
+            currentPlayer.current !== playerId ||
+            boundOfflinePlayer() !== playerId
+          )
+            break;
+          if (
+            response.ok &&
+            body.attempt?.status === 'completed' &&
+            typeof body.attempt.attemptId === 'string'
+          ) {
+            const outcome: AttemptSyncState = {
+              status: 'confirmed',
+              message: 'The server confirmed this result.',
+            };
+            serverOutcomes.set(attempt.clientAttemptId, outcome);
+            updateAttempt(attempt.clientAttemptId, outcome);
+            await syncWork(
+              recordOfflineReceipt(
+                attempt,
+                'accepted',
+                body.attempt.attemptId,
+              ).then(refresh),
+              controller.signal,
+            );
+          } else if (
+            response.status === 422 ||
+            (response.status === 409 &&
+              body.code === 'OFFLINE_ATTEMPT_CONFLICT')
+          ) {
+            const outcome: AttemptSyncState = {
+              status: 'failed',
+              message:
+                'The server rejected this attempt. No reward was issued.',
+            };
+            serverOutcomes.set(attempt.clientAttemptId, outcome);
+            updateAttempt(attempt.clientAttemptId, outcome);
+            await syncWork(
+              recordOfflineReceipt(
+                attempt,
+                body.code ?? 'OFFLINE_REJECTED',
+              ).then(refresh),
+              controller.signal,
+            );
+          } else {
+            throw new Error(
+              response.status === 401 || response.status === 403
+                ? 'account'
+                : 'unavailable',
+            );
+          }
+          remaining.delete(attempt.clientAttemptId);
+        }
+        if (
+          mounted.current &&
+          currentPlayer.current === playerId &&
+          boundOfflinePlayer() === playerId
+        ) {
+          setSyncMessage(
+            'Server checks finished. See the confirmed or rejected result beside each attempt.',
+          );
+        }
+      } catch (failure) {
+        if (
+          !mounted.current ||
+          currentPlayer.current !== playerId ||
+          boundOfflinePlayer() !== playerId
+        )
+          return;
+        const detail =
+          controller.signal.reason === 'timeout'
+            ? 'Sync timed out. Server confirmation is unknown. Your answers remain saved; retry to check this same attempt.'
+            : controller.signal.reason === 'cancelled'
+              ? 'Stopped waiting for sync. Server confirmation is unknown. Your answers remain saved; retry to check this same attempt.'
+              : failure instanceof Error && failure.message === 'account'
+                ? 'Sign in with the original account to sync. Your answers remain saved.'
+                : 'Sync failed. Server confirmation is unknown. Your answers remain saved; retry to check this same attempt.';
+        const knownResults = [...remaining].some((id) =>
+          serverOutcomes.has(id),
+        );
+        setSyncMessage(
+          knownResults
+            ? 'A server result could not be saved on this device. Review the result beside each attempt; retry to recover the same result.'
+            : detail,
+        );
+        setSyncFailed(true);
+        for (const id of remaining) {
+          const outcome = serverOutcomes.get(id);
+          updateAttempt(
+            id,
+            outcome
+              ? {
+                  ...outcome,
+                  message: `${outcome.message} The receipt could not be saved on this device; retry to recover it.`,
+                }
+              : { status: 'failed', message: detail },
+          );
+        }
+      } finally {
+        clearTimeout(timer);
+        if (syncController.current === controller) {
+          syncController.current = null;
+          busy.current = false;
+          setSyncing(false);
+        }
+      }
+    },
+    [apiBaseUrl, getToken, playerId, refresh],
+  );
+
+  useEffect(() => {
+    attemptSyncRef.current = {};
+    setAttemptSync({});
+    setSyncMessage('');
+    setSyncFailed(false);
+    setSyncing(false);
+    return () => {
+      syncController.current?.abort('cancelled');
+      syncController.current = null;
       busy.current = false;
-    }
-  }, [apiBaseUrl, getToken, playerId, refresh]);
+    };
+  }, [playerId]);
 
   useEffect(() => {
     const update = (event: Event) => {
@@ -243,14 +420,28 @@ export function OfflineProvider({
         online,
         revision,
         message,
+        syncing,
+        syncMessage,
+        syncFailed,
+        attemptSync,
+        cancelSync,
         refresh,
         sync: async () => {
           if (!playerId && boundOfflinePlayer() && navigator.onLine) reload();
-          else await sync();
+          else await sync(true);
         },
       }}
     >
       {children}
+      {/* Keep one sync announcer outside the busy controls and visible copies. */}
+      <p
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {syncMessage}
+      </p>
     </Context.Provider>
   );
 }
@@ -303,15 +494,65 @@ function parsePacks(body: unknown, playerId: string): CachedPack[] {
   );
 }
 
+function syncWork<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    if (signal.aborted) {
+      // The caller may already have started work; observe its late rejection.
+      void work.catch(() => undefined);
+      reject(signal.reason);
+      return;
+    }
+    signal.addEventListener('abort', abort, { once: true });
+    work
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
 export function OfflineStatus() {
-  const { online, message } = useOffline();
+  const {
+    online,
+    message,
+    syncing,
+    syncMessage,
+    syncFailed,
+    sync,
+    cancelSync,
+  } = useOffline();
   const { state } = useCurrentPlayer();
-  if (online) return null;
   if (state.status !== 'ready' && !boundOfflinePlayer()) return null;
+  if (online && !syncFailed && !syncing) return null;
   return (
     <aside aria-label="Offline play" className="offline-status">
-      <Link href="/offline">You are offline — open saved events</Link>
-      {message && <p role="status">{message}</p>}
+      {!online && (
+        <Link href="/offline">You are offline — open saved events</Link>
+      )}
+      {syncFailed || syncing ? (
+        <StatusMessage tone={syncFailed ? 'error' : 'info'} role={undefined}>
+          <p>{syncMessage}</p>
+          <button
+            className="button button--secondary"
+            disabled={syncing || !online}
+            onClick={() => void sync()}
+            type="button"
+          >
+            {syncing ? 'Syncing saved attempts…' : 'Retry sync'}
+          </button>
+          {syncing && (
+            <button
+              className="button button--secondary"
+              onClick={cancelSync}
+              type="button"
+            >
+              Cancel sync
+            </button>
+          )}
+          <Link href="/offline">Review saved attempts</Link>
+        </StatusMessage>
+      ) : (
+        message && <p role="status">{message}</p>
+      )}
     </aside>
   );
 }

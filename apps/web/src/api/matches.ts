@@ -473,6 +473,7 @@ async function matchRequest({
   path,
   signal,
 }: RawRequestOptions): Promise<unknown> {
+  signal.throwIfAborted();
   let accessToken: string;
 
   try {
@@ -480,6 +481,7 @@ async function matchRequest({
   } catch {
     throw new MatchApiError('authorization');
   }
+  signal.throwIfAborted();
 
   let response: Response;
 

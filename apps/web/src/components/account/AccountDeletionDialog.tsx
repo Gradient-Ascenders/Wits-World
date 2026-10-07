@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { ActionLoadingFeedback } from '../LoadingState';
 import {
   useEffect,
   useId,
@@ -94,7 +95,6 @@ export function AccountDeletionDialog({
   return createPortal(
     <div className="account-dialog-backdrop">
       <div
-        aria-busy={busy ? 'true' : undefined}
         aria-describedby={descriptionId}
         aria-labelledby={titleId}
         aria-modal="true"
@@ -145,7 +145,15 @@ export function AccountDeletionDialog({
           )}
         </div>
 
-        <div className="account-dialog__actions">
+        <ActionLoadingFeedback
+          active={busy}
+          label={
+            isFinalConfirmation
+              ? 'Deleting your account'
+              : 'Confirming your sign-in'
+          }
+        />
+        <div className="account-dialog__actions" aria-busy={busy || undefined}>
           <button
             className="button button--quiet"
             disabled={busy}
@@ -162,7 +170,9 @@ export function AccountDeletionDialog({
             type="button"
           >
             {busy
-              ? 'Deleting account…'
+              ? isFinalConfirmation
+                ? 'Deleting account…'
+                : 'Confirming sign-in…'
               : isFinalConfirmation
                 ? 'Permanently delete account'
                 : 'Sign in again'}

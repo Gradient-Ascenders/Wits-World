@@ -99,7 +99,7 @@ export function PlayerNameSetup() {
         ) : null}
         <div className="player-name-setup__actions">
           <button className="button" disabled={isSaving} type="submit">
-            {isSaving ? 'Saving…' : 'Enter Wits World'}
+            {isSaving ? 'Saving your Player Name…' : 'Enter Wits World'}
           </button>
         </div>
       </form>

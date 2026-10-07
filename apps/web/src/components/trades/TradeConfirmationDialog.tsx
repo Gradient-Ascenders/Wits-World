@@ -8,6 +8,7 @@ import {
 } from 'react';
 
 import { useModalFocus } from '../useModalFocus';
+import { ActionLoadingFeedback } from '../LoadingState';
 
 interface TradeConfirmationDialogProps {
   busy: boolean;
@@ -55,7 +56,6 @@ export function TradeConfirmationDialog({
   return createPortal(
     <div className="trade-dialog-backdrop">
       <div
-        aria-busy={busy ? 'true' : undefined}
         aria-describedby={descriptionId}
         aria-labelledby={titleId}
         aria-modal="true"
@@ -68,7 +68,8 @@ export function TradeConfirmationDialog({
         <h2 id={titleId}>{title}</h2>
         <p id={descriptionId}>{description}</p>
         {children}
-        <div className="trade-dialog__actions">
+        <ActionLoadingFeedback active={busy} label={confirmLabel} />
+        <div className="trade-dialog__actions" aria-busy={busy || undefined}>
           <button
             className="button button--quiet"
             disabled={busy}
@@ -84,7 +85,7 @@ export function TradeConfirmationDialog({
             onClick={onConfirm}
             type="button"
           >
-            {busy ? 'Applying…' : confirmLabel}
+            {busy ? `${confirmLabel}…` : confirmLabel}
           </button>
         </div>
       </div>

@@ -32,6 +32,35 @@ function requestOptions() {
 }
 
 describe('saved deck API client', () => {
+  it.each(['read', 'delete'])(
+    'does not send a %s after cancellation during token retrieval',
+    async (operation) => {
+      const controller = new AbortController();
+      let resolveToken!: (value: string) => void;
+      const token = new Promise<string>((resolve) => {
+        resolveToken = resolve;
+      });
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const request = {
+        apiBaseUrl,
+        getAccessToken: () => token,
+        signal: controller.signal,
+      };
+      const pending =
+        operation === 'read'
+          ? listSavedDecks(request)
+          : deleteSavedDeck({ ...request, deckId: buildSavedDeck().deckId });
+      const rejected = expect(pending).rejects.toMatchObject({
+        name: 'AbortError',
+      });
+      controller.abort();
+      resolveToken('late-token');
+      await rejected;
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('validates and returns the one active saved deck', async () => {
     const active = buildSavedDeck({ isSelected: true });
     vi.stubGlobal(

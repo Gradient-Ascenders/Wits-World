@@ -164,6 +164,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'loading-policy',
+              label: 'Loading policy and route coverage',
+            },
+            {
+              type: 'doc',
               id: 'design/references/card-frames/README',
               label: 'Card frame examples',
             },

@@ -27,7 +27,9 @@ describe('application status states', () => {
     render(<LoadingState prominent />);
 
     expect(
-      screen.getByRole('status').querySelector('.loading-seal svg'),
+      screen
+        .getByRole('status')
+        .parentElement?.querySelector('.loading-seal svg'),
     ).toBeTruthy();
   });
 

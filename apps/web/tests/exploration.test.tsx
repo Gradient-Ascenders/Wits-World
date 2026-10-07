@@ -733,7 +733,9 @@ describe('map-first campus exploration', () => {
       />,
     );
 
-    const status = await screen.findByRole('status');
+    const status = (await screen.findByRole('status')).closest(
+      '.exploration-loading-panel',
+    )!;
     expect(status.querySelector(':scope > strong')).toHaveTextContent(
       'Starting challenge…',
     );

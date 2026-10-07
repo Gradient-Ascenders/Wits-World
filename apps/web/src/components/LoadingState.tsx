@@ -1,12 +1,81 @@
 import type { ReactNode } from 'react';
+import { Link } from 'wouter';
+import { useLoadingPhase } from './loading-policy';
 
 import { StartupSeal } from './branding/StartupSeal';
 import { QuestMarker } from './branding/QuestMarker';
 
-export function LoadingSeal() {
+/** Submission feedback never offers a retry that could duplicate a transaction. */
+export function ActionLoadingFeedback({
+  active,
+  label,
+}: {
+  active: boolean;
+  label: string;
+}) {
+  const phase = useLoadingPhase(active, label);
+  if (!active) return null;
   return (
-    <span aria-hidden="true" className="loading-seal">
-      <StartupSeal animate />
+    <div className="action-loading-feedback">
+      <p role="status">
+        {phase === 'slow'
+          ? `${label} is taking longer than expected. The result is not confirmed. Leaving does not cancel the submitted action. Check the latest status before submitting again.`
+          : `${label} — awaiting confirmation…`}
+      </p>
+      {phase === 'slow' ? (
+        <div className="state-message__actions">
+          <Link className="button button--quiet" href="/">
+            Return home
+          </Link>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function LoadingRecovery({
+  onRetry,
+  escapeHref = '/',
+  escapeLabel = 'Return home',
+  message = 'This is taking longer than expected. You can leave this view and try again. Leaving does not cancel any submitted action.',
+  announce = true,
+}: {
+  onRetry?: () => void;
+  escapeHref?: string;
+  escapeLabel?: string;
+  message?: string;
+  announce?: boolean;
+}) {
+  return (
+    <div className="loading-recovery">
+      <p role={announce ? 'status' : undefined}>{message}</p>
+      <div className="state-message__actions">
+        {onRetry ? (
+          <button className="button" type="button" onClick={onRetry}>
+            Try again
+          </button>
+        ) : null}
+        <Link className="button button--quiet" href={escapeHref}>
+          {escapeLabel}
+        </Link>
+        {escapeHref !== '/offline' ? (
+          <Link className="button button--quiet" href="/offline">
+            Open saved events
+          </Link>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function LoadingSeal({ visible = true }: { visible?: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="loading-seal"
+      style={{ visibility: visible ? 'visible' : 'hidden' }}
+    >
+      <StartupSeal animate={visible} />
     </span>
   );
 }
@@ -16,23 +85,37 @@ export function LoadingState({
   label = 'Loading this Wits World page…',
   prominent = false,
   className = '',
+  onRetry,
+  resetKey,
+  delayed = false,
 }: {
   announce?: boolean;
   label?: string;
   prominent?: boolean;
   className?: string;
+  onRetry?: () => void;
+  resetKey?: unknown;
+  delayed?: boolean;
 }) {
+  const phase = useLoadingPhase(true, resetKey ?? label);
+  if (delayed && phase === 'hidden') return null;
   return (
     <div
       className={`state-message state-loading${prominent ? ' page-loading-state state-loading--prominent' : ' state-loading--subtle'}${className ? ` ${className}` : ''}`}
-      role={announce ? 'status' : undefined}
-      aria-live={announce ? 'polite' : undefined}
+      data-loading-phase={phase}
     >
-      {prominent ? <LoadingSeal /> : null}
-      <p className="state-loading__label">
+      {prominent ? <LoadingSeal visible={phase !== 'hidden'} /> : null}
+      <p
+        className="state-loading__label"
+        role={announce ? 'status' : undefined}
+        aria-live={announce ? 'polite' : undefined}
+      >
         {prominent ? null : <QuestMarker />}
         {label}
       </p>
+      {phase === 'slow' ? (
+        <LoadingRecovery onRetry={onRetry} announce={announce} />
+      ) : null}
     </div>
   );
 }
@@ -43,24 +126,34 @@ export function PageLoadingState({
   className = '',
   description,
   title,
+  onRetry,
+  resetKey,
 }: {
   announce?: boolean;
   children?: ReactNode;
   className?: string;
   description: string;
   title: string;
+  onRetry?: () => void;
+  resetKey?: unknown;
 }) {
+  const phase = useLoadingPhase(true, resetKey ?? title);
   return (
     <section
-      aria-atomic="true"
-      aria-busy="true"
-      aria-live={announce ? 'polite' : undefined}
       className={`page-loading-state state-message state-loading state-loading--prominent${className ? ` ${className}` : ''}`}
-      role={announce ? 'status' : undefined}
     >
-      <LoadingSeal />
+      <LoadingSeal visible={phase !== 'hidden'} />
       <h1>{title}</h1>
-      <p>{description}</p>
+      <p
+        role={announce ? 'status' : undefined}
+        aria-live={announce ? 'polite' : undefined}
+      >
+        <span className="sr-only">{title}. </span>
+        {description}
+      </p>
+      {phase === 'slow' ? (
+        <LoadingRecovery onRetry={onRetry} announce={announce} />
+      ) : null}
       {children}
     </section>
   );

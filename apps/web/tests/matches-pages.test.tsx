@@ -19,6 +19,7 @@ import { Route, Router } from 'wouter';
 import CpuMatchPage from '../src/pages/CpuMatchPage';
 import MatchEntryPage from '../src/pages/MatchEntryPage';
 import MatchHistoryPage from '../src/pages/MatchHistoryPage';
+import { READ_TIMEOUT_MS } from '../src/components/loading-policy';
 import {
   resetAccessibilityPreferences,
   updateAccessibilityPreferences,
@@ -111,7 +112,7 @@ describe('CPU match entry and history', () => {
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
 
     expect(
-      await screen.findByRole('heading', { name: 'CPU battle' }),
+      await screen.findByRole('link', { name: 'Resume CPU battle' }),
     ).toBeVisible();
     expect(screen.getByRole('heading', { name: 'CPU battle' })).toBeVisible();
     expect(
@@ -159,7 +160,7 @@ describe('CPU match entry and history', () => {
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
 
     const playerCard = (
-      await screen.findByRole('heading', { name: 'Player Battles' })
+      await screen.findByRole('link', { name: 'Continue player battle' })
     ).closest('section')!;
     expect(within(playerCard).getByText('Your turn')).toBeVisible();
     expect(
@@ -252,7 +253,7 @@ describe('CPU match entry and history', () => {
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     expect(
-      await screen.findByRole('heading', { name: 'CPU battle' }),
+      await screen.findByRole('button', { name: 'Start CPU battle' }),
     ).toBeVisible();
     expect(
       screen.getByRole('link', { name: 'Open player battles' }),
@@ -321,9 +322,7 @@ describe('CPU match entry and history', () => {
     );
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
-    expect(
-      await screen.findByRole('heading', { name: 'CPU battle' }),
-    ).toBeVisible();
+    expect(await screen.findByText('No deck selected')).toBeVisible();
     expect(screen.getByText('No deck selected')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Choose deck' })).toHaveAttribute(
       'href',
@@ -351,25 +350,121 @@ describe('CPU match entry and history', () => {
       .fn()
       .mockRejectedValueOnce(new TypeError('connection lost'))
       .mockResolvedValueOnce(historyResponse([]))
-      .mockResolvedValueOnce(matchResponse(activeMatch(4)))
-      .mockResolvedValueOnce(historyResponse([]));
+      .mockResolvedValueOnce(matchResponse(activeMatch(4)));
     vi.stubGlobal('fetch', withPvpDefaults(fetchMock));
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     expect(
-      screen.getByRole('heading', { name: 'Checking for an active match' }),
+      screen.getByText('Checking your current CPU battle and selected deck…'),
     ).toBeVisible();
     await waitFor(() => expect(screen.getByRole('alert')).toHaveFocus());
     expect(
-      screen.getByRole('heading', { name: 'Battles could not be prepared' }),
+      screen.getByRole('heading', { name: 'CPU battle could not be prepared' }),
     ).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(
-      await screen.findByRole('heading', { name: 'CPU battle' }),
+      await screen.findByRole('link', { name: 'Resume CPU battle' }),
     ).toBeVisible();
     expect(window.location.pathname).toBe('/matches');
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(['token', 'active match', 'response body', 'selected deck'])(
+    'keeps other modes usable and bounds a stalled %s read',
+    async (stage) => {
+      vi.useFakeTimers();
+      const never = new Promise<never>(() => undefined);
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const path = new URL(String(input)).pathname;
+        if (path.endsWith('/matches/cpu')) {
+          if (stage === 'active match') return never;
+          if (stage === 'response body') {
+            const response = new Response();
+            vi.spyOn(response, 'json').mockReturnValue(never);
+            return Promise.resolve(response);
+          }
+          return Promise.resolve(noActiveResponse());
+        }
+        if (path.endsWith('/decks')) return never;
+        return Promise.resolve(historyResponse([]));
+      });
+      vi.stubGlobal('fetch', withPvpDefaults(fetchMock));
+      renderRoute(
+        '/matches',
+        <MatchEntryPage apiBaseUrl={apiBaseUrl} />,
+        stage === 'token'
+          ? authValue({ getAccessTokenSilently: vi.fn(() => never) })
+          : authValue(),
+      );
+      const live = screen.getByRole('link', { name: 'Play or watch live' });
+      expect(live).toBeVisible();
+      expect(
+        screen.getByRole('link', { name: 'Open player battles' }),
+      ).toBeVisible();
+      live.focus();
+      await act(async () => vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS));
+      expect(
+        screen.getByRole('heading', {
+          name: 'CPU battle could not be prepared',
+        }),
+      ).toBeVisible();
+      expect(screen.getByText(/selected deck timed out/)).toBeVisible();
+      expect(live).toHaveFocus();
+      expect(
+        screen.queryByRole('button', { name: 'Start CPU battle' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(
+          'Checking your current CPU battle and selected deck…',
+        ),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it('retries only CPU preparation and ignores a late result from the timed-out read', async () => {
+    vi.useFakeTimers();
+    let resolveOld!: (value: Response) => void;
+    const old = new Promise<Response>((resolve) => {
+      resolveOld = resolve;
+    });
+    const cpuFetch = vi
+      .fn()
+      .mockReturnValueOnce(old)
+      .mockResolvedValueOnce(historyResponse([]))
+      .mockResolvedValueOnce(noActiveResponse())
+      .mockResolvedValueOnce(deckListResponse([]));
+    const fetchMock = withPvpDefaults(cpuFetch, {
+      active: [activePvpSummary()],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
+    await act(async () => vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS));
+    const pvp = screen.getByRole('link', { name: 'Continue player battle' });
+    expect(pvp).toBeVisible();
+    const oldSignal = cpuFetch.mock.calls[0]![1]!.signal as AbortSignal;
+    expect(oldSignal.aborted).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByText('No deck selected')).toBeVisible();
+    await act(async () => {
+      resolveOld(matchResponse(activeMatch(3)));
+      await old;
+    });
+    expect(
+      screen.queryByRole('link', { name: 'Resume CPU battle' }),
+    ).not.toBeInTheDocument();
+    expect(pvp).toBeVisible();
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        new URL(String(input)).pathname.endsWith('/matches/pvp'),
+      ),
+    ).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        new URL(String(input)).pathname.endsWith('/matches/history'),
+      ),
+    ).toHaveLength(1);
   });
 
   it('defers selected-deck rejection to the API and routes the player back to decks', async () => {

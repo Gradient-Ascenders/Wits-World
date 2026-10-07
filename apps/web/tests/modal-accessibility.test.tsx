@@ -30,7 +30,11 @@ describe('confirmation dialog focus', () => {
 
     view.rerender(<AuthorConfirmationDialog {...props} busy />);
     await waitFor(() => expect(dialog).toHaveFocus());
-    expect(dialog).toHaveAttribute('aria-busy', 'true');
+    expect(dialog.querySelector('.author-dialog__actions')).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+    expect(screen.getByRole('status').closest('[aria-busy="true"]')).toBeNull();
     expect(fireEvent.keyDown(dialog, { key: 'Tab' })).toBe(false);
     expect(dialog).toHaveFocus();
 

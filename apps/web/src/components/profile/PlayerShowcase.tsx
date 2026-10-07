@@ -127,6 +127,8 @@ export function PlayerShowcase({
       <PageLoadingState
         title="Loading player profile"
         description="Getting your cards, activity and achievements…"
+        onRetry={() => setRevision((value) => value + 1)}
+        resetKey={`${playerName ?? 'self'}:${revision}`}
       />
     );
   if (state.status === 'error')

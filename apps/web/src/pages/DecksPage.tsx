@@ -445,6 +445,8 @@ export default function DecksPage({
         <PageLoadingState
           title="Loading your decks and collection"
           description="Loading your saved decks and cards…"
+          onRetry={reload}
+          resetKey={revision}
         />
       </div>
     );
@@ -1651,7 +1653,7 @@ function DeckEditor({
                 <strong>{readiness}</strong>
                 <span>
                   {isSaving
-                    ? 'Saving…'
+                    ? 'Saving deck…'
                     : hasSaveError
                       ? 'Save failed'
                       : isDirty
@@ -1679,7 +1681,7 @@ function DeckEditor({
                 type="submit"
               >
                 {isSaving
-                  ? 'Saving…'
+                  ? 'Saving deck…'
                   : draft.mode === 'create'
                     ? 'Create deck'
                     : 'Save deck'}

@@ -69,6 +69,7 @@ export default function TradeEditorPage({
   const getAccessToken = useApiAccessToken();
   const [, navigate] = useLocation();
   const [state, setState] = useState<EditorState>({ status: 'loading' });
+  const [readRetry, setReadRetry] = useState(0);
   const [choosingPlayer, setChoosingPlayer] = useState(!editing);
   const [recipientBusy, setRecipientBusy] = useState(false);
   const [recipientError, setRecipientError] = useState<string | null>(null);
@@ -157,7 +158,7 @@ export default function TradeEditorPage({
       previewRequest.current?.abort();
       recipientRequest.current?.abort();
     };
-  }, [apiBaseUrl, getAccessToken, tradeId]);
+  }, [apiBaseUrl, getAccessToken, tradeId, readRetry]);
 
   useEffect(() => {
     if (state.status !== 'ready' || !previewOutdated) return;
@@ -221,6 +222,8 @@ export default function TradeEditorPage({
   if (state.status === 'loading') {
     return (
       <PageLoadingState
+        onRetry={() => setReadRetry((value) => value + 1)}
+        resetKey={`${tradeId ?? 'new'}:${readRetry}`}
         description="Loading your collection and the active card catalogue."
         title={editing ? 'Loading trade editor' : 'Preparing a new trade'}
       />
@@ -854,7 +857,7 @@ function TradeBuilder({
           <div className="trade-builder__review-bar">
             <span className="trade-builder__check" role="status">
               {previewUpdating
-                ? 'Checking…'
+                ? 'Checking trade availability…'
                 : preview.valid
                   ? 'Ready'
                   : 'Add cards to both sides'}

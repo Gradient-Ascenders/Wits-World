@@ -2126,6 +2126,10 @@
   margin: 0;
 }
 
+.exploration-loading-panel > .loading-recovery {
+  grid-column: 1 / -1;
+}
+
 .exploration-loading-panel > .exploration-loading-panel__marker {
   width: 2.25rem;
   height: 3rem;

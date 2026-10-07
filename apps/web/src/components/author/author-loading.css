@@ -42,6 +42,10 @@
   align-self: start;
 }
 
+.author-loading-state > .loading-recovery {
+  grid-column: 1 / -1;
+}
+
 .author-artwork-preview > .author-loading-state {
   width: 100%;
   border: 0;

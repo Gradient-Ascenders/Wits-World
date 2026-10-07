@@ -200,6 +200,8 @@ export default function MatchHistoryPage({
       <PageLoadingState
         title="Loading your battle history"
         description="Loading completed battles…"
+        onRetry={() => setRevision((value) => value + 1)}
+        resetKey={revision}
       />
     );
   }

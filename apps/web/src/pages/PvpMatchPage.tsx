@@ -595,6 +595,8 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       <PageLoadingState
         title="Loading battle"
         description="Checking the latest state…"
+        onRetry={() => setRevision((value) => value + 1)}
+        resetKey={`${matchId}:${revision}`}
       />
     );
   }

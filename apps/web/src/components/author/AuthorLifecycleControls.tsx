@@ -85,7 +85,7 @@ export function AuthorLifecycleControls({
             type="button"
           >
             {busy
-              ? 'Submitting…'
+              ? `Submitting ${noun}…`
               : reviewPackage
                 ? 'Submit event and questions'
                 : 'Submit for review'}

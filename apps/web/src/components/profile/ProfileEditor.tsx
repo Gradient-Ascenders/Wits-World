@@ -385,7 +385,7 @@ export function ProfileEditor({
               type="submit"
               disabled={busy || error?.failure === 'conflict'}
             >
-              {saving ? 'Saving…' : 'Save changes'}
+              {saving ? 'Saving your profile…' : 'Save changes'}
             </button>
           </footer>
         </form>

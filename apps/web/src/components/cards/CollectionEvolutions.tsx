@@ -16,7 +16,7 @@ import {
   type OwnedCard,
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
-import { PageLoadingState } from '../LoadingState';
+import { LoadingState } from '../LoadingState';
 import { CardDetailModal } from './CardDetailModal';
 import { CardPresentationDialog } from './CardPresentationDialog';
 import { CardThumbnail } from './CollectibleCard';
@@ -27,11 +27,20 @@ type Candidate = {
   preview?: CardEvolutionPreview;
   unavailable?: boolean;
   failed?: boolean;
+  checking?: boolean;
 };
 
 type AvailabilityFilter =
   'all' | 'ready' | 'not-ready' | 'unavailable' | 'failed';
 const PAGE_SIZE = 6;
+
+function sortCandidates(a: Candidate, b: Candidate) {
+  return (
+    Number(Boolean(b.preview?.canEvolve)) -
+      Number(Boolean(a.preview?.canEvolve)) ||
+    a.card.name.localeCompare(b.card.name)
+  );
+}
 
 export function CollectionEvolutions({
   apiBaseUrl,
@@ -69,6 +78,7 @@ export function CollectionEvolutions({
     ],
     [cards],
   );
+  const loadingKey = useMemo(() => ({ cards, revision }), [cards, revision]);
 
   useEffect(() => {
     // Keep the focused transaction mounted while its authoritative collection changes.
@@ -80,11 +90,21 @@ export function CollectionEvolutions({
       return;
     const controller = new AbortController();
     setLoading(true);
+    setCandidates((current) =>
+      current
+        .filter((candidate) =>
+          definitions.some(
+            (card) => card.cardDefinitionId === candidate.card.cardDefinitionId,
+          ),
+        )
+        .map((candidate) => ({ ...candidate, checking: true })),
+    );
     const pending = [...definitions];
     const loaded: Candidate[] = [];
     async function worker() {
       while (pending.length && !controller.signal.aborted) {
         const card = pending.shift()!;
+        let candidate: Candidate | undefined;
         try {
           const preview = await previewCardEvolution({
             apiBaseUrl,
@@ -92,7 +112,7 @@ export function CollectionEvolutions({
             signal: controller.signal,
             sourceCardDefinitionId: card.cardDefinitionId,
           });
-          loaded.push({ card, preview });
+          candidate = { card, preview };
         } catch (error) {
           if (
             error instanceof CardApiError &&
@@ -105,22 +125,27 @@ export function CollectionEvolutions({
                   copy.acquisitionKind === 'evolution',
               )
             )
-              loaded.push({ card, unavailable: true });
-          } else loaded.push({ card, failed: true });
+              candidate = { card, unavailable: true };
+          } else candidate = { card, failed: true };
         }
+        if (controller.signal.aborted) return;
+        if (candidate) loaded.push(candidate);
+        // One slow preview must not hold independently confirmed cards hostage.
+        setCandidates((current) =>
+          [
+            ...current.filter(
+              (item) => item.card.cardDefinitionId !== card.cardDefinitionId,
+            ),
+            ...(candidate ? [candidate] : []),
+          ].sort(sortCandidates),
+        );
       }
     }
     void Promise.all(
       Array.from({ length: Math.min(4, pending.length) }, worker),
     ).then(() => {
       if (controller.signal.aborted) return;
-      loaded.sort(
-        (a, b) =>
-          Number(Boolean(b.preview?.canEvolve)) -
-            Number(Boolean(a.preview?.canEvolve)) ||
-          a.card.name.localeCompare(b.card.name),
-      );
-      setCandidates(loaded);
+      setCandidates(loaded.sort(sortCandidates));
       loadedSnapshot.current = { cards, revision };
       setLoading(false);
     });
@@ -188,14 +213,12 @@ export function CollectionEvolutions({
 
   return (
     <>
-      {!isChecking ? (
-        <header className="collection-page__header">
-          <h1>Evolutions</h1>
-          <p className="lead">
-            Combine three available copies into one evolved card.
-          </p>
-        </header>
-      ) : null}
+      <header className="collection-page__header">
+        <h1>Evolutions</h1>
+        <p className="lead">
+          Combine three available copies into one evolved card.
+        </p>
+      </header>
       <section
         className="collection-evolutions"
         aria-labelledby="collection-evolutions-title"
@@ -209,122 +232,130 @@ export function CollectionEvolutions({
           Evolution candidates
         </h2>
         {isChecking ? (
-          <PageLoadingState
+          <LoadingState
             announce={!selected}
-            title="Loading your evolutions"
-            description="Checking evolution paths…"
+            label="Checking evolution paths…"
+            onRetry={() => setRevision((value) => value + 1)}
+            resetKey={loadingKey}
           />
-        ) : (
-          <>
-            {candidates.length > 0 ? (
-              <>
-                <div
-                  className="evolution-browse-controls"
-                  role="search"
-                  aria-label="Find an evolution"
+        ) : null}
+        <>
+          {candidates.length > 0 ? (
+            <>
+              <div
+                className="evolution-browse-controls"
+                role="search"
+                aria-label="Find an evolution"
+              >
+                <SearchField
+                  label="Search evolutions"
+                  hideLabel
+                  className="collection-control evolution-browse-controls__search"
+                  inputRef={searchInput}
+                  placeholder="Search card names"
+                  value={search}
+                  onChange={(value) => {
+                    setSearch(value);
+                    setPage(1);
+                  }}
+                />
+                <SelectField
+                  label="Availability"
+                  className="collection-control"
+                  value={availability}
+                  onChange={(value) => {
+                    setAvailability(value as AvailabilityFilter);
+                    setPage(1);
+                  }}
+                  options={[
+                    { value: 'all', label: 'All cards' },
+                    { value: 'ready', label: 'Ready' },
+                    { value: 'not-ready', label: 'Not ready' },
+                    { value: 'unavailable', label: 'No evolution' },
+                    { value: 'failed', label: 'Check failed' },
+                  ]}
+                />
+                <SelectField
+                  label="Rarity"
+                  className="collection-control"
+                  value={rarity}
+                  onChange={(value) => {
+                    setRarity(value as CardRarity | 'all');
+                    setPage(1);
+                  }}
+                  options={[
+                    { value: 'all', label: 'All rarities' },
+                    { value: 'common', label: 'Common' },
+                    { value: 'rare', label: 'Rare' },
+                    { value: 'epic', label: 'Epic' },
+                    { value: 'legendary', label: 'Legendary' },
+                  ]}
+                />
+              </div>
+              <div className="evolution-browse-navigation">
+                <p
+                  aria-live={isChecking ? undefined : 'polite'}
+                  ref={resultsHeading}
+                  tabIndex={-1}
                 >
-                  <SearchField
-                    label="Search evolutions"
-                    hideLabel
-                    className="collection-control evolution-browse-controls__search"
-                    inputRef={searchInput}
-                    placeholder="Search card names"
-                    value={search}
-                    onChange={(value) => {
-                      setSearch(value);
-                      setPage(1);
-                    }}
-                  />
-                  <SelectField
-                    label="Availability"
-                    className="collection-control"
-                    value={availability}
-                    onChange={(value) => {
-                      setAvailability(value as AvailabilityFilter);
-                      setPage(1);
-                    }}
-                    options={[
-                      { value: 'all', label: 'All cards' },
-                      { value: 'ready', label: 'Ready' },
-                      { value: 'not-ready', label: 'Not ready' },
-                      { value: 'unavailable', label: 'No evolution' },
-                      { value: 'failed', label: 'Check failed' },
-                    ]}
-                  />
-                  <SelectField
-                    label="Rarity"
-                    className="collection-control"
-                    value={rarity}
-                    onChange={(value) => {
-                      setRarity(value as CardRarity | 'all');
-                      setPage(1);
-                    }}
-                    options={[
-                      { value: 'all', label: 'All rarities' },
-                      { value: 'common', label: 'Common' },
-                      { value: 'rare', label: 'Rare' },
-                      { value: 'epic', label: 'Epic' },
-                      { value: 'legendary', label: 'Legendary' },
-                    ]}
-                  />
-                </div>
-                <div className="evolution-browse-navigation">
-                  <p aria-live="polite" ref={resultsHeading} tabIndex={-1}>
-                    {filteredCandidates.length > 0
-                      ? `${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, filteredCandidates.length)} of ${filteredCandidates.length} cards`
-                      : '0 matching cards'}
-                  </p>
-                  {hasFilters && filteredCandidates.length > 0 ? (
-                    <button
-                      className="button button--quiet"
-                      type="button"
-                      onClick={clearFilters}
-                    >
-                      Clear filters
-                    </button>
-                  ) : null}
-                  {totalPages > 1 ? (
-                    <EvolutionPages
-                      currentPage={currentPage}
-                      totalPages={totalPages}
-                      onChange={changePage}
-                      label="Evolution pages"
-                    />
-                  ) : null}
-                </div>
-              </>
-            ) : null}
-            {candidates.length === 0 ? (
-              <StatusMessage tone="empty">
-                <p>No evolutions are available for your current cards.</p>
-              </StatusMessage>
-            ) : null}
-            {candidates.length > 0 && filteredCandidates.length === 0 ? (
-              <StatusMessage tone="empty">
-                <h3>
-                  {onlyReadyFilter
-                    ? 'No cards ready to evolve'
-                    : 'No matching cards'}
-                </h3>
-                <p>
-                  {onlyReadyFilter
-                    ? 'Show all cards to check availability and copy requirements.'
-                    : 'Try another name or clear your filters.'}
+                  {filteredCandidates.length > 0
+                    ? `${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, filteredCandidates.length)} of ${filteredCandidates.length} cards`
+                    : '0 matching cards'}
                 </p>
-                <button
-                  className="button button--quiet"
-                  type="button"
-                  onClick={clearFilters}
-                >
-                  {onlyReadyFilter ? 'Show all cards' : 'Clear filters'}
-                </button>
-              </StatusMessage>
-            ) : null}
-            <ul
-              className="evolution-candidates"
-              aria-label="Evolution candidates"
-            >
-              {pageCandidates.map(({ card, preview, unavailable, failed }) => (
+                {hasFilters && filteredCandidates.length > 0 ? (
+                  <button
+                    className="button button--quiet"
+                    type="button"
+                    onClick={clearFilters}
+                  >
+                    Clear filters
+                  </button>
+                ) : null}
+                {totalPages > 1 ? (
+                  <EvolutionPages
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onChange={changePage}
+                    label="Evolution pages"
+                  />
+                ) : null}
+              </div>
+            </>
+          ) : null}
+          {!isChecking && candidates.length === 0 ? (
+            <StatusMessage tone="empty">
+              <p>No evolutions are available for your current cards.</p>
+            </StatusMessage>
+          ) : null}
+          {!isChecking &&
+          candidates.length > 0 &&
+          filteredCandidates.length === 0 ? (
+            <StatusMessage tone="empty">
+              <h3>
+                {onlyReadyFilter
+                  ? 'No cards ready to evolve'
+                  : 'No matching cards'}
+              </h3>
+              <p>
+                {onlyReadyFilter
+                  ? 'Show all cards to check availability and copy requirements.'
+                  : 'Try another name or clear your filters.'}
+              </p>
+              <button
+                className="button button--quiet"
+                type="button"
+                onClick={clearFilters}
+              >
+                {onlyReadyFilter ? 'Show all cards' : 'Clear filters'}
+              </button>
+            </StatusMessage>
+          ) : null}
+          <ul
+            className="evolution-candidates"
+            aria-label="Evolution candidates"
+          >
+            {pageCandidates.map(
+              ({ card, preview, unavailable, failed, checking }) => (
                 <li key={card.cardDefinitionId} className="evolution-candidate">
                   <div className="evolution-candidate__art">
                     <CardThumbnail
@@ -337,17 +368,19 @@ export function CollectionEvolutions({
                     <p
                       className={`evolution-candidate__state${preview?.canEvolve ? ' evolution-candidate__state--ready' : ''}`}
                     >
-                      {preview
-                        ? preview.canEvolve
-                          ? 'Ready to evolve'
-                          : preview.unavailableReason === 'trade_reservation'
-                            ? 'Copies reserved for trade'
-                            : preview.unavailableReason === 'saved_deck_lock'
-                              ? 'Copies locked in decks'
-                              : 'Not enough copies'
-                        : unavailable
-                          ? 'No evolution available'
-                          : 'Availability unknown'}
+                      {checking
+                        ? 'Checking availability…'
+                        : preview
+                          ? preview.canEvolve
+                            ? 'Ready to evolve'
+                            : preview.unavailableReason === 'trade_reservation'
+                              ? 'Copies reserved for trade'
+                              : preview.unavailableReason === 'saved_deck_lock'
+                                ? 'Copies locked in decks'
+                                : 'Not enough copies'
+                          : unavailable
+                            ? 'No evolution available'
+                            : 'Availability unknown'}
                     </p>
                     <h3>{card.name}</h3>
                     {preview ? (
@@ -383,6 +416,7 @@ export function CollectionEvolutions({
                             setSelected({ card, preview });
                           }}
                           aria-label={`Preview ${card.name} evolution`}
+                          disabled={checking}
                         >
                           Preview evolution
                         </button>
@@ -392,29 +426,29 @@ export function CollectionEvolutions({
                     ) : null}
                   </div>
                 </li>
-              ))}
-            </ul>
-            {totalPages > 1 ? (
-              <div className="evolution-browse-navigation evolution-browse-navigation--bottom">
-                <EvolutionPages
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onChange={changePage}
-                  label="Evolution pages below cards"
-                />
-              </div>
-            ) : null}
-            {candidates.some((candidate) => candidate.failed) ? (
-              <button
-                className="button button--quiet"
-                type="button"
-                onClick={() => setRevision((value) => value + 1)}
-              >
-                Retry availability
-              </button>
-            ) : null}
-          </>
-        )}
+              ),
+            )}
+          </ul>
+          {totalPages > 1 ? (
+            <div className="evolution-browse-navigation evolution-browse-navigation--bottom">
+              <EvolutionPages
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onChange={changePage}
+                label="Evolution pages below cards"
+              />
+            </div>
+          ) : null}
+          {!isChecking && candidates.some((candidate) => candidate.failed) ? (
+            <button
+              className="button button--quiet"
+              type="button"
+              onClick={() => setRevision((value) => value + 1)}
+            >
+              Retry availability
+            </button>
+          ) : null}
+        </>
         {selected?.preview ? (
           <CardDetailModal
             apiBaseUrl={apiBaseUrl}

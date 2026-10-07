@@ -1025,7 +1025,11 @@ function EventForm({
           isNew={!event}
         >
           <button className="button" disabled={busy} type="submit">
-            {busy ? 'Saving…' : event ? 'Save event' : 'Create draft event'}
+            {busy
+              ? 'Saving event draft…'
+              : event
+                ? 'Save event'
+                : 'Create draft event'}
           </button>
           <button
             className="button button--quiet"
@@ -2949,7 +2953,7 @@ function QuestionForm({
       >
         <button className="button" disabled={busy} type="submit">
           {busy
-            ? 'Saving…'
+            ? 'Saving question draft…'
             : question
               ? 'Save question'
               : 'Create draft question'}

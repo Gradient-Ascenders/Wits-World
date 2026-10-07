@@ -649,6 +649,8 @@ export default function LiveLobbyPage({
     return (
       <PageLoadingState
         title="Loading ranked battles"
+        onRetry={() => setSeasonRevision((value) => value + 1)}
+        resetKey={seasonRevision}
         description="Checking your deck…"
       />
     );
@@ -770,7 +772,7 @@ export default function LiveLobbyPage({
                   onClick={() => void refreshQueueStatus()}
                   type="button"
                 >
-                  {queueRefreshPending ? 'Checking…' : 'Retry'}
+                  {queueRefreshPending ? 'Checking ranked queue…' : 'Retry'}
                 </button>
               </div>
             ) : null}
@@ -1484,7 +1486,11 @@ function RankedStandingsSection({
                 onClick={onLoadMore}
                 type="button"
               >
-                {loadingMore ? 'Loading…' : pageError ? 'Retry' : 'Load more'}
+                {loadingMore
+                  ? 'Loading more ranked players…'
+                  : pageError
+                    ? 'Retry'
+                    : 'Load more'}
               </button>
             ) : null}
             {pageError ? (

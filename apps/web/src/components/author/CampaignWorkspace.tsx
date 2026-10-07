@@ -943,7 +943,7 @@ function CampaignForm({
       >
         <button className="button" disabled={busy || staleEdit} type="submit">
           {busy
-            ? 'Saving…'
+            ? 'Saving campaign draft…'
             : campaign
               ? 'Save campaign'
               : 'Create draft campaign'}

@@ -79,6 +79,17 @@
   gap: var(--space-3);
 }
 
+.loading-recovery {
+  min-width: 0;
+  width: 100%;
+  text-align: start;
+}
+
+.loading-recovery > p {
+  margin-block: var(--space-3) 0;
+  color: var(--colour-text-secondary);
+}
+
 .state-loading--prominent.state-message {
   text-align: center;
 }
@@ -351,6 +362,27 @@
 
 html[data-motion='reduce'] .quest-marker svg {
   animation: none;
+}
+
+[data-loading-phase='hidden'] .quest-marker svg {
+  animation: none;
+}
+
+html[data-motion='reduce'] .startup-screen,
+html[data-motion='reduce']
+  .startup-seal
+  :is(
+    .seal-loader__trace,
+    .seal-loader__ring-art,
+    .seal-loader__campus,
+    .seal-loader__details,
+    .seal-loader__complete
+  ) {
+  animation: none !important;
+}
+
+html[data-motion='reduce'] .startup-seal .seal-loader__complete {
+  opacity: 1;
 }
 @keyframes startup-screen-exit {
   to {

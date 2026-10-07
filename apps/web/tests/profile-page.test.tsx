@@ -202,7 +202,8 @@ describe('progression profile and standings page', () => {
     expect(
       screen
         .getByRole('heading', { name: 'Loading player profile' })
-        .closest('[role="status"]'),
+        .closest('section')
+        ?.querySelector('[role="status"]'),
     ).toHaveAttribute('role', 'status');
     expect(
       screen.getByText('Loading standings…').closest('[role="status"]'),

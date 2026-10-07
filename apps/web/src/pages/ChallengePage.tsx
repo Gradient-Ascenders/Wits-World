@@ -553,6 +553,12 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
       <PageLoadingState
         title="Loading your challenge"
         description="Wits World is restoring your saved attempt."
+        onRetry={
+          attempt === null
+            ? () => setReloadRevision((value) => value + 1)
+            : undefined
+        }
+        resetKey={`${attemptId}:${reloadRevision}`}
       />
     );
   }

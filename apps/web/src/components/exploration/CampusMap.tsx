@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowClockwise, MapTrifold } from '@phosphor-icons/react';
 import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
-import { useSignInMapStatus } from '../auth/startup-state';
 
 import {
   createMapboxMap,
@@ -85,8 +84,6 @@ export function CampusMap({
   const selectedRegionRef = useRef<MapRegion | null>(selectedRegion);
   const [status, setStatus] = useState<MapStatus>('loading');
   const [attempt, setAttempt] = useState(0);
-
-  useSignInMapStatus(status);
 
   pointsRef.current = points;
   initialDiscoveryPendingRef.current = initialDiscoveryPending;

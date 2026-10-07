@@ -861,7 +861,7 @@ function TrustCasePanel({
             type="button"
           >
             <DownloadSimpleIcon aria-hidden="true" size={18} />
-            {exporting ? 'Preparing…' : 'Export'}
+            {exporting ? 'Preparing case export…' : 'Export'}
           </button>
         </div>
       </header>
@@ -1516,7 +1516,9 @@ function CollectionLoadMore<T>({
       onClick={collection.loadMore}
       type="button"
     >
-      {collection.state === 'loading' ? 'Loading…' : `Load more ${label}`}
+      {collection.state === 'loading'
+        ? `Loading more ${label}…`
+        : `Load more ${label}`}
     </button>
   );
 }

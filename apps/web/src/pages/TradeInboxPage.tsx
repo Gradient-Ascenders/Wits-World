@@ -26,6 +26,7 @@ type InboxState =
 export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const getAccessToken = useApiAccessToken();
   const [state, setState] = useState<InboxState>({ status: 'loading' });
+  const [readRetry, setReadRetry] = useState(0);
   const [view, setView] = useState<'open' | 'history'>('open');
   const [loadingMore, setLoadingMore] = useState(false);
   const request = useRef<AbortController | null>(null);
@@ -147,6 +148,11 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       <div className="trades-page">
         <CollectionSectionNavigation />
         <PageLoadingState
+          onRetry={() => {
+            setReadRetry((value) => value + 1);
+            void loadInitial();
+          }}
+          resetKey={readRetry}
           description="Checking your offers."
           title="Loading trades"
         />
@@ -222,7 +228,7 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           onClick={() => void loadMore()}
           type="button"
         >
-          {loadingMore ? 'Loading…' : 'Load more'}
+          {loadingMore ? 'Loading more trades…' : 'Load more'}
         </button>
       ) : null}
     </div>

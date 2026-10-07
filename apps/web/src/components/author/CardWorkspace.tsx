@@ -1424,7 +1424,11 @@ function CardForm({
           isNew={!card}
         >
           <button className="button" disabled={busy} type="submit">
-            {busy ? 'Saving…' : card ? 'Save card' : 'Create draft card'}
+            {busy
+              ? 'Saving card draft…'
+              : card
+                ? 'Save card'
+                : 'Create draft card'}
           </button>
           <button
             className="button button--quiet"

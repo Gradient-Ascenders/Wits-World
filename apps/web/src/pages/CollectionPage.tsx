@@ -1,8 +1,7 @@
 import { SelectField } from '../components/fields/SelectField';
 import { SearchField } from '../components/fields/SearchField';
 import { StateIcon } from '../components/StatusMessage';
-import { PageLoadingState } from '../components/LoadingState';
-import { QuestMarker } from '../components/branding/QuestMarker';
+import { LoadingState, PageLoadingState } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import { SlidersHorizontal, X } from '@phosphor-icons/react';
 import {
@@ -315,6 +314,8 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
       <div className="collection-page">
         <CollectionSectionNavigation />
         <PageLoadingState
+          onRetry={retryCollection}
+          resetKey={collectionRevision}
           title={
             section === 'evolutions'
               ? 'Loading your evolutions'
@@ -489,16 +490,10 @@ function StarterSelector({
       </p>
 
       {optionsState.status === 'idle' || optionsState.status === 'loading' ? (
-        <div
-          aria-live="polite"
-          className="starter-options-state state-message state-loading state-loading--subtle"
-          role="status"
-        >
-          <h2>
-            <QuestMarker />
-            Loading your choices
-          </h2>
-        </div>
+        <LoadingState
+          className="starter-options-state"
+          label="Loading your starter choices…"
+        />
       ) : null}
 
       {optionsState.status === 'error' ? (

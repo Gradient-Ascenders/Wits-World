@@ -338,7 +338,7 @@ describe('card collection page', () => {
       }),
     ).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Loading your choices',
+      'Loading your starter choices',
     );
     await waitFor(() => expect(resolveOptions).toBeTypeOf('function'));
     resolveOptions(starterOptionsResponse());

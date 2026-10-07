@@ -6,7 +6,8 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
 import { clearAuthenticatedPlayerBinding } from '../../auth/player-session-binding';
 import { PlayerNameSetup } from './PlayerNameSetup';
-import { PageLoadingState } from '../LoadingState';
+import { LoadingRecovery, LoadingState } from '../LoadingState';
+import { useLoadingPhase } from '../loading-policy';
 
 interface ProtectedRouteProps {
   allowPlayerNameSetupRequired?: boolean;
@@ -28,6 +29,11 @@ export function ProtectedRoute({
   const { error, isAuthenticated, isLoading, loginWithRedirect, logout } =
     useAuth0();
   const { reload, state: currentPlayer } = useCurrentPlayer();
+  const [loadingAttempt, setLoadingAttempt] = useState(0);
+  const loadingPhase = useLoadingPhase(
+    isLoading || (isAuthenticated && currentPlayer.status === 'loading'),
+    isLoading ? 'authentication' : loadingAttempt,
+  );
   const [actionFailed, setActionFailed] = useState(false);
   const focusHeading = useCallback((heading: HTMLHeadingElement | null) => {
     heading?.focus();
@@ -61,14 +67,29 @@ export function ProtectedRoute({
     }
   }
 
+  function retryPlayer() {
+    setLoadingAttempt((current) => current + 1);
+    reload();
+  }
+
   if (isLoading) {
     return (
-      loadingFallback ?? (
-        <PageLoadingState
-          title="Checking your sign-in status"
-          description="Please wait while Wits World restores your session."
-        />
-      )
+      <>
+        {loadingFallback ?? (
+          <LoadingState
+            label="Checking your sign-in status"
+            onRetry={() => window.location.reload()}
+          />
+        )}
+        {loadingFallback && loadingPhase === 'slow' && (
+          <section className="auth-state state-message">
+            <LoadingRecovery
+              message="Restoring your sign-in is taking longer than expected. Try reloading this page or return home while your protected data stays hidden."
+              onRetry={() => window.location.reload()}
+            />
+          </section>
+        )}
+      </>
     );
   }
 
@@ -112,12 +133,23 @@ export function ProtectedRoute({
 
   if (currentPlayer.status === 'loading') {
     return (
-      loadingFallback ?? (
-        <PageLoadingState
-          title="Confirming your Wits World player"
-          description="Protected player data remains hidden until this check completes."
-        />
-      )
+      <>
+        {loadingFallback ?? (
+          <LoadingState
+            label="Confirming your Wits World player"
+            onRetry={retryPlayer}
+            resetKey={loadingAttempt}
+          />
+        )}
+        {loadingFallback && loadingPhase === 'slow' && (
+          <section className="auth-state state-message">
+            <LoadingRecovery
+              message="Confirming your player is taking longer than expected. Check your connection and retry, or return home. Your protected data stays hidden."
+              onRetry={retryPlayer}
+            />
+          </section>
+        )}
+      </>
     );
   }
 
@@ -142,12 +174,21 @@ export function ProtectedRoute({
               : currentPlayer.status === 'error' &&
                   currentPlayer.failure === 'identity_conflict'
                 ? 'This Player Name is already linked to another account. Sign out and use the same sign-in method you originally used. If this keeps happening, contact the Wits World team to check your account link.'
-                : 'We could not load your player account. Check your connection and try again.'}
+                : currentPlayer.status === 'error' &&
+                    currentPlayer.failure === 'timeout'
+                  ? 'Checking your player account timed out. Check your connection and try again; your protected data remains hidden.'
+                  : 'We could not load your player account. Check your connection and try again.'}
         </p>
         <div className="state-message__actions">
           <button className="button" onClick={reload} type="button">
             Check session again
           </button>
+          <a className="button button--quiet" href="/">
+            Return home
+          </a>
+          <a className="button button--quiet" href="/offline">
+            Open saved events
+          </a>
           {currentPlayer.status === 'error' &&
           currentPlayer.failure === 'identity_conflict' ? (
             <button

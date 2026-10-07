@@ -34,6 +34,14 @@
   max-width: var(--content-readable);
 }
 
+.match-state-panel.match-state-panel--inline {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
 .matches-page__header h1 {
   margin-bottom: var(--space-3);
   font-size: var(--type-page-size);

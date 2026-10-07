@@ -53,6 +53,10 @@ deletion with fresh Auth0 reauthentication.
 
 ## Run locally
 
+Loading patterns, recovery rules and route coverage are maintained in
+[the app-wide loading policy](../../docs/loading-policy.md). Use that contract
+for new waits and for retained revisit/refetch work in issue #357.
+
 Use Node.js 24.14.1 and npm 11.18.0. From the repository root:
 
 ```bash

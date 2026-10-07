@@ -1,3 +1,4 @@
+import { LoadingState } from '../LoadingState';
 import { createAppDateTimeFormatter } from '../../date-time';
 import { CaretDown } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
@@ -189,7 +190,7 @@ export function DeveloperApiAccess({
               {state.status === 'ready'
                 ? `${activeCount} of ${state.data.activeKeyLimit} active`
                 : state.status === 'loading'
-                  ? 'Loading keys…'
+                  ? 'Loading your developer API keys…'
                   : 'Keys unavailable'}
             </span>
             <CaretDown aria-hidden="true" size={18} />
@@ -311,7 +312,7 @@ export function DeveloperApiAccess({
               }
               type="submit"
             >
-              {creating ? 'Generating…' : 'Generate API key'}
+              {creating ? 'Generating API key…' : 'Generate API key'}
             </button>
           </div>
           {atLimit ? (
@@ -322,9 +323,7 @@ export function DeveloperApiAccess({
         </form>
 
         {state.status === 'loading' ? (
-          <p aria-live="polite" className="account-inline-status" role="status">
-            Loading keys…
-          </p>
+          <LoadingState label="Loading your developer API keys…" />
         ) : null}
 
         {state.status === 'ready' ? (

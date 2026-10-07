@@ -505,6 +505,8 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       <PageLoadingState
         title="Loading your CPU battle"
         description="Restoring your cards and current turn…"
+        onRetry={() => setRevision((value) => value + 1)}
+        resetKey={`${matchId}:${revision}`}
       />
     );
   }

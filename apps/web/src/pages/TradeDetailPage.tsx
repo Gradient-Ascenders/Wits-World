@@ -52,6 +52,7 @@ export default function TradeDetailPage({
   const { getIdTokenClaims, loginWithRedirect } = useAuth0();
   const [catalogue, setCatalogue] = useState<TradingCatalogueCard[]>([]);
   const [state, setState] = useState<DetailState>({ status: 'loading' });
+  const [readRetry, setReadRetry] = useState(0);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<TradeApiError | null>(null);
@@ -204,6 +205,11 @@ export default function TradeDetailPage({
   if (state.status === 'loading') {
     return (
       <PageLoadingState
+        onRetry={() => {
+          setReadRetry((value) => value + 1);
+          void load();
+        }}
+        resetKey={readRetry}
         description="Loading the latest offer."
         title="Loading card trade"
       />
@@ -484,7 +490,7 @@ export default function TradeDetailPage({
                 type="button"
               >
                 {pendingAction === 'acknowledge'
-                  ? 'Saving…'
+                  ? 'Confirming trade warning…'
                   : 'Confirm warning'}
               </button>
             ) : null}
