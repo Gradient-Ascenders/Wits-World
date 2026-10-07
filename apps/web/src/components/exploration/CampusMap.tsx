@@ -23,6 +23,7 @@ interface CampusMapProps {
   configuration: MapConfiguration;
   errorDescription?: string;
   focusPointRequest?: number;
+  initialDiscoveryPending?: boolean;
   mapFactory?: MapFactory;
   layerVisibility?: MapLayerVisibility;
   onCoordinateSelect?: (coordinate: MapCoordinate) => void;
@@ -49,6 +50,7 @@ export function CampusMap({
   errorDescription = 'Open Campus events to keep exploring.',
   focusPointRequest = 0,
   focusRegionRequest = 0,
+  initialDiscoveryPending = false,
   mapFactory = createMapboxMap,
   layerVisibility = DEFAULT_MAP_LAYER_VISIBILITY,
   onCoordinateSelect,
@@ -64,6 +66,8 @@ export function CampusMap({
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
+  const initialDiscoveryPendingRef = useRef(initialDiscoveryPending);
+  const resumeInitializationRef = useRef<(() => void) | null>(null);
   const onCoordinateSelectRef = useRef(onCoordinateSelect);
   const onFollowStateChangeRef = useRef(onFollowStateChange);
   const onPointSelectRef = useRef(onPointSelect);
@@ -85,6 +89,7 @@ export function CampusMap({
   useSignInMapStatus(status);
 
   pointsRef.current = points;
+  initialDiscoveryPendingRef.current = initialDiscoveryPending;
   regionsRef.current = regions;
   areasRef.current = areas;
   layerVisibilityRef.current = layerVisibility;
@@ -170,6 +175,9 @@ export function CampusMap({
     let active = true;
     let controller: MapController | undefined;
     let loaded = false;
+    let constructionStarted = false;
+    let paintFrame: number | null = null;
+    const waitForDiscoveryPaint = initialDiscoveryPendingRef.current;
     const resizeMap = (): void => {
       if (!container) return;
       const exploration = container.closest<HTMLElement>('.exploration-view');
@@ -232,80 +240,118 @@ export function CampusMap({
     const loadTimeout = window.setTimeout(() => {
       if (active) {
         setStatus('error');
+        // A stalled discovery request must not prevent the map attempt.
+        // Reuse the existing fallback deadline rather than adding a delay.
+        if (paintFrame !== null) window.cancelAnimationFrame(paintFrame);
+        paintFrame = null;
+        constructMap();
       }
     }, MAP_LOAD_TIMEOUT_MS);
 
     setStatus('loading');
 
-    void mapFactory(
-      container,
-      configuration,
-      pointsRef.current,
-      abortController.signal,
-    )
-      .then((map) => {
-        if (!active) {
-          map.remove();
-          return;
-        }
+    const constructMap = (): void => {
+      if (!active || constructionStarted) return;
+      constructionStarted = true;
+      void mapFactory(
+        container,
+        configuration,
+        pointsRef.current,
+        abortController.signal,
+      )
+        .then((map) => {
+          if (!active) {
+            map.remove();
+            return;
+          }
 
-        controller = map;
-        controllerRef.current = map;
-        resizeMap();
-        map.setPoints(pointsRef.current);
-        map.setRegions?.(regionsRef.current);
-        map.setAreas?.(areasRef.current);
-        map.setLayerVisibility?.(layerVisibilityRef.current);
-        map.setReportedLocation(reportedLocationRef.current);
-        map.setSelectedPoint?.(selectedPointRef.current);
-        map.setSelectedRegion?.(selectedRegionRef.current);
-        if (
-          focusPointRequestRef.current > 0 &&
-          selectedPointRef.current !== null
-        ) {
-          map.focusPoint(selectedPointRef.current);
-        }
-        if (
-          focusRegionRequestRef.current > 0 &&
-          selectedRegionRef.current !== null
-        ) {
-          map.focusRegion?.(selectedRegionRef.current);
-        }
-        map.setCoordinateSelectionListener?.(
-          onCoordinateSelectRef.current ?? null,
-        );
-        map.setPointSelectionListener?.(onPointSelectRef.current ?? null);
-        map.setRegionSelectionListener?.(onRegionSelectRef.current ?? null);
-        map.setFollowStateListener?.(onFollowStateChangeRef.current ?? null);
-        map.onLoad(() => {
-          if (active) {
-            loaded = true;
-            window.clearTimeout(loadTimeout);
-            setStatus('ready');
+          controller = map;
+          controllerRef.current = map;
+          resizeMap();
+          map.setPoints(pointsRef.current);
+          map.setRegions?.(regionsRef.current);
+          map.setAreas?.(areasRef.current);
+          map.setLayerVisibility?.(layerVisibilityRef.current);
+          map.setReportedLocation(reportedLocationRef.current);
+          map.setSelectedPoint?.(selectedPointRef.current);
+          map.setSelectedRegion?.(selectedRegionRef.current);
+          if (
+            focusPointRequestRef.current > 0 &&
+            selectedPointRef.current !== null
+          ) {
+            map.focusPoint(selectedPointRef.current);
           }
-        });
-        map.onError(() => {
-          if (active && !loaded) {
+          if (
+            focusRegionRequestRef.current > 0 &&
+            selectedRegionRef.current !== null
+          ) {
+            map.focusRegion?.(selectedRegionRef.current);
+          }
+          map.setCoordinateSelectionListener?.(
+            onCoordinateSelectRef.current ?? null,
+          );
+          map.setPointSelectionListener?.(onPointSelectRef.current ?? null);
+          map.setRegionSelectionListener?.(onRegionSelectRef.current ?? null);
+          map.setFollowStateListener?.(onFollowStateChangeRef.current ?? null);
+          map.onLoad(() => {
+            if (active) {
+              loaded = true;
+              window.clearTimeout(loadTimeout);
+              setStatus('ready');
+            }
+          });
+          map.onError(() => {
+            if (active && !loaded) {
+              window.clearTimeout(loadTimeout);
+              setStatus('error');
+            }
+          });
+          map.onFatalError?.(() => {
+            if (active) {
+              window.clearTimeout(loadTimeout);
+              setStatus('error');
+            }
+          });
+        })
+        .catch(() => {
+          if (active) {
             window.clearTimeout(loadTimeout);
             setStatus('error');
           }
         });
-        map.onFatalError?.(() => {
-          if (active) {
-            window.clearTimeout(loadTimeout);
-            setStatus('error');
-          }
+    };
+
+    const resumeInitialization = (): void => {
+      if (
+        !active ||
+        constructionStarted ||
+        initialDiscoveryPendingRef.current ||
+        paintFrame !== null
+      ) {
+        return;
+      }
+      if (!waitForDiscoveryPaint) {
+        constructMap();
+        return;
+      }
+      // The discovery DOM has committed. Let it reach a paint opportunity
+      // before map imports/construction compete for the renderer thread.
+      paintFrame = window.requestAnimationFrame(() => {
+        paintFrame = window.requestAnimationFrame(() => {
+          paintFrame = null;
+          constructMap();
         });
-      })
-      .catch(() => {
-        if (active) {
-          window.clearTimeout(loadTimeout);
-          setStatus('error');
-        }
       });
+    };
+    resumeInitializationRef.current = resumeInitialization;
+    resumeInitialization();
 
     return () => {
       active = false;
+      if (paintFrame !== null) window.cancelAnimationFrame(paintFrame);
+      if (resumeInitializationRef.current === resumeInitialization) {
+        resumeInitializationRef.current = null;
+      }
       resizeObserver?.disconnect();
       layoutObserver?.disconnect();
       abortController.abort();
@@ -316,6 +362,10 @@ export function CampusMap({
       controller?.remove();
     };
   }, [attempt, configuration, mapFactory]);
+
+  useEffect(() => {
+    if (!initialDiscoveryPending) resumeInitializationRef.current?.();
+  }, [initialDiscoveryPending]);
 
   return (
     <div className="campus-map" data-sign-in-map>

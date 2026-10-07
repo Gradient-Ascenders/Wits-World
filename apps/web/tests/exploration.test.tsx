@@ -14,6 +14,7 @@ import { CampusExplorer } from '../src/components/exploration/CampusExplorer';
 import { CampusMap } from '../src/components/exploration/CampusMap';
 import {
   createGeodesicCircle,
+  MOBILE_2D_MAP_STYLE,
   type MapConfiguration,
   type MapController,
   type MapFactory,
@@ -112,6 +113,172 @@ function explorerProps(mapFactory: MapFactory) {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+function createPaintHarness() {
+  let nextId = 0;
+  const frames = new Map<number, FrameRequestCallback>();
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    frames.set(++nextId, callback);
+    return nextId;
+  });
+  const cancel = vi.fn((id: number) => frames.delete(id));
+  vi.stubGlobal('cancelAnimationFrame', cancel);
+  return {
+    cancel,
+    advance() {
+      const callbacks = [...frames.values()];
+      frames.clear();
+      act(() => callbacks.forEach((callback) => callback(performance.now())));
+    },
+  };
+}
+
+describe('initial discovery paint before mobile map startup', () => {
+  it.each(['ready', 'empty', 'error'] as const)(
+    'keeps the same map host and starts after %s discovery has a paint opportunity',
+    async (status) => {
+      vi.spyOn(window, 'matchMedia').mockImplementation(
+        (query) =>
+          ({
+            matches: query === '(max-width: 47.999rem)',
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+          }) as unknown as MediaQueryList,
+      );
+      const paint = createPaintHarness();
+      const controller = createController();
+      const mapFactory = vi.fn<MapFactory>(async () => controller);
+      const props = explorerProps(mapFactory);
+      const view = render(
+        <CampusExplorer {...props} discovery={{ status: 'loading' }} />,
+      );
+      const host = screen.getByRole('region', {
+        name: /interactive campus map/i,
+      });
+      expect(mapFactory).not.toHaveBeenCalled();
+      const discovery =
+        status === 'ready'
+          ? props.discovery
+          : status === 'empty'
+            ? { status: 'empty' as const }
+            : { message: 'Try again.', status: 'error' as const };
+      view.rerender(<CampusExplorer {...props} discovery={discovery} />);
+      expect(
+        screen.getByRole('region', { name: /interactive campus map/i }),
+      ).toBe(host);
+      expect(mapFactory).not.toHaveBeenCalled();
+      if (status === 'ready') {
+        expect(screen.getByText('1 campus event')).toBeVisible();
+      } else if (status === 'error') {
+        expect(
+          screen.getByText('Events could not load · Open to retry'),
+        ).toBeVisible();
+      }
+      paint.advance();
+      expect(mapFactory).not.toHaveBeenCalled();
+      paint.advance();
+      await act(async () => {});
+      expect(mapFactory).toHaveBeenCalledOnce();
+      expect(mapFactory.mock.calls[0]?.[1].styleUrl).toBe(MOBILE_2D_MAP_STYLE);
+      expect(controller.setPoints).toHaveBeenCalledWith(
+        status === 'ready' ? [point] : [],
+      );
+      view.rerender(
+        <CampusExplorer {...props} discovery={{ status: 'loading' }} />,
+      );
+      view.rerender(<CampusExplorer {...props} discovery={props.discovery} />);
+      paint.advance();
+      paint.advance();
+      expect(mapFactory).toHaveBeenCalledOnce();
+      view.unmount();
+      expect(mapFactory.mock.calls[0]?.[3].aborted).toBe(true);
+      expect(controller.remove).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('uses the existing fallback deadline to start a map despite unresolved discovery', async () => {
+    vi.useFakeTimers();
+    createPaintHarness();
+    const controller = createController();
+    let loaded: (() => void) | undefined;
+    controller.onLoad = vi.fn((listener) => {
+      loaded = listener;
+    });
+    const mapFactory = vi.fn<MapFactory>(async () => controller);
+    const view = render(
+      <CampusMap
+        configuration={configuration}
+        initialDiscoveryPending
+        mapFactory={mapFactory}
+        points={[]}
+      />,
+    );
+    act(() => vi.advanceTimersByTime(14_999));
+    expect(mapFactory).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(mapFactory).toHaveBeenCalledOnce();
+    expect(screen.getByText('The map could not load.')).toBeVisible();
+    act(() => loaded?.());
+    expect(
+      screen.queryByText('The map could not load.'),
+    ).not.toBeInTheDocument();
+    view.rerender(
+      <CampusMap
+        configuration={configuration}
+        mapFactory={mapFactory}
+        points={[point]}
+      />,
+    );
+    expect(mapFactory).toHaveBeenCalledOnce();
+    expect(controller.setPoints).toHaveBeenLastCalledWith([point]);
+  });
+
+  it('cancels a pending paint on unmount and constructs only the replacement configuration', async () => {
+    const paint = createPaintHarness();
+    const mapFactory = vi.fn<MapFactory>(async () => createController());
+    const view = render(
+      <CampusMap
+        configuration={configuration}
+        initialDiscoveryPending
+        mapFactory={mapFactory}
+        points={[]}
+      />,
+    );
+    view.rerender(
+      <CampusMap
+        configuration={configuration}
+        mapFactory={mapFactory}
+        points={[point]}
+      />,
+    );
+    paint.advance();
+    view.unmount();
+    paint.advance();
+    expect(paint.cancel).toHaveBeenCalled();
+    expect(mapFactory).not.toHaveBeenCalled();
+    const next = render(
+      <CampusMap
+        configuration={configuration}
+        initialDiscoveryPending
+        mapFactory={mapFactory}
+        points={[]}
+      />,
+    );
+    next.rerender(
+      <CampusMap
+        configuration={{ ...configuration, zoom: 17 }}
+        mapFactory={mapFactory}
+        points={[point]}
+      />,
+    );
+    await act(async () => {});
+    paint.advance();
+    paint.advance();
+    expect(mapFactory).toHaveBeenCalledOnce();
+    expect(mapFactory.mock.calls[0]?.[1].zoom).toBe(17);
+  });
 });
 
 describe('map-first campus exploration', () => {
@@ -147,6 +314,7 @@ describe('map-first campus exploration', () => {
       expect.any(HTMLElement),
       expect.objectContaining({
         pitch: 0,
+        styleUrl: MOBILE_2D_MAP_STYLE,
         standardConfig: expect.objectContaining({
           show3dBuildings: false,
           show3dLandmarks: false,
@@ -172,6 +340,178 @@ describe('map-first campus exploration', () => {
     expect(
       screen.getByRole('button', { name: 'Detailed 3D map' }),
     ).toHaveAttribute('aria-pressed', 'true');
+    await user.click(toggle);
+    await waitFor(() => expect(mapFactory).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(mapFactory).mock.calls[2]?.[1]).toMatchObject({
+      pitch: 0,
+      styleUrl: MOBILE_2D_MAP_STYLE,
+    });
+    expect(vi.mocked(mapFactory).mock.calls[0]?.[3].aborted).toBe(true);
+    expect(vi.mocked(mapFactory).mock.calls[1]?.[3].aborted).toBe(true);
+  });
+
+  it('recreates one map across the breakpoint while retaining selection and removing the old controller', async () => {
+    let changeViewport: ((event: MediaQueryListEvent) => void) | undefined;
+    const removeViewportListener = vi.fn();
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          matches: false,
+          media: query,
+          onchange: null,
+          addEventListener: (
+            _name: string,
+            listener: (event: MediaQueryListEvent) => void,
+          ) => {
+            if (query === '(max-width: 47.999rem)') changeViewport = listener;
+          },
+          removeEventListener: removeViewportListener,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList,
+    );
+    const controllers: MapController[] = [];
+    const mapFactory = vi.fn<MapFactory>(async () => {
+      const controller = createController();
+      controllers.push(controller);
+      return controller;
+    });
+    const view = render(
+      <CampusExplorer
+        {...explorerProps(mapFactory)}
+        selectedEventId={event.id}
+      />,
+    );
+    await waitFor(() =>
+      expect(controllers[0]?.setSelectedPoint).toHaveBeenCalled(),
+    );
+    expect(mapFactory.mock.calls[0]?.[1]).toBe(configuration);
+    act(() => changeViewport?.({ matches: true } as MediaQueryListEvent));
+    await waitFor(() =>
+      expect(controllers[1]?.setSelectedPoint).toHaveBeenCalledWith(
+        expect.objectContaining({ id: event.id }),
+      ),
+    );
+    expect(mapFactory.mock.calls[1]?.[1].styleUrl).toBe(MOBILE_2D_MAP_STYLE);
+    expect(controllers[0]?.remove).toHaveBeenCalledOnce();
+    expect(mapFactory.mock.calls[0]?.[3].aborted).toBe(true);
+    expect(controllers[1]?.setPoints).toHaveBeenCalledWith([point]);
+    act(() => changeViewport?.({ matches: false } as MediaQueryListEvent));
+    await waitFor(() =>
+      expect(controllers[2]?.setSelectedPoint).toHaveBeenCalled(),
+    );
+    expect(mapFactory.mock.calls[2]?.[1]).toBe(configuration);
+    expect(controllers[1]?.remove).toHaveBeenCalledOnce();
+    view.unmount();
+    expect(controllers[2]?.remove).toHaveBeenCalledOnce();
+    expect(mapFactory.mock.calls.every((call) => call[3].aborted)).toBe(true);
+    expect(removeViewportListener).toHaveBeenCalledWith(
+      'change',
+      changeViewport,
+    );
+  });
+
+  it('aborts an obsolete Streets creation and removes a controller that arrives after a style change', async () => {
+    const oldController = createController();
+    const currentController = createController();
+    let finishOld!: (controller: MapController) => void;
+    const mapFactory = vi
+      .fn<MapFactory>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOld = resolve;
+          }),
+      )
+      .mockResolvedValue(currentController);
+    const view = render(
+      <CampusMap
+        configuration={{ ...configuration, styleUrl: MOBILE_2D_MAP_STYLE }}
+        mapFactory={mapFactory}
+        points={[point]}
+      />,
+    );
+    view.rerender(
+      <CampusMap
+        configuration={configuration}
+        mapFactory={mapFactory}
+        points={[point]}
+      />,
+    );
+    await act(async () => finishOld(oldController));
+    expect(mapFactory.mock.calls[0]?.[3].aborted).toBe(true);
+    expect(oldController.remove).toHaveBeenCalledOnce();
+    expect(oldController.setPoints).not.toHaveBeenCalled();
+    expect(currentController.setPoints).toHaveBeenCalledWith([point]);
+    view.unmount();
+    expect(currentController.remove).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the Streets 15-second fallback, discovery, retry and observer cleanup', async () => {
+    vi.useFakeTimers();
+    const resizeDisconnect = vi.fn();
+    const mutationDisconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      vi.fn(function () {
+        return {
+          observe: vi.fn(),
+          unobserve: vi.fn(),
+          disconnect: resizeDisconnect,
+        };
+      }),
+    );
+    const mutationSpy = vi
+      .spyOn(window, 'MutationObserver')
+      .mockImplementation(function () {
+        return {
+          observe: vi.fn(),
+          disconnect: mutationDisconnect,
+          takeRecords: vi.fn(() => []),
+        };
+      });
+    const controller = createController();
+    controller.onLoad = vi.fn();
+    const recovered = createController();
+    const mapFactory = vi
+      .fn<MapFactory>()
+      .mockResolvedValueOnce(controller)
+      .mockResolvedValue(recovered);
+    const view = render(
+      <CampusExplorer
+        {...explorerProps(mapFactory)}
+        mapConfiguration={{
+          ...configuration,
+          pitch: 0,
+          styleUrl: MOBILE_2D_MAP_STYLE,
+        }}
+        selectedEventId={event.id}
+      />,
+    );
+    await act(async () => {});
+    act(() => vi.advanceTimersByTime(14_999));
+    expect(
+      screen.queryByText('The map could not load.'),
+    ).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByText('The map could not load.')).toBeVisible();
+    expect(screen.getByRole('heading', { name: event.title })).toBeVisible();
+    await act(async () =>
+      screen.getByRole('button', { name: 'Retry map' }).click(),
+    );
+    expect(controller.remove).toHaveBeenCalledOnce();
+    expect(mapFactory.mock.calls[0]?.[3].aborted).toBe(true);
+    expect(recovered.setSelectedPoint).toHaveBeenCalledWith(
+      expect.objectContaining({ id: event.id }),
+    );
+    expect(
+      screen.queryByText('The map could not load.'),
+    ).not.toBeInTheDocument();
+    view.unmount();
+    expect(resizeDisconnect.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(mutationDisconnect).toHaveBeenCalled();
+    mutationSpy.mockRestore();
   });
 
   it('provides map-independent event discovery and synchronized selection', async () => {

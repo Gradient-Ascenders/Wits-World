@@ -49,7 +49,10 @@ import type {
   MapRegion,
   ReportedMapLocation,
 } from './map-provider';
-import { DEFAULT_MAP_LAYER_VISIBILITY } from './map-provider';
+import {
+  DEFAULT_MAP_LAYER_VISIBILITY,
+  MOBILE_2D_MAP_STYLE,
+} from './map-provider';
 import './exploration.css';
 
 interface CampusExplorerProps {
@@ -324,6 +327,7 @@ export function CampusExplorer({
     return {
       ...mapConfiguration,
       pitch: 0,
+      styleUrl: MOBILE_2D_MAP_STYLE,
       standardConfig: {
         ...mapConfiguration.standardConfig,
         show3dBuildings: false,
@@ -786,6 +790,10 @@ export function CampusExplorer({
         }
         focusPointRequest={focusPointRequest}
         focusRegionRequest={focusRegionRequest}
+        initialDiscoveryPending={
+          effectiveMapConfiguration.styleUrl === MOBILE_2D_MAP_STYLE &&
+          discovery.status === 'loading'
+        }
         mapFactory={mapFactory}
         layerVisibility={
           isDesktopMapViewport ? layerVisibility : DEFAULT_MAP_LAYER_VISIBILITY
