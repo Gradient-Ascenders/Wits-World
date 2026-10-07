@@ -560,12 +560,18 @@ export function createCpuMatchService(
               player_id,
               player_deck_id,
               state,
-              turn_started_at
+              turn_started_at,
+              started_at
             )
-            values ($1::uuid, $2::uuid, $3::jsonb, null)
+            values ($1::uuid, $2::uuid, $3::jsonb, null, $4::timestamptz)
             returning id::text
           `,
-          [input.playerId, input.deckId, JSON.stringify(state)],
+          [
+            input.playerId,
+            input.deckId,
+            JSON.stringify(state),
+            startedAt.toISOString(),
+          ],
         );
 
         const matchId = inserted.rows[0]?.id;

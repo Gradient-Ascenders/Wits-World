@@ -220,6 +220,11 @@ describe('CPU match service', () => {
     });
 
     expect(match.matchId).toBe(MATCH_ID);
+    const matchInsert = query.mock.calls.find(([statement]) =>
+      statement.includes('insert into public.cpu_matches'),
+    );
+    expect(matchInsert?.[0]).toContain('started_at');
+    expect(matchInsert?.[1]?.[3]).toBe(match.startedAt);
     const inserts = query.mock.calls.filter(([statement]) =>
       statement.includes('insert into public.cpu_match_cards'),
     );

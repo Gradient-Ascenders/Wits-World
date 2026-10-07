@@ -106,7 +106,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
     if (
       response.status() === 404 &&
       response.request().method() === 'GET' &&
-      new URL(response.url()).pathname === '/api/v1/matches/cpu/entry'
+      response.url() === `${API_BASE_URL}/matches/cpu`
     ) {
       expectedRecoveryMisses.push(response.url());
     }
