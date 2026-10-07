@@ -46,6 +46,10 @@ Session readiness settles the startup overlay independently of route-module
 readiness, so a rejected module's recovery remains accessible. Public Home and
 saved offline destinations can open while session restoration is still pending.
 
+Saved-attempt synchronization runs in the background. Its progress, failures,
+cancellation, and retry controls belong on Saved Events and saved-attempt pages.
+The global offline notice only offers saved-event access when disconnected.
+
 One polite status owns each active operation. Keep recovery buttons outside its
 live text, mark the affected content busy when useful, and avoid announcing each
 individual result in a concurrent batch. Do not move focus just because a loader
@@ -134,7 +138,7 @@ paths to the events list; the app-wide not-found route does not handle them.
 | Trade/Author/account confirmation dialogs   | Submit/accept/review/delete; actions                                            | Keep confirmation and trap semantics; long feedback does not confirm a result or blindly retry a mutation                                            |
 | Profile picker/crop/avatar                  | Owned-card read region; local image preparation and upload actions              | Picker read uses shared status/retry; crop can be abandoned, image preparation/error is local; upload/save uses existing profile validation/recovery |
 | Developer API access                        | Key read region; create/revoke actions                                          | Shared read status; keys and confirmations use their own validation/recovery                                                                         |
-| Global offline status and queue             | Online return/manual sync; action/reconciliation                                | Existing queue and offline navigation remain available; cancel sync stops local waiting, review/retry keeps server acknowledgement authoritative     |
+| Offline navigation and saved-attempt queue  | Online return/manual sync; action/reconciliation                                | Sync runs in the background; progress and recovery stay on saved-event/attempt pages. Global feedback only links to saved events when disconnected   |
 | Service worker update                       | Background registration/version check                                           | No takeover or blocking status; automatic replacement waits for a safe public Home boundary, no focused draft field or active saved attempt          |
 | Lazy module/render error                    | Import/render failure; terminal error                                           | Error boundary owns reload/home/saved-event recovery; a failed module is never called ready                                                          |
 | Home challenge demo and status emoji search | Local synchronous interaction/filtering                                         | No network wait; their instructional/result status is not a loading gate                                                                             |

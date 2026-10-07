@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from 'react';
 import { Link } from 'wouter';
-import { StatusMessage } from '../components/StatusMessage';
 import { READ_TIMEOUT_MS } from '../components/loading-policy';
 import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
@@ -115,7 +114,6 @@ export function OfflineProvider({
       )
         return;
       busy.current = true;
-      setSyncing(true);
       const controller = new AbortController();
       syncController.current = controller;
       const timer = window.setTimeout(
@@ -148,6 +146,7 @@ export function OfflineProvider({
           )
           .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
         if (!attempts.length) return;
+        setSyncing(true);
         setSyncMessage(
           'Syncing saved attempts. Answers remain provisional until confirmed.',
         );
@@ -511,48 +510,13 @@ function syncWork<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 export function OfflineStatus() {
-  const {
-    online,
-    message,
-    syncing,
-    syncMessage,
-    syncFailed,
-    sync,
-    cancelSync,
-  } = useOffline();
+  const { online } = useOffline();
   const { state } = useCurrentPlayer();
   if (state.status !== 'ready' && !boundOfflinePlayer()) return null;
-  if (online && !syncFailed && !syncing) return null;
+  if (online) return null;
   return (
     <aside aria-label="Offline play" className="offline-status">
-      {!online && (
-        <Link href="/offline">You are offline — open saved events</Link>
-      )}
-      {syncFailed || syncing ? (
-        <StatusMessage tone={syncFailed ? 'error' : 'info'} role={undefined}>
-          <p>{syncMessage}</p>
-          <button
-            className="button button--secondary"
-            disabled={syncing || !online}
-            onClick={() => void sync()}
-            type="button"
-          >
-            {syncing ? 'Syncing saved attempts…' : 'Retry sync'}
-          </button>
-          {syncing && (
-            <button
-              className="button button--secondary"
-              onClick={cancelSync}
-              type="button"
-            >
-              Cancel sync
-            </button>
-          )}
-          <Link href="/offline">Review saved attempts</Link>
-        </StatusMessage>
-      ) : (
-        message && <p role="status">{message}</p>
-      )}
+      <Link href="/offline">You are offline — open saved events</Link>
     </aside>
   );
 }

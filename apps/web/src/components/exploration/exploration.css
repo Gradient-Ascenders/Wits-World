@@ -2133,14 +2133,26 @@
 .exploration-loading-panel > .exploration-loading-panel__marker {
   width: 2.25rem;
   height: 3rem;
-  grid-row: 1 / span 2;
+  grid-column: 1;
+  grid-row: 1;
   color: var(--colour-gold-400);
   filter: drop-shadow(0 0.25rem 0.75rem rgb(212 175 55 / 20%));
 }
 
 .exploration-loading-panel.state-message.state-message > strong {
-  align-self: end;
+  grid-column: 2;
+  grid-row: 1;
   margin: 0;
+}
+
+.exploration-loading-panel:has(> .exploration-loading-panel__description)
+  > .exploration-loading-panel__marker {
+  grid-row: 1 / span 2;
+}
+
+.exploration-loading-panel:has(> .exploration-loading-panel__description)
+  > strong {
+  align-self: end;
 }
 
 .exploration-loading-panel.state-message

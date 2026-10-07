@@ -111,6 +111,83 @@ afterEach(() => {
 });
 
 describe('offline synchronization recovery', () => {
+  it('keeps uploads and sync failures out of regular pages', async () => {
+    let failUpload!: (error: Error) => void;
+    const fetch = vi.fn(
+      () =>
+        new Promise<Response>((_resolve, reject) => {
+          failUpload = reject;
+        }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    render(
+      <OfflineProvider apiBaseUrl="https://api.example.test/api/v1">
+        <h1>Your campus</h1>
+        <OfflineStatus />
+      </OfflineProvider>,
+    );
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Your campus' })).toBeVisible();
+
+    await act(async () => failUpload(new TypeError('network unavailable')));
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Your campus' })).toBeVisible();
+    expect(mocks.recordOfflineReceipt).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: 'empty', attempts: [] },
+    { name: 'active', attempts: [{ ...attempt, status: 'active' as const }] },
+    {
+      name: 'unfinished',
+      attempts: [{ ...attempt, finishLocation: undefined }],
+    },
+  ])(
+    'keeps an $name queue quiet during startup and focus checks',
+    async ({ attempts }) => {
+      let finishRead!: () => void;
+      const pendingRead = () =>
+        new Promise((resolve) => {
+          finishRead = () =>
+            resolve({ packs: [cached], attempts, receipts: [] });
+        });
+      let reading = pendingRead();
+      mocks.readOfflineState.mockImplementation(() => reading);
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+      render(
+        <OfflineProvider apiBaseUrl="https://api.example.test/api/v1">
+          <OfflineStatus />
+        </OfflineProvider>,
+      );
+
+      expect(
+        screen.queryByRole('complementary', { name: 'Offline play' }),
+      ).toBeNull();
+      await act(async () => finishRead());
+      expect(
+        screen.queryByRole('complementary', { name: 'Offline play' }),
+      ).toBeNull();
+      expect(screen.getByRole('status')).toBeEmptyDOMElement();
+
+      reading = pendingRead();
+      await act(async () => window.dispatchEvent(new Event('focus')));
+      expect(
+        screen.queryByRole('complementary', { name: 'Offline play' }),
+      ).toBeNull();
+      await act(async () => finishRead());
+      expect(
+        screen.queryByRole('complementary', { name: 'Offline play' }),
+      ).toBeNull();
+      expect(mocks.getToken).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
   it('exposes progress and disables repeated activation until the server confirms an attempt', async () => {
     let resolve!: (response: Response) => void;
     const fetch = vi.fn(
@@ -126,6 +203,9 @@ describe('offline synchronization recovery', () => {
     });
     const button = buttons[0]!;
     expect(button).toBeDisabled();
+    expect(
+      screen.queryByRole('complementary', { name: 'Offline play' }),
+    ).toBeNull();
     const announcements = screen.getAllByRole('status');
     expect(announcements).toHaveLength(1);
     expect(announcements[0]).toHaveTextContent('Syncing saved attempts');
@@ -180,8 +260,11 @@ describe('offline synchronization recovery', () => {
       await screen.findByRole('button', { name: 'Retry sync' }),
     ).toBeEnabled();
     expect(
-      screen.getByRole('complementary', { name: 'Offline play' }),
+      screen.getByRole('region', { name: 'Saved campus events' }),
     ).toHaveTextContent('Server confirmation is unknown');
+    expect(
+      screen.queryByRole('complementary', { name: 'Offline play' }),
+    ).toBeNull();
     expect(screen.getAllByRole('status')).toHaveLength(1);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(
@@ -223,7 +306,7 @@ describe('offline synchronization recovery', () => {
         await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS);
       });
       expect(
-        screen.getByRole('complementary', { name: 'Offline play' }),
+        screen.getByRole('region', { name: 'Saved campus events' }),
       ).toHaveTextContent('Sync timed out');
       expect(mocks.recordOfflineReceipt).not.toHaveBeenCalled();
       expect(screen.getByRole('button', { name: 'Retry sync' })).toBeEnabled();
@@ -249,7 +332,7 @@ describe('offline synchronization recovery', () => {
       await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS);
     });
     expect(
-      screen.getByRole('complementary', { name: 'Offline play' }),
+      screen.getByRole('region', { name: 'Saved campus events' }),
     ).toHaveTextContent('A server result could not be saved');
     expect(
       screen.getByText(
@@ -304,7 +387,7 @@ describe('offline synchronization recovery', () => {
       await screen.findByRole('button', { name: 'Retry sync' }),
     ).toBeEnabled();
     expect(
-      screen.getByRole('complementary', { name: 'Offline play' }),
+      screen.getByRole('region', { name: 'Saved campus events' }),
     ).toHaveTextContent(
       'Stopped waiting for sync. Server confirmation is unknown',
     );

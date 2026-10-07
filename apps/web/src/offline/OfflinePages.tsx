@@ -60,7 +60,14 @@ function useLocalState() {
 
 export function OfflineExplorePage() {
   const { state, error, reading } = useLocalState();
-  const { refresh, revision, online, attemptSync = {} } = useOffline();
+  const {
+    refresh,
+    revision,
+    online,
+    syncing,
+    syncFailed,
+    attemptSync = {},
+  } = useOffline();
   const [, navigate] = useLocation();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -90,8 +97,11 @@ export function OfflineExplorePage() {
     }
   }
   return (
-    <section className="challenge-page offline-page">
-      <h1>Saved campus events</h1>
+    <section
+      aria-labelledby="saved-events-title"
+      className="challenge-page offline-page"
+    >
+      <h1 id="saved-events-title">Saved campus events</h1>
       <p>
         Answers stay on this device until the server can check them. Reconnect
         within 12 hours of completing a challenge.
@@ -109,6 +119,9 @@ export function OfflineExplorePage() {
             </button>
           )}
         </StatusMessage>
+      )}
+      {(state?.session || syncing || syncFailed) && (
+        <SyncFeedback label="Sync saved attempts" />
       )}
       {!state ? (
         error ? null : (
@@ -136,7 +149,6 @@ export function OfflineExplorePage() {
             label="Updating saved events"
             onRetry={refresh}
           />
-          <SyncFeedback label="Sync saved attempts" />
           <EventSchematic packs={state.packs} />
           {state.packs.length === 0 && (
             <p>
@@ -221,7 +233,11 @@ function SyncFeedback({ label }: { label: string }) {
         onClick={() => void sync()}
         type="button"
       >
-        {syncing ? 'Syncing saved attempts…' : label}
+        {syncing
+          ? 'Syncing saved attempts…'
+          : syncFailed
+            ? 'Retry sync'
+            : label}
       </button>
       {syncing && (
         <button
