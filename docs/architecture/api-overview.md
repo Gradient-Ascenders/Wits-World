@@ -1,197 +1,93 @@
 ---
 title: 'API overview and endpoint reference'
+description: How the Wits Quest API is structured, secured, documented, and tested.
 ---
 
 # API overview and endpoint reference
 
-## Purpose and authority
+`apps/api` is the hand-written Fastify and TypeScript API for Wits Quest. It
+validates requests, checks permissions, applies game rules, and reads or writes
+authoritative state in PostgreSQL/PostGIS.
 
-`apps/api` is the hand-written Fastify and TypeScript HTTP API for Wits Quest.
-It is the protected boundary between the untrusted browser and authoritative
-identity, content, eligibility, challenge, reward, collection, deck, trail, CPU
-match, asynchronous PvP, and progression state.
+The browser sends an intended action and renders the response. It does not
+decide identity, eligibility, scores, rewards, ownership, legal battle actions,
+or match results.
 
-The browser sends player intent and renders responses. It does not determine
-authenticated identity, location eligibility, answer correctness, scores,
-rewards, ownership, deck legality, legal match actions, or outcomes. Those
-decisions remain in the API, shared server-consumed rules, and
-PostgreSQL/PostGIS.
+## OpenAPI and addresses
 
-## Addresses and versioning
-
-Local development uses:
-
-| Boundary            | Address                                    |
+| Boundary            | Local address                              |
 | ------------------- | ------------------------------------------ |
-| API origin          | `http://127.0.0.1:3000`                    |
-| Health              | `http://127.0.0.1:3000/health`             |
-| Versioned root      | `http://127.0.0.1:3000/api/v1/`            |
+| API                 | `http://127.0.0.1:3000`                    |
+| Health check        | `http://127.0.0.1:3000/health`             |
+| Versioned API       | `http://127.0.0.1:3000/api/v1/`            |
 | Interactive OpenAPI | `http://127.0.0.1:3000/documentation/`     |
 | OpenAPI JSON        | `http://127.0.0.1:3000/documentation/json` |
 
-The repository's recorded production API origin is
+The recorded production API is
 `https://witsworld-api-a4awdtdahbbkh8g4.southafricanorth-01.azurewebsites.net`.
-The [deployed boundary review](../testing/deployed-auth-cors-privacy-review.md)
-records public health, versioned-root, authentication, and CORS checks against
-that origin on 22 August 2026. The generated
-[interactive reference](https://witsworld-api-a4awdtdahbbkh8g4.southafricanorth-01.azurewebsites.net/documentation/)
-and [OpenAPI JSON](https://witsworld-api-a4awdtdahbbkh8g4.southafricanorth-01.azurewebsites.net/documentation/json)
-use the same deployed application.
+Its [interactive reference](https://witsworld-api-a4awdtdahbbkh8g4.southafricanorth-01.azurewebsites.net/documentation/)
+is generated from the same route schemas used for runtime validation.
 
-Application routes are placed beneath `/api/v1`. New backward-incompatible
-contracts require a new version boundary rather than a silent change to the
-existing prefix. `/health` and `/documentation/` are operational or reference
-routes outside the application prefix.
+Application routes use `/api/v1`. A breaking contract change requires a new
+version instead of a silent change to existing behaviour. Health and OpenAPI
+routes sit outside the versioned application prefix.
 
-The API is externally reachable, but that does not make protected game data
-anonymous or public. Health, the versioned root, and OpenAPI are public;
-gameplay, account, and author operations declare bearer authentication and
-enforce their own role and ownership rules. A separate read-only developer
-surface exposes deliberately public event, card-catalogue, and progression
-leaderboard projections after `X-API-Key` authentication. See the
-[external developer API](./developer-api.md).
+## Authentication and permissions
 
-## Authentication and authorisation
-
-Protected operations expect an Auth0 access token:
+Player and Author routes use an Auth0 bearer token:
 
 ```http
 Authorization: Bearer <access-token>
 ```
 
-The API validates the token signature, issuer, audience, and expiry through the
-configured Auth0 issuer/JWKS boundary. It then resolves the exact validated
-issuer-and-subject pair to a local player. The local database record supplies
-the application lifecycle and `player` or `author` role; a browser-supplied
-player ID or role is not authoritative.
+The API validates the token signature, issuer, audience, and expiry. It then
+maps the validated Auth0 identity to a local player record. That record supplies
+the account state and `player` or `author` role.
 
-Authentication answers who the principal is. Route pre-handlers and services
-separately enforce active-account, role, ownership, publication, and object
-permissions. CORS permits the configured exact Web origin but is not an
-authentication mechanism.
+Authentication identifies the caller. Each route must still check account
+state, role, ownership, publication state, and object permissions. CORS limits
+which browser origins may call the API, but CORS is not authentication.
 
-External developer resources use a separate `X-API-Key` security scheme. Keys
-identify access to the read-only developer surface; they do not create a player
-principal, role, or ownership context. Normal Auth0 bearer tokens do not
-substitute for developer-key authentication, and developer keys do not
-substitute for player authentication.
+The external developer API uses `X-API-Key`. It exposes selected read-only
+public data and does not grant player or Author permissions.
 
 ## Resource areas
 
-The generated OpenAPI groups the current contract into these areas:
+| Area                   | Responsibility                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| Accounts               | Local identity, player names, profiles, and account lifecycle                         |
+| Events and challenges  | Published discovery, location checks, timed attempts, marking, and review             |
+| Cards and decks        | Rewards, collections, evolution, owned copies, saved decks, and active deck selection |
+| Trails and progression | Ordered progress, points, achievements, rankings, and standings                       |
+| Battles                | CPU, asynchronous, live, and ranked match operations                                  |
+| Trading                | Private offers, approvals, cancellation, expiry, and atomic settlement                |
+| Authoring              | Content lifecycle, campaigns, placement, moderation, and analytics                    |
+| Developer API          | Read-only published events, card catalogue, and public leaderboard data               |
 
-| Area                       | Responsibility                                                                                                   |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| System                     | Health and API version information                                                                               |
-| Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries                              |
-| Events                     | Player-safe published-event discovery and server-authoritative location eligibility                              |
-| Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review                       |
-| Cards                      | Server-derived starter grants, catalogue-safe rewards, collection, and fixed three-copy evolution                |
-| Decks                      | Saved-deck CRUD, ownership validation, and active selection                                                      |
-| Trails                     | Ordered trail progress, step state, and bounded nearby-unvisited guidance                                        |
-| Matches                    | Server-created CPU and asynchronous PvP matches, legal intent, recovery, deadlines, and viewer-safe history      |
-| Trading                    | Private versioned bilateral offers, participant-only negotiation, recent-auth acceptance, and atomic settlement  |
-| Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings                         |
-| Developer API              | API-key-authenticated, read-only published events, public card catalogue, and public progression leaderboard     |
-| Authoring                  | Author-only event, challenge, question, card, trail, campaign, and privacy-safe operational analytics boundaries |
-| Trust review               | Author-only suspect-player queue, derived evidence, proportionate decisions, restrictions, and audit history     |
+Use the generated OpenAPI page for exact HTTP paths, parameters, request
+bodies, status codes, and response schemas. Use the narrative contracts for
+rules that need more explanation:
 
-The [Author curation contract](./author-curation-api-contract.md) explains the
-five-state review workflow, optimistic concurrency, safe review queue and audit
-history, and the Author-console integration. Issue `#184` implements the
-Author-only question-performance aggregate endpoint; the same contract records
-its bounded filters and privacy rules.
+- [Challenge attempts](challenge-attempt-api-contract.md)
+- [Author content review](author-curation-api-contract.md)
+- [Asynchronous PvP](asynchronous-pvp-api-contract.md)
+- [Live PvP and WebSocket messages](live-pvp-api-contract.md)
+- [Ranked matchmaking](ranked-matchmaking-api-contract.md)
+- [Card trading](card-trading-api-contract.md)
+- [Advanced analytics](advanced-analytics-api-contract.md)
+- [External developer API](developer-api.md)
 
-Issue `#278` adds separate Author-only advanced analytics endpoints for event-location
-activity, privacy-suppressed question performance, and historical card issuance.
-The event funnel reuses authoritative attempts/completions and stores only coarse
-hourly view/eligibility counters; it does not create player-level analytics or new
-precise-location retention. See the [advanced analytics API contract](./advanced-analytics-api-contract.md).
+## Realtime boundary
 
-Issue `#260` adds the protected suspect-player review boundary at
-`/api/v1/author/trust-cases`. The API derives the reviewer from the bearer
-identity, excludes self-review objects, requires the current case version for
-every decision, and returns generic not-found or explicit stale-version errors.
-The queue defaults to actionable `open` and `under_review` cases, supports
-`status=all`, literal case-insensitive Player Name substring search, and exact
-case/player UUID search. Queue and detail use `score`, `band`, restriction
-counts, `latestRestrictionExpiry`, and `canReview` as their canonical
-review-console fields. Detail also provides `scoreExplanation` and bounded
-`evidence`/`history` aliases alongside explicit preview and truncation metadata;
-full safe collections are pageable, and the bounded JSON export reuses those
-projections. Queue,
-detail, evidence, restriction, export, and audit projections expose only derived trust evidence and
-local player/reviewer identities; they omit precise location, provider identity,
-raw telemetry, source identifiers, and private security payloads. The
-decision body accepts `continue_monitoring`, `dismiss`,
-`mark_false_positive`, or `restrict` with a required `reasonNote`; restrictions
-use `durationHours`. New opponent-pattern signals require safe aggregate
-summaries. A legacy missing summary is explicitly unavailable and blocks review
-only while it still contributes points and has not been adjusted. A newer
-explanation supersedes it only while that replacement is likewise effective and
-unadjusted. The
-[trust persistence guide](../database/trust-persistence.md) records the
-transaction, audit, restriction, and privacy rules.
-
-The OpenAPI document is the endpoint-level reference for parameters, bodies,
-status codes, and response shapes. Narrative documents explain domain contracts
-that need more context, including the
-[challenge-attempt contract](./challenge-attempt-api-contract.md),
-[saved-deck design](../database/saved-deck-persistence-design.md), and
-[CPU match persistence](../database/cpu-match-persistence-design.md). Ordered
-trail semantics and endpoints are documented in the
-[trail rules](../requirements/ordered-trails-rules.md) and
-[trail persistence design](../database/ordered-trails-persistence.md). Campaign
-scheduling and effective availability are documented in the
-[campaign API contract](./campaign-scheduling-api-contract.md) and
-[campaign persistence design](../database/campaign-scheduling-persistence.md).
-
-Card evolution exposes an authenticated read-only preview and an idempotent
-mutation. The browser supplies only the source definition and a submission UUID;
-the API derives player identity, resolves the fixed target, excludes copies used
-by saved decks, selects three owned copies, and performs consumption plus grant
-in one database transaction. The detailed rules and failure states are recorded
-in [Card evolution rules](../requirements/card-evolution-rules.md).
-
-Progression exposes `GET /api/v1/progression/me` and
-`GET /api/v1/progression/standings`. Both derive the player from bearer
-authentication. The standings operation accepts all-time or `YYYY-MM` monthly
-selection plus bounded pagination, and returns the current-player rank outside
-the selected page without exposing a player UUID.
-
-The [asynchronous PvP contract](./asynchronous-pvp-api-contract.md) defines the
-implemented exact Player Name lookup, invitations, viewer-safe match reads,
-signed keyset pages, challenger-only pending-invitation cancellation,
-legal-action submissions, participant-only voluntary resignation, and 24-hour
-deadline behavior. Version 3 invitation clients negotiate cancellation through
-the CORS-safe `Accept` header and receive the server-derived `canCancel`
-capability.
-These routes remain separate from CPU and live PvP; the Web experience is
-tracked independently.
-
-The [card trading contract](./card-trading-api-contract.md) defines the
-implemented private `/api/v1/trades` operations. Player identity comes from the
-bearer token, counterparties are selected only by exact Player Name, mutations
-use durable submission UUIDs, and every acceptance requires recent Auth0 proof.
-The API exposes only participant-safe trade state; atomic ownership exchange
-remains inside the transactional trading service. The player trading interface
-is tracked separately in issue `#274`.
-
-The planned [live PvP contract](./live-pvp-api-contract.md) defines the future
-one-minute server-owned match boundary, short-lived connection tickets,
-versioned realtime messages, persisted reconnect recovery, abandonment rules,
-and spectator-safe projections. It is a design contract for issue `#252`, not a
-claim that live routes or WebSocket infrastructure are present in the generated
-OpenAPI document. Those operations must be registered only when their runtime
-validation, authorization, persistence, and tests are implemented together.
+OpenAPI describes HTTP only. Live PvP uses HTTP to obtain a short-lived ticket,
+then uses a WebSocket connection for versioned messages. The server keeps match
+state, turn deadlines, reconnect state, and spectator-safe views authoritative.
+See the [live PvP contract](live-pvp-api-contract.md) for the protocol.
 
 ## Validation and errors
 
-Fastify route schemas validate untrusted parameters, query values, and request
-bodies at runtime. Response schemas also define the player-safe data boundary
-used to generate OpenAPI.
-
-Errors use a stable problem-style JSON envelope:
+Fastify schemas validate parameters, queries, request bodies, and responses.
+Errors use a stable JSON structure:
 
 ```json
 {
@@ -204,64 +100,32 @@ Errors use a stable problem-style JSON envelope:
 }
 ```
 
-Validation failures may additionally contain a `validation` array with safe
-field and message values. Expected domain failures use explicit codes and HTTP
-statuses. Unknown failures are logged server-side and returned as a generic
-`500 INTERNAL_ERROR`; stack traces and internal exception details are not sent
-to the client. JSON success bodies and all problem responses include the server
-request identifier used for safe correlation; intentionally empty `204`
-responses have no body.
+Expected failures use specific codes and HTTP statuses. Unknown failures are
+logged on the server and returned as a generic `500 INTERNAL_ERROR`. Stack
+traces and private implementation details are not returned to clients.
 
-Bearer-protected active-player operations also document the implemented
-shared sliding-window `429 RATE_LIMITED` response and rate-limit headers. Named
-policies use Upstash Redis across API processes; see [API rate limiting](./rate-limiting.md).
-Invalid-token traffic remains outside this authenticated limiter.
+Rate-limited routes return `429 RATE_LIMITED` with rate-limit headers. See
+[API rate limiting](rate-limiting.md) for policy and deployment details.
 
-## OpenAPI generation and maintenance
+## Keeping the contract current
 
 The API registers `@fastify/swagger` before its routes and generates OpenAPI
-3.0.3 from the route schemas at runtime. `@fastify/swagger-ui` serves the
-interactive reference at `/documentation/`; the machine-readable document is
-available at `/documentation/json`.
+3.0.3 at runtime. The repository does not maintain a second hand-written list
+of endpoints. When a contract changes, update the route schema,
+implementation, tests, typed Web client, and affected narrative guide together.
 
-The repository deliberately does not maintain a second hand-written endpoint
-catalogue. Route integration tests inspect generated operations, bearer
-security declarations, safe responses, and important exposure boundaries.
-When an API contract changes, its route schema, implementation, tests, typed Web
-client, and any affected narrative contract must change together.
+## Evidence limits
 
-## External publication evidence still needed
+A public OpenAPI page proves that the reference is reachable. It does not prove
+that authenticated operations, realtime delivery, or production recovery work.
+A release record should name the deployed revision, time, environment, and
+results of protected and realtime checks.
 
-The repository supports a public generated reference and records one deployed
-boundary review. Future milestone evidence should retain the deployed commit,
-timestamp, public OpenAPI URL, successful retrieval of the JSON document, and a
-sanitised screenshot or artifact when the rubric requires it. That evidence
-must distinguish reference availability from successful authenticated use of a
-protected operation.
-
-## Related documentation
-
-- [Trust boundaries](./trust-boundaries.md)
-- [External developer API](./developer-api.md)
-- [Author curation API contract](./author-curation-api-contract.md)
-- [Advanced analytics API contract](./advanced-analytics-api-contract.md)
-- [Longitudinal trust persistence and review API](../database/trust-persistence.md)
-- [Asynchronous PvP API contract](./asynchronous-pvp-api-contract.md)
-- [Card trading API contract](./card-trading-api-contract.md)
-- [Live PvP API contract](./live-pvp-api-contract.md)
-- [High-level data flow](./data-flow.md)
-- [External integrations](./external-integrations.md)
-- [API application guide](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/api/README.md)
-- [Azure deployment setup](../deployment/azure-deployment-setup.md)
+See the [deployed boundary review](../testing/deployed-auth-cors-privacy-review.md)
+for the recorded checks from 22 August 2026.
 
 ## AI declaration
 
-This API overview was generated, edited, and reviewed with the assistance of
-Codex[GPT-5] and Codex[gpt-5.6-sol]. It summarises current repository schemas and recorded deployment
-evidence rather than replacing the generated OpenAPI contract.
-
-Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
-
-Card-trading API status updated with assistance from ChatGPT-Web[GPT-5.6 Sol].
+This page was generated and edited with assistance from Codex[GPT-5],
+Codex[gpt-5.6-sol], Codex-CLI[GPT-6], and ChatGPT-Web[GPT-5.6 Sol]. It was
+rewritten in simpler language with assistance from Codex[GPT-5].

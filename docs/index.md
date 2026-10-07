@@ -1,61 +1,42 @@
 ---
 title: 'Documentation home'
-description: Project, product, technical, operational, quality, and delivery documentation for Wits World and Wits Quest.
+description: Clear guides to the Wits Quest product, code, evidence, and project process.
 slug: /
 ---
 
-# Documentation home
+# Wits World documentation
 
-For a presentation walkthrough, open the [Visual guide and diagrams](architecture/diagrams/index.md).
+**Wits World** is the project repository. **Wits Quest** is the campus
+exploration game built in that repository.
 
-**Wits World** is the project repository and development workspace. **Wits
-Quest** is the mobile-friendly, location-based campus exploration game being
-built within it.
+:::tip[For external markers]
 
-This site brings together current product and technical reference, development
-and operational guidance, testing evidence, architecture decisions, and
-preserved Sprint-specific project records.
-
-:::tip[Start with Sprint 3]
-
-Read the [Sprint 3 overview and evidence](sprint-3-overview.md) for Advanced
-features, the Milestone 3 rubric, feedback, coordination records and remaining
-release gates. The [Sprint 2 overview](sprint-2-overview.md) preserves the
-Intermediate baseline, and the [Basic release overview](basic-release-reference.md)
-provides the underlying product and operational reference.
+Start with the [Sprint 3 overview](sprint-3-overview.md). It maps each
+Milestone 3 criterion to evidence and lists the remaining gaps. Use the
+[visual guide](architecture/diagrams/index.md) for presentation-ready system,
+database, and deployment diagrams.
 
 :::
 
-## Choose a path
+## Choose a guide
 
-- **Understand the product:** begin with
-  the [Player Guide](/docs/player-guide) for current rules,
-  confirmed decisions, and player journeys.
-- **Develop or run the system:** use
-  the [Developer Guide](development/getting-started.md) for a new checkout, then
-  the [Developer Guide](/docs/developer-guide) for local data,
-  CI/CD, deployment, and database runbooks.
-- **Review the technical design:** use the [Developer Guide](/docs/developer-guide)
-  for architecture, data models, and decisions, and the
-  [API Reference](/docs/api-reference) for endpoint contracts.
-- **Review quality and project evidence:** use
-  [Project evidence](/docs/project) for current verification, user feedback,
-  stakeholder reviews, methodology,
-  [Gitea work and bug tracking](planning/work-tracking-and-issue-management.md),
-  plans, historical release evidence, and Planning and Scrum meetings.
-- **Design the player experience:** consult the
-  [Wits World design system](design/design-system.md) for visual, interaction,
-  accessibility, and content guidance.
+| Guide                                    | Use it to                                                                         |
+| ---------------------------------------- | --------------------------------------------------------------------------------- |
+| [Player Guide](/docs/player-guide)       | Understand exploration, challenges, cards, and battles.                           |
+| [Author Guide](/docs/author-guide)       | Review content creation, moderation, placement, and analytics.                    |
+| [Developer Guide](/docs/developer-guide) | Set up the project and inspect its architecture, database, tests, and deployment. |
+| [API Reference](/docs/api-reference)     | Review authentication, HTTP endpoints, errors, and feature contracts.             |
+| [Project evidence](/docs/project)        | Inspect testing, feedback, methodology, decisions, and sprint records.            |
 
-Current reference appears before Sprint-specific or historical evidence in the
-navigation. Historical pages preserve what was known at the time and point to a
-current source when the repository provides one.
+## How to read the evidence
 
----
+Current reference pages explain how the system works now. Dated sprint pages
+show what was known at a specific time. A test plan describes a procedure; it
+does not prove that the test ran. Result pages identify the revision,
+environment, outcome, and remaining limits.
 
-This documentation landing page was created and reviewed with assistance from
-Codex-CLI[GPT-5], Codex[GPT-5], and Codex-CLI[GPT-6].
+## AI declaration
 
-Page title clarified with assistance from Codex-CLI[GPT-6].
-
-Sprint 3 navigation was added with assistance from Codex-CLI[gpt-6-sol].
+This page was created and edited with assistance from Codex-CLI[GPT-5],
+Codex[GPT-5], Codex-CLI[GPT-6], and Codex-CLI[gpt-6-sol]. It was simplified
+with assistance from Codex[GPT-5].

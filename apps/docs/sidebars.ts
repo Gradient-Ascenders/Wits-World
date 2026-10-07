@@ -198,7 +198,7 @@ const sidebars: SidebarsConfig = {
           doc('testing/testing-strategy'),
           doc('testing/automated-verification'),
           doc('testing/continuous-integration'),
-          doc('deployment/azure-deployment-setup'),
+          doc('deployment/azure-deployment-setup', 'Azure deployment runbook'),
           doc('deployment/mapbox-operations'),
           doc('deployment/ranked-operations'),
         ]),

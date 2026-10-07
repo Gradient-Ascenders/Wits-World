@@ -31,14 +31,14 @@ Do not broaden that audit into unrelated documentation cleanup.
 
 ## Choose the reader's section
 
-| Section                        | Reader need                                                     |
-| ------------------------------ | --------------------------------------------------------------- |
-| Start here                     | Understand the product and current milestone evidence           |
-| Game rules & player experience | Learn rules, journeys and design/accessibility standards        |
-| Technical guides               | Understand architecture, API guides, schema and decisions       |
-| Development & deployment       | Set up, test through CI, deploy, migrate or recover services    |
-| Testing & feedback             | Find procedures, actual results, feedback and release follow-up |
-| Project & sprint records       | Understand methodology, governance and historical records       |
+| Section         | Reader need                                                 |
+| --------------- | ----------------------------------------------------------- |
+| Introduction    | Understand the product and start the correct guide          |
+| Player Guide    | Learn exploration, challenges, cards, and battles           |
+| Author Guide    | Create, review, place, moderate, and evaluate content       |
+| Developer Guide | Set up, understand, test, deploy, and operate the system    |
+| API Reference   | Find authentication, endpoint, error, and feature contracts |
+| Project         | Review evidence, decisions, methodology, and sprint history |
 
 Use sentence case and short, specific names that explain what the reader will
 find or do. Prefer “CPU battle storage” to “CPU Match Persistence”; retain
@@ -68,11 +68,37 @@ than listing the same document in several sections. Existing document paths and
 public category URLs are preserved even when their navigation grouping changes.
 Custom document IDs require updating the path-based coverage check.
 
-The six main sections are Start here, Game rules & player experience, Technical
-guides, Development & deployment, Testing & feedback, and Project & sprint records.
-Use the [Sprint 3 overview](../sprint-3-overview.md) as the current milestone
-entry point and preserve the Sprint 2 overview as a historical reference. Keep dated results linked
-to their source revision rather than rewriting historical evidence as current.
+The six main sections are Introduction, Player Guide, Author Guide, Developer
+Guide, API Reference, and Project. Use the
+[Sprint 3 overview](../sprint-3-overview.md) as the current milestone entry
+point. Keep Sprint 2 as a historical reference. Link dated results to their
+source revision instead of rewriting them as current evidence.
+
+## Write in clear technical language
+
+Write for a third-year computer science student. Assume they understand common
+software concepts, but not this repository or its internal names.
+
+- Lead with the answer or purpose.
+- Keep one main idea per sentence and one topic per paragraph.
+- Prefer common verbs such as “use”, “check”, and “store”. Avoid inflated terms
+  such as “utilise”, “facilitate”, and “leverage”.
+- Define a project-specific term on first use. Keep standard terms such as API,
+  SQL, transaction, and CI/CD when they are the precise words.
+- Use active voice when the actor matters: “The API checks the token.”
+- Replace long prose lists with a short table or bullets when readers need to
+  compare items.
+- Put exact commands, schemas, and edge cases in the relevant reference or
+  runbook. Overview pages should link to that detail instead of repeating it.
+- State an evidence limit once in a clear status section. Do not repeat the
+  same warning in every paragraph.
+- Remove background history unless it changes how the current system should be
+  understood or operated.
+- Keep sentences below about 25 words where practical. Split a sentence before
+  adding a third clause.
+
+Do not simplify by weakening a security rule, data contract, acceptance
+criterion, or evidence boundary. Clear language must remain technically exact.
 
 ## Preserve evidence and URLs
 
@@ -171,3 +197,6 @@ Prepared with assistance from Codex-CLI[GPT-6].
 Page title clarified with assistance from Codex-CLI[GPT-6].
 
 Sprint 3 entry-point guidance was edited with assistance from Codex-CLI[gpt-6-sol].
+
+The navigation and clear-language rules were updated with assistance from
+Codex[GPT-5].

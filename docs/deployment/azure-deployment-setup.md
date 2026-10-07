@@ -4,25 +4,34 @@ title: 'Deploy the app and API to Azure'
 
 # Deploy the app and API to Azure
 
-> **Project:** Wits World
-> **Game/topic:** Wits Quest
-> **Course:** COMS3011A Software Design Project
-> **Scope of this document:** Azure infrastructure, deployment, security, and CI/CD work completed after the initial Gitea CI pipeline was established.
-
 ## 1. Purpose
 
-This document records the Azure infrastructure, security configuration, deployment validation, and Gitea continuous-deployment setup used for Wits World.
+This runbook explains the Azure infrastructure, security settings, deployment
+workflow, health checks, and recovery steps used for Wits World.
 
-The deployment architecture keeps the frontend and backend independently deployable:
+The main design is:
 
-- the Fastify API is hosted as its own Azure App Service;
-- the React/Vite frontend is hosted as a separate Azure App Service;
-- both App Services share one Linux Basic B1 App Service Plan;
-- production deployment is performed by a repository-scoped Gitea Actions runner VM;
-- Neon PostgreSQL/PostGIS remains the production database;
-- Auth0 remains the authentication provider.
+- separate Azure App Services for the Web application and API;
+- one shared Linux Basic B1 App Service Plan;
+- deployment from a repository-scoped Gitea Actions runner;
+- Neon PostgreSQL/PostGIS for production data; and
+- Auth0 for authentication.
 
-No Azure passwords, publish profiles, or long-lived service-principal secrets are stored in the repository or Gitea. Production deployment uses the Azure VM runner's system-assigned managed identity.
+Production deployment uses the runner VM's managed identity. Azure passwords,
+publish profiles, and long-lived service-principal secrets are not stored in
+the repository or Gitea.
+
+### Quick reference
+
+| Need                             | Section                                                                                                           |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Understand the deployed services | [Current deployment architecture](#2-current-deployment-architecture)                                             |
+| Check API configuration          | [API App Service](#5-wits-world-api-app-service) and [API variables](#7-api-production-environment-variables)     |
+| Check Web configuration          | [Web App Service](#6-wits-world-web-app-service) and [Web variables](#8-frontend-production-build-variables)      |
+| Understand CI/CD                 | [Continuous integration](#18-continuous-integration) and [deployment design](#19-continuous-deployment-design)    |
+| Validate production              | [Health verification](#21-automated-production-health-verification) and [smoke tests](#23-production-smoke-tests) |
+| Diagnose a failure               | [Troubleshooting](#24-troubleshooting)                                                                            |
+| Prepare a release                | [Operational checklist](#26-operational-checklist)                                                                |
 
 ---
 
@@ -202,22 +211,20 @@ Client certificate mode:      Ignore
 Session affinity:             Disabled
 ```
 
-### 5.1 Planned live PvP WebSocket requirements
+### 5.2 Live PvP WebSocket configuration
 
-Issue `#252` defines a future realtime gateway; the current deployment does not
-claim that it is enabled. Before live PvP is released, operators must verify
-WebSocket upgrades against the deployed API hostname, keep `Always On` enabled,
-and configure platform and proxy idle timeouts above the contract's heartbeat
-interval. Session affinity must remain unnecessary because PostgreSQL stores
-authoritative match state and each gateway recovers by committed version.
+The API source includes the live PvP WebSocket gateway. A source implementation
+does not prove that the deployed proxy path works. Before release, verify
+WebSocket upgrades against the production API, keep `Always On` enabled, and
+set platform timeouts above the protocol heartbeat interval. Session affinity
+should remain unnecessary because PostgreSQL stores authoritative match state
+and each gateway recovers from the committed version.
 
-The gateway must redact the short-lived `ticket` query parameter and must not
-log bearer tokens, complete realtime payloads, hidden cards, or private match
-snapshots. A release smoke test must cover ticket redemption, participant
-reconnect, spectator projection, deadline progression, API restart recovery,
-and multi-instance fan-out before the capability is marked deployed. See the
-[live PvP API contract](../architecture/live-pvp-api-contract.md) for the
-protocol and recovery rules.
+Logs must redact the short-lived `ticket` query value. They must not include
+bearer tokens, full realtime payloads, hidden cards, or private match state.
+The release smoke test must cover ticket redemption, reconnect, spectator
+views, deadlines, API restart recovery, and multi-instance delivery. See the
+[live PvP contract](../architecture/live-pvp-api-contract.md).
 
 A final read-only review confirmed the API is running and attached to `ASP-witsworld`.
 
@@ -339,10 +346,9 @@ do not prove those properties. See [API rate limiting](../architecture/rate-limi
 Production `AUTH0_DOMAIN` is the custom hostname, while
 `AUTH0_TENANT_DOMAIN` remains the underlying `*.auth0.com` tenant used to form
 the Management API audience. The Auth0 Management client ID and secret are
-server-only machine-to-machine credentials reserved by the preliminary backend
-foundation for the planned account-deletion capability. Their presence does
-not mean that account deletion is implemented. These values are API runtime
-settings and belong in Azure App Service rather than in the deployment ZIP.
+server-only credentials used by account lifecycle operations. Their presence
+does not prove that the complete user flow was tested. Store them in Azure App
+Service, not in the deployment ZIP.
 
 Issue `#168` adds two non-secret API runtime controls that production operators
 must set and review before enabling movement-evidence persistence:
@@ -850,161 +856,6 @@ This means the Docker-to-IMDS block is restored after VM reboot.
 
 ---
 
-## 16. First Manual API Deployment
-
-Before automating API deployment, the process was validated manually from the runner VM.
-
-### 16.1 Build
-
-The API was compiled inside Node 24:
-
-```bash
-docker run --rm   -v "$PWD:/workspace"   -w /workspace   node:24-bookworm-slim   sh -lc '
-    npm ci
-    npm run build --workspace @wits-world/api
-  '
-```
-
-Successful validation:
-
-```text
-apps/api/dist/server.js
-```
-
-### 16.2 Production dependencies
-
-Production dependencies were installed with the project's required npm version:
-
-```bash
-docker run --rm   -v "$PWD:/workspace"   -w /workspace   node:24-bookworm-slim   sh -lc '
-    npm install -g npm@11.18.0 >/dev/null
-    npm ci --omit=dev --workspace @wits-world/api --include-workspace-root=false
-  '
-```
-
-### 16.3 Deployment artifact
-
-The API deployment ZIP contains:
-
-```text
-package.json
-package-lock.json
-node_modules.tar.gz
-apps/
-└── api/
-    ├── package.json
-    ├── startup.sh
-    └── dist/
-database/
-```
-
-`node_modules.tar.gz` contains the contents of the production dependency tree
-at its root. The outer ZIP must not contain a `node_modules/` tree; keeping the
-dependencies in one compressed entry avoids making Kudu expand thousands of
-dependency files in `LocalZipHandler`.
-
-The first validated deployment ZIP was approximately:
-
-```text
-6.5 MB
-```
-
-### 16.4 Deployment command
-
-The API was deployed using:
-
-```bash
-az webapp deploy   --resource-group witsworld-rg   --name witsworld-api   --src-path ~/witsworld-api-deploy.zip   --type zip   --clean true   --restart true
-```
-
-The first deployment command stopped waiting before the site became healthy.
-
-Startup diagnostics later showed that the API had started successfully and the Azure startup probe passed.
-
-The deployment was therefore validated using the public health endpoints rather than relying only on the original CLI wait result.
-
----
-
-## 17. First Manual Frontend Deployment
-
-The frontend was also validated manually before automating deployment.
-
-### 17.1 Production build
-
-The Vite frontend was built using the production values for:
-
-```text
-VITE_API_BASE_URL
-VITE_AUTH0_DOMAIN
-VITE_AUTH0_CLIENT_ID
-VITE_AUTH0_AUDIENCE
-VITE_MAPBOX_ACCESS_TOKEN
-```
-
-Successful build output:
-
-```text
-apps/web/dist/index.html
-apps/web/dist/assets/
-```
-
-### 17.2 Windows ZIP issue
-
-The first deployment ZIP was created with Windows PowerShell `Compress-Archive`.
-
-Although the ZIP passed integrity testing, its entries used Windows-style path separators:
-
-```text
-assets\AboutPage-....js
-assets\index-....js
-```
-
-Azure Linux/Kudu rejected the package during deployment with HTTP 400.
-
-The deployment logs showed the failure occurred during the deployment command rather than during Azure authentication.
-
-### 17.3 Linux ZIP fix
-
-The already-built `dist` directory was copied to the Linux runner VM and the ZIP was recreated there:
-
-```bash
-cd ~/witsworld-web-dist
-zip -qr ~/witsworld-web-deploy-linux.zip .
-```
-
-The corrected package used Linux-compatible paths:
-
-```text
-assets/AboutPage-....js
-assets/index-....js
-index.html
-```
-
-The corrected ZIP deployed successfully.
-
-This result informed the automated deployment design: frontend deployment ZIPs are always created on Linux by the Gitea deployment job.
-
-### 17.4 Manual validation
-
-The live frontend was manually tested in a browser.
-
-Validated behaviour included:
-
-```text
-Homepage loads
-About page loads
-Explore route loads
-Direct route refresh works
-SPA route state is preserved on refresh
-No relevant browser DevTools errors were observed
-```
-
-The application login interface now exists. Its production Auth0 flow must be
-revalidated manually for the release commit; this historical setup section does
-not claim that current validation has occurred.
-
----
-
 ## 18. Continuous Integration
 
 The repository runs five independent container-isolated validation jobs on the
@@ -1355,82 +1206,6 @@ This ensures that successful ZIP upload alone is not considered a successful pro
 
 ---
 
-## 22. Expected Gitea Actions Behaviour
-
-### Pull request into `main`
-
-Expected jobs:
-
-```text
-Check repository formatting             PASS
-Lint applications                       PASS
-Type-check applications                 PASS
-Test applications with coverage         PASS
-Build applications                      PASS
-Repository and application validation   PASS
-```
-
-The five validation categories can run concurrently and still expose a clear
-failure boundary. The combined validation job passes only when all categories
-pass.
-
-The pull-request workflow contains no Azure jobs. Production cannot be modified
-by a PR run, and PR completion cannot wait behind Azure runner work.
-
-### Merge/push to `main`
-
-Expected jobs:
-
-```text
-Check repository formatting             PASS
-Lint applications                       PASS
-Type-check applications                 PASS
-Test applications with coverage         PASS
-Build applications                      PASS
-Repository and application validation   PASS
-Deploy API to Azure                     PASS
-Deploy Web to Azure                     PASS
-```
-
-Each deployment job passes after either completing its application deployment
-or safely skipping all build, authentication, deployment, and health-check
-work when the push comparison proves that application is unaffected.
-
-Expected deployment paths after validation (the jobs are independent and may
-be queued by runner capacity):
-
-```text
-Parallel validation categories
-├── Format, lint, type-check, and test
-└── Build
-    ├── Existing validation builds
-    ├── Web production artifact when required
-    └── API production artifact when required
-            │
-            ▼
-Combined validation gate and coverage badge publication
-├── Azure API job
-│   ├── Check exact SHA and API changes
-│   ├── Download and verify SHA-bound API artifact
-│   ├── Managed-identity authentication and ZIP deployment
-│   ├── Verify API health
-│   └── Clean workspace
-└── Azure Web job
-    ├── Check exact SHA and Web changes
-    ├── Download and verify SHA-bound Web artifact
-    ├── Managed-identity authentication and ZIP deployment
-    ├── Verify / and /about
-    └── Clean workspace
-```
-
-Both authoritative artifact paths have been validated in production. Under
-normal conditions the applications reach healthy production roughly 3–3.5
-minutes after merge. The measured Azure Web job fell from about 3 minutes
-20–32 seconds to 46–59 seconds; the API Stage 1 control job took about 3 minutes
-45 seconds and its authoritative path took about 56 seconds.
-
----
-
 ## 23. Production Smoke Tests
 
 ### API
@@ -1697,61 +1472,6 @@ Before considering a production release healthy:
 - [ ] `block-docker-imds.service` remains enabled and active.
 - [ ] Managed identity remains scoped only to `witsworld-api` and `witsworld-web`.
 
----
-
-## 27. Summary
-
-At the end of this setup phase, Wits World has:
-
-```text
-Dedicated Azure resource group                        DONE
-Shared Linux B1 App Service Plan                      DONE
-
-Separate production API App Service                  DONE
-Production API environment configuration             DONE
-Strict production API CORS configuration             DONE
-API HTTPS/TLS/runtime hardening                      DONE
-API health check                                     DONE
-API application logging                              DONE
-Manual production API deployment                     DONE
-Production /health validation                        DONE
-Production /api/v1/ validation                       DONE
-Gitea API continuous-deployment workflow             DONE
-API main-branch deployment validation                DONE
-
-Separate production Web App Service                  DONE
-Frontend PM2 SPA serving configuration               DONE
-Frontend HTTPS/TLS/runtime hardening                 DONE
-Frontend Auth0 production URL configuration          DONE
-Development/production Auth0 resource separation     OUTSTANDING REMEDIATION
-Frontend health check                                DONE
-Frontend application logging                         DONE
-Manual production frontend deployment                DONE
-Frontend SPA route validation                        DONE
-Frontend browser smoke testing                       DONE
-Gitea frontend continuous-deployment workflow        DONE
-Independent API + Web deployment paths               VALIDATED IN PRODUCTION
-
-Repository-scoped Gitea runner VM                    DONE
-Docker-based CI execution                            DONE
-Azure CLI on deployment runner                       DONE
-System-assigned managed identity                     DONE
-App-scoped Website Contributor roles                 DONE
-Docker access to Azure IMDS blocked                  DONE
-Persistent IMDS firewall protection                  DONE
-Dedicated host-only deployment runner label          DONE
-
-Full Auth0 login/logout application-flow test        MANUAL PER RELEASE
-Documentation static deployment                      DONE — CLOUDFLARE PAGES
-Canonical web domain and public Auth0 discovery      VERIFIED 2026-08-22
-Application Insights                                 OPTIONAL
-Deployment slots / additional scaling                OPTIONAL
-```
-
-The current architecture provides independently deployable frontend and API applications on one shared Azure App Service Plan, automated production deployment through Gitea Actions, health verification after deployment, and a least-privilege managed-identity deployment model without storing Azure credentials in the repository or CI system.
-
----
-
 ## AI Assistance Declaration
 
 This document was drafted and updated with assistance from:
@@ -1765,3 +1485,6 @@ Codex[GPT-5]
 Review the document against the current repository and Azure configuration before committing it. Keep the declaration if required by the project's AI attribution policy.
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+The introduction, realtime status, and repeated summary were simplified with
+assistance from Codex[GPT-5].
