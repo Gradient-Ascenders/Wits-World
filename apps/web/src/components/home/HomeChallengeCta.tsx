@@ -1,6 +1,7 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { ArrowRightIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
+import { Link } from 'wouter';
 
 export function HomeChallengeCta() {
   const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
@@ -21,10 +22,10 @@ export function HomeChallengeCta() {
 
   if (isAuthenticated) {
     return (
-      <a className="home-complete-link" href="/explore">
+      <Link className="home-complete-link" href="/explore">
         Find more challenges
         <ArrowRightIcon aria-hidden="true" size={18} weight="bold" />
-      </a>
+      </Link>
     );
   }
 

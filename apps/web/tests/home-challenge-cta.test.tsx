@@ -52,4 +52,32 @@ describe('Home challenge call to action', () => {
       screen.getByRole('link', { name: 'Find more challenges' }),
     ).toHaveAttribute('href', '/explore');
   });
+
+  it('keeps signup unavailable while authentication is restoring', () => {
+    renderCta({ isLoading: true });
+
+    expect(
+      screen.getByRole('button', { name: 'Sign up to play more' }),
+    ).toBeDisabled();
+  });
+
+  it('reports a failed signup and lets the player try again', async () => {
+    const user = userEvent.setup();
+    const loginWithRedirect = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Unavailable'))
+      .mockResolvedValueOnce(undefined);
+    renderCta({ loginWithRedirect });
+    const signup = screen.getByRole('button', {
+      name: 'Sign up to play more',
+    });
+
+    await user.click(signup);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Sign-up could not start. Try again.',
+    );
+    await user.click(signup);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(loginWithRedirect).toHaveBeenCalledTimes(2);
+  });
 });

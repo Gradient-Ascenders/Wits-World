@@ -1,4 +1,5 @@
 import { ArrowRightIcon, MapPinIcon } from '@phosphor-icons/react';
+import { Link } from 'wouter';
 
 import campusPreview from '../../assets/home/campus-transparent.png';
 
@@ -16,7 +17,7 @@ export function HomeExplorePreview() {
           width="1448"
         />
 
-        <a
+        <Link
           aria-label="Explore campus from Great Hall"
           className="home-campus-preview__destination"
           href="/explore"
@@ -29,7 +30,7 @@ export function HomeExplorePreview() {
             <small>Start exploring</small>
           </span>
           <ArrowRightIcon aria-hidden="true" size={18} weight="bold" />
-        </a>
+        </Link>
       </div>
     </figure>
   );
