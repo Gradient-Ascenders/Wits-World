@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { LayerSpecification } from 'mapbox-gl/esm';
 import { getCampusLightPreset } from '../src/components/exploration/map-lighting';
 
 import {
   createMapboxMap,
   DEFAULT_MAP_LAYER_VISIBILITY,
+  MOBILE_2D_MAP_STYLE,
   type CampusDataset,
   type MapRegion,
 } from '../src/components/exploration/map-provider';
@@ -41,6 +43,7 @@ const mapboxState = vi.hoisted(() => ({
   setLayoutProperty: vi.fn(),
   sources: new Map<string, unknown>(),
   layers: new Set<string>(),
+  layerDefinitions: [] as LayerSpecification[],
 }));
 
 vi.mock('mapbox-gl/dist/mapbox-gl.css', () => ({}));
@@ -68,6 +71,10 @@ vi.mock('mapbox-gl/esm', () => ({
 
     public getLayer(layerId: string) {
       return mapboxState.layers.has(layerId) ? {} : undefined;
+    }
+
+    public getStyle() {
+      return { version: 8, layers: mapboxState.layerDefinitions };
     }
 
     public getSource(sourceId: string) {
@@ -220,17 +227,36 @@ beforeEach(() => {
   mapboxState.handlers.clear();
   mapboxState.sources.clear();
   mapboxState.layers.clear();
+  mapboxState.layerDefinitions = [
+    { id: 'land', type: 'background' },
+    { id: 'building', source: 'composite', type: 'fill' },
+    { id: 'road', source: 'composite', type: 'line' },
+    { id: 'place-label', source: 'composite', type: 'symbol' },
+    {
+      id: 'hidden-label',
+      source: 'composite',
+      type: 'symbol',
+      layout: { visibility: 'none' },
+    },
+  ];
   mapboxState.isLoaded = false;
   mapboxState.isStyleLoaded = false;
   mapboxState.setConfigProperty.mockClear();
-  mapboxState.setLayoutProperty.mockClear();
+  mapboxState.setLayoutProperty.mockReset();
   mapboxState.markerElements.length = 0;
   mapboxState.markerDragEnd = null;
   mapboxState.markerLngLat = { lat: -26.19205, lng: 28.03038 };
   mapboxState.addLayer.mockClear();
-  mapboxState.addLayer.mockImplementation((layer: { id: string }) => {
-    mapboxState.layers.add(layer.id);
-  });
+  mapboxState.addLayer.mockImplementation(
+    (layer: LayerSpecification, beforeId?: string) => {
+      mapboxState.layers.add(layer.id);
+      const before = mapboxState.layerDefinitions.findIndex(
+        (candidate) => candidate.id === beforeId,
+      );
+      if (before < 0) mapboxState.layerDefinitions.push(layer);
+      else mapboxState.layerDefinitions.splice(before, 0, layer);
+    },
+  );
   mapboxState.addSource.mockClear();
   mapboxState.addSource.mockImplementation(
     (sourceId: string, source: { data?: unknown }) => {
@@ -263,6 +289,101 @@ afterEach(() => {
 });
 
 describe('Mapbox Standard provider', () => {
+  it('uses Streets without Standard config or lighting lifecycle work', async () => {
+    vi.useFakeTimers();
+    const abort = new AbortController();
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      { ...configuration, pitch: 0, styleUrl: MOBILE_2D_MAP_STYLE },
+      [],
+      abort.signal,
+    );
+    expect(mapboxState.mapConstructor.mock.calls[0]?.[0]).not.toHaveProperty(
+      'config',
+    );
+    expect(mapboxState.mapConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        style: MOBILE_2D_MAP_STYLE,
+        pitch: 0,
+        respectPrefersReducedMotion: true,
+      }),
+    );
+    mapboxState.isStyleLoaded = true;
+    mapboxState.handlers.get('style.load')?.();
+    vi.advanceTimersByTime(120_000);
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(mapboxState.setConfigProperty).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(mapboxState.attributionOptions).toEqual([{ compact: true }]);
+    abort.abort();
+    controller.remove();
+    expect(mapboxState.remove).toHaveBeenCalledOnce();
+  });
+
+  it('orders Streets overlays below basemap labels and restores original label visibility', async () => {
+    mapboxState.isStyleLoaded = true;
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      { ...configuration, styleUrl: MOBILE_2D_MAP_STYLE, pitch: 0 },
+      [],
+      new AbortController().signal,
+    );
+    for (const [layer, beforeId] of mapboxState.addLayer.mock.calls) {
+      expect(layer).not.toHaveProperty('slot');
+      expect(beforeId).toBe(
+        layer.type === 'symbol' ? undefined : 'place-label',
+      );
+    }
+    const order = mapboxState.layerDefinitions.map((layer) => layer.id);
+    expect(order.indexOf('road')).toBeLessThan(
+      order.indexOf('wits-territory-fill'),
+    );
+    expect(order.indexOf('wits-selected-event-radius-line')).toBeLessThan(
+      order.indexOf('place-label'),
+    );
+    expect(order.indexOf('place-label')).toBeLessThan(
+      order.indexOf('wits-territory-label'),
+    );
+    mapboxState.setLayoutProperty.mockImplementation(
+      (id: string, _key: string, visibility: 'none' | 'visible') => {
+        const layer = mapboxState.layerDefinitions.find(
+          (candidate) => candidate.id === id,
+        );
+        if (layer) layer.layout = { ...layer.layout, visibility };
+      },
+    );
+    controller.setLayerVisibility?.({
+      ...DEFAULT_MAP_LAYER_VISIBILITY,
+      labels: false,
+      details: false,
+    });
+    expect(mapboxState.setLayoutProperty).toHaveBeenCalledWith(
+      'place-label',
+      'visibility',
+      'none',
+    );
+    mapboxState.handlers.get('style.load')?.();
+    controller.setLayerVisibility?.(DEFAULT_MAP_LAYER_VISIBILITY);
+    expect(mapboxState.setLayoutProperty).toHaveBeenCalledWith(
+      'place-label',
+      'visibility',
+      'visible',
+    );
+    expect(mapboxState.setLayoutProperty).toHaveBeenLastCalledWith(
+      'hidden-label',
+      'visibility',
+      'none',
+    );
+    expect(mapboxState.setLayoutProperty).not.toHaveBeenCalledWith(
+      'building',
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(mapboxState.setConfigProperty).not.toHaveBeenCalled();
+    expect(mapboxState.easeTo).not.toHaveBeenCalled();
+    controller.remove();
+  });
   it('updates campus lighting in place, restores it after style reload, and cleans up on removal', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-30T14:59:30Z'));
@@ -346,108 +467,119 @@ describe('Mapbox Standard provider', () => {
     controller.remove();
   });
 
-  it('toggles layers without losing selected geometry, marker state, or the camera', async () => {
-    mapboxState.isStyleLoaded = true;
-    const point = {
-      id: 'layer-event',
-      label: 'Great Hall',
-      latitude: -26.19205,
-      longitude: 28.03038,
-      radiusMetres: 75,
-    };
-    const region: MapRegion = {
-      id: 'layer-territory',
-      label: 'East Campus',
-      status: 'active',
-      ownerLabel: null,
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [28, -26],
-            [28.01, -26],
-            [28.01, -26.01],
-            [28, -26],
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'toggles layers without losing selected geometry, marker state, or the camera (%s)',
+    async (styleUrl) => {
+      mapboxState.isStyleLoaded = true;
+      const point = {
+        id: 'layer-event',
+        label: 'Great Hall',
+        latitude: -26.19205,
+        longitude: 28.03038,
+        radiusMetres: 75,
+      };
+      const region: MapRegion = {
+        id: 'layer-territory',
+        label: 'East Campus',
+        status: 'active',
+        ownerLabel: null,
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [28, -26],
+              [28.01, -26],
+              [28.01, -26.01],
+              [28, -26],
+            ],
           ],
-        ],
-      },
-    };
-    const controller = await createMapboxMap(
-      document.createElement('div'),
-      configuration,
-      [point],
-      new AbortController().signal,
-    );
-    controller.setSelectedPoint?.(point);
-    controller.setRegions?.([region]);
-    controller.setSelectedRegion?.(region);
-    const radius = mapboxState.sources.get('wits-selected-event-radius') as {
-      setData: ReturnType<typeof vi.fn>;
-    };
-    const territories = mapboxState.sources.get('wits-territory-regions') as {
-      setData: ReturnType<typeof vi.fn>;
-    };
-    controller.setLayerVisibility?.({
-      events: false,
-      radius: false,
-      territories: false,
-      details: false,
-      labels: false,
-    });
-    expect(mapboxState.markerElements[0]).toHaveStyle({ display: 'none' });
-    expect(radius.setData).toHaveBeenLastCalledWith({
-      features: [],
-      type: 'FeatureCollection',
-    });
-    expect(territories.setData).toHaveBeenLastCalledWith({
-      features: [],
-      type: 'FeatureCollection',
-    });
-    expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
-      'basemap',
-      'show3dObjects',
-      false,
-    );
-    expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
-      'basemap',
-      'showPointOfInterestLabels',
-      false,
-    );
-    controller.setPoints([point]);
-    controller.setSelectedPoint?.(point);
-    mapboxState.handlers.get('style.load')?.();
-    expect(mapboxState.markerElements[0]).toHaveStyle({ display: 'none' });
-    expect(radius.setData).toHaveBeenLastCalledWith({
-      features: [],
-      type: 'FeatureCollection',
-    });
-    controller.setLayerVisibility?.(DEFAULT_MAP_LAYER_VISIBILITY);
-    expect(mapboxState.markerElements[0]?.style.display).toBe('');
-    expect(mapboxState.markerElements[0]).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    expect(radius.setData).toHaveBeenLastCalledWith(
-      expect.objectContaining({ features: [expect.any(Object)] }),
-    );
-    expect(territories.setData).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        features: [
-          expect.objectContaining({
-            properties: expect.objectContaining({ selected: true }),
-          }),
-        ],
-      }),
-    );
-    expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
-      'basemap',
-      'show3dObjects',
-      true,
-    );
-    expect(mapboxState.mapConstructor).toHaveBeenCalledOnce();
-    expect(mapboxState.easeTo).not.toHaveBeenCalled();
-    expect(mapboxState.jumpTo).not.toHaveBeenCalled();
-  });
+        },
+      };
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        [point],
+        new AbortController().signal,
+      );
+      controller.setSelectedPoint?.(point);
+      controller.setRegions?.([region]);
+      controller.setSelectedRegion?.(region);
+      const radius = mapboxState.sources.get('wits-selected-event-radius') as {
+        setData: ReturnType<typeof vi.fn>;
+      };
+      const territories = mapboxState.sources.get('wits-territory-regions') as {
+        setData: ReturnType<typeof vi.fn>;
+      };
+      controller.setLayerVisibility?.({
+        events: false,
+        radius: false,
+        territories: false,
+        details: false,
+        labels: false,
+      });
+      expect(mapboxState.markerElements[0]).toHaveStyle({ display: 'none' });
+      expect(radius.setData).toHaveBeenLastCalledWith({
+        features: [],
+        type: 'FeatureCollection',
+      });
+      expect(territories.setData).toHaveBeenLastCalledWith({
+        features: [],
+        type: 'FeatureCollection',
+      });
+      if (styleUrl === configuration.styleUrl) {
+        expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
+          'basemap',
+          'show3dObjects',
+          false,
+        );
+        expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
+          'basemap',
+          'showPointOfInterestLabels',
+          false,
+        );
+      } else {
+        expect(mapboxState.setConfigProperty).not.toHaveBeenCalled();
+      }
+      controller.setPoints([point]);
+      controller.setSelectedPoint?.(point);
+      mapboxState.handlers.get('style.load')?.();
+      expect(mapboxState.markerElements[0]).toHaveStyle({ display: 'none' });
+      expect(radius.setData).toHaveBeenLastCalledWith({
+        features: [],
+        type: 'FeatureCollection',
+      });
+      controller.setLayerVisibility?.(DEFAULT_MAP_LAYER_VISIBILITY);
+      expect(mapboxState.markerElements[0]?.style.display).toBe('');
+      expect(mapboxState.markerElements[0]).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(radius.setData).toHaveBeenLastCalledWith(
+        expect.objectContaining({ features: [expect.any(Object)] }),
+      );
+      expect(territories.setData).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          features: [
+            expect.objectContaining({
+              properties: expect.objectContaining({ selected: true }),
+            }),
+          ],
+        }),
+      );
+      if (styleUrl === configuration.styleUrl) {
+        expect(mapboxState.setConfigProperty).toHaveBeenCalledWith(
+          'basemap',
+          'show3dObjects',
+          true,
+        );
+      } else {
+        expect(mapboxState.setConfigProperty).not.toHaveBeenCalled();
+      }
+      expect(mapboxState.mapConstructor).toHaveBeenCalledOnce();
+      expect(mapboxState.easeTo).not.toHaveBeenCalled();
+      expect(mapboxState.jumpTo).not.toHaveBeenCalled();
+    },
+  );
 
   it('fails before construction when the public token is absent', async () => {
     await expect(
@@ -521,112 +653,118 @@ describe('Mapbox Standard provider', () => {
     expect(options).not.toHaveProperty('zoom');
   });
 
-  it('renders keyboard-selectable event markers with selected and reachable semantics', async () => {
-    const controller = await createMapboxMap(
-      document.createElement('div'),
-      configuration,
-      [
-        {
-          availability: 'active',
-          id: 'event-1',
-          label: 'Great Hall Quest',
-          latitude: -26.19205,
-          longitude: 28.03038,
-          radiusMetres: 75,
-          reachable: true,
-        },
-      ],
-      new AbortController().signal,
-    );
-    const listener = vi.fn();
-    controller.setPointSelectionListener?.(listener);
-    controller.setSelectedPoint?.({
-      availability: 'active',
-      id: 'event-1',
-      label: 'Great Hall Quest',
-      latitude: -26.19205,
-      longitude: 28.03038,
-      radiusMetres: 75,
-      reachable: true,
-    });
-
-    const marker = mapboxState.markerElements[0] as HTMLButtonElement;
-    expect(marker).toHaveAttribute('role', 'button');
-    expect(marker).toHaveClass(
-      'mapboxgl-marker',
-      'mapboxgl-marker-anchor-center',
-    );
-    expect(marker.tagName).toBe('BUTTON');
-    expect(marker).toHaveAttribute('aria-pressed', 'true');
-    expect(marker).toHaveAttribute(
-      'aria-label',
-      'Select Great Hall Quest, available now, in range',
-    );
-    expect(marker).toHaveClass('event-marker--selected');
-    expect(marker).toHaveClass('event-marker--reachable');
-    marker.click();
-    expect(listener).toHaveBeenCalledWith('event-1');
-  });
-
-  it('changes event selection without rebuilding unchanged markers', async () => {
-    const points = [
-      {
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'renders keyboard-selectable event markers with selected and reachable semantics (%s)',
+    async (styleUrl) => {
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        [
+          {
+            availability: 'active',
+            id: 'event-1',
+            label: 'Great Hall Quest',
+            latitude: -26.19205,
+            longitude: 28.03038,
+            radiusMetres: 75,
+            reachable: true,
+          },
+        ],
+        new AbortController().signal,
+      );
+      const listener = vi.fn();
+      controller.setPointSelectionListener?.(listener);
+      controller.setSelectedPoint?.({
+        availability: 'active',
         id: 'event-1',
-        label: 'Great Hall',
+        label: 'Great Hall Quest',
         latitude: -26.19205,
         longitude: 28.03038,
-      },
-      {
-        id: 'event-2',
-        label: 'Library',
-        latitude: -26.1914,
-        longitude: 28.0311,
-      },
-    ];
-    const controller = await createMapboxMap(
-      document.createElement('div'),
-      configuration,
-      points,
-      new AbortController().signal,
-    );
-    mapboxState.markerSetLngLat.mockClear();
-    mapboxState.markerSetDraggable.mockClear();
+        radiusMetres: 75,
+        reachable: true,
+      });
 
-    controller.setSelectedPoint?.(points[0]!);
-    expect(mapboxState.markerElements[0]).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    expect(mapboxState.markerElements[1]).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
-    expect(mapboxState.markerSetLngLat).not.toHaveBeenCalled();
-    expect(mapboxState.markerSetDraggable).not.toHaveBeenCalled();
+      const marker = mapboxState.markerElements[0] as HTMLButtonElement;
+      expect(marker).toHaveAttribute('role', 'button');
+      expect(marker).toHaveClass(
+        'mapboxgl-marker',
+        'mapboxgl-marker-anchor-center',
+      );
+      expect(marker.tagName).toBe('BUTTON');
+      expect(marker).toHaveAttribute('aria-pressed', 'true');
+      expect(marker).toHaveAttribute(
+        'aria-label',
+        'Select Great Hall Quest, available now, in range',
+      );
+      expect(marker).toHaveClass('event-marker--selected');
+      expect(marker).toHaveClass('event-marker--reachable');
+      marker.click();
+      expect(listener).toHaveBeenCalledWith('event-1');
+    },
+  );
 
-    controller.setSelectedPoint?.(points[1]!);
-    expect(mapboxState.markerElements[0]).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
-    expect(mapboxState.markerElements[1]).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    expect(mapboxState.markerSetLngLat).not.toHaveBeenCalled();
-    expect(mapboxState.markerSetDraggable).not.toHaveBeenCalled();
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'changes event selection without rebuilding unchanged markers (%s)',
+    async (styleUrl) => {
+      const points = [
+        {
+          id: 'event-1',
+          label: 'Great Hall',
+          latitude: -26.19205,
+          longitude: 28.03038,
+        },
+        {
+          id: 'event-2',
+          label: 'Library',
+          latitude: -26.1914,
+          longitude: 28.0311,
+        },
+      ];
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        points,
+        new AbortController().signal,
+      );
+      mapboxState.markerSetLngLat.mockClear();
+      mapboxState.markerSetDraggable.mockClear();
 
-    controller.setSelectedPoint?.(null);
-    expect(mapboxState.markerElements[0]).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
-    expect(mapboxState.markerElements[1]).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
-    expect(mapboxState.markerSetLngLat).not.toHaveBeenCalled();
-  });
+      controller.setSelectedPoint?.(points[0]!);
+      expect(mapboxState.markerElements[0]).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(mapboxState.markerElements[1]).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+      expect(mapboxState.markerSetLngLat).not.toHaveBeenCalled();
+      expect(mapboxState.markerSetDraggable).not.toHaveBeenCalled();
+
+      controller.setSelectedPoint?.(points[1]!);
+      expect(mapboxState.markerElements[0]).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+      expect(mapboxState.markerElements[1]).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(mapboxState.markerSetLngLat).not.toHaveBeenCalled();
+      expect(mapboxState.markerSetDraggable).not.toHaveBeenCalled();
+
+      controller.setSelectedPoint?.(null);
+      expect(mapboxState.markerElements[0]).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+      expect(mapboxState.markerElements[1]).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+      expect(mapboxState.markerSetLngLat).not.toHaveBeenCalled();
+    },
+  );
 
   it('represents ordered trail states and only lets the current stop open from the map', async () => {
     const controller = await createMapboxMap(
@@ -1056,104 +1194,116 @@ describe('Mapbox Standard provider', () => {
     expect(followListener).toHaveBeenLastCalledWith(true);
   });
 
-  it('reports a map that loaded before the consumer registered its listener', async () => {
-    mapboxState.isLoaded = true;
-    const controller = await createMapboxMap(
-      document.createElement('div'),
-      configuration,
-      [],
-      new AbortController().signal,
-    );
-    const listener = vi.fn();
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'reports a map that loaded before the consumer registered its listener (%s)',
+    async (styleUrl) => {
+      mapboxState.isLoaded = true;
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        [],
+        new AbortController().signal,
+      );
+      const listener = vi.fn();
 
-    controller.onLoad(listener);
+      controller.onLoad(listener);
 
-    expect(listener).toHaveBeenCalledOnce();
-    expect(mapboxState.once).not.toHaveBeenCalled();
-  });
+      expect(listener).toHaveBeenCalledOnce();
+      expect(mapboxState.once).not.toHaveBeenCalled();
+    },
+  );
 
-  it('waits for Mapbox when the map has not loaded yet', async () => {
-    const controller = await createMapboxMap(
-      document.createElement('div'),
-      configuration,
-      [],
-      new AbortController().signal,
-    );
-    const listener = vi.fn();
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'waits for Mapbox when the map has not loaded yet (%s)',
+    async (styleUrl) => {
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        [],
+        new AbortController().signal,
+      );
+      const listener = vi.fn();
 
-    controller.onLoad(listener);
+      controller.onLoad(listener);
 
-    expect(listener).not.toHaveBeenCalled();
-    expect(mapboxState.once).toHaveBeenCalledWith('load', listener);
-  });
+      expect(listener).not.toHaveBeenCalled();
+      expect(mapboxState.once).toHaveBeenCalledWith('load', listener);
+    },
+  );
 
-  it('reports recoverable provider errors separately from WebGL context loss', async () => {
-    const controller = await createMapboxMap(
-      document.createElement('div'),
-      configuration,
-      [],
-      new AbortController().signal,
-    );
-    const recoverableListener = vi.fn();
-    const fatalListener = vi.fn();
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'reports recoverable provider errors separately from WebGL context loss (%s)',
+    async (styleUrl) => {
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        [],
+        new AbortController().signal,
+      );
+      const recoverableListener = vi.fn();
+      const fatalListener = vi.fn();
 
-    controller.onError(recoverableListener);
-    controller.onFatalError?.(fatalListener);
+      controller.onError(recoverableListener);
+      controller.onFatalError?.(fatalListener);
 
-    expect(mapboxState.on).toHaveBeenCalledWith('error', recoverableListener);
-    expect(mapboxState.on).toHaveBeenCalledWith(
-      'webglcontextlost',
-      fatalListener,
-    );
-  });
+      expect(mapboxState.on).toHaveBeenCalledWith('error', recoverableListener);
+      expect(mapboxState.on).toHaveBeenCalledWith(
+        'webglcontextlost',
+        fatalListener,
+      );
+    },
+  );
 
-  it('anchors the local reported-location element with a viewport-aligned Mapbox marker', async () => {
-    const controller = await createMapboxMap(
-      document.createElement('div'),
-      configuration,
-      [],
-      new AbortController().signal,
-    );
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'anchors the local reported-location element with a viewport-aligned Mapbox marker (%s)',
+    async (styleUrl) => {
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        [],
+        new AbortController().signal,
+      );
 
-    controller.setReportedLocation({
-      accuracyMetres: 12,
-      latitude: -26.19205,
-      longitude: 28.03038,
-    });
+      controller.setReportedLocation({
+        accuracyMetres: 12,
+        latitude: -26.19205,
+        longitude: 28.03038,
+      });
 
-    const pointer = mapboxState.canvasContainer?.querySelector(
-      '[data-map-reported-location]',
-    );
-    expect(pointer).toHaveAttribute('aria-hidden', 'true');
-    expect(pointer).toHaveAttribute('title', 'Reported location');
-    expect(mapboxState.markerConstructor).toHaveBeenCalledWith(
-      expect.objectContaining({
-        anchor: 'center',
-        draggable: false,
-        element: pointer,
-        pitchAlignment: 'viewport',
-        rotationAlignment: 'viewport',
-      }),
-    );
-    expect(mapboxState.markerSetLngLat).toHaveBeenCalledWith([
-      28.03038, -26.19205,
-    ]);
-    expect(mapboxState.project).not.toHaveBeenCalled();
-    expect(
-      mapboxState.addSource.mock.calls.some(([sourceId]) =>
-        String(sourceId).includes('player'),
-      ),
-    ).toBe(false);
-
-    controller.setReportedLocation(null);
-
-    expect(
-      mapboxState.canvasContainer?.querySelector(
+      const pointer = mapboxState.canvasContainer?.querySelector(
         '[data-map-reported-location]',
-      ),
-    ).not.toBeInTheDocument();
-    expect(mapboxState.markerRemove).toHaveBeenCalledOnce();
-  });
+      );
+      expect(pointer).toHaveAttribute('aria-hidden', 'true');
+      expect(pointer).toHaveAttribute('title', 'Reported location');
+      expect(mapboxState.markerConstructor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          anchor: 'center',
+          draggable: false,
+          element: pointer,
+          pitchAlignment: 'viewport',
+          rotationAlignment: 'viewport',
+        }),
+      );
+      expect(mapboxState.markerSetLngLat).toHaveBeenCalledWith([
+        28.03038, -26.19205,
+      ]);
+      expect(mapboxState.project).not.toHaveBeenCalled();
+      expect(
+        mapboxState.addSource.mock.calls.some(([sourceId]) =>
+          String(sourceId).includes('player'),
+        ),
+      ).toBe(false);
+
+      controller.setReportedLocation(null);
+
+      expect(
+        mapboxState.canvasContainer?.querySelector(
+          '[data-map-reported-location]',
+        ),
+      ).not.toBeInTheDocument();
+      expect(mapboxState.markerRemove).toHaveBeenCalledOnce();
+    },
+  );
 
   it('reports optional author coordinate selection without making the map required', async () => {
     const controller = await createMapboxMap(
@@ -1210,130 +1360,154 @@ describe('Mapbox Standard provider', () => {
     expect(mapboxState.controls.some((control) => control.onAdd)).toBe(false);
   });
 
-  it('adds a future licensed campus dataset through Standard slots without deriving unapproved building heights', async () => {
-    const dataset = {
-      features: [
-        {
-          geometry: {
-            coordinates: [],
-            type: 'Polygon',
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'adds a licensed campus dataset without deriving building heights (%s)',
+    async (styleUrl) => {
+      const dataset = {
+        features: [
+          {
+            geometry: {
+              coordinates: [],
+              type: 'Polygon',
+            },
+            properties: {
+              approvedName: 'Approved building name',
+              buildingId: 'building-001',
+              heightM: 12,
+              kind: 'building',
+            },
+            type: 'Feature',
           },
-          properties: {
-            approvedName: 'Approved building name',
-            buildingId: 'building-001',
-            heightM: 12,
-            kind: 'building',
-          },
-          type: 'Feature',
-        },
-      ],
-      type: 'FeatureCollection',
-    } as CampusDataset;
+        ],
+        type: 'FeatureCollection',
+      } as CampusDataset;
 
-    await createMapboxMap(
-      document.createElement('div'),
-      {
-        ...configuration,
-        campusLayer: {
-          dataset,
-          metadata: {
-            lastVerified: '2026-08-13',
-            licence: 'Pending licensed source',
-            source: 'Pending licensed Wits dataset',
-          },
-          replaceStandardBuildings: true,
-        },
-      },
-      [],
-      new AbortController().signal,
-    );
-
-    mapboxState.handlers.get('style.load')?.();
-
-    expect(mapboxState.addSource).toHaveBeenCalledWith(
-      'wits-campus-data',
-      expect.objectContaining({
-        attribution:
-          'Pending licensed Wits dataset · Pending licensed source (verified 2026-08-13)',
-        data: dataset,
-        type: 'geojson',
-      }),
-    );
-    const layers = mapboxState.addLayer.mock.calls.map(([layer]) => layer);
-    const buildingLayer = layers.find(
-      (layer) => layer.id === 'wits-campus-buildings',
-    );
-    const clipLayer = layers.find(
-      (layer) => layer.id === 'wits-campus-building-clip',
-    );
-
-    expect(buildingLayer).toMatchObject({
-      paint: {
-        'fill-extrusion-height': ['get', 'heightM'],
-      },
-      slot: 'middle',
-      type: 'fill-extrusion',
-    });
-    expect(buildingLayer).not.toHaveProperty(
-      'paint.fill-extrusion-height',
-      expect.arrayContaining(['get', 'levels']),
-    );
-    expect(clipLayer).toMatchObject({
-      layout: {
-        'clip-layer-scope': ['basemap'],
-        'clip-layer-types': ['model', 'symbol'],
-      },
-      slot: 'middle',
-      type: 'clip',
-    });
-  });
-
-  it('does not construct a map after an aborted lazy import and does not call the live network', async () => {
-    const abortController = new AbortController();
-    abortController.abort();
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
-
-    await expect(
-      createMapboxMap(
+      await createMapboxMap(
         document.createElement('div'),
-        configuration,
-        [],
-        abortController.signal,
-      ),
-    ).rejects.toThrow('Map creation was cancelled.');
-
-    expect(mapboxState.mapConstructor).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
-    fetchMock.mockRestore();
-  });
-
-  it('cleans up the Mapbox map and event markers', async () => {
-    const controller = await createMapboxMap(
-      document.createElement('div'),
-      configuration,
-      [
         {
-          id: 'event-1',
-          label: 'Event 1',
-          latitude: -26.19205,
-          longitude: 28.03038,
+          ...configuration,
+          styleUrl,
+          campusLayer: {
+            dataset,
+            metadata: {
+              lastVerified: '2026-08-13',
+              licence: 'Pending licensed source',
+              source: 'Pending licensed Wits dataset',
+            },
+            replaceStandardBuildings: true,
+          },
         },
-      ],
-      new AbortController().signal,
-    );
+        [],
+        new AbortController().signal,
+      );
 
-    controller.setReportedLocation({
-      accuracyMetres: 12,
-      latitude: -26.19205,
-      longitude: 28.03038,
-    });
-    controller.remove();
-    expect(mapboxState.markerRemove).toHaveBeenCalledTimes(2);
-    expect(
-      mapboxState.canvasContainer?.querySelector(
-        '[data-map-reported-location]',
-      ),
-    ).not.toBeInTheDocument();
-    expect(mapboxState.remove).toHaveBeenCalledOnce();
-  });
+      mapboxState.handlers.get('style.load')?.();
+
+      expect(mapboxState.addSource).toHaveBeenCalledWith(
+        'wits-campus-data',
+        expect.objectContaining({
+          attribution:
+            'Pending licensed Wits dataset · Pending licensed source (verified 2026-08-13)',
+          data: dataset,
+          type: 'geojson',
+        }),
+      );
+      const layers = mapboxState.addLayer.mock.calls.map(([layer]) => layer);
+      const buildingLayer = layers.find(
+        (layer) => layer.id === 'wits-campus-buildings',
+      );
+      const clipLayer = layers.find(
+        (layer) => layer.id === 'wits-campus-building-clip',
+      );
+
+      expect(buildingLayer).toMatchObject({
+        paint: {
+          'fill-extrusion-height': ['get', 'heightM'],
+        },
+        ...(styleUrl === configuration.styleUrl ? { slot: 'middle' } : {}),
+        type: 'fill-extrusion',
+      });
+      expect(buildingLayer).not.toHaveProperty(
+        'paint.fill-extrusion-height',
+        expect.arrayContaining(['get', 'levels']),
+      );
+      if (styleUrl !== configuration.styleUrl) {
+        expect(clipLayer).toBeUndefined();
+        for (const [layer, beforeId] of mapboxState.addLayer.mock.calls) {
+          expect(layer).not.toHaveProperty('slot');
+          expect(beforeId).toBe(
+            layer.id === 'wits-campus-boundaries'
+              ? 'road'
+              : layer.type === 'symbol' || layer.type === 'circle'
+                ? undefined
+                : 'place-label',
+          );
+        }
+        return;
+      }
+      expect(clipLayer).toMatchObject({
+        layout: {
+          'clip-layer-scope': ['basemap'],
+          'clip-layer-types': ['model', 'symbol'],
+        },
+        slot: 'middle',
+        type: 'clip',
+      });
+    },
+  );
+
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'does not construct a map after an aborted lazy import and does not call the live network (%s)',
+    async (styleUrl) => {
+      const abortController = new AbortController();
+      abortController.abort();
+      const fetchMock = vi.spyOn(globalThis, 'fetch');
+
+      await expect(
+        createMapboxMap(
+          document.createElement('div'),
+          { ...configuration, styleUrl },
+          [],
+          abortController.signal,
+        ),
+      ).rejects.toThrow('Map creation was cancelled.');
+
+      expect(mapboxState.mapConstructor).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+      fetchMock.mockRestore();
+    },
+  );
+
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'cleans up the Mapbox map and event markers (%s)',
+    async (styleUrl) => {
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        [
+          {
+            id: 'event-1',
+            label: 'Event 1',
+            latitude: -26.19205,
+            longitude: 28.03038,
+          },
+        ],
+        new AbortController().signal,
+      );
+
+      controller.setReportedLocation({
+        accuracyMetres: 12,
+        latitude: -26.19205,
+        longitude: 28.03038,
+      });
+      controller.remove();
+      expect(mapboxState.markerRemove).toHaveBeenCalledTimes(2);
+      expect(
+        mapboxState.canvasContainer?.querySelector(
+          '[data-map-reported-location]',
+        ),
+      ).not.toBeInTheDocument();
+      expect(mapboxState.remove).toHaveBeenCalledOnce();
+    },
+  );
 });

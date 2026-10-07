@@ -21,16 +21,44 @@ of geometry, names, heights, or copyrighted map assets.
 ## Renderer decision and boundary
 
 The web application pins `mapbox-gl` `3.28.1` and lazy-loads its ESM entry when
-`/explore` mounts. The configured style is:
+`/explore` mounts. Desktop Explore, Author maps, and explicit mobile 3D use:
 
 ```text
 mapbox://styles/mapbox/standard
 ```
 
-The initial Wits Quest camera is centred on the approved Sprint 1 event area at
-`[28.03038, -26.19205]`, zoom `16.5`, pitch `52`, and bearing `20`. It uses
+Default mobile Explore (the existing `max-width: 47.999rem` breakpoint, with
+**Detailed 3D map** off) instead uses `mapbox://styles/mapbox/streets-v12` at
+pitch `0`. The existing responsive and local 3D-toggle state select the style;
+network speed and user-agent detection do not. Changing mode or crossing the
+breakpoint recreates the map through the existing abort/cleanup lifecycle,
+then reapplies discovery points, selection, radius, territories, and reported
+location. There is still one map instance. The map-ready callback, retry, and
+15-second fallback keep their existing semantics.
+
+On initial mobile 2D navigation, the map container stays mounted while event
+discovery loads. Once discovery succeeds, is empty, or fails, it gets a paint
+opportunity before map imports/construction start. Later discovery refreshes
+do not recreate the map. If discovery remains pending, the existing 15-second
+map fallback still appears and starts the map attempt independently; a later
+map load can recover normally. Pending animation frames are cancelled with
+the existing abort/cleanup lifecycle. Desktop, explicit mobile 3D, and Author
+map startup are unchanged.
+
+Streets v12 retains vector roads, flat building footprints, places, land use,
+water, and POIs. It avoids Standard's imported basemap/configuration path.
+Mapbox classifies it as a [Classic style](https://docs.mapbox.com/map-styles/guides/classic-styles/):
+it remains available but is no longer actively maintained, including feature,
+cartographic, and bug-fix updates. This is a maintenance tradeoff, not a claim
+of guaranteed performance or long-term provider support. Future compatibility
+and campus-readability checks remain necessary; no custom Studio style or
+Mapbox account changes are part of this choice.
+
+The current Explore camera is centred on the approved Sprint 1 event area at
+`[28.03038, -26.19205]`, zoom `16.5`, pitch `0`, and bearing `0`. It uses
 Mapbox Standard with 3D objects, buildings, landmarks, trees, and pedestrian
-roads enabled. Lighting follows the device's current clock interpreted in
+roads enabled on desktop and explicit mobile 3D; enabling 3D retains the existing
+initial flat camera. For Standard, lighting follows the device's current clock interpreted in
 `Africa/Johannesburg`: dawn from 05:00–07:00, day from 07:00–17:00, dusk from
 17:00–19:00, and night otherwise. These are fixed time periods, not seasonal
 sunrise or sunset calculations. Lighting checks every minute and on return to
@@ -52,13 +80,23 @@ Johannesburg time. Scheduling inputs are converted to UTC instants for the
 existing API. Trust-review date filters use Johannesburg day boundaries;
 Author analytics reporting keeps its explicit UTC calendar-date contract.
 
-Custom layers use Mapbox Standard `bottom`, `middle`, and `top` slots. Their
+Custom layers on Standard use its `bottom`, `middle`, and `top` slots. Their
 colour layers set type-specific emissive-strength properties so Standard's
 dynamic lighting does not make paths, labels, boundaries, or project-owned
 buildings disappear at dusk. If an approved project-owned building dataset
 must replace overlapping Standard buildings, the optional `clip` layer uses the
 supported `basemap` scope and `model`/`symbol` layer types. That replacement
 path is not enabled until the dataset is licensed and reviewed.
+
+On Streets, application layers omit slots and use ordinary layer ordering:
+campus context goes before the first basemap line, geometry before the first
+basemap symbol, and application labels/points above the basemap. Event DOM
+markers are unchanged. Standard-only constructor config, runtime config,
+building clipping, and lighting timers/listeners are not installed for
+Streets. Label visibility uses the basemap's symbol layers and restores each
+layer's original visibility; flat building context is retained. Project-owned
+building/label visibility still follows the existing overlay controls. The
+optional future campus dataset is not enabled by this change.
 
 The map remains presentation-only. The API and PostgreSQL/PostGIS remain
 authoritative for event publication, availability, distance, eligibility, and
@@ -149,6 +187,8 @@ branding controls are positioned above Explore's sheet and mobile navigation.
 
 - [Mapbox GL JS bundler guidance](https://docs.mapbox.com/mapbox-gl-js/guides/bundler/)
 - [Mapbox Standard configuration](https://docs.mapbox.com/map-styles/reference/standard/)
+- [Mapbox Streets v12](https://docs.mapbox.com/map-styles/reference/streets/)
+- [Classic styles maintenance status](https://docs.mapbox.com/map-styles/guides/classic-styles/)
 - [Mapbox Standard slots and custom layers](https://docs.mapbox.com/mapbox-gl-js/guides/styles/work-with-layers/)
 - [Mapbox Standard building clipping](https://docs.mapbox.com/mapbox-gl-js/example/clip-layer-building/)
 - [Mapbox attribution requirements](https://docs.mapbox.com/help/glossary/attribution/)
@@ -165,3 +205,5 @@ Codex[GPT-5]
 Page title clarified with assistance from Codex-CLI[GPT-6].
 
 Layers and campus-time lighting guidance updated with assistance from Codex[GPT-5].
+
+Mobile 2D style and capability guidance updated with assistance from Codex[GPT-6].

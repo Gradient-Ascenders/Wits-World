@@ -13,6 +13,8 @@ import { getCampusLightPreset, type MapboxLightPreset } from './map-lighting';
 export type { MapboxLightPreset } from './map-lighting';
 import type {
   IControl,
+  ExpressionSpecification,
+  LayerSpecification,
   Map as MapboxMap,
   MapMouseEvent,
   Marker as MapboxMarker,
@@ -81,6 +83,8 @@ export const DEFAULT_MAP_LAYER_VISIBILITY: MapLayerVisibility = {
   details: true,
   labels: true,
 };
+
+export const MOBILE_2D_MAP_STYLE = 'mapbox://styles/mapbox/streets-v12';
 
 export interface MapboxStandardConfiguration extends Record<string, unknown> {
   lightPreset?: MapboxLightPreset;
@@ -325,9 +329,35 @@ class ResetViewControl implements IControl {
   };
 }
 
+function addApplicationLayer(
+  map: MapboxMap,
+  layer: LayerSpecification,
+  usesStandardBasemap: boolean,
+): void {
+  if (usesStandardBasemap) {
+    map.addLayer(layer);
+    return;
+  }
+
+  // Classic styles use ordinary ordering: context below roads, geometry below
+  // labels, and application labels above the basemap.
+  const { slot, ...classicLayer } = layer;
+  const beforeId = map
+    .getStyle()
+    .layers?.find(
+      (candidate) =>
+        !candidate.id.startsWith('wits-') &&
+        (slot === 'bottom'
+          ? candidate.type === 'line'
+          : slot === 'middle' && candidate.type === 'symbol'),
+    )?.id;
+  map.addLayer(classicLayer, beforeId);
+}
+
 function addCampusDatasetLayers(
   map: MapboxMap,
   campusLayer: CampusLayerConfiguration,
+  usesStandardBasemap: boolean,
 ): void {
   if (!map.getSource(CAMPUS_DATA_SOURCE_ID)) {
     map.addSource(CAMPUS_DATA_SOURCE_ID, {
@@ -338,138 +368,171 @@ function addCampusDatasetLayers(
   }
 
   if (
+    usesStandardBasemap &&
     campusLayer.replaceStandardBuildings &&
     !map.getLayer(CAMPUS_BUILDING_CLIP_LAYER_ID)
   ) {
-    map.addLayer({
-      filter: ['==', ['get', 'kind'], 'building'],
-      id: CAMPUS_BUILDING_CLIP_LAYER_ID,
-      layout: {
-        'clip-layer-scope': ['basemap'],
-        'clip-layer-types': ['model', 'symbol'],
+    addApplicationLayer(
+      map,
+      {
+        filter: ['==', ['get', 'kind'], 'building'],
+        id: CAMPUS_BUILDING_CLIP_LAYER_ID,
+        layout: {
+          'clip-layer-scope': ['basemap'],
+          'clip-layer-types': ['model', 'symbol'],
+        },
+        slot: 'middle',
+        source: CAMPUS_DATA_SOURCE_ID,
+        type: 'clip',
       },
-      slot: 'middle',
-      source: CAMPUS_DATA_SOURCE_ID,
-      type: 'clip',
-    });
+      usesStandardBasemap,
+    );
   }
 
   if (!map.getLayer(CAMPUS_BOUNDARY_LAYER_ID)) {
-    map.addLayer({
-      filter: ['==', ['get', 'kind'], 'boundary'],
-      id: CAMPUS_BOUNDARY_LAYER_ID,
-      paint: {
-        'line-color': '#d4af37',
-        'line-emissive-strength': 0.75,
-        'line-opacity': 0.86,
-        'line-width': 2,
+    addApplicationLayer(
+      map,
+      {
+        filter: ['==', ['get', 'kind'], 'boundary'],
+        id: CAMPUS_BOUNDARY_LAYER_ID,
+        paint: {
+          'line-color': '#d4af37',
+          'line-emissive-strength': 0.75,
+          'line-opacity': 0.86,
+          'line-width': 2,
+        },
+        slot: 'bottom',
+        source: CAMPUS_DATA_SOURCE_ID,
+        type: 'line',
       },
-      slot: 'bottom',
-      source: CAMPUS_DATA_SOURCE_ID,
-      type: 'line',
-    });
+      usesStandardBasemap,
+    );
   }
 
   if (!map.getLayer(CAMPUS_PATH_LAYER_ID)) {
-    map.addLayer({
-      filter: [
-        'match',
-        ['get', 'kind'],
-        ['accessible-path', 'pedestrian-path'],
-        true,
-        false,
-      ],
-      id: CAMPUS_PATH_LAYER_ID,
-      paint: {
-        'line-color': [
+    addApplicationLayer(
+      map,
+      {
+        filter: [
           'match',
           ['get', 'kind'],
-          'accessible-path',
-          '#54a8ff',
-          '#d4af37',
+          ['accessible-path', 'pedestrian-path'],
+          true,
+          false,
         ],
-        'line-emissive-strength': 0.8,
-        'line-opacity': 0.92,
-        'line-width': ['interpolate', ['linear'], ['zoom'], 16, 2, 19, 5],
+        id: CAMPUS_PATH_LAYER_ID,
+        paint: {
+          'line-color': [
+            'match',
+            ['get', 'kind'],
+            'accessible-path',
+            '#54a8ff',
+            '#d4af37',
+          ],
+          'line-emissive-strength': 0.8,
+          'line-opacity': 0.92,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 16, 2, 19, 5],
+        },
+        slot: 'middle',
+        source: CAMPUS_DATA_SOURCE_ID,
+        type: 'line',
       },
-      slot: 'middle',
-      source: CAMPUS_DATA_SOURCE_ID,
-      type: 'line',
-    });
+      usesStandardBasemap,
+    );
   }
 
   if (!map.getLayer(CAMPUS_BUILDING_LAYER_ID)) {
-    map.addLayer({
-      filter: ['all', ['==', ['get', 'kind'], 'building'], ['has', 'heightM']],
-      id: CAMPUS_BUILDING_LAYER_ID,
-      paint: {
-        'fill-extrusion-base': 0,
-        'fill-extrusion-color': '#174a99',
-        'fill-extrusion-emissive-strength': 0.35,
-        'fill-extrusion-height': ['get', 'heightM'],
-        'fill-extrusion-opacity': 0.86,
+    addApplicationLayer(
+      map,
+      {
+        filter: [
+          'all',
+          ['==', ['get', 'kind'], 'building'],
+          ['has', 'heightM'],
+        ],
+        id: CAMPUS_BUILDING_LAYER_ID,
+        paint: {
+          'fill-extrusion-base': 0,
+          'fill-extrusion-color': '#174a99',
+          'fill-extrusion-emissive-strength': 0.35,
+          'fill-extrusion-height': ['get', 'heightM'],
+          'fill-extrusion-opacity': 0.86,
+        },
+        slot: 'middle',
+        source: CAMPUS_DATA_SOURCE_ID,
+        type: 'fill-extrusion',
       },
-      slot: 'middle',
-      source: CAMPUS_DATA_SOURCE_ID,
-      type: 'fill-extrusion',
-    });
+      usesStandardBasemap,
+    );
   }
 
   if (!map.getLayer(CAMPUS_POINT_LAYER_ID)) {
-    map.addLayer({
-      filter: [
-        'match',
-        ['get', 'kind'],
-        ['accessible-entrance', 'entrance', 'landmark', 'service'],
-        true,
-        false,
-      ],
-      id: CAMPUS_POINT_LAYER_ID,
-      paint: {
-        'circle-color': [
+    addApplicationLayer(
+      map,
+      {
+        filter: [
           'match',
           ['get', 'kind'],
-          'accessible-entrance',
-          '#54a8ff',
-          'service',
-          '#d4af37',
-          '#f7f3e7',
+          ['accessible-entrance', 'entrance', 'landmark', 'service'],
+          true,
+          false,
         ],
-        'circle-emissive-strength': 0.7,
-        'circle-radius': 4,
-        'circle-stroke-color': '#050b16',
-        'circle-stroke-width': 1.5,
+        id: CAMPUS_POINT_LAYER_ID,
+        paint: {
+          'circle-color': [
+            'match',
+            ['get', 'kind'],
+            'accessible-entrance',
+            '#54a8ff',
+            'service',
+            '#d4af37',
+            '#f7f3e7',
+          ],
+          'circle-emissive-strength': 0.7,
+          'circle-radius': 4,
+          'circle-stroke-color': '#050b16',
+          'circle-stroke-width': 1.5,
+        },
+        slot: 'top',
+        source: CAMPUS_DATA_SOURCE_ID,
+        type: 'circle',
       },
-      slot: 'top',
-      source: CAMPUS_DATA_SOURCE_ID,
-      type: 'circle',
-    });
+      usesStandardBasemap,
+    );
   }
 
   if (!map.getLayer(CAMPUS_LABEL_LAYER_ID)) {
-    map.addLayer({
-      filter: ['has', 'approvedName'],
-      id: CAMPUS_LABEL_LAYER_ID,
-      layout: {
-        'text-anchor': 'top',
-        'text-field': ['get', 'approvedName'],
-        'text-offset': [0, 0.8],
-        'text-size': 12,
+    addApplicationLayer(
+      map,
+      {
+        filter: ['has', 'approvedName'],
+        id: CAMPUS_LABEL_LAYER_ID,
+        layout: {
+          'text-anchor': 'top',
+          'text-field': ['get', 'approvedName'],
+          'text-offset': [0, 0.8],
+          'text-size': 12,
+        },
+        paint: {
+          'text-color': '#f7f3e7',
+          'text-emissive-strength': 0.75,
+          'text-halo-color': '#050b16',
+          'text-halo-width': 1.5,
+        },
+        slot: 'top',
+        source: CAMPUS_DATA_SOURCE_ID,
+        type: 'symbol',
       },
-      paint: {
-        'text-color': '#f7f3e7',
-        'text-emissive-strength': 0.75,
-        'text-halo-color': '#050b16',
-        'text-halo-width': 1.5,
-      },
-      slot: 'top',
-      source: CAMPUS_DATA_SOURCE_ID,
-      type: 'symbol',
-    });
+      usesStandardBasemap,
+    );
   }
 }
 
-function syncPlacementAreas(map: MapboxMap, areas: readonly MapArea[]): void {
+function syncPlacementAreas(
+  map: MapboxMap,
+  areas: readonly MapArea[],
+  usesStandardBasemap: boolean,
+): void {
   const data: FeatureCollection<MultiPolygon | Polygon> = {
     features: areas.map((area) => ({
       geometry: area.geometry,
@@ -493,24 +556,28 @@ function syncPlacementAreas(map: MapboxMap, areas: readonly MapArea[]): void {
   }
 
   if (!map.getLayer(PLACEMENT_AREA_FILL_LAYER_ID)) {
-    map.addLayer({
-      id: PLACEMENT_AREA_FILL_LAYER_ID,
-      paint: {
-        'fill-color': [
-          'match',
-          ['get', 'state'],
-          'served',
-          '#2a6bff',
-          'shortfall',
-          '#e1a93a',
-          '#dc5b65',
-        ],
-        'fill-opacity': 0.12,
+    addApplicationLayer(
+      map,
+      {
+        id: PLACEMENT_AREA_FILL_LAYER_ID,
+        paint: {
+          'fill-color': [
+            'match',
+            ['get', 'state'],
+            'served',
+            '#2a6bff',
+            'shortfall',
+            '#e1a93a',
+            '#dc5b65',
+          ],
+          'fill-opacity': 0.12,
+        },
+        slot: 'middle',
+        source: PLACEMENT_AREA_SOURCE_ID,
+        type: 'fill',
       },
-      slot: 'middle',
-      source: PLACEMENT_AREA_SOURCE_ID,
-      type: 'fill',
-    });
+      usesStandardBasemap,
+    );
   }
 
   const lines = [
@@ -535,40 +602,48 @@ function syncPlacementAreas(map: MapboxMap, areas: readonly MapArea[]): void {
   ] as const;
   for (const line of lines) {
     if (map.getLayer(line.id)) continue;
-    map.addLayer({
-      filter: ['==', ['get', 'state'], line.state],
-      id: line.id,
-      paint: {
-        'line-color': line.color,
-        'line-dasharray': line.dash,
-        'line-emissive-strength': 0.7,
-        'line-opacity': 0.95,
-        'line-width': 2.5,
+    addApplicationLayer(
+      map,
+      {
+        filter: ['==', ['get', 'state'], line.state],
+        id: line.id,
+        paint: {
+          'line-color': line.color,
+          'line-dasharray': line.dash,
+          'line-emissive-strength': 0.7,
+          'line-opacity': 0.95,
+          'line-width': 2.5,
+        },
+        slot: 'top',
+        source: PLACEMENT_AREA_SOURCE_ID,
+        type: 'line',
       },
-      slot: 'top',
-      source: PLACEMENT_AREA_SOURCE_ID,
-      type: 'line',
-    });
+      usesStandardBasemap,
+    );
   }
 
   if (!map.getLayer(PLACEMENT_AREA_LABEL_LAYER_ID)) {
-    map.addLayer({
-      id: PLACEMENT_AREA_LABEL_LAYER_ID,
-      layout: {
-        'symbol-placement': 'point',
-        'text-field': ['get', 'label'],
-        'text-size': 12,
+    addApplicationLayer(
+      map,
+      {
+        id: PLACEMENT_AREA_LABEL_LAYER_ID,
+        layout: {
+          'symbol-placement': 'point',
+          'text-field': ['get', 'label'],
+          'text-size': 12,
+        },
+        paint: {
+          'text-color': '#f7f3e7',
+          'text-emissive-strength': 0.75,
+          'text-halo-color': '#050b16',
+          'text-halo-width': 1.5,
+        },
+        slot: 'top',
+        source: PLACEMENT_AREA_SOURCE_ID,
+        type: 'symbol',
       },
-      paint: {
-        'text-color': '#f7f3e7',
-        'text-emissive-strength': 0.75,
-        'text-halo-color': '#050b16',
-        'text-halo-width': 1.5,
-      },
-      slot: 'top',
-      source: PLACEMENT_AREA_SOURCE_ID,
-      type: 'symbol',
-    });
+      usesStandardBasemap,
+    );
   }
 }
 
@@ -889,17 +964,21 @@ export const createMapboxMap: MapFactory = async (
         zoom: configuration.zoom,
       };
 
+  const usesStandardBasemap =
+    configuration.styleUrl === 'mapbox://styles/mapbox/standard';
   const initialLightPreset = getCampusLightPreset();
   const map = new mapboxgl.Map({
     accessToken: configuration.accessToken,
     attributionControl: false,
     bearing: configuration.bearing,
-    config: {
-      basemap: {
-        ...configuration.standardConfig,
-        lightPreset: initialLightPreset,
+    ...(usesStandardBasemap && {
+      config: {
+        basemap: {
+          ...configuration.standardConfig,
+          lightPreset: initialLightPreset,
+        },
       },
-    },
+    }),
     container,
     performanceMetricsCollection: false,
     pitch: configuration.pitch,
@@ -928,7 +1007,7 @@ export const createMapboxMap: MapFactory = async (
   if (campusLayer) {
     map.on('style.load', () => {
       if (!signal.aborted) {
-        addCampusDatasetLayers(map, campusLayer);
+        addCampusDatasetLayers(map, campusLayer, usesStandardBasemap);
       }
     });
   }
@@ -1144,101 +1223,121 @@ export const createMapboxMap: MapFactory = async (
     }
 
     if (!map.getLayer(TERRITORY_FILL_LAYER_ID)) {
-      map.addLayer({
-        id: TERRITORY_FILL_LAYER_ID,
-        paint: {
-          'fill-color': [
-            'case',
-            ['==', ['get', 'status'], 'suspended'],
-            '#7f8b9d',
-            '#2a6bff',
-          ],
-          'fill-opacity': [
-            'case',
-            ['==', ['get', 'status'], 'suspended'],
-            0.08,
-            0.16,
-          ],
+      addApplicationLayer(
+        map,
+        {
+          id: TERRITORY_FILL_LAYER_ID,
+          paint: {
+            'fill-color': [
+              'case',
+              ['==', ['get', 'status'], 'suspended'],
+              '#7f8b9d',
+              '#2a6bff',
+            ],
+            'fill-opacity': [
+              'case',
+              ['==', ['get', 'status'], 'suspended'],
+              0.08,
+              0.16,
+            ],
+          },
+          slot: 'middle',
+          source: TERRITORY_SOURCE_ID,
+          type: 'fill',
         },
-        slot: 'middle',
-        source: TERRITORY_SOURCE_ID,
-        type: 'fill',
-      });
+        usesStandardBasemap,
+      );
     }
     if (!map.getLayer(TERRITORY_LINE_LAYER_ID)) {
-      map.addLayer({
-        filter: [
-          'all',
-          ['==', ['get', 'status'], 'active'],
-          ['==', ['get', 'selected'], false],
-        ],
-        id: TERRITORY_LINE_LAYER_ID,
-        paint: {
-          'line-color': '#e0c46c',
-          'line-emissive-strength': 0.45,
-          'line-opacity': 0.96,
-          'line-width': 2.5,
+      addApplicationLayer(
+        map,
+        {
+          filter: [
+            'all',
+            ['==', ['get', 'status'], 'active'],
+            ['==', ['get', 'selected'], false],
+          ],
+          id: TERRITORY_LINE_LAYER_ID,
+          paint: {
+            'line-color': '#e0c46c',
+            'line-emissive-strength': 0.45,
+            'line-opacity': 0.96,
+            'line-width': 2.5,
+          },
+          slot: 'middle',
+          source: TERRITORY_SOURCE_ID,
+          type: 'line',
         },
-        slot: 'middle',
-        source: TERRITORY_SOURCE_ID,
-        type: 'line',
-      });
+        usesStandardBasemap,
+      );
     }
     if (!map.getLayer(TERRITORY_SUSPENDED_LINE_LAYER_ID)) {
-      map.addLayer({
-        filter: [
-          'all',
-          ['==', ['get', 'status'], 'suspended'],
-          ['==', ['get', 'selected'], false],
-        ],
-        id: TERRITORY_SUSPENDED_LINE_LAYER_ID,
-        paint: {
-          'line-color': '#b3bdcc',
-          'line-dasharray': [2, 2],
-          'line-emissive-strength': 0.3,
-          'line-opacity': 0.94,
-          'line-width': 2.5,
+      addApplicationLayer(
+        map,
+        {
+          filter: [
+            'all',
+            ['==', ['get', 'status'], 'suspended'],
+            ['==', ['get', 'selected'], false],
+          ],
+          id: TERRITORY_SUSPENDED_LINE_LAYER_ID,
+          paint: {
+            'line-color': '#b3bdcc',
+            'line-dasharray': [2, 2],
+            'line-emissive-strength': 0.3,
+            'line-opacity': 0.94,
+            'line-width': 2.5,
+          },
+          slot: 'middle',
+          source: TERRITORY_SOURCE_ID,
+          type: 'line',
         },
-        slot: 'middle',
-        source: TERRITORY_SOURCE_ID,
-        type: 'line',
-      });
+        usesStandardBasemap,
+      );
     }
     if (!map.getLayer(TERRITORY_SELECTED_LINE_LAYER_ID)) {
-      map.addLayer({
-        filter: ['==', ['get', 'selected'], true],
-        id: TERRITORY_SELECTED_LINE_LAYER_ID,
-        paint: {
-          'line-blur': 0.4,
-          'line-color': '#54a8ff',
-          'line-emissive-strength': 0.8,
-          'line-opacity': 1,
-          'line-width': 4,
+      addApplicationLayer(
+        map,
+        {
+          filter: ['==', ['get', 'selected'], true],
+          id: TERRITORY_SELECTED_LINE_LAYER_ID,
+          paint: {
+            'line-blur': 0.4,
+            'line-color': '#54a8ff',
+            'line-emissive-strength': 0.8,
+            'line-opacity': 1,
+            'line-width': 4,
+          },
+          slot: 'middle',
+          source: TERRITORY_SOURCE_ID,
+          type: 'line',
         },
-        slot: 'middle',
-        source: TERRITORY_SOURCE_ID,
-        type: 'line',
-      });
+        usesStandardBasemap,
+      );
     }
     if (!map.getLayer(TERRITORY_LABEL_LAYER_ID)) {
-      map.addLayer({
-        id: TERRITORY_LABEL_LAYER_ID,
-        layout: {
-          'text-field': ['get', 'mapLabel'],
-          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
-          'text-line-height': 1.25,
-          'text-size': 12,
+      addApplicationLayer(
+        map,
+        {
+          id: TERRITORY_LABEL_LAYER_ID,
+          layout: {
+            'text-field': ['get', 'mapLabel'],
+            'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+            'text-line-height': 1.25,
+            'text-size': 12,
+          },
+          paint: {
+            'text-color': '#f7f3e7',
+            'text-emissive-strength': 0.7,
+            'text-halo-color': '#050b16',
+            'text-halo-width': 1.75,
+          },
+          slot: 'top',
+          source: TERRITORY_SOURCE_ID,
+          type: 'symbol',
         },
-        paint: {
-          'text-color': '#f7f3e7',
-          'text-emissive-strength': 0.7,
-          'text-halo-color': '#050b16',
-          'text-halo-width': 1.75,
-        },
-        slot: 'top',
-        source: TERRITORY_SOURCE_ID,
-        type: 'symbol',
-      });
+        usesStandardBasemap,
+      );
     }
     if (!territoryHandlersBound) {
       territoryHandlersBound = true;
@@ -1289,31 +1388,39 @@ export const createMapboxMap: MapFactory = async (
     }
 
     if (!map.getLayer(EVENT_RADIUS_FILL_LAYER_ID)) {
-      map.addLayer({
-        id: EVENT_RADIUS_FILL_LAYER_ID,
-        paint: {
-          'fill-color': '#2a6bff',
-          'fill-opacity': 0.2,
+      addApplicationLayer(
+        map,
+        {
+          id: EVENT_RADIUS_FILL_LAYER_ID,
+          paint: {
+            'fill-color': '#2a6bff',
+            'fill-opacity': 0.2,
+          },
+          slot: 'middle',
+          source: EVENT_RADIUS_SOURCE_ID,
+          type: 'fill',
         },
-        slot: 'middle',
-        source: EVENT_RADIUS_SOURCE_ID,
-        type: 'fill',
-      });
+        usesStandardBasemap,
+      );
     }
 
     if (!map.getLayer(EVENT_RADIUS_LINE_LAYER_ID)) {
-      map.addLayer({
-        id: EVENT_RADIUS_LINE_LAYER_ID,
-        paint: {
-          'line-color': '#54a8ff',
-          'line-emissive-strength': 0.75,
-          'line-opacity': 0.9,
-          'line-width': 2.5,
+      addApplicationLayer(
+        map,
+        {
+          id: EVENT_RADIUS_LINE_LAYER_ID,
+          paint: {
+            'line-color': '#54a8ff',
+            'line-emissive-strength': 0.75,
+            'line-opacity': 0.9,
+            'line-width': 2.5,
+          },
+          slot: 'middle',
+          source: EVENT_RADIUS_SOURCE_ID,
+          type: 'line',
         },
-        slot: 'middle',
-        source: EVENT_RADIUS_SOURCE_ID,
-        type: 'line',
-      });
+        usesStandardBasemap,
+      );
     }
   };
 
@@ -1326,7 +1433,7 @@ export const createMapboxMap: MapFactory = async (
   const renderAreas = (areas: readonly MapArea[]): void => {
     currentAreas = areas;
     if (map.isStyleLoaded() && areas.length > 0) {
-      syncPlacementAreas(map, areas);
+      syncPlacementAreas(map, areas, usesStandardBasemap);
       return;
     }
     const source = map.getSource(PLACEMENT_AREA_SOURCE_ID) as
@@ -1339,7 +1446,8 @@ export const createMapboxMap: MapFactory = async (
     source?.setData({ features: [], type: 'FeatureCollection' });
   };
   map.on('style.load', () => {
-    if (currentAreas.length > 0) syncPlacementAreas(map, currentAreas);
+    if (currentAreas.length > 0)
+      syncPlacementAreas(map, currentAreas, usesStandardBasemap);
   });
 
   const controller = createController(
@@ -1362,58 +1470,83 @@ export const createMapboxMap: MapFactory = async (
     },
     renderAreas,
   );
-  let lightingStopped = false;
-  let appliedLightPreset = initialLightPreset;
-  const syncLighting = (force = false): void => {
-    if (lightingStopped || signal.aborted || !map.isStyleLoaded()) return;
-    const lightPreset = getCampusLightPreset();
-    if (!force && lightPreset === appliedLightPreset) return;
-    map.setConfigProperty('basemap', 'lightPreset', lightPreset);
-    appliedLightPreset = lightPreset;
-  };
-  const refreshLighting = (): void => syncLighting();
-  const lightingInterval = window.setInterval(refreshLighting, 60_000);
-  const stopLighting = (): void => {
-    lightingStopped = true;
-    window.clearInterval(lightingInterval);
-    document.removeEventListener('visibilitychange', refreshLighting);
-    window.removeEventListener('focus', refreshLighting);
-    signal.removeEventListener('abort', stopLighting);
-  };
-  document.addEventListener('visibilitychange', refreshLighting);
-  window.addEventListener('focus', refreshLighting);
-  signal.addEventListener('abort', stopLighting, { once: true });
-  map.on('style.load', () => syncLighting(true));
-  map.on('remove', stopLighting);
-  const removeMap = controller.remove;
-  controller.remove = () => {
-    stopLighting();
-    removeMap();
-  };
+  if (usesStandardBasemap) {
+    let lightingStopped = false;
+    let appliedLightPreset = initialLightPreset;
+    const syncLighting = (force = false): void => {
+      if (lightingStopped || signal.aborted || !map.isStyleLoaded()) return;
+      const lightPreset = getCampusLightPreset();
+      if (!force && lightPreset === appliedLightPreset) return;
+      map.setConfigProperty('basemap', 'lightPreset', lightPreset);
+      appliedLightPreset = lightPreset;
+    };
+    const refreshLighting = (): void => syncLighting();
+    const lightingInterval = window.setInterval(refreshLighting, 60_000);
+    const stopLighting = (): void => {
+      lightingStopped = true;
+      window.clearInterval(lightingInterval);
+      document.removeEventListener('visibilitychange', refreshLighting);
+      window.removeEventListener('focus', refreshLighting);
+      signal.removeEventListener('abort', stopLighting);
+    };
+    document.addEventListener('visibilitychange', refreshLighting);
+    window.addEventListener('focus', refreshLighting);
+    signal.addEventListener('abort', stopLighting, { once: true });
+    map.on('style.load', () => syncLighting(true));
+    map.on('remove', stopLighting);
+    const removeMap = controller.remove;
+    controller.remove = () => {
+      stopLighting();
+      removeMap();
+    };
+  }
+  const classicLabelVisibility = new Map<
+    string,
+    'none' | 'visible' | ExpressionSpecification
+  >();
   const syncBasemapVisibility = (): void => {
-    for (const key of [
-      'show3dObjects',
-      'show3dBuildings',
-      'show3dLandmarks',
-      'show3dTrees',
-    ] as const) {
-      map.setConfigProperty(
-        'basemap',
-        key,
-        layerVisibility.details && configuration.standardConfig[key],
-      );
-    }
-    for (const key of [
-      'showPlaceLabels',
-      'showPointOfInterestLabels',
-      'showRoadLabels',
-      'showTransitLabels',
-    ]) {
-      map.setConfigProperty(
-        'basemap',
-        key,
-        layerVisibility.labels && configuration.standardConfig[key] !== false,
-      );
+    if (usesStandardBasemap) {
+      for (const key of [
+        'show3dObjects',
+        'show3dBuildings',
+        'show3dLandmarks',
+        'show3dTrees',
+      ] as const) {
+        map.setConfigProperty(
+          'basemap',
+          key,
+          layerVisibility.details && configuration.standardConfig[key],
+        );
+      }
+      for (const key of [
+        'showPlaceLabels',
+        'showPointOfInterestLabels',
+        'showRoadLabels',
+        'showTransitLabels',
+      ]) {
+        map.setConfigProperty(
+          'basemap',
+          key,
+          layerVisibility.labels && configuration.standardConfig[key] !== false,
+        );
+      }
+    } else {
+      for (const layer of map.getStyle().layers ?? []) {
+        if (layer.type !== 'symbol' || layer.id.startsWith('wits-')) continue;
+        if (!classicLabelVisibility.has(layer.id)) {
+          classicLabelVisibility.set(
+            layer.id,
+            layer.layout?.visibility ?? 'visible',
+          );
+        }
+        map.setLayoutProperty(
+          layer.id,
+          'visibility',
+          layerVisibility.labels
+            ? classicLabelVisibility.get(layer.id)
+            : 'none',
+        );
+      }
     }
     if (map.getLayer(CAMPUS_BUILDING_LAYER_ID)) {
       map.setLayoutProperty(
