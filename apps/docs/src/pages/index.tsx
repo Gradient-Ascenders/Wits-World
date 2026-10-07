@@ -1,4 +1,12 @@
 import type { ReactNode } from 'react';
+import {
+  ArrowRight,
+  BracketsCurly,
+  Cards,
+  ClipboardText,
+  Code,
+  type Icon,
+} from '@phosphor-icons/react';
 import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import Layout from '@theme/Layout';
@@ -7,6 +15,13 @@ import Heading from '@theme/Heading';
 import styles from './index.module.css';
 
 type GuideIconName = 'player' | 'author' | 'developer' | 'api';
+
+const guideIcons: Record<GuideIconName, Icon> = {
+  player: Cards,
+  author: ClipboardText,
+  developer: Code,
+  api: BracketsCurly,
+};
 
 const guides: Array<{
   title: string;
@@ -41,62 +56,20 @@ const guides: Array<{
 ];
 
 function GuideIcon({ name }: { name: GuideIconName }): ReactNode {
-  const paths: Record<GuideIconName, ReactNode> = {
-    player: (
-      <>
-        <path d="M7.5 8.5h9a4 4 0 0 1 3.8 2.8l1.2 3.9a2.3 2.3 0 0 1-4.1 2l-1.2-1.7H7.8l-1.2 1.7a2.3 2.3 0 0 1-4.1-2l1.2-3.9a4 4 0 0 1 3.8-2.8Z" />
-        <path d="M7 12v3M5.5 13.5h3M16.5 12.5h.01M19 14.5h.01" />
-      </>
-    ),
-    author: (
-      <>
-        <path d="M8 4.5h8M9 3h6a1 1 0 0 1 1 1v2H8V4a1 1 0 0 1 1-1Z" />
-        <path d="M6 5h12a1.5 1.5 0 0 1 1.5 1.5v14H4.5v-14A1.5 1.5 0 0 1 6 5Z" />
-        <path d="M8 10h8M8 14h8M8 18h5" />
-      </>
-    ),
-    developer: (
-      <>
-        <path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5M13.5 4 10.5 20" />
-      </>
-    ),
-    api: (
-      <>
-        <path d="M9 4.5H7.8A1.8 1.8 0 0 0 6 6.3v3.2c0 1.4-.7 2.5-2 2.5 1.3 0 2 1.1 2 2.5v3.2a1.8 1.8 0 0 0 1.8 1.8H9M15 4.5h1.2A1.8 1.8 0 0 1 18 6.3v3.2c0 1.4.7 2.5 2 2.5-1.3 0-2 1.1-2 2.5v3.2a1.8 1.8 0 0 1-1.8 1.8H15" />
-      </>
-    ),
-  };
+  const GuideIconComponent = guideIcons[name];
 
   return (
-    <svg
+    <GuideIconComponent
       aria-hidden="true"
       className={styles.guideIcon}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {paths[name]}
-    </svg>
+      weight="regular"
+    />
   );
 }
 
 function ArrowIcon(): ReactNode {
   return (
-    <svg
-      aria-hidden="true"
-      className={styles.arrowIcon}
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 10h11M11 6l4 4-4 4" />
-    </svg>
+    <ArrowRight aria-hidden="true" className={styles.arrowIcon} weight="bold" />
   );
 }
 
