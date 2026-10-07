@@ -5,6 +5,49 @@ import { useLoadingPhase } from './loading-policy';
 import { StartupSeal } from './branding/StartupSeal';
 import { QuestMarker } from './branding/QuestMarker';
 
+/** Read-only refresh feedback. Keep confirmed content mounted beside this. */
+export function UpdatingIndicator({
+  active,
+  label = 'Updating this view',
+  previous = false,
+  error,
+  onRetry,
+  announce = true,
+}: {
+  active: boolean;
+  label?: string;
+  previous?: boolean;
+  error?: string;
+  onRetry?: () => void;
+  announce?: boolean;
+}) {
+  const phase = useLoadingPhase(active, label);
+  if (!active && !error) return null;
+  return (
+    <div className="updating-indicator" data-loading-phase={phase}>
+      <p role={announce ? 'status' : undefined}>
+        {active && phase !== 'hidden' ? <QuestMarker /> : null}
+        {active ? `${label.replace(/[.…]+$/, '')}…` : error}
+        {previous
+          ? ' Showing the previous result until this view is confirmed.'
+          : ' Showing last-confirmed content.'}
+        {active && phase === 'slow'
+          ? ' The update is taking longer than expected.'
+          : null}
+      </p>
+      {onRetry && (!active || phase === 'slow') ? (
+        <button
+          className="button button--quiet"
+          type="button"
+          onClick={onRetry}
+        >
+          Retry update
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /** Submission feedback never offers a retry that could duplicate a transaction. */
 export function ActionLoadingFeedback({
   active,

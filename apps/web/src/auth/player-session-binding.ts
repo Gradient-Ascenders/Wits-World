@@ -1,4 +1,4 @@
-const PLAYER_BINDING_KEY = 'wits-world.authenticated-player-id';
+export const PLAYER_BINDING_KEY = 'wits-world.authenticated-player-id';
 const UUID_PATTERN = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
 
 export type PlayerBindingResult = 'matched' | 'mismatched' | 'unavailable';

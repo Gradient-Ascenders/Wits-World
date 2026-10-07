@@ -1,3 +1,5 @@
+import { UpdatingIndicator } from '../LoadingState';
+import { useAuthorRetainedResource } from './AuthorRetainedReads';
 import {
   useCallback,
   useEffect,
@@ -244,10 +246,23 @@ type ReportProps = Props & { dateRange: DateRange };
 function useReport<T extends AuthorPage<unknown>>(
   load: (page: number, signal: AbortSignal) => Promise<T>,
   resetKey: string,
+  reportName: string,
 ) {
   const [pagination, setPagination] = useState({ key: resetKey, page: 1 });
   const page = pagination.key === resetKey ? pagination.page : 1;
-  const [result, setResult] = useState<T | null>(null);
+  const {
+    value: result,
+    setValue: setResult,
+    confirmed,
+    previous,
+    confirm,
+    revoke,
+    beginRead,
+  } = useAuthorRetainedResource<T | null>(
+    `analytics:${reportName}:${resetKey}:${page}`,
+    null,
+    `analytics:${reportName}`,
+  );
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState('');
   const [retryVersion, setRetryVersion] = useState(0);
@@ -256,11 +271,12 @@ function useReport<T extends AuthorPage<unknown>>(
     [resetKey],
   );
   useEffect(() => {
+    const canApplyRead = beginRead();
     const controller = new AbortController();
     setState('loading');
     void load(page, controller.signal)
       .then((next) => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || !canApplyRead()) return;
         if (
           next.totalItems > 0 &&
           next.items.length === 0 &&
@@ -271,11 +287,13 @@ function useReport<T extends AuthorPage<unknown>>(
           return;
         }
         setResult(next);
+        confirm();
         setError('');
         setState('ready');
       })
       .catch((caught: unknown) => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || !canApplyRead()) return;
+        revoke(caught);
         setError(
           caught instanceof AuthorApiError && caught.failure !== 'unavailable'
             ? caught.detail
@@ -284,9 +302,20 @@ function useReport<T extends AuthorPage<unknown>>(
         setState('error');
       });
     return () => controller.abort();
-  }, [load, page, retryVersion, setPage]);
+  }, [
+    load,
+    page,
+    retryVersion,
+    setPage,
+    confirm,
+    revoke,
+    setResult,
+    beginRead,
+  ]);
   return {
     result,
+    confirmed,
+    previous,
     state,
     error,
     page,
@@ -297,10 +326,28 @@ function useReport<T extends AuthorPage<unknown>>(
 
 type ReportState = {
   state: 'loading' | 'ready' | 'error';
+  confirmed: boolean;
+  previous: boolean;
   error: string;
   retry: () => void;
 };
-function ReportFeedback({ state, error, retry }: ReportState) {
+function ReportFeedback({
+  state,
+  error,
+  retry,
+  confirmed,
+  previous,
+}: ReportState) {
+  if (confirmed)
+    return (
+      <UpdatingIndicator
+        active={state === 'loading'}
+        label="Updating report…"
+        previous={previous}
+        error={state === 'error' ? error : undefined}
+        onRetry={retry}
+      />
+    );
   if (state === 'loading')
     return <AuthorLoadingState label="Loading report…" />;
   if (state === 'error')
@@ -436,6 +483,7 @@ function AttentionReport({
   const report = useReport<AuthorEventAttentionPage>(
     load,
     JSON.stringify(dateRange),
+    'overview',
   );
   const result = report.result;
   const chartItems = result?.items.slice(0, 6) ?? [];
@@ -451,7 +499,7 @@ function AttentionReport({
         </p>
       </AboutReport>
       <ReportFeedback {...report} />
-      {report.state === 'ready' &&
+      {(report.state === 'ready' || report.confirmed) &&
         result &&
         (result.totalItems === 0 ? (
           <EmptyReport title="No attention signals">
@@ -571,7 +619,11 @@ function LocationReport({
       }),
     [apiBaseUrl, getAccessToken, dateRange, mode],
   );
-  const report = useReport(load, JSON.stringify([dateRange, mode]));
+  const report = useReport(
+    load,
+    JSON.stringify([dateRange, mode]),
+    'locations',
+  );
   const result = report.result;
   return (
     <section className="analytics-report" aria-label="Locations report">
@@ -604,7 +656,7 @@ function LocationReport({
         </p>
       </AboutReport>
       <ReportFeedback {...report} />
-      {report.state === 'ready' &&
+      {(report.state === 'ready' || report.confirmed) &&
         result &&
         (result.totalItems === 0 ? (
           <EmptyReport title="No location activity">
@@ -682,11 +734,25 @@ function QuestionReport({
 }: ReportProps) {
   const [draft, setDraft] = useState<QuestionFilters>(emptyFilters);
   const [filters, setFilters] = useState<QuestionFilters>(emptyFilters);
-  const [events, setEvents] = useState<AuthorEvent[]>([]);
-  const [challenges, setChallenges] = useState<AuthorChallenge[]>([]);
+  const {
+    value: events,
+    setValue: setEvents,
+    confirm: confirmEvents,
+    revoke: revokeOptions,
+    beginRead: beginOptionsRead,
+  } = useAuthorRetainedResource<AuthorEvent[]>('analytics-event-options', []);
+  const {
+    value: challenges,
+    setValue: setChallenges,
+    confirm: confirmChallenges,
+  } = useAuthorRetainedResource<AuthorChallenge[]>(
+    `analytics-challenge-options:${draft.eventId}`,
+    [],
+  );
   const [optionsError, setOptionsError] = useState('');
   const [challengeError, setChallengeError] = useState('');
   useEffect(() => {
+    const canApplyRead = beginOptionsRead();
     const controller = new AbortController();
     void listAuthorEvents({
       apiBaseUrl,
@@ -694,22 +760,31 @@ function QuestionReport({
       signal: controller.signal,
     })
       .then((next) => {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && canApplyRead()) {
           setEvents(next);
+          confirmEvents();
           setOptionsError('');
         }
       })
-      .catch(() => {
-        if (!controller.signal.aborted)
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted && canApplyRead()) revokeOptions(error);
+        if (!controller.signal.aborted && canApplyRead())
           setOptionsError(
             'Couldn’t load event filters. You can still view all questions.',
           );
       });
     return () => controller.abort();
-  }, [apiBaseUrl, getAccessToken]);
+  }, [
+    apiBaseUrl,
+    getAccessToken,
+    beginOptionsRead,
+    confirmEvents,
+    revokeOptions,
+    setEvents,
+  ]);
   useEffect(() => {
+    const canApplyRead = beginOptionsRead();
     const controller = new AbortController();
-    setChallenges([]);
     setChallengeError('');
     if (draft.eventId)
       void listAuthorChallenges({
@@ -719,16 +794,29 @@ function QuestionReport({
         signal: controller.signal,
       })
         .then((next) => {
-          if (!controller.signal.aborted) setChallenges(next);
+          if (!controller.signal.aborted && canApplyRead()) {
+            setChallenges(next);
+            confirmChallenges();
+          }
         })
-        .catch(() => {
-          if (!controller.signal.aborted)
+        .catch((error: unknown) => {
+          if (!controller.signal.aborted && canApplyRead())
+            revokeOptions(error);
+          if (!controller.signal.aborted && canApplyRead())
             setChallengeError(
               'Couldn’t load challenges. Clear the event filter to continue.',
             );
         });
     return () => controller.abort();
-  }, [apiBaseUrl, getAccessToken, draft.eventId]);
+  }, [
+    apiBaseUrl,
+    getAccessToken,
+    draft.eventId,
+    beginOptionsRead,
+    confirmChallenges,
+    revokeOptions,
+    setChallenges,
+  ]);
   const load = useCallback(
     (page: number, signal: AbortSignal) =>
       listAuthorAdvancedQuestionAnalytics({
@@ -749,6 +837,7 @@ function QuestionReport({
   const report = useReport<AuthorAdvancedQuestionAnalyticsPage>(
     load,
     JSON.stringify([dateRange, filters]),
+    'questions',
   );
   const result = report.result;
   const activeSecondary = [
@@ -866,7 +955,7 @@ function QuestionReport({
         </p>
       </AboutReport>
       <ReportFeedback {...report} />
-      {report.state === 'ready' &&
+      {(report.state === 'ready' || report.confirmed) &&
         result &&
         (result.totalItems === 0 ? (
           <EmptyReport title="No question outcomes">
@@ -991,7 +1080,7 @@ function RewardReport({ apiBaseUrl, getAccessToken, dateRange }: ReportProps) {
       }),
     [apiBaseUrl, getAccessToken, dateRange],
   );
-  const report = useReport(load, JSON.stringify(dateRange));
+  const report = useReport(load, JSON.stringify(dateRange), 'completion');
   const result = report.result;
   return (
     <section className="analytics-report" aria-label="Rewards report">
@@ -1016,7 +1105,7 @@ function RewardReport({ apiBaseUrl, getAccessToken, dateRange }: ReportProps) {
         </p>
       </AboutReport>
       <ReportFeedback {...report} />
-      {report.state === 'ready' && result && (
+      {(report.state === 'ready' || report.confirmed) && result && (
         <>
           <AnalyticsComparisonChart
             title={

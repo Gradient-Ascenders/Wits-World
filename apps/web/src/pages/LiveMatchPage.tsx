@@ -24,7 +24,7 @@ import {
   type ApiAccessTokenProvider,
   useApiAccessToken,
 } from '../auth/useApiAccessToken';
-import { LoadingState } from '../components/LoadingState';
+import { LoadingState, UpdatingIndicator } from '../components/LoadingState';
 import {
   BattleActionPanel,
   BattleBench,
@@ -645,7 +645,13 @@ function CompletedLiveBattle({
 type SettlementState =
   | { status: 'loading' }
   | { error: LiveApiError; status: 'error' }
-  | { data: RankedSettlement; status: 'ready' };
+  | {
+      data: RankedSettlement;
+      status: 'ready';
+      matchId: string;
+      refreshing?: boolean;
+      refreshError?: string;
+    };
 
 function RankedSettlementSummary({
   apiBaseUrl,
@@ -664,6 +670,13 @@ function RankedSettlementSummary({
     let retry: number | undefined;
 
     async function loadSettlement() {
+      setState((current) =>
+        current.status === 'ready' &&
+        current.matchId === matchId &&
+        current.data.status === 'pending'
+          ? { ...current, refreshing: true, refreshError: undefined }
+          : current,
+      );
       try {
         const data = await getRankedSettlement({
           apiBaseUrl,
@@ -672,17 +685,36 @@ function RankedSettlementSummary({
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
-        setState({ data, status: 'ready' });
+        setState({ data, status: 'ready', matchId });
         if (data.status === 'pending') {
           retry = window.setTimeout(() => void loadSettlement(), 2_500);
         }
       } catch (caught) {
         if (controller.signal.aborted) return;
-        setState({ error: toSettlementError(caught), status: 'error' });
+        const error = toSettlementError(caught);
+        setState((current) =>
+          current.status === 'ready' &&
+          current.matchId === matchId &&
+          current.data.status === 'pending' &&
+          error.failure === 'unavailable'
+            ? {
+                ...current,
+                refreshing: false,
+                refreshError:
+                  'Settlement updates are unavailable. The last server check was still pending; no rating or influence outcome is confirmed here.',
+              }
+            : { error, status: 'error' },
+        );
       }
     }
 
-    setState({ status: 'loading' });
+    setState((current) =>
+      current.status === 'ready' &&
+      current.matchId === matchId &&
+      current.data.status === 'pending'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
     void loadSettlement();
     return () => {
       controller.abort();
@@ -690,7 +722,10 @@ function RankedSettlementSummary({
     };
   }, [apiBaseUrl, getAccessToken, matchId, revision]);
 
-  if (state.status === 'loading') {
+  if (
+    state.status === 'loading' ||
+    (state.status === 'ready' && state.matchId !== matchId)
+  ) {
     return (
       <LoadingState
         className="ranked-settlement ranked-settlement--loading"
@@ -740,6 +775,13 @@ function RankedSettlementSummary({
           {settlement.status === 'settled' ? 'Settled' : 'Finalizing'}
         </span>
       </div>
+      <UpdatingIndicator
+        active={Boolean(state.refreshing)}
+        label="Updating pending settlement"
+        error={state.refreshError}
+        onRetry={() => setRevision((value) => value + 1)}
+        announce={false}
+      />
       {ratingReady ? (
         <div className="ranked-rating-change">
           <span>
@@ -757,11 +799,15 @@ function RankedSettlementSummary({
         </div>
       ) : (
         <p>
-          Your rating is still being finalized by the server. This panel will
-          update automatically.
+          Your rating is still being finalized by the server. This panel will{' '}
+          {state.refreshError
+            ? 'resume after retrying the server check.'
+            : 'update automatically.'}
         </p>
       )}
-      <TerritorySettlementResult settlement={settlement} />
+      {!state.refreshError ? (
+        <TerritorySettlementResult settlement={settlement} />
+      ) : null}
       {settlement.settledAt ? (
         <time dateTime={settlement.settledAt}>
           Settled {formatDate(settlement.settledAt)}

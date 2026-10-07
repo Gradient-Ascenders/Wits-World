@@ -1,3 +1,4 @@
+import { UpdatingIndicator } from '../LoadingState';
 import { StateIcon } from '../StatusMessage';
 import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
 import {
@@ -19,11 +20,16 @@ import type {
 import type { LocationExperienceState } from './EventList';
 
 export type TrailListState =
-  | { status: 'empty' }
+  | { status: 'empty'; refreshing?: boolean; refreshError?: string }
   | { failure: TrailDiscoveryFailure; status: 'error' }
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; trails: readonly PlayerTrailSummary[] };
+  | {
+      status: 'ready';
+      trails: readonly PlayerTrailSummary[];
+      refreshing?: boolean;
+      refreshError?: string;
+    };
 
 export type TrailDetailState =
   | {
@@ -36,7 +42,7 @@ export type TrailDetailState =
   | { status: 'ready'; trail: PlayerTrail };
 
 export type NearbyDiscoveryState =
-  | { status: 'empty' }
+  | { status: 'empty'; refreshing?: boolean; refreshError?: string }
   | {
       failure: 'authorization' | 'location-retry' | 'unavailable';
       status: 'error';
@@ -44,7 +50,12 @@ export type NearbyDiscoveryState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'waiting-location' }
-  | { events: readonly NearbyUnvisitedEvent[]; status: 'ready' };
+  | {
+      events: readonly NearbyUnvisitedEvent[];
+      status: 'ready';
+      refreshing?: boolean;
+      refreshError?: string;
+    };
 
 interface TrailListProps {
   onOpenTrail: (trailId: string) => void;
@@ -75,6 +86,12 @@ export function TrailList({ onOpenTrail, onRetry, state }: TrailListProps) {
   if (state.status === 'empty') {
     return (
       <div className="event-list__state">
+        <UpdatingIndicator
+          active={state.refreshing ?? false}
+          error={state.refreshError}
+          label="Updating trails"
+          onRetry={onRetry}
+        />
         <strong>No trails available.</strong>
         <p>Check back later.</p>
       </div>
@@ -82,45 +99,55 @@ export function TrailList({ onOpenTrail, onRetry, state }: TrailListProps) {
   }
 
   return (
-    <ul aria-label="Campus trails" className="trail-list">
-      {state.trails.map((trail) => {
-        const status = trailSummaryStatus(trail);
-        return (
-          <li className="trail-summary" key={trail.trailId}>
-            <div className="trail-summary__heading">
-              <h3>{trail.title}</h3>
-              <strong
-                aria-label={`${trail.completedStepCount} of ${trail.totalSteps} steps completed`}
+    <>
+      <UpdatingIndicator
+        active={state.refreshing ?? false}
+        error={state.refreshError}
+        label="Updating trails"
+        onRetry={onRetry}
+      />
+      <ul aria-label="Campus trails" className="trail-list">
+        {state.trails.map((trail) => {
+          const status = trailSummaryStatus(trail);
+          return (
+            <li className="trail-summary" key={trail.trailId}>
+              <div className="trail-summary__heading">
+                <h3>{trail.title}</h3>
+                <strong
+                  aria-label={`${trail.completedStepCount} of ${trail.totalSteps} steps completed`}
+                >
+                  {trail.completedStepCount}/{trail.totalSteps}
+                </strong>
+              </div>
+              {trail.description ? (
+                <p className="trail-summary__description">
+                  {trail.description}
+                </p>
+              ) : null}
+              <div className="trail-summary__progress">
+                <progress
+                  aria-label={`Progress for ${trail.title}`}
+                  max={trail.totalSteps}
+                  value={trail.completedStepCount}
+                />
+                <span className={`trail-status trail-status--${status.tone}`}>
+                  <TrailStatusIcon name={status.icon} />
+                  {status.label}
+                </span>
+              </div>
+              <button
+                className="button button--quiet trail-summary__action"
+                onClick={() => onOpenTrail(trail.trailId)}
+                type="button"
               >
-                {trail.completedStepCount}/{trail.totalSteps}
-              </strong>
-            </div>
-            {trail.description ? (
-              <p className="trail-summary__description">{trail.description}</p>
-            ) : null}
-            <div className="trail-summary__progress">
-              <progress
-                aria-label={`Progress for ${trail.title}`}
-                max={trail.totalSteps}
-                value={trail.completedStepCount}
-              />
-              <span className={`trail-status trail-status--${status.tone}`}>
-                <TrailStatusIcon name={status.icon} />
-                {status.label}
-              </span>
-            </div>
-            <button
-              className="button button--quiet trail-summary__action"
-              onClick={() => onOpenTrail(trail.trailId)}
-              type="button"
-            >
-              View trail
-              <span className="sr-only">: {trail.title}</span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+                View trail
+                <span className="sr-only">: {trail.title}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }
 
@@ -330,6 +357,12 @@ export function NearbyList({
   if (state.status === 'empty') {
     return (
       <div className="event-list__state">
+        <UpdatingIndicator
+          active={state.refreshing ?? false}
+          error={state.refreshError}
+          label="Updating nearby events"
+          onRetry={onRetry}
+        />
         <strong>No nearby unvisited events.</strong>
         <p>
           No active, unvisited events within about 1 km of your last location.
@@ -347,6 +380,12 @@ export function NearbyList({
 
   return (
     <div className="nearby-discovery">
+      <UpdatingIndicator
+        active={state.refreshing ?? false}
+        error={state.refreshError}
+        label="Updating nearby events"
+        onRetry={onRetry}
+      />
       <p className="nearby-discovery__context">
         Unvisited events open now, within about 1 km of your last location.
       </p>

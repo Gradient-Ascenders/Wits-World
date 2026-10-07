@@ -1,3 +1,5 @@
+import { UpdatingIndicator } from '../LoadingState';
+import { useAuthorRetainedResource } from './AuthorRetainedReads';
 import { createAppDateTimeFormatter } from '../../date-time';
 import { authorErrorDetail } from './author-error-copy';
 import { StateIcon } from '../StatusMessage';
@@ -32,8 +34,19 @@ export function AuthorHistoryPanel({
 }: AuthorHistoryPanelProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [page, setPage] = useState(1);
-  const [result, setResult] =
-    useState<AuthorPage<AuthorContentHistoryItem> | null>(null);
+  const {
+    value: result,
+    setValue: setResult,
+    confirmed,
+    previous,
+    confirm,
+    revoke,
+    beginRead,
+  } = useAuthorRetainedResource<AuthorPage<AuthorContentHistoryItem> | null>(
+    `history:${entityType}:${entityId}:${page}`,
+    null,
+    `history:${entityType}:${entityId}`,
+  );
   const [state, setState] = useState<'error' | 'idle' | 'loading' | 'ready'>(
     'idle',
   );
@@ -42,6 +55,7 @@ export function AuthorHistoryPanel({
 
   const load = useCallback(async () => {
     requestRef.current?.abort();
+    const canApplyRead = beginRead();
     const controller = new AbortController();
     requestRef.current = controller;
     setState('loading');
@@ -55,13 +69,15 @@ export function AuthorHistoryPanel({
         pageSize: 10,
         signal: controller.signal,
       });
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && canApplyRead()) {
         setResult(next);
+        confirm();
         setError('');
         setState('ready');
       }
     } catch (caught) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && canApplyRead()) {
+        revoke(caught);
         setError(
           caught instanceof AuthorApiError
             ? authorErrorDetail(caught)
@@ -70,12 +86,21 @@ export function AuthorHistoryPanel({
         setState('error');
       }
     }
-  }, [apiBaseUrl, entityId, entityType, getAccessToken, page]);
+  }, [
+    apiBaseUrl,
+    entityId,
+    entityType,
+    getAccessToken,
+    page,
+    confirm,
+    revoke,
+    setResult,
+    beginRead,
+  ]);
 
   useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => {
     setPage(1);
-    setResult(null);
     setState('idle');
   }, [entityId, entityType]);
   useEffect(() => {
@@ -90,8 +115,16 @@ export function AuthorHistoryPanel({
     >
       <summary>Review history</summary>
       <div className="author-history__body">
-        {state === 'loading' ? (
+        {state === 'loading' && !confirmed ? (
           <AuthorLoadingState label="Loading review history…" />
+        ) : null}
+        {confirmed ? (
+          <UpdatingIndicator
+            active={state === 'loading'}
+            label="Updating review history…"
+            previous={previous}
+            onRetry={load}
+          />
         ) : null}
         {state === 'error' ? (
           <div
@@ -110,10 +143,12 @@ export function AuthorHistoryPanel({
             </button>
           </div>
         ) : null}
-        {state === 'ready' && result?.items.length === 0 ? (
+        {(state === 'ready' || confirmed) && result?.items.length === 0 ? (
           <p className="author-state">No review history has been recorded.</p>
         ) : null}
-        {state === 'ready' && result && result.items.length > 0 ? (
+        {(state === 'ready' || confirmed) &&
+        result &&
+        result.items.length > 0 ? (
           <ol className="author-history__list">
             {result.items.map((item) => (
               <li key={item.auditId}>
@@ -132,11 +167,11 @@ export function AuthorHistoryPanel({
             ))}
           </ol>
         ) : null}
-        {state === 'ready' && result && result.totalPages > 1 ? (
+        {(state === 'ready' || confirmed) && result && result.totalPages > 1 ? (
           <nav aria-label="Review history pages" className="author-pagination">
             <button
               className="button button--quiet"
-              disabled={result.page <= 1}
+              disabled={state === 'loading' || result.page <= 1}
               onClick={() => setPage((current) => Math.max(1, current - 1))}
               type="button"
             >
@@ -147,7 +182,7 @@ export function AuthorHistoryPanel({
             </span>
             <button
               className="button button--quiet"
-              disabled={result.page >= result.totalPages}
+              disabled={state === 'loading' || result.page >= result.totalPages}
               onClick={() => setPage((current) => current + 1)}
               type="button"
             >

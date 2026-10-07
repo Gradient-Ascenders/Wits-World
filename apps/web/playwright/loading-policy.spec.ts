@@ -254,3 +254,79 @@ test('fast identity and content skip the generic takeover and respect reduced mo
   await expect(page.locator('.startup-screen')).toHaveCount(0);
   await expect(page.locator('.state-loading')).toHaveCount(0);
 });
+
+for (const width of [390, 1440]) {
+  test(`collection revisit retains confirmed cards while revalidating at ${width}px`, async ({
+    page,
+  }, info) => {
+    const control = await fixture(page);
+    control.pendingCards = false;
+    let reads = 0;
+    let pending: import('@playwright/test').Route | undefined;
+    let hold = false;
+    await page.route('**/api/v1/cards/collection', async (route) => {
+      reads += 1;
+      if (hold) {
+        pending = route;
+        return;
+      }
+      await route.fulfill({
+        json: { cards: buildStarterCards(), requestId: 'retained-fixture' },
+      });
+    });
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/collection');
+    const cards = page.getByRole('list', {
+      name: 'Owned card designs',
+      exact: true,
+    });
+    await expect(cards).toBeVisible();
+    await expect.poll(() => reads).toBe(1);
+    await page
+      .getByRole('link', { name: 'Explore', exact: true })
+      .first()
+      .click();
+    hold = true;
+    await page
+      .getByRole('link', { name: 'Collection', exact: true })
+      .first()
+      .click();
+    await expect.poll(() => reads).toBe(2);
+    if (process.env.RETENTION_BASELINE === 'true') {
+      await expect(
+        page.getByRole('heading', { name: 'Loading your cards' }),
+      ).toBeVisible();
+      await expect(cards).toHaveCount(0);
+    } else {
+      await expect(cards).toBeVisible();
+      await expect(page.locator('.page-loading-state')).toHaveCount(0);
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Updating your cards' }),
+      ).toBeVisible();
+      await capture(page, info, `retained-revisit-${width}`);
+      await pending!.fulfill({
+        status: 503,
+        json: { code: 'UNAVAILABLE', requestId: 'retained-fixture' },
+      });
+      await expect(
+        page.getByRole('button', { name: 'Retry update' }),
+      ).toBeVisible();
+      await expect(cards).toBeVisible();
+      hold = false;
+      await page.getByRole('button', { name: 'Retry update' }).click();
+      await expect.poll(() => reads).toBe(3);
+      await expect(page.locator('.updating-indicator')).toHaveCount(0);
+    }
+    await info.attach('controlled-revisit.json', {
+      body: JSON.stringify({
+        viewport: { width, height: 844 },
+        readCount: reads,
+        revisitTakeovers: process.env.RETENTION_BASELINE === 'true' ? 1 : 0,
+        fixture:
+          'response withheld until inspection; failed revalidation then retry',
+        liveService: false,
+      }),
+      contentType: 'application/json',
+    });
+  });
+}

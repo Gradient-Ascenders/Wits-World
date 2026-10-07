@@ -281,7 +281,11 @@ describe('desktop analytics workspace', () => {
     renderWorkspace('/author/analytics/locations');
     await screen.findByRole('region', { name: 'Location analytics results' });
     await selectOption(user, screen.getByLabelText('Location view'), 'popular');
-    await screen.findByRole('alert');
+    await screen.findByRole('button', { name: 'Retry update' });
+    expect(
+      screen.getByRole('region', { name: 'Location analytics results' }),
+    ).toBeVisible();
+    expect(screen.getByText(/Showing the previous result/)).toBeVisible();
     await user.click(screen.getByRole('link', { name: 'Rewards' }));
     expect(
       await screen.findByRole('region', { name: 'Card issuance results' }),
@@ -290,7 +294,7 @@ describe('desktop analytics workspace', () => {
     expect(screen.getByLabelText('Location view')).toHaveTextContent(
       'Popular locations',
     );
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await user.click(screen.getByRole('button', { name: 'Retry update' }));
     expect(
       await screen.findByRole('region', { name: 'Location analytics results' }),
     ).toBeVisible();

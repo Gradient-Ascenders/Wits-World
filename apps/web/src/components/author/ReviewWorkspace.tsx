@@ -1,3 +1,5 @@
+import { UpdatingIndicator } from '../LoadingState';
+import { useAuthorRetainedResource } from './AuthorRetainedReads';
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
 import {
@@ -41,14 +43,26 @@ export function ReviewWorkspace({
   const restoredRef = useRef(false);
   const tableRef = useRef<HTMLTableElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const [result, setResult] =
-    useState<AuthorPage<AuthorReviewQueueItem> | null>(null);
+  const {
+    value: result,
+    setValue: setResult,
+    confirmed,
+    previous,
+    confirm,
+    revoke,
+    beginRead,
+  } = useAuthorRetainedResource<AuthorPage<AuthorReviewQueueItem> | null>(
+    `review:${filter}:${page}`,
+    null,
+    'review',
+  );
   const [state, setState] = useState<'error' | 'loading' | 'ready'>('loading');
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const requestRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
     requestRef.current?.abort();
+    const canApplyRead = beginRead();
     const controller = new AbortController();
     requestRef.current = controller;
     setState('loading');
@@ -62,21 +76,33 @@ export function ReviewWorkspace({
         pageSize: 10,
         signal: controller.signal,
       });
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && canApplyRead()) {
         if (page > Math.max(1, next.totalPages)) {
           setPage(Math.max(1, next.totalPages));
           return;
         }
         setResult(next);
+        confirm();
         setState('ready');
       }
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && canApplyRead()) {
+        revoke(error);
         setApiError(toAuthorError(error));
         setState('error');
       }
     }
-  }, [apiBaseUrl, filter, getAccessToken, page, setPage]);
+  }, [
+    apiBaseUrl,
+    filter,
+    getAccessToken,
+    page,
+    setPage,
+    confirm,
+    revoke,
+    setResult,
+    beginRead,
+  ]);
 
   useEffect(() => {
     void load();
@@ -127,8 +153,16 @@ export function ReviewWorkspace({
         />
       </header>
 
-      {state === 'loading' ? (
+      {state === 'loading' && !confirmed ? (
         <AuthorLoadingState label="Loading submissions…" />
+      ) : null}
+      {confirmed ? (
+        <UpdatingIndicator
+          active={state === 'loading'}
+          label="Updating submissions…"
+          previous={previous}
+          onRetry={load}
+        />
       ) : null}
       {state === 'error' ? (
         <section
@@ -151,7 +185,7 @@ export function ReviewWorkspace({
           </button>
         </section>
       ) : null}
-      {state === 'ready' && result?.items.length === 0 ? (
+      {(state === 'ready' || confirmed) && result?.items.length === 0 ? (
         <section className="author-state author-state--empty state-message state-message--empty">
           <StateIcon tone="empty" />
           <strong>
@@ -173,7 +207,7 @@ export function ReviewWorkspace({
           ) : null}
         </section>
       ) : null}
-      {state === 'ready' && result && result.items.length > 0 ? (
+      {(state === 'ready' || confirmed) && result && result.items.length > 0 ? (
         <div className="review-table-wrap">
           <table className="review-table" ref={tableRef}>
             <caption className="sr-only">
@@ -231,7 +265,7 @@ export function ReviewWorkspace({
         </div>
       ) : null}
 
-      {state === 'ready' && result && result.totalPages > 1 ? (
+      {(state === 'ready' || confirmed) && result && result.totalPages > 1 ? (
         <nav aria-label="Review queue pages" className="author-pagination">
           <button
             className="button button--quiet"

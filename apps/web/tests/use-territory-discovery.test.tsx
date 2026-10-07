@@ -1,7 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TerritoryZoneSummary } from '../src/api/territory';
+import {
+  TerritoryApiError,
+  type TerritoryZoneSummary,
+} from '../src/api/territory';
 import { useTerritoryDiscovery } from '../src/components/exploration/useTerritoryDiscovery';
 
 const territoryApi = vi.hoisted(() => ({
@@ -88,5 +91,91 @@ describe('useTerritoryDiscovery', () => {
 
     expect(territoryApi.listZones).toHaveBeenCalledTimes(2);
     expect(result.current.list.status).toBe('ready');
+  });
+  it('retains a confirmed empty list when its refresh fails', async () => {
+    territoryApi.listZones.mockResolvedValueOnce([]);
+    const { result } = renderHook(() =>
+      useTerritoryDiscovery({
+        apiBaseUrl: 'https://api.example.test/api/v1',
+        enabled: true,
+        getAccessToken,
+        onSelectedZoneUnavailable,
+        selectedZoneId: null,
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.list.status).toBe('empty');
+    territoryApi.listZones.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => {
+      result.current.refreshZones();
+      await Promise.resolve();
+    });
+    expect(result.current.list).toMatchObject({
+      status: 'empty',
+      zones: [],
+      stale: true,
+      refreshing: false,
+    });
+  });
+
+  it('retains independently confirmed detail sections after a partial refresh failure', async () => {
+    const history = { entries: [{ owner: 'confirmed' }] };
+    const standings = { leaders: [] };
+    territoryApi.getZone.mockResolvedValue(zone);
+    territoryApi.getHistory.mockResolvedValue(history);
+    territoryApi.getStandings.mockResolvedValue(standings);
+    const { result } = renderHook(() =>
+      useTerritoryDiscovery({
+        apiBaseUrl: 'https://api.example.test/api/v1',
+        enabled: true,
+        getAccessToken,
+        onSelectedZoneUnavailable,
+        selectedZoneId: zone.zoneId,
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.detail.history).toBe(history);
+    const confirmedAt = result.current.detail.lastUpdatedAt;
+    territoryApi.getHistory.mockRejectedValueOnce(new Error('offline'));
+    territoryApi.getStandings.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => {
+      result.current.refreshDetail();
+      await Promise.resolve();
+    });
+    expect(result.current.detail).toMatchObject({
+      status: 'ready',
+      history,
+      standings,
+      stale: true,
+      failedSections: ['standings', 'history'],
+      lastUpdatedAt: confirmedAt,
+    });
+  });
+  it('clears retained territory data when refresh loses authorization', async () => {
+    const { result } = renderHook(() =>
+      useTerritoryDiscovery({
+        apiBaseUrl: 'https://api.example.test/api/v1',
+        enabled: true,
+        getAccessToken,
+        onSelectedZoneUnavailable,
+        selectedZoneId: null,
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.list.status).toBe('ready');
+    territoryApi.listZones.mockRejectedValueOnce(
+      new TerritoryApiError('authorization'),
+    );
+    await act(async () => {
+      result.current.refreshZones();
+      await Promise.resolve();
+    });
+    expect(result.current.list).toMatchObject({ status: 'error', zones: [] });
   });
 });

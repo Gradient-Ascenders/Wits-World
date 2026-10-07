@@ -604,3 +604,57 @@ describe('progression profile and standings page', () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe('retained standings refreshes', () => {
+  it('keeps the previous standings while filters race and ignores the late cancelled result', async () => {
+    let resolveMonthly!: (response: Response) => void;
+    let resolveLatest!: (response: Response) => void;
+    let allTimeReads = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('period=monthly'))
+        return new Promise<Response>((resolve) => {
+          resolveMonthly = resolve;
+        });
+      allTimeReads += 1;
+      if (allTimeReads === 1)
+        return Promise.resolve(
+          standingsResponse({
+            entries: [buildStandingEntry({ playerName: 'confirmed_player' })],
+          }),
+        );
+      return new Promise<Response>((resolve) => {
+        resolveLatest = resolve;
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <Auth0Context.Provider value={authValue()}>
+        <LeaderboardPage apiBaseUrl={apiBaseUrl} />
+      </Auth0Context.Provider>,
+    );
+    await screen.findByText('confirmed_player');
+    await userEvent.click(screen.getByRole('button', { name: 'This month' }));
+    expect(screen.getByText('confirmed_player')).toBeVisible();
+    expect(screen.getByText(/Showing the previous result/u)).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'All time' }));
+    await waitFor(() => expect(resolveLatest).toBeDefined());
+    resolveLatest(
+      standingsResponse({
+        entries: [buildStandingEntry({ playerName: 'latest_player' })],
+      }),
+    );
+    await screen.findByText('latest_player');
+    resolveMonthly(
+      standingsResponse({
+        period: 'monthly',
+        month: '2026-10',
+        entries: [buildStandingEntry({ playerName: 'late_player' })],
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText('latest_player')).toBeVisible(),
+    );
+    expect(screen.queryByText('late_player')).not.toBeInTheDocument();
+  });
+});

@@ -1,4 +1,4 @@
-import { LoadingState } from '../components/LoadingState';
+import { LoadingState, UpdatingIndicator } from '../components/LoadingState';
 import { createAppDateTimeFormatter } from '../date-time';
 import { StatusMessage } from '../components/StatusMessage';
 import { useEffect, useRef, useState } from 'react';
@@ -28,9 +28,11 @@ function useLocalState() {
   const { revision } = useOffline();
   const [state, setState] = useState<LocalState | null>(null);
   const [error, setError] = useState('');
+  const [reading, setReading] = useState(true);
   useEffect(() => {
     let active = true;
     setError('');
+    setReading(true);
     void readOfflineState()
       .then((value) => {
         if (active) setState(value);
@@ -38,6 +40,9 @@ function useLocalState() {
       .catch(() => {
         if (active)
           setError('Device storage is unavailable. Connect to play online.');
+      })
+      .finally(() => {
+        if (active) setReading(false);
       });
     return () => {
       active = false;
@@ -49,11 +54,12 @@ function useLocalState() {
         ? { session: undefined, packs: [], attempts: [], receipts: [] }
         : state,
     error,
+    reading,
   };
 }
 
 export function OfflineExplorePage() {
-  const { state, error } = useLocalState();
+  const { state, error, reading } = useLocalState();
   const { refresh, revision, online, attemptSync = {} } = useOffline();
   const [, navigate] = useLocation();
   const [message, setMessage] = useState('');
@@ -125,6 +131,11 @@ export function OfflineExplorePage() {
               ? 'Network detected; server connection not guaranteed.'
               : 'No connection.'}
           </p>
+          <UpdatingIndicator
+            active={reading}
+            label="Updating saved events"
+            onRetry={refresh}
+          />
           <SyncFeedback label="Sync saved attempts" />
           <EventSchematic packs={state.packs} />
           {state.packs.length === 0 && (

@@ -48,9 +48,11 @@ export function CollectionEvolutions({
   getAccessToken,
   onApplyResult,
   onRefreshCollection,
+  collectionUpdating = false,
 }: {
   apiBaseUrl: string;
   cards: OwnedCard[];
+  collectionUpdating?: boolean;
   getAccessToken: ApiAccessTokenProvider;
   onApplyResult: (result: CardEvolutionResult) => void;
   onRefreshCollection: () => Promise<void>;
@@ -416,7 +418,7 @@ export function CollectionEvolutions({
                             setSelected({ card, preview });
                           }}
                           aria-label={`Preview ${card.name} evolution`}
-                          disabled={checking}
+                          disabled={checking || collectionUpdating}
                         >
                           Preview evolution
                         </button>

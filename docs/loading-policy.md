@@ -62,8 +62,8 @@ and **action** (a submitted operation or its reconciliation). “Shared” means
 appropriate loading primitive supplies the 8-second explanation and escape;
 existing error states retain their own retry and sign-in actions. Local action
 feedback deliberately uses operation-specific recovery instead of a generic
-mutation retry. Retaining complete data on revisits is a separate follow-up
-(#357); this policy does not introduce a cache or claim retained revisit state.
+mutation retry. The retained-read contract and resource matrix below implement the revisit/refresh
+companion (#357). Initial identity and authoritative action gates still apply.
 
 | Route                                                        | Trigger and classification                                                                                  | Context retained                                                                                      | Announcement and slow recovery                                                                                                |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -199,3 +199,157 @@ earlier full-suite count below predates this follow-up.
 | Documentation navigation                     | All 5 docs tests passed, including the 3 sidebar coverage tests; sidebar ESLint passed.                                                                                                                                                                                                                                                                       |
 | Actual browser zoom and screen-reader speech | Unverified. A reflow viewport checks layout response and does not certify actual 200% browser zoom or spoken announcements.                                                                                                                                                                                                                                   |
 | Production timing                            | Unmeasured. Controlled delays validate policy transitions and safe recovery, not real p50/p95/p99 latency.                                                                                                                                                                                                                                                    |
+
+## Retained reads and revisits
+
+Use `UpdatingIndicator` beside mounted confirmed content, rather than replacing
+that content with `PageLoadingState`. Pass `active`, an operation-specific `label`,
+`error` after a failed update, and a read-only `onRetry`. `previous` explicitly
+identifies a previous query/page result; describe the displayed response's period
+and pagination separately from the requested filters. A failed update never
+confirms the requested query or mutation. Keep errors local, preserve empty
+confirmed results, and do not infer an empty requested result until its read
+finishes. The marker follows the same 150 ms/8-second policy. Quiet polling uses
+`announce={false}` so it does not continually interrupt screen readers.
+
+Refreshes preserve mounted headings, results, filters, pagination, draft fields,
+inspection dialogs, focus, and scroll by keeping their components mounted. Focus
+moves only for the existing explicit result/error or dialog completion path,
+after reconciliation settles. Changing an actual record/owner/match resets its
+resource; a newly selected query may retain the prior query only with the explicit
+previous-result label. Author navigation still uses its unsaved-draft guard;
+navigating away intentionally discards local editor state after that guard. This
+is not persistent draft storage or a general route keep-alive system.
+
+There are two opt-in read stores, with no new dependency or persistent account
+cache:
+
+- `CollectionReadProvider` holds one owned-card snapshot, at most 5,000 cards,
+  for two minutes. `SessionCollectionShell` scopes it to API URL, confirmed player
+  ID and role. Binding/storage invalidation clears it and prevents late reads
+  from repopulating the invalidated store. Collection ownership mutations clear
+  it. Returning to Collection revalidates immediately; starters and evolution
+  actions require the fresh read. The snapshot only accelerates presentation.
+- `AuthorRetainedReads` lives within the Author console, holds at most 40 entries
+  for 60 seconds, and scopes keys to each resource/query/page. Leaving the console,
+  changing API/player/role, or losing access clears it. Request generations reject
+  superseded and revoked reads. Query groups can show previous results; a
+  different event/challenge/case does not inherit another record's data. Revisits
+  always revalidate, lifecycle controls require current reads, and reconciliation
+  invalidates relevant snapshots.
+
+`ProtectedRoute` also keys mounted protected children by confirmed player ID and
+role. Unresolved identity hides protected routes; no snapshot bypasses that gate.
+Authorization loss clears protected snapshots instead of retaining a read-only
+copy. Mutations retain their original transaction identity/expected version, never
+replay an obsolete intent, and do not treat leaving or aborting a browser read as
+cancellation of server work.
+
+CPU/PvP/challenge/eligibility, new trade/detail transactions, and new season
+readiness deliberately fetch authoritative data on navigation. Their stale
+snapshots cannot enable legal actions, accepting offers, joining queues, rewards,
+or eligibility. Short-lived descriptive retention is appropriate for the two
+bounded stores above; broader account or route caching has no measured benefit
+here and is intentionally absent. Most other route revisits therefore use their
+existing first-read boundary, while refreshes within the mounted route retain
+safe content. This distinction is explicit in the matrix.
+
+## Route/resource refresh matrix
+
+This matrix supplements the initial-load inventory above and covers `App.tsx`,
+`author-routing.ts`, nested resources and shared surfaces. **Gate** means no safe
+snapshot can authorize the operation; **mounted** means retention is restricted
+to the currently mounted resource; **store** means the bounded revisit store
+above. All async rows retain the shared shell unless identity forbids access.
+Verification names identify frontend fixture checks, not live service evidence.
+
+| Route/resource                                                      | First load and revisit                                                        | Refetch and retained content/indicator                                                                                | Freshness/reset and error recovery                                                                                                               | Verification                                               |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| Home, About redirect, Not Found, configuration                      | Static/module boundary; data retention not applicable                         | Navigation stays available; no independent data update                                                                | Existing module/config error recovery; About redirects Home                                                                                      | application, loading-policy                                |
+| Lazy routes, sign-in callback, current player, name setup           | Identity/module gate; no protected reuse                                      | Shared preparation/recovery; public Home/offline remain accessible                                                    | Confirmed API/player/role changes reset protected children; 20s identity bound                                                                   | authentication, auth-loading, protected-state-retention    |
+| Explore events/map                                                  | Initial region; mounted revisit/refetch only                                  | Confirmed event list including empty results stays visible; local update/retry; map independent                       | Abort old reads; auth failure clears list; map/list unavailable paths remain independent                                                         | explore-page, exploration, map-provider                    |
+| Explore Nearby                                                      | Location/read region; mounted                                                 | Previous confirmed nearby list retains inspection and focus during refresh/failure                                    | Results are descriptive; start still requires server eligibility; new location latest-wins                                                       | explore-page                                               |
+| Explore Trails/list/detail                                          | List region; new trail detail gate                                            | List/query keeps previous confirmed results with update/retry; detail has own read boundary                           | New trail ID clears prior detail; auth failure clears list; abort cleanup                                                                        | trail-discovery                                            |
+| Explore Territories/list/detail/history/standings                   | Independent regions; mounted                                                  | Partial refresh retains failed sections and independently reveals successful sections; honest stale timestamp         | Zone/season/identity reset; authorization clears; per-section retry; empty list retained                                                         | territory-experience, use-territory-discovery              |
+| Location permission/watch/event eligibility                         | Action/read gate; no eligibility cache                                        | Map/list remain mounted; specific location/check status                                                               | Hidden-tab watch pauses; fresh server eligibility required, stale results cannot start                                                           | explore-page, browser-location                             |
+| Challenge attempt/question/result/rewards                           | New attempt gate                                                              | Existing confirmed answer/attempt retained during submission and result reconciliation                                | Attempt ID/identity resets; original submission IDs and authoritative deadlines/results preserved                                                | challenge-page, challenge-rewards, challenge-deadline      |
+| Collection cards/inspection                                         | Initial gate; **store** revisit                                               | Confirmed cards stay mounted during reread/failure; update/retry; inspection/filter state retained in mounted route   | 2-minute API/player/role snapshot; invalidate ownership mutations; new read required for actions                                                 | collection-page; loading-policy browser revisit            |
+| Collection starter options/claim                                    | Independent region; mounted                                                   | Confirmed choices retained during retry; claim/dialog retained                                                        | Claim disabled while stale; original submission identity; successful/already-claimed result revalidates cards before focus                       | collection-page                                            |
+| Collection evolutions/availability/dialog                           | Fresh preview regions even on revisit                                         | Progressive confirmed candidates retain checking state; one scan indicator; focused transaction not replaced          | Per-definition latest-wins; no empty conclusion before batch settles; collection freshness gates action                                          | collection-evolutions, collection-page                     |
+| Decks and `/decks` redirect                                         | Ownership+saved-deck gate on revisit                                          | Mounted cards/decks/editor remain through retry/failure; update/retry                                                 | Fresh read required to save/select/delete/start; draft composition/name retained; server rule validation                                         | decks-page                                                 |
+| Trade inbox/open/history/pagination                                 | Initial transaction-list gate; mounted                                        | Rows/tab/paging retained; failed load-more retries same page; update/retry                                            | Auth failure clears; failed page does not advance confirmed paging                                                                               | trade-pages                                                |
+| Trade new/edit/preview/confirmation                                 | New trade/resource gate                                                       | Same-ID reread keeps recipient/search/draft selections/confirmation                                                   | Original expected version and submission ID; stale read locks submit; changed trade ID resets                                                    | trade-pages                                                |
+| Trade detail/collection reconciliation                              | New-ID gate; mounted same-ID refresh                                          | Confirmed offer/dialog retained with update/error/retry                                                               | No accept/cancel from stale read; resource deletion/auth loss clears; ownership mutation invalidates collection snapshot                         | trade-pages                                                |
+| CPU entry/deck/recent results/player battles                        | CPU/deck authority region on revisit; independent summary regions             | Dashboard/mode navigation remain; 20s CPU readiness bound                                                             | Start/resume requires current entry/deck; retries only failed region                                                                             | matches-pages; loading-policy browser CPU                  |
+| CPU detail/actions/history                                          | New match gate; mounted board reconciliation                                  | Current board retained during action/recovery; paginated history retains rows                                         | Match/version/submission identity; no stale legal-action replay; history paging error/retry                                                      | matches-pages, matches-pages                               |
+| PvP hub/inbox/history/search                                        | New hub read; mounted                                                         | Background collections retain tabs/rows/paging; local failure/retry                                                   | Forced-poll abort guarded; current deck/invitation/action version required                                                                       | pvp-pages                                                  |
+| PvP detail/turn/deadline/forfeit                                    | New match gate; mounted                                                       | Background polling/reconnect retains board; mutation/dialog retained                                                  | One refresh at a time, visibility/deadline handling unchanged; server legal actions only                                                         | pvp-pages, pvp-pages                                       |
+| Live lobby/queue/proposal/season/decks                              | Fresh readiness gate; season rollover intentionally resets                    | Queue/proposal retain during serialized polls; descriptive sections have independent updates                          | Poll and heartbeat do not overlap; due heartbeat is deferred; new season cannot inherit old queue eligibility                                    | live-pages                                                 |
+| Live standings/watch/profile/territories                            | Independent season-bound regions                                              | Paging/descriptive results retained where the season matches; local retry                                             | Different season/resources reset; watch selection cannot invent match authorization                                                              | live-pages                                                 |
+| Live participant/spectator/reconnect/settlement                     | New match gate                                                                | Same-match projection retained while reconnecting, actions gated; settlement remains server-owned                     | New match clears projection/pending; socket/request epochs reject late callbacks; spectator privacy preserved                                    | live-pages, live-client                                    |
+| Own/other profile/showcase/progression/standings                    | New owner gate; mounted                                                       | Same-owner reread retains showcase/editor/dialog; standings query/page keeps prior results explicitly labeled         | Different player name clears prior profile; auth loss clears; latest request wins; period/page labels from displayed response                    | player-showcase, profile-page                              |
+| Favourites/card picker/profile editor/avatar crop                   | Local region/action; catalogue fresh on editor entry                          | Draft/selection/inspection remains local; preparation never hides unrelated profile content                           | Ownership validated on save; image blob/crop errors recover locally; dialog focus trap retained                                                  | player-showcase, player-showcase                           |
+| Account/preferences/recovery/deletion                               | Account derives confirmed player; static preferences retention not applicable | Account/draft context retained during actions; no mutation replay                                                     | Reauthentication/deletion use existing authority and sign-out binding clear; accessibility settings persist by existing policy                   | account-page, accessibility-preferences                    |
+| Account developer keys/create/revoke/secret                         | Fresh protected metadata region; secrets never cached                         | Confirmed metadata and one-time secret survive unavailable reconciliation; update/retry; draft/focus retained         | Bounded latest-wins read; stale mutation controls locked; authorization clears metadata/secret; pending refresh cannot permanently lock mutation | developer-api-retention, account-page                      |
+| Author shell/navigation/cards catalogue                             | Role gate; **store** within console                                           | Shell/catalogue retained through refresh; update/error/retry; editor state preserved                                  | 60s/40-entry scope; global revoked-read generation; lifecycle actions require fresh confirmation                                                 | author-console, author-retained-reads                      |
+| Author Events list/new/edit/lifecycle                               | **Store** list revisit; editor remains local                                  | Confirmed events/search/editor retained; compact updating                                                             | Abort latest-wins; server conflict reconciliation; draft guard; new event ID does not inherit editor                                             | author-console, author-console                             |
+| Author challenges/details/review/history                            | Event/challenge-scoped **store**                                              | Confirmed challenge/form retained while rereading; questions independent                                              | Different event/challenge ID resets reads; refresh does not overwrite draft; lifecycle freshness lock                                            | author-console, author-console                             |
+| Author questions/list/new/detail/edit/options                       | Challenge-scoped **store**                                                    | Confirmed question list/editor/options stay mounted during refetch                                                    | Draft/accepted answers protected by Author role; new question ID resets; optimistic mutation reconciliation remains authoritative                | author-console, author-curation                            |
+| Author Cards list/detail/edit/review/lifecycle                      | Console catalogue + record boundary                                           | Catalogue and dirty editor remain mounted through refreshed availability; updating                                    | Permission/record loss clears; server conflict does not silently overwrite draft                                                                 | author-console, author-curation                            |
+| Author Campaigns list/new/detail/edit/review/history/content picker | **Store** list; local editor and picker                                       | List/query/history retains previous confirmed content; draft/membership selections retained                           | New campaign ID resets; immutable expected version; lifecycle/membership reconciliation invalidates reads                                        | author-curation, author-console                            |
+| Author Content Review queue/inspection                              | Query-scoped **store**                                                        | Previous-query results explicitly labeled during filters/pagination; inspection retained where safe                   | Fresh queue for decision, own-submission rule remains server authority; permission failures revoke store                                         | author-console, author-retained-reads                      |
+| Author Player Review queue/case/evidence/appeal                     | Query/case-scoped **store**                                                   | Queue/page and same-case evidence retained with update/retry                                                          | Different case cannot inherit evidence; read generations; fresh decision authority, role/revocation clears                                       | trust-review, author-retained-reads                        |
+| Author Analytics overview/locations/questions/rewards               | Report/query/page **store**                                                   | Prior same-report query remains labeled until requested view confirms; report errors local; other reports independent | Previous-result label and confirmed response page identify displayed rows; new report resets; auth loss clears; latest-wins                      | analytics-workspace; Author retained-query browser fixture |
+| Author Placement/map/sites/history                                  | Existing retained regions + scoped reads                                      | Independently confirmed placement/history stays mounted during update                                                 | Server rotation/assignment authority unchanged; independent retry; map failure does not block text                                               | event-placement-workspace                                  |
+| Offline saved events/download/index                                 | IndexedDB region, player-bound persistence                                    | Saved index retains while sync-driven reads run; local update; per-attempt sync status                                | Reads filter current binding; packs validity checked; pending answers retained, rewards provisional until API receipt                            | offline-store, offline-sync                                |
+| Offline active attempt/sync/receipt                                 | Local attempt restoration gate                                                | Saved answers preserved; per-attempt sync/error/retry beside content                                                  | Player binding/attempt scope; sync busy lock, no duplicate submission; original attempt identity                                                 | offline-sync                                               |
+| Shared dialogs/artwork/fonts/tooltips                               | Existing local loading; static assets not resource-cache candidates           | Dialog stays mounted; focus traps and local preparation/error retained                                                | No new global catalogue/assets wait; card inspection is read-only                                                                                | loading-policy, card-artwork-assets, player-showcase       |
+| Service-worker update/document replacement                          | No automatic replacement during active route                                  | Update waits for safe public Home and no active saved attempt; no active journey takeover                             | Rechecks safe route/focus at controller change; storage failure defers; no draft reload                                                          | service-worker-update                                      |
+
+## Controlled verification and limits
+
+The retained-query/revisit fixtures deliberately withhold responses until the
+intermediate UI is inspected, then fail and retry the read. This observes retained
+content and updating feedback rather than only the final screen. Unit/component
+fixtures cover failed updates, empty results, rapid query changes, aborted late
+responses, identity/binding invalidation, TTL expiry, transaction/draft/focus
+preservation, partial results and serialized ranked polling. They do not establish
+production latency, deployed request reliability or assistive-technology speech.
+
+The browser consistency pass uses 390×844 player and 1440px desktop fixtures,
+reduced motion, keyboard focus and overflow assertions. Actual screen-reader
+speech, OS-level browser zoom across every route, and live server authorization,
+settlement, offline synchronization and season rollover remain manual release
+gates. No production performance improvement is claimed. The retained collection
+fixture still makes one authoritative read per visit; its optimization is fewer
+visible replacement loaders, not fewer server freshness checks.
+
+Controlled collection comparison on baseline
+`00c04461432e43514cb371c0e9a79b3c89e55bac` and this working tree used Node
+24.14.1, local Vite basic-e2e, `/usr/bin/chromium`, one Playwright worker, identical
+five-card fixtures and withheld collection responses. Both 390×844 and 1440×844
+runs passed. The baseline was an isolated `git archive` copy in `/tmp`, with the
+same installed dependencies; no deployed endpoint was used.
+
+| Measurement (per viewport)                               | Baseline                        | Retained-content implementation           |
+| -------------------------------------------------------- | ------------------------------- | ----------------------------------------- |
+| Collection reads for initial entry plus revisit          | 2                               | 2                                         |
+| Page-data loader replacing cards on revisit              | 1                               | 0                                         |
+| Confirmed cards visible during withheld revisit response | No                              | Yes                                       |
+| Failed revalidation followed by explicit retry           | Not part of baseline comparison | Cards retained; third read confirms retry |
+
+Reproduce the candidate with
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npx playwright test --config=playwright/loading.config.ts --grep 'collection revisit' --workers=1`
+from `apps/web`. For an isolated baseline server on port 5176, the same current
+harness accepts `PLAYWRIGHT_EXTERNAL_WEB_SERVER=true RETENTION_BASELINE=true`.
+This comparison counts visible interruptions and requests. It does not measure
+production latency, server throughput, or fewer required authoritative reads.
+
+Final local verification: the repository's normal Web test command passed all
+**922 frontend tests (73 files) and 3 server tests**. Web lint, application and
+Playwright type checks, production build, changed-file formatting and
+`git diff --check` passed. An earlier four-worker run during parallel implementation
+had failures; all affected tests passed in a 240-test serial rerun and the final
+normal two-worker suite. Backend/deployed-service checks were not run for these
+frontend changes. Disposable fixture screenshots remain under the existing
+Playwright output directories; they are not production/user evidence.

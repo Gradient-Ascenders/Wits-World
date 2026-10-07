@@ -48,7 +48,11 @@ import {
   requestBrowserLocation,
   type LocationClaimProvider,
 } from '../browser-location';
-import { LoadingState, PageLoadingState } from '../components/LoadingState';
+import {
+  LoadingState,
+  PageLoadingState,
+  UpdatingIndicator,
+} from '../components/LoadingState';
 import { StateIcon } from '../components/StatusMessage';
 import {
   CardArtwork,
@@ -71,13 +75,15 @@ type LobbyState =
       queue: RankedQueueState;
       season: RankedSeason | null;
       status: 'ready';
+      refreshing?: boolean;
+      refreshError?: string;
     }
   | { error: LiveApiError; status: 'error' };
 
 type ResourceState<T> =
   | { status: 'loading' }
   | { error: LiveApiError; status: 'error' }
-  | { data: T; status: 'ready' };
+  | { data: T; status: 'ready'; refreshing?: boolean; refreshError?: string };
 
 type TerritoryState =
   | { status: 'loading' }
@@ -137,6 +143,16 @@ export default function LiveLobbyPage({
     'join' | 'cancel' | 'accept' | 'decline' | null
   >(null);
   const pendingRef = useRef(false);
+  const queueActionRequest = useRef<AbortController | null>(null);
+  const queueRefreshRequest = useRef<AbortController | null>(null);
+  const queueReadGeneration = useRef(0);
+  useEffect(
+    () => () => {
+      queueActionRequest.current?.abort();
+      queueRefreshRequest.current?.abort();
+    },
+    [],
+  );
   const [spectatorEntry, setSpectatorEntry] = useState('');
   const [spectatorError, setSpectatorError] = useState<string | null>(null);
   const [queueError, setQueueError] = useState<string | null>(null);
@@ -150,6 +166,7 @@ export default function LiveLobbyPage({
     ResourceState<RankedStandingsPage>
   >({ status: 'loading' });
   const [standingsLoadingMore, setStandingsLoadingMore] = useState(false);
+  const standingsPageRequest = useRef<AbortController | null>(null);
   const [standingsPageError, setStandingsPageError] = useState(false);
   const [territories, setTerritories] = useState<TerritoryState>({
     status: 'loading',
@@ -292,7 +309,16 @@ export default function LiveLobbyPage({
 
   useEffect(() => {
     const controller = new AbortController();
-    setState({ status: 'loading' });
+    queueRefreshRequest.current?.abort();
+    queueReadGeneration.current += 1;
+    setQueueRefreshPending(false);
+    setState((current) =>
+      current.status === 'ready' &&
+      current.season?.activeEndsAt &&
+      Date.parse(current.season.activeEndsAt) > Date.now()
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
     void Promise.all([
       listSavedDecks({ apiBaseUrl, getAccessToken, signal: controller.signal }),
       getRankedQueue({ apiBaseUrl, getAccessToken, signal: controller.signal }),
@@ -320,14 +346,30 @@ export default function LiveLobbyPage({
       })
       .catch((caught: unknown) => {
         if (controller.signal.aborted) return;
-        setState({ error: toLiveError(caught), status: 'error' });
+        const error = toLiveError(caught);
+        setState((current) =>
+          current.status === 'ready' && error.failure === 'unavailable'
+            ? {
+                ...current,
+                refreshing: false,
+                refreshError:
+                  'Ranked readiness could not be updated. Refresh before joining or accepting a battle.',
+              }
+            : { error, status: 'error' },
+        );
       });
     return () => controller.abort();
   }, [apiBaseUrl, getAccessToken, navigate, seasonRevision]);
 
   useEffect(() => {
     const controller = new AbortController();
-    setProfile({ status: 'loading' });
+    setProfile((current) =>
+      current.status === 'ready' &&
+      current.data.season?.activeEndsAt &&
+      Date.parse(current.data.season.activeEndsAt) > Date.now()
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
     void getRankedProfile({
       apiBaseUrl,
       getAccessToken,
@@ -338,7 +380,16 @@ export default function LiveLobbyPage({
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setProfile({ error: toLiveError(error), status: 'error' });
+          const failure = toLiveError(error);
+          setProfile((current) =>
+            current.status === 'ready' && failure.failure === 'unavailable'
+              ? {
+                  ...current,
+                  refreshing: false,
+                  refreshError: 'Your previous profile could not be updated.',
+                }
+              : { error: failure, status: 'error' },
+          );
         }
       });
     return () => controller.abort();
@@ -346,7 +397,15 @@ export default function LiveLobbyPage({
 
   useEffect(() => {
     const controller = new AbortController();
-    setStandings({ status: 'loading' });
+    standingsPageRequest.current?.abort();
+    setStandingsLoadingMore(false);
+    setStandings((current) =>
+      current.status === 'ready' &&
+      current.data.season?.activeEndsAt &&
+      Date.parse(current.data.season.activeEndsAt) > Date.now()
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
     setStandingsPageError(false);
     void listRankedStandings({
       apiBaseUrl,
@@ -359,10 +418,22 @@ export default function LiveLobbyPage({
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setStandings({ error: toLiveError(error), status: 'error' });
+          const failure = toLiveError(error);
+          setStandings((current) =>
+            current.status === 'ready' && failure.failure === 'unavailable'
+              ? {
+                  ...current,
+                  refreshing: false,
+                  refreshError: 'Your previous standings could not be updated.',
+                }
+              : { error: failure, status: 'error' },
+          );
         }
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      standingsPageRequest.current?.abort();
+    };
   }, [apiBaseUrl, getAccessToken, seasonRevision]);
 
   useEffect(() => {
@@ -396,40 +467,62 @@ export default function LiveLobbyPage({
   }, [state]);
 
   useEffect(() => {
-    if (state.status !== 'ready') return;
+    if (state.status !== 'ready' || state.refreshing || state.refreshError)
+      return;
     if (!['searching', 'proposed'].includes(state.queue.status)) return;
     const controller = new AbortController();
-    const poll = window.setInterval(() => {
-      if (pendingRef.current) return;
-      void getRankedQueue({
-        apiBaseUrl,
-        getAccessToken,
-        signal: controller.signal,
-      })
-        .then(applyQueue)
+    let readingQueue = false;
+    let heartbeatDue = false;
+    const readQueue = (heartbeat: boolean) => {
+      if (
+        controller.signal.aborted ||
+        pendingRef.current ||
+        stateRef.current.status !== 'ready'
+      )
+        return;
+      if (heartbeat && stateRef.current.queue.status !== 'searching') return;
+      if (readingQueue) {
+        if (heartbeat) heartbeatDue = true;
+        return;
+      }
+      readingQueue = true;
+      const generation = ++queueReadGeneration.current;
+      const load = heartbeat ? heartbeatRankedQueue : getRankedQueue;
+      void load({ apiBaseUrl, getAccessToken, signal: controller.signal })
+        .then((queue) => {
+          if (
+            !controller.signal.aborted &&
+            !pendingRef.current &&
+            generation === queueReadGeneration.current
+          )
+            applyQueue(queue);
+        })
         .catch(() => {
-          if (!controller.signal.aborted) {
+          if (
+            !controller.signal.aborted &&
+            generation === queueReadGeneration.current
+          ) {
             setQueueConnectionInterrupted(true);
-            setAnnouncement('Connection lost. Reconnecting…');
+            setAnnouncement(
+              heartbeat
+                ? 'Connection lost. Checking your search…'
+                : 'Connection lost. Reconnecting…',
+            );
+          }
+        })
+        .finally(() => {
+          readingQueue = false;
+          if (heartbeatDue) {
+            heartbeatDue = false;
+            readQueue(true);
           }
         });
-    }, queuePollMs);
-    const heartbeat = window.setInterval(() => {
-      if (pendingRef.current || stateRef.current.status !== 'ready') return;
-      if (stateRef.current.queue.status !== 'searching') return;
-      void heartbeatRankedQueue({
-        apiBaseUrl,
-        getAccessToken,
-        signal: controller.signal,
-      })
-        .then(applyQueue)
-        .catch(() => {
-          if (!controller.signal.aborted) {
-            setQueueConnectionInterrupted(true);
-            setAnnouncement('Connection lost. Checking your search…');
-          }
-        });
-    }, queueHeartbeatMs);
+    };
+    const poll = window.setInterval(() => readQueue(false), queuePollMs);
+    const heartbeat = window.setInterval(
+      () => readQueue(true),
+      queueHeartbeatMs,
+    );
     return () => {
       controller.abort();
       window.clearInterval(poll);
@@ -441,6 +534,8 @@ export default function LiveLobbyPage({
     getAccessToken,
     state.status,
     state.status === 'ready' ? state.queue.status : null,
+    state.status === 'ready' ? state.refreshing : false,
+    state.status === 'ready' ? state.refreshError : undefined,
   ]);
 
   const runQueueAction = useCallback(
@@ -448,38 +543,53 @@ export default function LiveLobbyPage({
       kind: 'join' | 'cancel' | 'accept' | 'decline',
       action: (signal: AbortSignal) => Promise<RankedQueueState>,
     ) => {
-      if (pendingRef.current) return;
+      if (
+        pendingRef.current ||
+        stateRef.current.status !== 'ready' ||
+        stateRef.current.refreshing ||
+        stateRef.current.refreshError
+      )
+        return;
       pendingRef.current = true;
+      queueReadGeneration.current += 1;
+      queueRefreshRequest.current?.abort();
+      setQueueRefreshPending(false);
       setQueueError(null);
       setPending(kind);
       setAnnouncement(queuePendingLabel(kind));
       const controller = new AbortController();
+      queueActionRequest.current = controller;
       try {
-        applyQueue(await action(controller.signal));
+        const queue = await action(controller.signal);
+        if (!controller.signal.aborted) applyQueue(queue);
       } catch (caught) {
+        if (controller.signal.aborted) return;
         const error = toLiveError(caught);
         const message = queueErrorMessage(error);
         setAnnouncement(message);
         setQueueError(message);
         if (error.failure === 'conflict' || error.failure === 'unavailable') {
           try {
-            applyQueue(
-              await getRankedQueue({
-                apiBaseUrl,
-                getAccessToken,
-                signal: controller.signal,
-              }),
-            );
+            const queue = await getRankedQueue({
+              apiBaseUrl,
+              getAccessToken,
+              signal: controller.signal,
+            });
+            if (!controller.signal.aborted) applyQueue(queue);
           } catch {
-            setQueueConnectionInterrupted(true);
+            if (!controller.signal.aborted) setQueueConnectionInterrupted(true);
           }
         }
+        if (controller.signal.aborted) return;
         setState((current) =>
           current.status === 'ready' ? current : { error, status: 'error' },
         );
       } finally {
-        pendingRef.current = false;
-        setPending(null);
+        if (queueActionRequest.current === controller) {
+          queueActionRequest.current = null;
+          pendingRef.current = false;
+          if (!controller.signal.aborted) setPending(null);
+        }
       }
     },
     [apiBaseUrl, applyQueue, getAccessToken],
@@ -555,7 +665,8 @@ export default function LiveLobbyPage({
     if (
       standings.status !== 'ready' ||
       !standings.data.nextCursor ||
-      standingsLoadingMore
+      standingsLoadingMore ||
+      standings.refreshing
     ) {
       return;
     }
@@ -564,6 +675,7 @@ export default function LiveLobbyPage({
     const cursor = standings.data.nextCursor;
     const seasonId = standings.data.season.seasonId;
     const controller = new AbortController();
+    standingsPageRequest.current = controller;
     try {
       const next = await listRankedStandings({
         apiBaseUrl,
@@ -572,12 +684,15 @@ export default function LiveLobbyPage({
         limit: standingsPageSize,
         signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
       if (next.season.seasonId !== seasonId) {
         refreshSeasonResources();
         return;
       }
       setStandings((current) =>
-        current.status === 'ready' && current.data.nextCursor === cursor
+        current.status === 'ready' &&
+        !current.refreshing &&
+        current.data.nextCursor === cursor
           ? {
               data: {
                 ...current.data,
@@ -589,29 +704,52 @@ export default function LiveLobbyPage({
           : current,
       );
     } catch {
-      setStandingsPageError(true);
+      if (!controller.signal.aborted) setStandingsPageError(true);
     } finally {
-      setStandingsLoadingMore(false);
+      if (standingsPageRequest.current === controller) {
+        standingsPageRequest.current = null;
+        if (!controller.signal.aborted) setStandingsLoadingMore(false);
+      }
     }
   }
 
   async function refreshQueueStatus() {
-    if (queueRefreshPending || pendingRef.current) return;
+    if (
+      queueRefreshPending ||
+      pendingRef.current ||
+      stateRef.current.status !== 'ready' ||
+      stateRef.current.refreshing ||
+      stateRef.current.refreshError
+    )
+      return;
     setQueueRefreshPending(true);
     const controller = new AbortController();
+    queueRefreshRequest.current = controller;
+    const generation = ++queueReadGeneration.current;
     try {
-      applyQueue(
-        await getRankedQueue({
-          apiBaseUrl,
-          getAccessToken,
-          signal: controller.signal,
-        }),
-      );
+      const queue = await getRankedQueue({
+        apiBaseUrl,
+        getAccessToken,
+        signal: controller.signal,
+      });
+      if (
+        !controller.signal.aborted &&
+        generation === queueReadGeneration.current
+      )
+        applyQueue(queue);
     } catch {
+      if (
+        controller.signal.aborted ||
+        generation !== queueReadGeneration.current
+      )
+        return;
       setQueueConnectionInterrupted(true);
       setAnnouncement('Still reconnecting. Keep this page open.');
     } finally {
-      setQueueRefreshPending(false);
+      if (queueRefreshRequest.current === controller) {
+        queueRefreshRequest.current = null;
+        if (!controller.signal.aborted) setQueueRefreshPending(false);
+      }
     }
   }
 
@@ -681,6 +819,7 @@ export default function LiveLobbyPage({
   }
 
   const { deck, queue, season } = state;
+  const lobbyReadUnavailable = Boolean(state.refreshing || state.refreshError);
   const proposal = queue.status === 'proposed' && queue.proposalId;
   const searching = queue.status === 'searching';
   const seasonBoundaryReached =
@@ -745,6 +884,12 @@ export default function LiveLobbyPage({
         </div>
       </header>
 
+      <UpdatingIndicator
+        active={Boolean(state.refreshing)}
+        label="Updating ranked readiness"
+        error={state.refreshError}
+        onRetry={refreshSeasonResources}
+      />
       <div className="live-lobby__stage">
         <RankedSeasonStrip
           clock={clock}
@@ -768,7 +913,7 @@ export default function LiveLobbyPage({
                 </div>
                 <button
                   className="button button--quiet"
-                  disabled={queueRefreshPending}
+                  disabled={queueRefreshPending || lobbyReadUnavailable}
                   onClick={() => void refreshQueueStatus()}
                   type="button"
                 >
@@ -805,7 +950,7 @@ export default function LiveLobbyPage({
                     <div className="live-lobby__actions">
                       <button
                         className="button"
-                        disabled={pending !== null}
+                        disabled={pending !== null || lobbyReadUnavailable}
                         onClick={() =>
                           void runQueueAction('accept', (signal) =>
                             resolveRankedProposal({
@@ -824,7 +969,7 @@ export default function LiveLobbyPage({
                       </button>
                       <button
                         className="button button--quiet"
-                        disabled={pending !== null}
+                        disabled={pending !== null || lobbyReadUnavailable}
                         onClick={() =>
                           void runQueueAction('decline', (signal) =>
                             resolveRankedProposal({
@@ -856,7 +1001,7 @@ export default function LiveLobbyPage({
                 </div>
                 <button
                   className="button button--quiet"
-                  disabled={pending !== null}
+                  disabled={pending !== null || lobbyReadUnavailable}
                   onClick={() =>
                     void runQueueAction('cancel', (signal) =>
                       cancelRankedQueue({
@@ -1017,6 +1162,7 @@ export default function LiveLobbyPage({
                       className="button live-lobby__find"
                       disabled={
                         pending !== null ||
+                        lobbyReadUnavailable ||
                         queueConnectionInterrupted ||
                         (contestTerritory && !territoryDetectionAvailable)
                       }
@@ -1036,7 +1182,11 @@ export default function LiveLobbyPage({
                     </button>
                     <TerritoryQueueOption
                       contest={contestTerritory}
-                      disabled={pending !== null || queueConnectionInterrupted}
+                      disabled={
+                        pending !== null ||
+                        queueConnectionInterrupted ||
+                        lobbyReadUnavailable
+                      }
                       onContestChange={(next) => {
                         setContestTerritory(next);
                         setTerritoryDetection({ status: 'idle' });
@@ -1208,6 +1358,14 @@ function RankedSeasonStrip({
         ) : null}
       </div>
 
+      {profile.status === 'ready' && !mismatch ? (
+        <UpdatingIndicator
+          active={Boolean(profile.refreshing)}
+          label="Updating your record"
+          error={profile.refreshError}
+          onRetry={onRetry}
+        />
+      ) : null}
       {profile.status === 'loading' ? (
         <LoadingState
           className="ranked-season-strip__state"
@@ -1387,6 +1545,14 @@ function RankedStandingsSection({
         <p>Listed after five placement matches.</p>
       </div>
 
+      {state.status === 'ready' && !mismatch ? (
+        <UpdatingIndicator
+          active={Boolean(state.refreshing)}
+          label="Updating ranked standings"
+          error={state.refreshError}
+          onRetry={onRetry}
+        />
+      ) : null}
       {season === null ? (
         <div className="ranked-standings__state state-message state-message--empty">
           <StateIcon tone="empty" />

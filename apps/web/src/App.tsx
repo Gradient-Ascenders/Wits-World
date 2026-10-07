@@ -18,7 +18,11 @@ import { StartupGate, StartupSettler } from './components/auth/startup-state';
 import { AuthorRoute } from './components/auth/AuthorRoute';
 import { AuthorLoadingState } from './components/author/AuthorLoadingState';
 import { GuardedRouter } from './components/author/AuthorNavigationGuard';
-import { CurrentPlayerProvider } from './auth/CurrentPlayerProvider';
+import {
+  CurrentPlayerProvider,
+  useCurrentPlayer,
+} from './auth/CurrentPlayerProvider';
+import { CollectionReadProvider } from './components/cards/CollectionReadProvider';
 import { NotFoundPage } from './pages/NotFoundPage';
 import type {
   LocationClaimProvider,
@@ -147,7 +151,7 @@ export function AppRoutes({
   return (
     <CurrentPlayerProvider apiBaseUrl={apiBaseUrl}>
       <OfflineProvider apiBaseUrl={apiBaseUrl}>
-        <AppShell>
+        <SessionCollectionShell apiBaseUrl={apiBaseUrl}>
           <AppToaster />
           <OfflineStatus />
           <ServiceWorkerUpdate />
@@ -309,9 +313,28 @@ export function AppRoutes({
               </Switch>
             </Suspense>
           </ErrorBoundary>
-        </AppShell>
+        </SessionCollectionShell>
       </OfflineProvider>
     </CurrentPlayerProvider>
+  );
+}
+
+function SessionCollectionShell({
+  apiBaseUrl,
+  children,
+}: {
+  apiBaseUrl: string;
+  children: ReactNode;
+}) {
+  const { state } = useCurrentPlayer();
+  const scope =
+    state.status === 'ready'
+      ? `${apiBaseUrl}:${state.player.id}:${state.player.role}`
+      : `${apiBaseUrl}:${state.status}`;
+  return (
+    <CollectionReadProvider key={scope}>
+      <AppShell>{children}</AppShell>
+    </CollectionReadProvider>
   );
 }
 

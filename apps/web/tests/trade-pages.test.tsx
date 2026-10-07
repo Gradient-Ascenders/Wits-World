@@ -917,3 +917,56 @@ function buildPreviewResponse(input: {
     valid: offerReady && requestReady,
   };
 }
+
+describe('retained trade pagination', () => {
+  it('keeps the inbox rows after a failed next page and retries that page', async () => {
+    let failNext = true;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      const pageTwo = url.includes('page=2');
+      if (pageTwo && failNext)
+        return Promise.resolve(new Response(null, { status: 503 }));
+      return Promise.resolve(
+        jsonResponse({
+          hasMore: !pageTwo,
+          items: url.includes('status=open')
+            ? [buildSummary({ tradeId: pageTwo ? buildUuid(991) : tradeId })]
+            : [],
+          page: pageTwo ? 2 : 1,
+          pageSize: 50,
+          requestId: 'retained-inbox',
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute(
+      '/collection/trades',
+      <TradeInboxPage apiBaseUrl={apiBaseUrl} />,
+    );
+    const retainedLink = await screen.findByRole('link', {
+      name: /Incoming trade from other_player/u,
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    expect(
+      await screen.findByText(/More trades could not be loaded/u),
+    ).toBeVisible();
+    expect(retainedLink).toBeVisible();
+    expect(
+      screen.queryByRole('heading', { name: 'Couldn’t load trades' }),
+    ).not.toBeInTheDocument();
+    failNext = false;
+    await userEvent.click(screen.getByRole('button', { name: 'Retry update' }));
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole('link', {
+          name: /Incoming trade from other_player/u,
+        }),
+      ).toHaveLength(2),
+    );
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).includes('page=2'),
+      ),
+    ).toHaveLength(2);
+  });
+});

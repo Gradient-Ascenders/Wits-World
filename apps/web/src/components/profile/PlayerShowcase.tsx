@@ -14,7 +14,7 @@ import {
 } from '../../api/player-profile';
 import type { CardPresentation } from '../../api/cards';
 import { useApiAccessToken } from '../../auth/useApiAccessToken';
-import { PageLoadingState } from '../LoadingState';
+import { PageLoadingState, UpdatingIndicator } from '../LoadingState';
 import { CardThumbnail } from '../cards/CollectibleCard';
 import { CardPresentationDialog } from '../cards/CardPresentationDialog';
 import { ProfileEditor } from './ProfileEditor';
@@ -25,7 +25,13 @@ import '../cards/cards.css';
 type State =
   | { status: 'loading' }
   | { status: 'error'; error: PlayerProfileError }
-  | { status: 'ready'; profile: PlayerProfile };
+  | {
+      status: 'ready';
+      profile: PlayerProfile;
+      target?: string;
+      refreshing?: boolean;
+      refreshError?: string;
+    };
 
 export function ProfileAvatar({
   profile,
@@ -72,10 +78,11 @@ export function PlayerShowcase({
   const recoverFocus = useRef(false);
   useEffect(() => {
     const controller = new AbortController();
-    setState({ status: 'loading' });
-    setEditor(null);
-    setInspected(null);
-    setNotice('');
+    setState((current) =>
+      current.status === 'ready' && current.target === playerName
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
     void requestPlayerProfile({
       apiBaseUrl,
       getAccessToken,
@@ -83,29 +90,46 @@ export function PlayerShowcase({
       ...(playerName === undefined ? {} : { playerName }),
     })
       .then((profile) => {
-        if (!controller.signal.aborted) setState({ status: 'ready', profile });
+        if (!controller.signal.aborted)
+          setState({ status: 'ready', profile, target: playerName });
       })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted)
-          setState({
-            status: 'error',
-            error:
-              error instanceof PlayerProfileError
-                ? error
-                : new PlayerProfileError(
-                    'unavailable',
-                    'Check your connection and try again.',
-                  ),
-          });
+        if (controller.signal.aborted) return;
+        const failure =
+          error instanceof PlayerProfileError
+            ? error
+            : new PlayerProfileError(
+                'unavailable',
+                'Check your connection and try again.',
+              );
+        setState((current) =>
+          current.status === 'ready' && failure.failure === 'unavailable'
+            ? {
+                ...current,
+                refreshing: false,
+                refreshError:
+                  'This profile could not be updated. Showing the previous profile.',
+              }
+            : { status: 'error', error: failure },
+        );
       });
     return () => controller.abort();
   }, [apiBaseUrl, getAccessToken, playerName, revision]);
   useEffect(() => {
-    if (recoverFocus.current && state.status !== 'loading') {
+    setEditor(null);
+    setInspected(null);
+    setNotice('');
+  }, [playerName]);
+  useEffect(() => {
+    if (
+      recoverFocus.current &&
+      state.status !== 'loading' &&
+      !(state.status === 'ready' && state.refreshing)
+    ) {
       recoverFocus.current = false;
       headingRef.current?.focus();
     }
-  }, [state.status]);
+  }, [state]);
   useEffect(() => {
     const expiry =
       state.status === 'ready' ? state.profile.status?.expiresAt : null;
@@ -122,7 +146,10 @@ export function PlayerShowcase({
     };
   }, [state]);
 
-  if (state.status === 'loading')
+  if (
+    state.status === 'loading' ||
+    (state.status === 'ready' && state.target !== playerName)
+  )
     return (
       <PageLoadingState
         title="Loading player profile"
@@ -197,6 +224,12 @@ export function PlayerShowcase({
   const emptySlots = profile.isOwner ? 4 - profile.featuredCards.length : 0;
   return (
     <div className="player-profile">
+      <UpdatingIndicator
+        active={Boolean(state.refreshing)}
+        label="Updating player profile"
+        error={state.refreshError}
+        onRetry={() => setRevision((value) => value + 1)}
+      />
       <header className="showcase-identity">
         <ProfileAvatar profile={profile} />
         <div className="showcase-identity__text">
@@ -214,6 +247,7 @@ export function PlayerShowcase({
                     ? `Edit status: ${status.emoji}`
                     : undefined
               }
+              disabled={Boolean(state.refreshing || state.refreshError)}
               onClick={() => setEditor('status')}
             >
               <span className="showcase-status__icon" aria-hidden="true">
@@ -255,6 +289,7 @@ export function PlayerShowcase({
             <button
               className="button button--quiet showcase-edit-action"
               type="button"
+              disabled={Boolean(state.refreshing || state.refreshError)}
               onClick={() => setEditor('identity')}
             >
               <PencilSimpleIcon size={18} aria-hidden="true" />
@@ -279,6 +314,7 @@ export function PlayerShowcase({
             <button
               type="button"
               className="button button--quiet showcase-edit-action"
+              disabled={Boolean(state.refreshing || state.refreshError)}
               onClick={() => setEditor('cards')}
             >
               <CardsIcon size={18} aria-hidden="true" />
@@ -303,6 +339,7 @@ export function PlayerShowcase({
                 key={index}
                 className="showcase-card-empty"
                 type="button"
+                disabled={Boolean(state.refreshing || state.refreshError)}
                 onClick={() => setEditor('cards')}
               >
                 <PlusIcon size={28} aria-hidden="true" />
@@ -330,7 +367,7 @@ export function PlayerShowcase({
             setRevision((value) => value + 1);
           }}
           onSaved={(next) => {
-            setState({ status: 'ready', profile: next });
+            setState({ status: 'ready', profile: next, target: playerName });
             setClock(Date.now());
             setEditor(null);
             setNotice('Profile saved.');

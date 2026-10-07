@@ -1,7 +1,7 @@
 import { StateIcon } from '../StatusMessage';
 import { useAuth0 } from '@auth0/auth0-react';
 import { confirmOfflineSignOut } from '../../offline/store';
-import { useCallback, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useState, type ReactNode } from 'react';
 
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
 import { clearAuthenticatedPlayerBinding } from '../../auth/player-session-binding';
@@ -211,5 +211,10 @@ export function ProtectedRoute({
     return <PlayerNameSetup />;
   }
 
-  return children;
+  // A confirmed identity/role change must destroy protected snapshots and drafts.
+  return (
+    <Fragment key={`${currentPlayer.player.id}:${currentPlayer.player.role}`}>
+      {children}
+    </Fragment>
+  );
 }

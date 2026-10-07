@@ -905,6 +905,52 @@ describe('trails and nearby vertical discovery', () => {
     );
   });
 
+  it('retains confirmed nearby results while refreshing and after a connection failure', async () => {
+    const user = userEvent.setup();
+    let rejectRefresh: (error: Error) => void = () => undefined;
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) => {
+        if (!String(input).endsWith('/events/nearby-unvisited'))
+          return Promise.resolve(discoveryResponse());
+        calls += 1;
+        if (calls === 1)
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ events: [], requestId: 'nearby-empty' }),
+              { headers: { 'Content-Type': 'application/json' }, status: 200 },
+            ),
+          );
+        return new Promise<Response>((_resolve, reject) => {
+          rejectRefresh = reject;
+        });
+      }),
+    );
+    const observation = createObservationHarness();
+    renderExplore({ observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(freshClaim()));
+    await user.click(await screen.findByRole('button', { name: /^Events/ }));
+    await user.click(screen.getByRole('button', { name: 'Nearby' }));
+    expect(
+      await screen.findByText('No nearby unvisited events.'),
+    ).toBeVisible();
+    const refreshButton = screen.getByRole('button', {
+      name: 'Refresh nearby',
+    });
+    await user.click(refreshButton);
+    expect(screen.getByText('No nearby unvisited events.')).toBeVisible();
+    expect(screen.getByText(/Updating nearby events/)).toBeVisible();
+    expect(refreshButton).toHaveFocus();
+    await act(async () => rejectRefresh(new TypeError('offline')));
+    expect(
+      await screen.findByText(/Nearby events could not be refreshed/),
+    ).toBeVisible();
+    expect(screen.getByText('No nearby unvisited events.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retry update' })).toBeEnabled();
+  });
+
   it('resumes a pending nearby retry when the location watcher later recovers', async () => {
     const user = userEvent.setup();
     const initialClaim = freshClaim();

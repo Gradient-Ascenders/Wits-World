@@ -1,5 +1,6 @@
 import { createAppDateTimeFormatter } from '../../date-time';
 import { useEffect, useRef } from 'react';
+import { UpdatingIndicator } from '../LoadingState';
 import { StatusMessage } from '../StatusMessage';
 import { ExplorationLoadingPanel } from './ExplorationLoadingPanel';
 import type { PlayerEventAvailability } from '../../api/events';
@@ -17,10 +18,15 @@ export interface EventPresentation {
 }
 
 export type EventDiscoveryState =
-  | { status: 'empty' }
+  | { status: 'empty'; refreshing?: boolean; refreshError?: string }
   | { message: string; status: 'error' }
   | { status: 'loading' }
-  | { events: readonly EventPresentation[]; status: 'ready' };
+  | {
+      events: readonly EventPresentation[];
+      status: 'ready';
+      refreshing?: boolean;
+      refreshError?: string;
+    };
 
 export type EventEligibilityState =
   | { status: 'api-error' }
@@ -91,45 +97,61 @@ export function EventList({
 
   if (discovery.status === 'empty' || discovery.events.length === 0) {
     return (
-      <StatusMessage tone="empty" className="event-list__state">
-        <strong>No events available.</strong>
-        <p>Check back later.</p>
-      </StatusMessage>
+      <>
+        <UpdatingIndicator
+          active={discovery.refreshing ?? false}
+          error={discovery.refreshError}
+          label="Updating events"
+          onRetry={onRetry}
+        />
+        <StatusMessage tone="empty" className="event-list__state">
+          <strong>No events available.</strong>
+          <p>Check back later.</p>
+        </StatusMessage>
+      </>
     );
   }
 
   return (
-    <ul aria-label="Campus events" className="event-list__items">
-      {discovery.events.map((event) => {
-        const state = eligibility[event.id] ?? { status: 'idle' as const };
-        const selected = selectedEventId === event.id;
-        return (
-          <li
-            className={`event-summary${selected ? ' event-summary--selected' : ''}`}
-            key={event.id}
-          >
-            <div className="event-summary__copy">
-              <strong>{event.title}</strong>
-              <span
-                className={`event-summary__availability event-summary__availability--${event.availability}`}
-              >
-                {availabilityLabels[event.availability]}
-              </span>
-              <KnownEligibility state={state} />
-            </div>
-            <button
-              aria-pressed={selected}
-              className="button button--quiet event-summary__action"
-              onClick={() => onSelect(event.id)}
-              type="button"
+    <>
+      <UpdatingIndicator
+        active={discovery.refreshing ?? false}
+        error={discovery.refreshError}
+        label="Updating events"
+        onRetry={onRetry}
+      />
+      <ul aria-label="Campus events" className="event-list__items">
+        {discovery.events.map((event) => {
+          const state = eligibility[event.id] ?? { status: 'idle' as const };
+          const selected = selectedEventId === event.id;
+          return (
+            <li
+              className={`event-summary${selected ? ' event-summary--selected' : ''}`}
+              key={event.id}
             >
-              {selected ? 'Selected' : 'View on map'}
-              <span className="sr-only">: {event.title}</span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+              <div className="event-summary__copy">
+                <strong>{event.title}</strong>
+                <span
+                  className={`event-summary__availability event-summary__availability--${event.availability}`}
+                >
+                  {availabilityLabels[event.availability]}
+                </span>
+                <KnownEligibility state={state} />
+              </div>
+              <button
+                aria-pressed={selected}
+                className="button button--quiet event-summary__action"
+                onClick={() => onSelect(event.id)}
+                type="button"
+              >
+                {selected ? 'Selected' : 'View on map'}
+                <span className="sr-only">: {event.title}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }
 

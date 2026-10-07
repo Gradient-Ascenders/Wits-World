@@ -461,6 +461,17 @@ export function useLiveBattleSession({
 
   useEffect(() => {
     mounted.current = true;
+    pendingRef.current = null;
+    reconnectAttempt.current = 0;
+    stateRef.current = {
+      connection: 'connecting',
+      error: null,
+      feedback: 'Connecting to the live battle…',
+      match: null,
+      pending: null,
+      presence: null,
+    };
+    update(stateRef.current);
     recover('initial');
     return () => {
       mounted.current = false;
@@ -469,7 +480,7 @@ export function useLiveBattleSession({
       request.current?.abort();
       closeTransport();
     };
-  }, [clearTimers, closeTransport, recover]);
+  }, [clearTimers, closeTransport, recover, update]);
 
   const sendIntent = useCallback(
     (action: CpuMatchIntent | null, type: PendingIntent['type']) => {
@@ -531,8 +542,20 @@ export function useLiveBattleSession({
     return anchor.serverTime + (Date.now() - anchor.clientTime);
   }, []);
 
+  const scopedState =
+    state.match && state.match.matchId !== matchId
+      ? {
+          ...state,
+          match: null,
+          pending: null,
+          presence: null,
+          error: null,
+          connection: 'connecting' as const,
+          feedback: 'Connecting to the live battle…',
+        }
+      : state;
   return {
-    ...state,
+    ...scopedState,
     recover: () => recover('manual'),
     resign: () => sendIntent(null, 'resign.submit'),
     serverNow,

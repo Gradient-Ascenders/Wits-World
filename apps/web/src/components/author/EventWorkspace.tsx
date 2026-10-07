@@ -1,3 +1,8 @@
+import { UpdatingIndicator } from '../LoadingState';
+import {
+  AuthorReadFreshness,
+  useAuthorRetainedResource,
+} from './AuthorRetainedReads';
 import {
   AuthorRecordBackLink,
   ReviewSubmissionMeta,
@@ -25,6 +30,7 @@ import { AuthorDateTimePicker } from './AuthorDateTimePicker';
 import {
   useCallback,
   useEffect,
+  useContext,
   useMemo,
   useRef,
   useState,
@@ -100,7 +106,14 @@ export function EventWorkspace({
   onReloadCards,
   route,
 }: EventWorkspaceProps) {
-  const [events, setEvents] = useState<AuthorEvent[]>([]);
+  const {
+    value: events,
+    setValue: setEvents,
+    confirmed,
+    confirm,
+    revoke,
+    beginRead,
+  } = useAuthorRetainedResource<AuthorEvent[]>('events', []);
   const [state, setState] = useState<LoadState>('loading');
   const [loadError, setLoadError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,6 +138,7 @@ export function EventWorkspace({
 
   const load = useCallback(async () => {
     requestRef.current?.abort();
+    const canApplyRead = beginRead();
     const controller = new AbortController();
     requestRef.current = controller;
     const loadStartedAt = mutationCoordinator.beginCollectionLoad();
@@ -136,7 +150,7 @@ export function EventWorkspace({
         getAccessToken,
         signal: controller.signal,
       });
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !canApplyRead()) return;
       mutationCoordinator.completeCollectionLoad('events', loadStartedAt);
       setEvents(
         reconcileAuthorMutationResults(
@@ -147,10 +161,12 @@ export function EventWorkspace({
           true,
         ),
       );
+      confirm();
       setState('ready');
       setLoadError('');
     } catch (error) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !canApplyRead()) return;
+      revoke(error);
       setLoadError(
         error instanceof AuthorApiError
           ? authorErrorDetail(error)
@@ -158,7 +174,14 @@ export function EventWorkspace({
       );
       setState('error');
     }
-  }, [apiBaseUrl, getAccessToken, mutationCoordinator]);
+  }, [
+    apiBaseUrl,
+    getAccessToken,
+    mutationCoordinator,
+    confirm,
+    revoke,
+    beginRead,
+  ]);
 
   const reloadAfterLifecycleConflict = useCallback(async () => {
     await load();
@@ -186,7 +209,7 @@ export function EventWorkspace({
         appliedEventResultsRef.current,
       ),
     );
-  }, [mutationCoordinator, mutationRevision]);
+  }, [mutationCoordinator, mutationRevision, setEvents]);
 
   const selectedId = 'eventId' in route ? route.eventId : null;
   const routeTab = route.mode === 'challenge' ? route.tab : undefined;
@@ -299,7 +322,7 @@ export function EventWorkspace({
     return true;
   }
 
-  return (
+  const workspace = (
     <section
       aria-labelledby="events-workspace-title"
       className="author-workspace author-workspace--events"
@@ -335,7 +358,7 @@ export function EventWorkspace({
 
       <AuthorFeedback message={message} refObject={feedbackRef} />
 
-      {state === 'loading' ? (
+      {state === 'loading' && !confirmed ? (
         <AuthorLoadingState label="Loading authored events…" />
       ) : null}
 
@@ -357,7 +380,14 @@ export function EventWorkspace({
         </div>
       ) : null}
 
-      {state === 'ready' ? (
+      {confirmed ? (
+        <UpdatingIndicator
+          active={state === 'loading'}
+          label="Updating authored events…"
+          onRetry={load}
+        />
+      ) : null}
+      {state === 'ready' || confirmed ? (
         <div
           className={`author-management-view author-management-view--events${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}${route.mode === 'questions' || route.mode === 'challenge' ? ' author-management-view--questions' : ''}`}
         >
@@ -475,7 +505,7 @@ export function EventWorkspace({
                   event={selected}
                   getAccessToken={getAccessToken}
                   interaction={interactionRef.current}
-                  key={`event-form:${selected.eventId}:${selected.version}`}
+                  key={`event-form:${selected.eventId}`}
                   mapFactory={mapFactory}
                   mapboxAccessToken={mapboxAccessToken}
                   mutationCoordinator={mutationCoordinator}
@@ -507,6 +537,11 @@ export function EventWorkspace({
         </div>
       ) : null}
     </section>
+  );
+  return (
+    <AuthorReadFreshness value={state === 'ready'}>
+      {workspace}
+    </AuthorReadFreshness>
   );
 }
 
@@ -664,6 +699,9 @@ function EventForm({
   onCancel,
   onSaved,
 }: EventFormProps) {
+  const fresh = useContext(AuthorReadFreshness);
+  const editVersion = useRef(event?.version).current;
+  const initialDraft = useRef(eventDraft(event)).current;
   const [draft, setDraft] = useState<EventDraft>(() => eventDraft(event));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
@@ -680,7 +718,7 @@ function EventForm({
     };
   }, []);
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(eventDraft(event));
+  const dirty = JSON.stringify(draft) !== JSON.stringify(initialDraft);
   const recordKey = `event:${event?.eventId ?? 'new'}` as AuthorRecordKey;
   useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
   const clearNavigationGuard = useUnsavedAuthorChanges(dirty, 'event draft');
@@ -725,6 +763,7 @@ function EventForm({
 
   async function save(submission: FormEvent) {
     submission.preventDefault();
+    if (!fresh) return;
     const result = validateEventDraft(draft);
 
     if (!result.input) {
@@ -751,7 +790,7 @@ function EventForm({
         ? await updateAuthorEvent({
             apiBaseUrl,
             eventId: event.eventId,
-            expectedVersion: event.version,
+            expectedVersion: editVersion!,
             getAccessToken,
             input: result.input,
             signal: controller.signal,
@@ -1024,7 +1063,7 @@ function EventForm({
           failed={Boolean(apiError) || Object.values(errors).some(Boolean)}
           isNew={!event}
         >
-          <button className="button" disabled={busy} type="submit">
+          <button className="button" disabled={!fresh || busy} type="submit">
             {busy
               ? 'Saving event draft…'
               : event
@@ -1083,10 +1122,36 @@ function ChallengeWorkspace({
   onReloadCards,
   route,
 }: ChallengeWorkspaceProps) {
-  const [challenges, setChallenges] = useState<AuthorChallenge[]>([]);
-  const [questions, setQuestions] = useState<AuthorQuestion[]>([]);
+  const parentFresh = useContext(AuthorReadFreshness);
+  const {
+    value: challenges,
+    setValue: setChallenges,
+    confirmed: challengesConfirmed,
+    confirm: confirmChallenges,
+    revoke: revokeChallenges,
+    beginRead: beginChallengeRead,
+  } = useAuthorRetainedResource<AuthorChallenge[]>(
+    `challenges:${event.eventId}`,
+    [],
+  );
   const [selectedChallengeId, setSelectedChallengeId] = useState<string | null>(
-    null,
+    (route.mode === 'questions' || route.mode === 'challenge'
+      ? route.challengeId
+      : undefined) ??
+      challenges.find((challenge) => challenge.status !== 'retired')
+        ?.challengeId ??
+      null,
+  );
+  const {
+    value: questions,
+    setValue: setQuestions,
+    confirmed: questionsConfirmed,
+    confirm: confirmQuestions,
+    revoke: revokeQuestions,
+    beginRead: beginQuestionRead,
+  } = useAuthorRetainedResource<AuthorQuestion[]>(
+    `questions:${selectedChallengeId ?? ''}`,
+    [],
   );
   const [state, setState] = useState<LoadState>('loading');
   const [questionsState, setQuestionsState] = useState<LoadState>('loading');
@@ -1125,17 +1190,13 @@ function ChallengeWorkspace({
   const loadChallenges = useCallback(
     async (preferredChallengeId?: string) => {
       challengeRequestRef.current?.abort();
+      const canApplyRead = beginChallengeRead();
       const controller = new AbortController();
       challengeRequestRef.current = controller;
       const collectionKey = challengeCollectionKey(event.eventId);
       const loadStartedAt = mutationCoordinator.beginCollectionLoad();
       setState('loading');
-      setChallenges([]);
-      selectedChallengeIdRef.current = null;
       challengeInteractionRef.current += 1;
-      setSelectedChallengeId(null);
-      setQuestions([]);
-      setQuestionsState('loading');
       setQuestionsError(null);
       setFeedbackPlacement('challenge');
       setApiError(null);
@@ -1147,7 +1208,7 @@ function ChallengeWorkspace({
           getAccessToken,
           signal: controller.signal,
         });
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || !canApplyRead()) return;
         mutationCoordinator.completeCollectionLoad(
           collectionKey,
           loadStartedAt,
@@ -1161,6 +1222,7 @@ function ChallengeWorkspace({
           true,
         );
         setChallenges(reconciled);
+        confirmChallenges();
         setSelectedChallengeId((current) => {
           const nextId =
             preferredChallengeId !== undefined
@@ -1184,12 +1246,22 @@ function ChallengeWorkspace({
         });
         setState('ready');
       } catch (error) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || !canApplyRead()) return;
+        revokeChallenges(error);
         setApiError(toAuthorError(error));
         setState('error');
       }
     },
-    [apiBaseUrl, event.eventId, getAccessToken, mutationCoordinator],
+    [
+      apiBaseUrl,
+      event.eventId,
+      getAccessToken,
+      mutationCoordinator,
+      confirmChallenges,
+      revokeChallenges,
+      setChallenges,
+      beginChallengeRead,
+    ],
   );
 
   useEffect(() => {
@@ -1218,7 +1290,6 @@ function ChallengeWorkspace({
     challengeInteractionRef.current += 1;
     selectedChallengeIdRef.current = routeChallengeId;
     setSelectedChallengeId(routeChallengeId);
-    setQuestions([]);
     setQuestionsState('loading');
     setQuestionsError(null);
     setMessage('');
@@ -1239,12 +1310,13 @@ function ChallengeWorkspace({
 
   const loadQuestions = useCallback(async () => {
     questionRequestRef.current?.abort();
-    setQuestions([]);
     setQuestionsError(null);
     if (!selectedChallengeId) {
+      confirmQuestions();
       setQuestionsState('ready');
       return;
     }
+    const canApplyRead = beginQuestionRead();
     const controller = new AbortController();
     questionRequestRef.current = controller;
     const collectionKey = questionCollectionKey(selectedChallengeId);
@@ -1257,7 +1329,7 @@ function ChallengeWorkspace({
         getAccessToken,
         signal: controller.signal,
       });
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !canApplyRead()) return;
       mutationCoordinator.completeCollectionLoad(collectionKey, loadStartedAt);
       setQuestions(
         reconcileAuthorMutationResults(
@@ -1269,14 +1341,24 @@ function ChallengeWorkspace({
           true,
         ),
       );
+      confirmQuestions();
       setQuestionsState('ready');
     } catch (error) {
-      if (controller.signal.aborted) return;
-      setQuestions([]);
+      if (controller.signal.aborted || !canApplyRead()) return;
+      revokeQuestions(error);
       setQuestionsError(toAuthorError(error));
       setQuestionsState('error');
     }
-  }, [apiBaseUrl, getAccessToken, mutationCoordinator, selectedChallengeId]);
+  }, [
+    apiBaseUrl,
+    getAccessToken,
+    mutationCoordinator,
+    selectedChallengeId,
+    confirmQuestions,
+    revokeQuestions,
+    setQuestions,
+    beginQuestionRead,
+  ]);
 
   useEffect(() => {
     void loadQuestions();
@@ -1354,7 +1436,6 @@ function ChallengeWorkspace({
     challengeInteractionRef.current += 1;
     selectedChallengeIdRef.current = challengeId;
     setSelectedChallengeId(challengeId);
-    setQuestions([]);
     setQuestionsState('loading');
     setQuestionsError(null);
     setMessage('');
@@ -1642,7 +1723,7 @@ function ChallengeWorkspace({
   const activeTab =
     route.mode === 'challenge' ? (route.tab ?? 'questions') : 'questions';
 
-  return (
+  const workspace = (
     <section aria-label={event.title + ' content'} className="author-detail">
       {!focusedQuestion ? <EventContextHeader event={event} /> : null}
       <div className="author-section-heading" hidden={focusedQuestion}>
@@ -1837,7 +1918,15 @@ function ChallengeWorkspace({
           ) : null}
         </header>
         {state === 'loading' ? (
-          <AuthorLoadingState label="Loading challenge…" />
+          challengesConfirmed ? (
+            <UpdatingIndicator
+              active
+              label="Updating challenge…"
+              onRetry={loadChallenges}
+            />
+          ) : (
+            <AuthorLoadingState label="Loading challenge…" />
+          )
         ) : null}
         {state === 'error' ? (
           <div className="author-state author-state--error" role="alert">
@@ -1880,7 +1969,15 @@ function ChallengeWorkspace({
         ) : null}
 
         {selected && questionsState === 'loading' ? (
-          <AuthorLoadingState label="Loading questions…" />
+          questionsConfirmed ? (
+            <UpdatingIndicator
+              active
+              label="Updating questions…"
+              onRetry={loadQuestions}
+            />
+          ) : (
+            <AuthorLoadingState label="Loading questions…" />
+          )
         ) : null}
         {selected && questionsState === 'error' ? (
           <div className="author-state author-state--error" role="alert">
@@ -1897,7 +1994,7 @@ function ChallengeWorkspace({
         ) : null}
         {activeTab === 'questions' ? (
           <>
-            {selected && questionsState === 'ready' ? (
+            {selected && (questionsState === 'ready' || questionsConfirmed) ? (
               <QuestionWorkspace
                 apiBaseUrl={apiBaseUrl}
                 challenge={selected}
@@ -1940,7 +2037,7 @@ function ChallengeWorkspace({
                 submittedBy={selected?.submittedBy ?? null}
               />
             ) : null}
-            {selected && questionsState === 'ready' ? (
+            {selected && (questionsState === 'ready' || questionsConfirmed) ? (
               <section
                 className="review-question-list"
                 aria-label="Submitted questions"
@@ -2104,6 +2201,13 @@ function ChallengeWorkspace({
         ) : null}
       </div>
     </section>
+  );
+  return (
+    <AuthorReadFreshness
+      value={parentFresh && state === 'ready' && questionsState === 'ready'}
+    >
+      {workspace}
+    </AuthorReadFreshness>
   );
 }
 interface QuestionWorkspaceProps {
@@ -2376,7 +2480,7 @@ function QuestionWorkspace({
               event={event}
               getAccessToken={getAccessToken}
               interaction={interactionRef.current}
-              key={`question-form:${selected.questionId}:${selected.version}:${challenge.format}`}
+              key={`question-form:${selected.questionId}:${challenge.format}`}
               mutationCoordinator={mutationCoordinator}
               navigate={navigate}
               onSaved={updateQuestion}
@@ -2651,6 +2755,11 @@ function QuestionForm({
   onSaved,
   question,
 }: QuestionFormProps) {
+  const fresh = useContext(AuthorReadFreshness);
+  const editVersion = useRef(question?.version).current;
+  const initialDraft = useRef(
+    questionDraft(challenge.format, question),
+  ).current;
   const [draft, setDraft] = useState<AuthorQuestionInput>(() =>
     questionDraft(challenge.format, question),
   );
@@ -2678,9 +2787,7 @@ function QuestionForm({
       ?.focus();
   }, [errors]);
 
-  const dirty =
-    JSON.stringify(draft) !==
-    JSON.stringify(questionDraft(challenge.format, question));
+  const dirty = JSON.stringify(draft) !== JSON.stringify(initialDraft);
   const recordKey =
     `question:${question?.questionId ?? 'new'}` as AuthorRecordKey;
   useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
@@ -2688,6 +2795,7 @@ function QuestionForm({
 
   async function save(submission: FormEvent) {
     submission.preventDefault();
+    if (!fresh) return;
     const nextErrors = validateQuestion(draft);
     if (Object.keys(nextErrors).length > 0) {
       focusInvalidFieldRef.current = true;
@@ -2713,7 +2821,7 @@ function QuestionForm({
             getAccessToken,
             input: draft,
             questionId: question.questionId,
-            expectedVersion: question.version,
+            expectedVersion: editVersion!,
             signal: controller.signal,
           })
         : await createAuthorQuestion({
@@ -2951,7 +3059,7 @@ function QuestionForm({
         failed={Boolean(apiError) || Object.values(errors).some(Boolean)}
         isNew={!question}
       >
-        <button className="button" disabled={busy} type="submit">
+        <button className="button" disabled={!fresh || busy} type="submit">
           {busy
             ? 'Saving question draft…'
             : question

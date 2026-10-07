@@ -7,6 +7,7 @@ import {
   act,
   fireEvent,
   render,
+  renderHook,
   screen,
   waitFor,
 } from '@testing-library/react';
@@ -17,6 +18,7 @@ import { Route, Router } from 'wouter';
 
 import LiveLobbyPage from '../src/pages/LiveLobbyPage';
 import LiveMatchPage from '../src/pages/LiveMatchPage';
+import { useLiveBattleSession } from '../src/pages/useLiveBattleSession';
 import { deckListResponse, buildSavedDeck } from './fixtures/decks';
 import { buildCard, buildStarterCards } from './fixtures/cards';
 import {
@@ -196,6 +198,273 @@ async function connect(projection: Record<string, unknown>) {
 }
 
 describe('live lobby and battle experience', () => {
+  it('ignores a late ranked queue mutation after its session view unmounts', async () => {
+    const user = userEvent.setup();
+    let completeJoin: (response: Response) => void = () => undefined;
+    const joinedRequest = { signal: null as AbortSignal | null };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname;
+        if (path.endsWith('/decks'))
+          return Promise.resolve(
+            deckListResponse([buildSavedDeck({ isSelected: true })]),
+          );
+        if (path.endsWith('/ranked/seasons/current'))
+          return Promise.resolve(
+            jsonResponse({
+              season: rankedSeason({
+                activeEndsAt: '2099-01-01T00:00:00.000Z',
+              }),
+            }),
+          );
+        if (path.endsWith('/ranked/queue')) {
+          if (init?.method === 'POST') {
+            joinedRequest.signal = init.signal ?? null;
+            return new Promise<Response>((resolve) => {
+              completeJoin = resolve;
+            });
+          }
+          return Promise.resolve(jsonResponse(queueState()));
+        }
+        const response = rankedLobbyResponse(path);
+        if (response) return Promise.resolve(response);
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }),
+    );
+    const view = renderRoute(
+      '/matches/live',
+      <LiveLobbyPage apiBaseUrl={apiBaseUrl} />,
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Find battle' }),
+    );
+    view.unmount();
+    expect(joinedRequest.signal?.aborted).toBe(true);
+    await act(async () => {
+      completeJoin(
+        jsonResponse(queueState({ status: 'matched', matchId: LIVE_MATCH_ID })),
+      );
+    });
+    expect(window.location.pathname).toBe('/matches/live');
+  });
+
+  it('retains same-season record and standings while ranked readiness is refreshed', async () => {
+    const user = userEvent.setup();
+    const season = rankedSeason({
+      status: 'closing',
+      activeEndsAt: '2099-01-01T00:00:00.000Z',
+    });
+    let refreshing = false;
+    const rejectReads: Array<(error: Error) => void> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const path = new URL(String(input)).pathname;
+        if (
+          refreshing &&
+          !path.endsWith('/cards/collection') &&
+          !path.endsWith('/territory/zones')
+        )
+          return new Promise<Response>((_resolve, reject) => {
+            rejectReads.push(reject);
+          });
+        if (path.endsWith('/decks'))
+          return Promise.resolve(
+            deckListResponse([buildSavedDeck({ isSelected: true })]),
+          );
+        if (path.endsWith('/ranked/queue'))
+          return Promise.resolve(jsonResponse(queueState()));
+        if (path.endsWith('/ranked/seasons/current'))
+          return Promise.resolve(jsonResponse({ season }));
+        if (path.endsWith('/ranked/me'))
+          return Promise.resolve(jsonResponse(rankedProfile({ season })));
+        if (path.endsWith('/ranked/standings'))
+          return Promise.resolve(jsonResponse(rankedStandings({ season })));
+        const response = rankedLobbyResponse(path);
+        if (response) return Promise.resolve(response);
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }),
+    );
+    renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
+    expect(await screen.findByText('Season rating')).toBeVisible();
+    refreshing = true;
+    await user.click(screen.getByRole('button', { name: 'Refresh season' }));
+    expect(screen.getByText('Season rating').parentElement).toHaveTextContent(
+      /1\s248/,
+    );
+    expect(screen.getByText(/Updating your record/)).toBeVisible();
+    await user.click(screen.getByRole('tab', { name: 'Standings' }));
+    expect(screen.getByText('CampusFox')).toBeVisible();
+    expect(screen.getByText(/Updating ranked standings/)).toBeVisible();
+    await act(async () => {
+      rejectReads.forEach((reject) => reject(new TypeError('offline')));
+    });
+    expect(
+      await screen.findByText(/Your previous standings could not be updated/),
+    ).toBeVisible();
+    expect(screen.getByText('CampusFox')).toBeVisible();
+    expect(
+      screen.getByText(/Your previous profile could not be updated/),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Find battle' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('retains pending settlement after a poll failure and retries only its read', async () => {
+    vi.useFakeTimers();
+    const completed = participantProjection({
+      status: 'completed',
+      phase: 'completed',
+      currentActor: null,
+      turnDeadline: null,
+      legalActions: [],
+      outcome: 'win',
+      completionReason: 'abandonment_forfeit',
+      completedAt: '2026-09-25T12:01:00.000Z',
+    });
+    let settlementReads = 0;
+    const baseFetch = liveFetch([completed]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (new URL(String(input)).pathname.endsWith('/settlement')) {
+          settlementReads += 1;
+          if (settlementReads === 2)
+            return Promise.reject(new TypeError('offline'));
+          return Promise.resolve(
+            jsonResponse(
+              settlementReads === 1
+                ? rankedSettlement({
+                    status: 'pending',
+                    ratingBefore: null,
+                    ratingAfter: null,
+                    appliedDelta: null,
+                    settledAt: null,
+                    territory: null,
+                  })
+                : rankedSettlement(),
+            ),
+          );
+        }
+        return baseFetch(input, init);
+      }),
+    );
+    renderLiveMatch();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      screen.getByRole('heading', { name: 'Season settlement' }),
+    ).toBeVisible();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
+    expect(
+      screen.getByRole('heading', { name: 'Season settlement' }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/last server check was still pending/),
+    ).toBeVisible();
+    expect(screen.queryByText('+24')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('+30 influence awarded.'),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry update' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(settlementReads).toBe(3);
+    expect(screen.getByText('+24')).toBeVisible();
+    expect(screen.getByText('+30 influence awarded.')).toBeVisible();
+  });
+
+  it('serializes slow queue polls and delivers a deferred lease heartbeat', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-25T12:00:00.000Z'));
+    const searching = queueState({
+      status: 'searching',
+      queueEntryId: '71000000-0000-4000-8000-000000000001',
+      leaseExpiresAt: '2026-09-25T12:00:30.000Z',
+    });
+    let queueReads = 0;
+    let heartbeats = 0;
+    let completePoll: (value: Response) => void = () => undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const pathname = new URL(String(input)).pathname;
+        if (pathname.endsWith('/decks'))
+          return Promise.resolve(
+            deckListResponse([buildSavedDeck({ isSelected: true })]),
+          );
+        if (pathname.endsWith('/ranked/seasons/current'))
+          return Promise.resolve(jsonResponse({ season: rankedSeason() }));
+        if (pathname.endsWith('/ranked/queue/heartbeat')) {
+          heartbeats += 1;
+          return Promise.resolve(jsonResponse(searching));
+        }
+        if (pathname.endsWith('/ranked/queue')) {
+          queueReads += 1;
+          if (queueReads === 1) return Promise.resolve(jsonResponse(searching));
+          return new Promise<Response>((resolve) => {
+            completePoll = resolve;
+          });
+        }
+        const supplemental = rankedLobbyResponse(pathname);
+        if (supplemental) return Promise.resolve(supplemental);
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }),
+    );
+    renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+    expect(queueReads).toBe(2);
+    expect(heartbeats).toBe(0);
+    await act(async () => {
+      completePoll(jsonResponse(searching));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(heartbeats).toBe(1);
+  });
+
+  it('clears the previous live projection and pending action when the match scope changes', async () => {
+    const projection = participantProjection();
+    const fetchMock = liveFetch([projection]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).includes('60000000-0000-4000-8000-000000000999'))
+          return new Promise<Response>(() => undefined);
+        return fetchMock(input, init);
+      }),
+    );
+    const getAccessToken = vi.fn().mockResolvedValue('access-token');
+    const { result, rerender } = renderHook(
+      ({ matchId }) =>
+        useLiveBattleSession({ apiBaseUrl, getAccessToken, matchId }),
+      { initialProps: { matchId: LIVE_MATCH_ID } },
+    );
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    act(() => FakeWebSocket.instances[0]!.emit(readyMessage(projection)));
+    expect(result.current.match?.matchId).toBe(LIVE_MATCH_ID);
+    act(() => {
+      result.current.resign();
+    });
+    expect(result.current.pending).not.toBeNull();
+    rerender({ matchId: '60000000-0000-4000-8000-000000000999' });
+    expect(result.current.match).toBeNull();
+    expect(result.current.pending).toBeNull();
+    expect(result.current.connection).toBe('connecting');
+    expect(FakeWebSocket.instances[0]!.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(result.current.resign()).toBe(false);
+  });
+
   it('loads approved deck artwork while card details are pending and preserves it on failure', async () => {
     const deck = buildSavedDeck({ isSelected: true });
     deck.cards[0] = {

@@ -1,6 +1,6 @@
 import { createAppDateTimeFormatter } from '../date-time';
 import { StateIcon } from '../components/StatusMessage';
-import { LoadingState } from '../components/LoadingState';
+import { LoadingState, UpdatingIndicator } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import { CrownIcon, MedalIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
@@ -25,7 +25,7 @@ interface ProfilePageProps {
 type ResourceState<T> =
   | { status: 'loading' }
   | { error: ProgressionApiError; status: 'error' }
-  | { data: T; status: 'ready' };
+  | { data: T; status: 'ready'; refreshing?: boolean; refreshError?: string };
 
 interface StandingsQuery {
   period: StandingsPeriod;
@@ -64,7 +64,11 @@ export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    setStandings({ status: 'loading' });
+    setStandings((current) =>
+      current.status === 'ready'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
 
     void listProgressionStandings({
       apiBaseUrl,
@@ -84,7 +88,18 @@ export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setStandings({ error: toProgressionError(error), status: 'error' });
+          const failure = toProgressionError(error);
+          setStandings((current) =>
+            current.status === 'ready' &&
+            !['authorization', 'account-unavailable'].includes(failure.failure)
+              ? {
+                  ...current,
+                  refreshing: false,
+                  refreshError:
+                    'Standings could not be updated. Showing the previous results.',
+                }
+              : { error: failure, status: 'error' },
+          );
         }
       });
 
@@ -92,11 +107,15 @@ export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
   }, [apiBaseUrl, getAccessToken, standingsQuery, standingsRevision]);
 
   useEffect(() => {
-    if (shouldFocusStandings.current && standings.status !== 'loading') {
+    if (
+      shouldFocusStandings.current &&
+      standings.status !== 'loading' &&
+      !(standings.status === 'ready' && standings.refreshing)
+    ) {
       shouldFocusStandings.current = false;
       standingsHeading.current?.focus();
     }
-  }, [standings.status]);
+  }, [standings]);
 
   async function startSignIn() {
     setReauthFailed(false);
@@ -129,7 +148,12 @@ export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   return (
     <section
-      aria-busy={standings.status === 'loading' ? 'true' : undefined}
+      aria-busy={
+        standings.status === 'loading' ||
+        (standings.status === 'ready' && standings.refreshing)
+          ? 'true'
+          : undefined
+      }
       aria-describedby="standings-context"
       aria-labelledby="standings-heading"
       className="progression-section standings-section"
@@ -163,7 +187,6 @@ export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
       >
         <button
           aria-pressed={standingsQuery.period === 'all_time'}
-          disabled={standings.status === 'loading'}
           onClick={() => selectStandingsPeriod('all_time')}
           type="button"
         >
@@ -171,7 +194,6 @@ export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
         </button>
         <button
           aria-pressed={standingsQuery.period === 'monthly'}
-          disabled={standings.status === 'loading'}
           onClick={() => selectStandingsPeriod('monthly')}
           type="button"
         >
@@ -179,6 +201,18 @@ export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
         </button>
       </div>
 
+      {standings.status === 'ready' ? (
+        <>
+          <UpdatingIndicator
+            active={Boolean(standings.refreshing)}
+            label="Updating standings"
+            previous={true}
+            error={standings.refreshError}
+            onRetry={retryStandings}
+          />
+          <p>{standingsTitle(standings.data)}</p>
+        </>
+      ) : null}
       {standings.status === 'loading' ? (
         <ProgressionLoadingState label="Loading standings" />
       ) : standings.status === 'error' ? (
@@ -191,7 +225,10 @@ export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
         />
       ) : (
         <StandingsResults
-          onPageChange={changePage}
+          busy={Boolean(standings.refreshing)}
+          onPageChange={(page) => {
+            if (!standings.refreshing) changePage(page);
+          }}
           standings={standings.data}
         />
       )}
@@ -200,9 +237,11 @@ export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
 }
 
 function StandingsResults({
+  busy,
   onPageChange,
   standings,
 }: {
+  busy: boolean;
   onPageChange: (page: number) => void;
   standings: ProgressionStandings;
 }) {
@@ -256,7 +295,7 @@ function StandingsResults({
       <nav aria-label="Standings pages" className="standings-pagination">
         <button
           className="button button--quiet"
-          disabled={page <= 1}
+          disabled={busy || page <= 1}
           onClick={() => onPageChange(page - 1)}
           type="button"
         >
@@ -268,7 +307,7 @@ function StandingsResults({
         </p>
         <button
           className="button button--quiet"
-          disabled={totalPages === 0 || page >= totalPages}
+          disabled={busy || totalPages === 0 || page >= totalPages}
           onClick={() => onPageChange(page + 1)}
           type="button"
         >

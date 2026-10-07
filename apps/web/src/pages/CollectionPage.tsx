@@ -1,7 +1,11 @@
 import { SelectField } from '../components/fields/SelectField';
 import { SearchField } from '../components/fields/SearchField';
 import { StateIcon } from '../components/StatusMessage';
-import { LoadingState, PageLoadingState } from '../components/LoadingState';
+import {
+  LoadingState,
+  PageLoadingState,
+  UpdatingIndicator,
+} from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import { SlidersHorizontal, X } from '@phosphor-icons/react';
 import {
@@ -33,6 +37,7 @@ import {
   CollectibleCard,
 } from '../components/cards/CollectibleCard';
 import { CardDetailModal } from '../components/cards/CardDetailModal';
+import { useCollectionReads } from '../components/cards/CollectionReadProvider';
 import { CollectionEvolutions } from '../components/cards/CollectionEvolutions';
 import { CollectionSectionNavigation } from '../components/cards/CollectionSectionNavigation';
 import '../components/cards/evolutions.css';
@@ -45,19 +50,33 @@ interface CollectionPageProps {
 type CollectionState =
   | { status: 'loading' }
   | { error: CardApiError; status: 'error' }
-  | { cards: OwnedCard[]; status: 'ready' };
+  | {
+      cards: OwnedCard[];
+      status: 'ready';
+      refreshing?: boolean;
+      refreshError?: string;
+    };
 
 type StarterOptionsState =
   | { status: 'idle' | 'loading' }
   | { error: CardApiError; status: 'error' }
-  | { options: StarterOption[]; status: 'ready' };
+  | {
+      options: StarterOption[];
+      status: 'ready';
+      refreshing?: boolean;
+      refreshError?: string;
+    };
 
 export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   const getAccessToken = useApiAccessToken();
+  const retainedReads = useCollectionReads();
   const { loginWithRedirect } = useAuth0();
   const [pathname] = useLocation();
-  const [collection, setCollection] = useState<CollectionState>({
-    status: 'loading',
+  const [collection, setCollection] = useState<CollectionState>(() => {
+    const cards = retainedReads?.readCards(apiBaseUrl);
+    return cards
+      ? { cards, status: 'ready', refreshing: true }
+      : { status: 'loading' };
   });
   const [collectionRevision, setCollectionRevision] = useState(0);
   const section =
@@ -82,9 +101,15 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   const shouldFocusCollection = useRef(false);
 
   useEffect(() => {
+    collectionRefreshRequest.current?.abort();
     const controller = new AbortController();
+    collectionRefreshRequest.current = controller;
 
-    setCollection({ status: 'loading' });
+    setCollection((current) =>
+      current.status === 'ready'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
 
     void listOwnedCards({
       apiBaseUrl,
@@ -93,17 +118,29 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
     })
       .then((cards) => {
         if (!controller.signal.aborted) {
+          retainedReads?.rememberCards(apiBaseUrl, cards);
           setCollection({ cards, status: 'ready' });
         }
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setCollection({ error: toCardApiError(error), status: 'error' });
+          const failure = toCardApiError(error);
+          if (failure.failure === 'authorization') retainedReads?.clearCards();
+          setCollection((current) =>
+            current.status === 'ready' && failure.failure !== 'authorization'
+              ? {
+                  ...current,
+                  refreshing: false,
+                  refreshError:
+                    'Your cards could not be updated. Showing your previous collection.',
+                }
+              : { error: failure, status: 'error' },
+          );
         }
       });
 
     return () => controller.abort();
-  }, [apiBaseUrl, collectionRevision, getAccessToken]);
+  }, [apiBaseUrl, collectionRevision, getAccessToken, retainedReads]);
 
   const hasStarter =
     collection.status === 'ready' &&
@@ -116,7 +153,11 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
     }
 
     const controller = new AbortController();
-    setStarterOptions({ status: 'loading' });
+    setStarterOptions((current) =>
+      current.status === 'ready'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
 
     void listStarterOptions({
       apiBaseUrl,
@@ -135,17 +176,23 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setStarterOptions({
-            error: toCardApiError(error),
-            status: 'error',
-          });
+          const failure = toCardApiError(error);
+          setStarterOptions((current) =>
+            current.status === 'ready' && failure.failure !== 'authorization'
+              ? {
+                  ...current,
+                  refreshing: false,
+                  refreshError: 'Starter choices could not be updated.',
+                }
+              : { error: failure, status: 'error' },
+          );
         }
       });
 
     return () => controller.abort();
   }, [
     apiBaseUrl,
-    collection,
+    collection.status,
     getAccessToken,
     hasStarter,
     starterOptionsRevision,
@@ -171,7 +218,11 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   }, [isConfirmingStarter]);
 
   useEffect(() => {
-    if (shouldFocusCollection.current && collection.status === 'ready') {
+    if (
+      shouldFocusCollection.current &&
+      collection.status === 'ready' &&
+      !collection.refreshing
+    ) {
       shouldFocusCollection.current = false;
       collectionHeading.current?.focus();
     }
@@ -180,7 +231,11 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   const retryCollection = useCallback(() => {
     setStarterError(null);
     setReauthFailed(false);
-    setCollection({ status: 'loading' });
+    setCollection((current) =>
+      current.status === 'ready'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
     setCollectionRevision((revision) => revision + 1);
   }, []);
 
@@ -192,28 +247,36 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   const retryStarterOptions = useCallback(() => {
     setStarterError(null);
     setReauthFailed(false);
-    setStarterOptions({ status: 'loading' });
+    setStarterOptions((current) =>
+      current.status === 'ready'
+        ? { ...current, refreshing: true, refreshError: undefined }
+        : { status: 'loading' },
+    );
     setStarterOptionsRevision((revision) => revision + 1);
   }, []);
 
-  const applyEvolutionResult = useCallback((result: CardEvolutionResult) => {
-    const consumedIds = new Set(result.consumedOwnedCardIds);
-    setCollection((current) =>
-      current.status === 'ready'
-        ? {
-            cards: [
-              result.newCard,
-              ...current.cards.filter(
-                (card) =>
-                  !consumedIds.has(card.ownedCardId) &&
-                  card.ownedCardId !== result.newCard.ownedCardId,
-              ),
-            ],
-            status: 'ready',
-          }
-        : current,
-    );
-  }, []);
+  const applyEvolutionResult = useCallback(
+    (result: CardEvolutionResult) => {
+      retainedReads?.clearCards();
+      const consumedIds = new Set(result.consumedOwnedCardIds);
+      setCollection((current) =>
+        current.status === 'ready'
+          ? {
+              cards: [
+                result.newCard,
+                ...current.cards.filter(
+                  (card) =>
+                    !consumedIds.has(card.ownedCardId) &&
+                    card.ownedCardId !== result.newCard.ownedCardId,
+                ),
+              ],
+              status: 'ready',
+            }
+          : current,
+      );
+    },
+    [retainedReads],
+  );
 
   const refreshCollection = useCallback(async () => {
     collectionRefreshRequest.current?.abort();
@@ -227,6 +290,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
         signal: controller.signal,
       });
       if (!controller.signal.aborted) {
+        retainedReads?.rememberCards(apiBaseUrl, cards);
         setCollection({ cards, status: 'ready' });
       }
     } finally {
@@ -234,7 +298,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
         collectionRefreshRequest.current = null;
       }
     }
-  }, [apiBaseUrl, getAccessToken]);
+  }, [apiBaseUrl, getAccessToken, retainedReads]);
 
   async function startSignIn() {
     setReauthFailed(false);
@@ -247,7 +311,16 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   }
 
   async function confirmStarter() {
-    if (starterSubmissionLocked.current || selectedAffinity === null) {
+    if (
+      starterSubmissionLocked.current ||
+      selectedAffinity === null ||
+      collection.status !== 'ready' ||
+      collection.refreshing ||
+      collection.refreshError ||
+      starterOptions.status !== 'ready' ||
+      starterOptions.refreshing ||
+      starterOptions.refreshError
+    ) {
       return;
     }
 
@@ -266,6 +339,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
       });
 
       if (!controller.signal.aborted) {
+        retainedReads?.clearCards();
         setStarterGrant(grant);
       }
     } catch (error) {
@@ -338,6 +412,12 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
       headingLevel={headingLevel}
       isConfirming={isConfirmingStarter}
       isSubmitting={isSubmittingStarter}
+      choicesUnavailable={
+        (collection.status === 'ready' &&
+          Boolean(collection.refreshing || collection.refreshError)) ||
+        (starterOptions.status === 'ready' &&
+          Boolean(starterOptions.refreshing || starterOptions.refreshError))
+      }
       onAffinityChange={(affinity) => {
         setSelectedAffinity(affinity);
         setIsConfirmingStarter(false);
@@ -362,6 +442,12 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
     return (
       <div className="collection-page collection-page--starter">
         <CollectionSectionNavigation />
+        <UpdatingIndicator
+          active={Boolean(collection.refreshing)}
+          label="Updating your cards"
+          error={collection.refreshError}
+          onRetry={retryCollection}
+        />
         {renderStarterSelector(1)}
       </div>
     );
@@ -370,6 +456,14 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   return (
     <div className="collection-page">
       <CollectionSectionNavigation />
+      {collection.status === 'ready' ? (
+        <UpdatingIndicator
+          active={Boolean(collection.refreshing)}
+          label="Updating your cards"
+          error={collection.refreshError}
+          onRetry={retryCollection}
+        />
+      ) : null}
       {section !== 'evolutions' ||
       collection.status !== 'ready' ||
       cards.length === 0 ? (
@@ -410,6 +504,9 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
           apiBaseUrl={apiBaseUrl}
           cards={cards}
           getAccessToken={getAccessToken}
+          collectionUpdating={Boolean(
+            collection.refreshing || collection.refreshError,
+          )}
           onApplyResult={applyEvolutionResult}
           onRefreshCollection={refreshCollection}
         />
@@ -437,6 +534,7 @@ interface StarterSelectorProps {
   headingLevel: 1 | 2;
   isConfirming: boolean;
   isSubmitting: boolean;
+  choicesUnavailable: boolean;
   onAffinityChange: (affinity: StarterAffinity) => void;
   onCancelConfirmation: () => void;
   onConfirm: () => Promise<void>;
@@ -455,6 +553,7 @@ function StarterSelector({
   headingLevel,
   isConfirming,
   isSubmitting,
+  choicesUnavailable,
   onAffinityChange,
   onCancelConfirmation,
   onConfirm,
@@ -489,6 +588,14 @@ function StarterSelector({
         Earn Spirit, Mystic, and other cards through challenges later.
       </p>
 
+      {optionsState.status === 'ready' ? (
+        <UpdatingIndicator
+          active={Boolean(optionsState.refreshing)}
+          label="Updating starter choices"
+          error={optionsState.refreshError}
+          onRetry={onRetryOptions}
+        />
+      ) : null}
       {optionsState.status === 'idle' || optionsState.status === 'loading' ? (
         <LoadingState
           className="starter-options-state"
@@ -525,7 +632,7 @@ function StarterSelector({
             <div className="starter-selector__actions">
               <button
                 className="button"
-                disabled={selectedOption === null}
+                disabled={selectedOption === null || choicesUnavailable}
                 type="submit"
               >
                 Review{' '}
@@ -575,7 +682,7 @@ function StarterSelector({
             </button>
             <button
               className="button"
-              disabled={isSubmitting}
+              disabled={isSubmitting || choicesUnavailable}
               onClick={onConfirm}
               type="button"
             >

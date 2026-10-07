@@ -211,6 +211,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       pollRequest.current = controller;
       try {
         const collections = await loadCollections(controller.signal);
+        if (controller.signal.aborted) return null;
         setState((current) =>
           current.status === 'ready'
             ? {

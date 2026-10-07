@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ActionLoadingFeedback,
   PageLoadingState,
+  UpdatingIndicator,
 } from '../src/components/LoadingState';
 import { RoutePreparation } from '../src/App';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
@@ -203,4 +204,39 @@ describe('shared loading policy', () => {
     expect(screen.getByRole('textbox')).toBeVisible();
     logged.mockRestore();
   });
+});
+
+it('keeps refresh feedback local, labels previous queries, and preserves focus through recovery', () => {
+  const retry = vi.fn();
+  const tree = (active: boolean, error?: string) => (
+    <>
+      <input aria-label="Draft" defaultValue="Unsaved" />
+      <UpdatingIndicator
+        active={active}
+        previous
+        label="Updating standings"
+        error={error}
+        onRetry={retry}
+      />
+    </>
+  );
+  const view = render(tree(true));
+  screen.getByRole('textbox').focus();
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'Showing the previous result',
+  );
+  expect(view.container.querySelector('.quest-marker')).toBeNull();
+  act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
+  expect(screen.getByRole('button', { name: 'Retry update' })).toBeVisible();
+  expect(screen.getByRole('textbox')).toHaveFocus();
+  view.rerender(tree(false, 'Could not update standings.'));
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'Could not update standings.',
+  );
+  expect(view.container.querySelector('.quest-marker')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry update' }));
+  expect(retry).toHaveBeenCalledOnce();
+  view.rerender(tree(false));
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(screen.getByRole('textbox')).toHaveValue('Unsaved');
 });

@@ -2537,6 +2537,69 @@ describe('Basic author console', () => {
     ).toHaveAccessibleDescription('Enter a positive whole number.');
   });
 
+  it('preserves an unsaved event draft and its original version across a confirmed catalogue refresh', async () => {
+    const user = userEvent.setup();
+    let resolveRefresh!: (response: Response) => void;
+    const refresh = new Promise<Response>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    let reads = 0;
+    const fetchMock = installAuthorApi({
+      handleRequest({ path, method }) {
+        if (path === '/author/events' && method === 'GET' && ++reads === 2)
+          return refresh;
+        return undefined;
+      },
+    });
+    const props = {
+      apiBaseUrl,
+      cards: [],
+      cardsState: 'ready' as const,
+      getAccessToken: vi.fn().mockResolvedValue('access-token'),
+      mapboxAccessToken,
+      mutationCoordinator: new AuthorMutationCoordinator(),
+      navigate: vi.fn(),
+      onOpenCards: vi.fn(),
+      onReloadCards: vi.fn(),
+      route: { eventId, mode: 'edit' as const, section: 'events' as const },
+    };
+    const view = render(<EventWorkspace {...props} />);
+    const title = await screen.findByLabelText('Event title');
+    await pasteFieldValue(user, title, 'Preserve my unsaved event title');
+    view.rerender(
+      <EventWorkspace
+        {...props}
+        getAccessToken={vi.fn().mockResolvedValue('refreshed-token')}
+      />,
+    );
+    await screen.findByText(/Updating authored events/);
+    expect(title).toHaveValue('Preserve my unsaved event title');
+    expect(screen.getByRole('button', { name: 'Save event' })).toBeDisabled();
+    await act(async () =>
+      resolveRefresh(
+        jsonResponse({
+          events: [eventFixture({ title: 'Server edited title', version: 2 })],
+          requestId: 'refreshed-events',
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save event' })).toBeEnabled(),
+    );
+    expect(screen.getByLabelText('Event title')).toBe(title);
+    expect(title).toHaveValue('Preserve my unsaved event title');
+    await user.click(screen.getByRole('button', { name: 'Save event' }));
+    const update = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith(`/author/events/${eventId}`) &&
+        init?.method === 'PUT',
+    );
+    expect(JSON.parse(String(update?.[1]?.body))).toMatchObject({
+      expectedVersion: 0,
+      title: 'Preserve my unsaved event title',
+    });
+  });
+
   it('reports Common catalogue readiness only for a successful authoritative load', async () => {
     installAuthorApi();
     const cards = [

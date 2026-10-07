@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -514,8 +514,10 @@ describe('Author curation workspaces', () => {
     await user.click(
       within(dialog).getByRole('button', { name: 'Reload server version' }),
     );
-    expect(await screen.findByLabelText('Campaign title')).toHaveValue(
-      'Welcome Week from server',
+    await waitFor(() =>
+      expect(screen.getByLabelText('Campaign title')).toHaveValue(
+        'Welcome Week from server',
+      ),
     );
     expect(campaignLoads).toBe(2);
   });
@@ -578,11 +580,11 @@ describe('Author curation workspaces', () => {
       await screen.findByRole('button', { name: 'Submit for review' }),
     );
     expect(
-      await screen.findByText('Loading campaigns and available members…'),
+      await screen.findByText(/Updating campaigns and available members/),
     ).toBeVisible();
     expect(
-      screen.queryByRole('button', { name: 'Submit for review' }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: /Submitting campaign/ }),
+    ).toBeDisabled();
     refresh.resolve(
       jsonResponse({
         campaigns: [serverCampaign],
