@@ -118,6 +118,7 @@ export function RoutePreparation({ pathname }: { pathname: string }) {
   return (
     <LoadingState
       delayed
+      prominent
       label={`Opening ${destination}…`}
       resetKey={pathname}
     />

@@ -391,7 +391,7 @@ function StandingRowContent({ entry }: { entry: StandingsEntry }) {
 }
 
 function ProgressionLoadingState({ label }: { label: string }) {
-  return <LoadingState label={`${label}…`} />;
+  return <LoadingState prominent label={`${label}…`} />;
 }
 
 function ProgressionErrorState({

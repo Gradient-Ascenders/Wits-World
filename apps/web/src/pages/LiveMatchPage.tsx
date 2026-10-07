@@ -24,7 +24,11 @@ import {
   type ApiAccessTokenProvider,
   useApiAccessToken,
 } from '../auth/useApiAccessToken';
-import { LoadingState, UpdatingIndicator } from '../components/LoadingState';
+import {
+  LoadingState,
+  PageLoadingState,
+  UpdatingIndicator,
+} from '../components/LoadingState';
 import {
   BattleActionPanel,
   BattleBench,
@@ -77,16 +81,14 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   if (!session.match && session.connection !== 'unrecoverable') {
     return (
-      <main className="matches-page live-match-page">
-        <section className="live-connection-stage" role="status">
-          <span className="live-searching__signal" aria-hidden="true" />
-          <h1>Connecting to Live Ranked</h1>
-          <p>{session.feedback}</p>
-          <Link className="button button--quiet" href="/matches/live">
-            Return to Live Ranked
-          </Link>
-        </section>
-      </main>
+      <PageLoadingState
+        title="Connecting to Live Ranked"
+        description={session.feedback}
+      >
+        <Link className="button button--quiet" href="/matches/live">
+          Return to Live Ranked
+        </Link>
+      </PageLoadingState>
     );
   }
 

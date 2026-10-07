@@ -11,13 +11,27 @@ visible. First visits may use a page data gate when no safe page content exists;
 optional reads, pagination, previews, and mutations use their own region or
 control. Do not wait for optional work before exposing confirmed content.
 
-`LoadingState`, `PageLoadingState`, `AuthorLoadingState`, and
-`ExplorationLoadingPanel` use `useLoadingPhase` from
-`apps/web/src/components/loading-policy.ts`. The policy delays decorative loading
-motion for **150 ms**, adds a truthful explanation and recovery at **8 seconds**,
-and imposes no minimum wait or ceremonial completion animation. Completed work
-replaces its loading state immediately. These are product thresholds tested with
-controlled timers; they are not measured production latency percentiles.
+Page preparation uses one consistent, centered animated seal for module loading,
+identity confirmation, and required first reads. Secondary reads use quiet, stationary
+placeholders through `RegionLoadingState`, including Author and exploration
+regions; their status remains available to assistive technology. Quest markers
+accompany visible regional feedback and slow-load recovery. Challenge-start
+and location guidance remain visible immediately. Both branded animations
+respect the player's reduced-motion preference.
+
+The shared primitives use `useLoadingPhase` from
+`apps/web/src/components/loading-policy.ts`. Brief module preparation and
+remaining decorative indicators are delayed **150 ms**; visible regional status
+and recovery appear at **8 seconds**. There is no minimum wait or ceremonial
+completion animation. Completed work replaces its loading state immediately.
+These are product thresholds tested with controlled timers; they are not
+measured production latency percentiles.
+
+Explore shows one page wait while its first event read is pending. The map starts
+in parallel at its actual dimensions beneath that wait. Confirmed events reveal
+the explorer immediately, even if the optional map is still loading; the map
+does not introduce a second loading card. Map errors retain their list fallback
+and retry control. Subsequent reads retain their confirmed content.
 
 `LoadingRecovery` offers a safe way home and saved offline events. Supply
 `onRetry` only for a read or an existing operation-specific recovery path. Leaving

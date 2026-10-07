@@ -740,7 +740,7 @@ describe('map-first campus exploration', () => {
       'Starting challenge…',
     );
     expect(
-      status.querySelector('.exploration-loading-panel__description'),
+      status.querySelector('.region-loading-state__description'),
     ).toHaveTextContent('Checking your location before starting.');
   });
 

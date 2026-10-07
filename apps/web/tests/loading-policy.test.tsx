@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ActionLoadingFeedback,
   PageLoadingState,
+  RegionLoadingState,
   UpdatingIndicator,
 } from '../src/components/LoadingState';
 import { RoutePreparation } from '../src/App';
@@ -18,7 +19,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('shared loading policy', () => {
-  it('does not animate fast preparation or impose a minimum wait', () => {
+  it('uses the animated seal without imposing a minimum wait', () => {
     const view = render(
       <PageLoadingState
         title="Loading trades"
@@ -26,12 +27,35 @@ describe('shared loading policy', () => {
       />,
     );
     expect(view.container.querySelector('.loading-seal')).toHaveStyle({
-      visibility: 'hidden',
+      visibility: 'visible',
     });
+    expect(view.container.querySelector('.startup-seal')).toHaveAttribute(
+      'data-animate',
+      'true',
+    );
     act(() => vi.advanceTimersByTime(LOADING_DELAY_MS - 1));
     view.rerender(<h1>Your trades</h1>);
     act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
     expect(screen.getByRole('heading', { name: 'Your trades' })).toBeVisible();
+    expect(screen.queryByText(/longer than expected/)).not.toBeInTheDocument();
+  });
+
+  it('keeps secondary waits quiet and restores quest markers for actionable feedback', () => {
+    const view = render(<RegionLoadingState label="Loading nearby events…" />);
+    expect(view.container.querySelector('.quest-marker')).toBeNull();
+    expect(screen.getByRole('status')).toHaveClass('sr-only');
+    act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
+    expect(
+      screen.getByText('Loading nearby events…').querySelector('.quest-marker'),
+    ).not.toBeNull();
+    expect(screen.getByRole('link', { name: 'Return home' })).toBeVisible();
+    view.rerender(
+      <RegionLoadingState immediate label="Checking your location…" />,
+    );
+    expect(screen.getByRole('status')).not.toHaveClass('sr-only');
+    expect(
+      screen.getByRole('status').querySelector('.quest-marker'),
+    ).not.toBeNull();
     expect(screen.queryByText(/longer than expected/)).not.toBeInTheDocument();
   });
 
@@ -70,14 +94,14 @@ describe('shared loading policy', () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 
-  it('resets a slow status on a new navigation and keeps module preparation compact', () => {
+  it('resets a slow status on a new navigation and uses the shared page presentation', () => {
     const view = render(<RoutePreparation pathname="/matches" />);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     act(() => vi.advanceTimersByTime(LOADING_DELAY_MS));
     expect(screen.getByRole('status')).toHaveTextContent(
       'Opening battle page…',
     );
-    expect(view.container.querySelector('.page-loading-state')).toBeNull();
+    expect(view.container.querySelector('.page-loading-state')).not.toBeNull();
     act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
     view.rerender(<RoutePreparation pathname="/collection/trades/new" />);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();

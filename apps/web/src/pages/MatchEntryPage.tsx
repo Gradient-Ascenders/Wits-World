@@ -399,9 +399,7 @@ function PlayerBattlePanel({ state }: { state: PlayerBattlesState }) {
         <p>Challenge a player and take turns.</p>
       </div>
       {state.status === 'loading' ? (
-        <div className="battle-mode-card__state" role="status">
-          <strong>Checking active battles…</strong>
-        </div>
+        <LoadingState label="Checking active battles…" />
       ) : state.status === 'unavailable' ? (
         <div className="battle-mode-card__state" role="status">
           <strong>Battle status unavailable</strong>
@@ -461,9 +459,7 @@ function RecentResults({ state }: { state: RecentResultsState }) {
       </div>
 
       {state.status === 'loading' ? (
-        <div aria-live="polite" className="recent-results__empty" role="status">
-          <p>Loading recent results</p>
-        </div>
+        <LoadingState label="Loading recent results" />
       ) : state.status === 'unavailable' ? (
         <div className="recent-results__empty" role="status">
           <p>

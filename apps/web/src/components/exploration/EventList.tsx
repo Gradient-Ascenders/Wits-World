@@ -291,6 +291,7 @@ function EligibilityStatus({
       <ExplorationLoadingPanel
         className="exploration-loading-panel--inline"
         description="Checking your location before starting."
+        immediate
         label="Starting challenge…"
       />
     );
@@ -316,6 +317,7 @@ function EligibilityStatus({
       <ExplorationLoadingPanel
         className="exploration-loading-panel--inline"
         description={content.detail}
+        immediate
         label={content.title}
       />
     );

@@ -77,6 +77,7 @@ export function ProtectedRoute({
       <>
         {loadingFallback ?? (
           <LoadingState
+            prominent
             label="Checking your sign-in status"
             onRetry={() => window.location.reload()}
           />
@@ -136,6 +137,7 @@ export function ProtectedRoute({
       <>
         {loadingFallback ?? (
           <LoadingState
+            prominent
             label="Confirming your Wits World player"
             onRetry={retryPlayer}
             resetKey={loadingAttempt}

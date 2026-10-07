@@ -4,6 +4,113 @@ import { buildSavedDeck } from '../tests/fixtures/decks';
 
 const playerId = '00000000-0000-4000-8000-000000000001';
 
+for (const width of [390, 1440]) {
+  for (const destination of ['explore', 'collection'] as const) {
+    test(`one page presentation through module and data preparation for ${destination} at ${width}px`, async ({
+      page,
+    }, info) => {
+      await fixture(page);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.setViewportSize({ width, height: 844 });
+      let releaseModule!: () => void;
+      const moduleWait = new Promise<void>((resolve) => {
+        releaseModule = resolve;
+      });
+      await page.route(
+        `**/src/pages/${destination === 'explore' ? 'ExplorePage' : 'CollectionPage'}.tsx`,
+        async (route) => {
+          await moduleWait;
+          await route.continue();
+        },
+      );
+      let releaseEvents!: () => Promise<void>;
+      if (destination === 'explore') {
+        await page.route('**/api/v1/events', (route) => {
+          releaseEvents = () =>
+            route.fulfill({
+              json: {
+                requestId: 'loading-fixture',
+                events: [
+                  {
+                    availability: 'active',
+                    description: 'A campus event.',
+                    endsAt: '2030-01-01T00:00:00Z',
+                    eventId: '00000000-0000-4000-8000-000000000018',
+                    latitude: -26.19205,
+                    longitude: 28.03038,
+                    radiusMetres: 75,
+                    startsAt: '2025-01-01T00:00:00Z',
+                    title: 'Prepared campus event',
+                  },
+                ],
+              },
+            });
+        });
+      }
+      await page.goto(
+        `/${destination}${destination === 'explore' ? '?map-loading' : ''}`,
+      );
+      await expect(page.locator('.page-loading-state')).toBeVisible();
+      await expect(page.locator('.page-loading-state')).toHaveCount(1);
+      await expect(
+        page.locator('.page-loading-state .startup-seal'),
+      ).toHaveAttribute('data-animate', 'true');
+      await expect(
+        page.locator('.page-loading-state .seal-loader__trace'),
+      ).toHaveCSS('animation-iteration-count', 'infinite');
+      await capture(page, info, `${destination}-module-${width}`);
+      releaseModule();
+      if (destination === 'explore') {
+        await expect(
+          page.locator('.exploration-view--preparing'),
+        ).toBeVisible();
+        await expect(page.locator('.campus-map__canvas')).toHaveAttribute(
+          'data-map-provider',
+          /deterministic/,
+        );
+        expect(
+          await page
+            .locator('.campus-map__canvas')
+            .evaluate((el) => el.getBoundingClientRect().width),
+        ).toBeGreaterThan(0);
+        await expect(page.locator('.event-panel')).toBeHidden();
+      } else {
+        await expect(
+          page.getByRole('heading', { name: 'Loading your cards' }),
+        ).toBeVisible();
+      }
+      await expect(page.locator('.page-loading-state')).toHaveCount(1);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await expect(
+        page.locator('.page-loading-state .startup-seal'),
+      ).toHaveAttribute('data-animate', 'true');
+      await expect(
+        page.locator('.page-loading-state .seal-loader__trace'),
+      ).toHaveCSS('animation-iteration-count', 'infinite');
+      await capture(page, info, `${destination}-data-${width}`);
+      if (destination === 'explore') {
+        await releaseEvents();
+        await expect(page.locator('.page-loading-state')).toHaveCount(0);
+        await expect(page.locator('.campus-map__canvas')).toHaveAttribute(
+          'aria-busy',
+          'true',
+        );
+        await expect(page.locator('.map-state > [role="status"]')).toHaveClass(
+          'sr-only',
+        );
+        if (width === 390)
+          await page.getByRole('button', { name: /^Events —/ }).click();
+        await expect(
+          page
+            .getByLabel('Campus discovery', { exact: true })
+            .getByText('Prepared campus event', { exact: true }),
+        ).toBeVisible();
+        await capture(page, info, `explore-events-before-map-${width}`);
+      }
+    });
+  }
+}
+
 async function fixture(page: Page, role = 'player', pendingIdentity = false) {
   const control = { pendingCards: true, pendingEvents: true };
   await page.route('**/api/v1/**', async (route) => {

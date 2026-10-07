@@ -140,23 +140,72 @@ export function LoadingState({
   resetKey?: unknown;
   delayed?: boolean;
 }) {
+  return prominent ? (
+    <PageLoadingState
+      announce={announce}
+      className={className}
+      delayed={delayed}
+      title={label}
+      onRetry={onRetry}
+      resetKey={resetKey}
+    />
+  ) : (
+    <RegionLoadingState
+      announce={announce}
+      className={className}
+      label={label}
+      onRetry={onRetry}
+      resetKey={resetKey}
+    />
+  );
+}
+
+/** Reserve the content's space without another animated loading card. */
+export function RegionLoadingState({
+  announce = true,
+  className = '',
+  description,
+  immediate = false,
+  label,
+  onRetry,
+  placeholder = true,
+  recovery = true,
+  resetKey,
+}: {
+  announce?: boolean;
+  className?: string;
+  description?: string;
+  immediate?: boolean;
+  label: string;
+  onRetry?: () => void;
+  placeholder?: boolean;
+  recovery?: boolean;
+  resetKey?: unknown;
+}) {
   const phase = useLoadingPhase(true, resetKey ?? label);
-  if (delayed && phase === 'hidden') return null;
+  const showLabel = phase === 'slow' || immediate;
   return (
     <div
-      className={`state-message state-loading${prominent ? ' page-loading-state state-loading--prominent' : ' state-loading--subtle'}${className ? ` ${className}` : ''}`}
+      className={`region-loading-state${phase === 'slow' ? ' region-loading-state--slow' : ''}${className ? ` ${className}` : ''}`}
       data-loading-phase={phase}
     >
-      {prominent ? <LoadingSeal visible={phase !== 'hidden'} /> : null}
-      <p
-        className="state-loading__label"
+      <strong
+        className={showLabel ? 'region-loading-state__label' : 'sr-only'}
         role={announce ? 'status' : undefined}
-        aria-live={announce ? 'polite' : undefined}
       >
-        {prominent ? null : <QuestMarker />}
+        {showLabel ? <QuestMarker /> : null}
         {label}
-      </p>
-      {phase === 'slow' ? (
+      </strong>
+      {phase !== 'slow' && placeholder && !immediate ? (
+        <div aria-hidden="true" className="region-loading-state__placeholder">
+          <span />
+          <span />
+        </div>
+      ) : null}
+      {showLabel && description ? (
+        <span className="region-loading-state__description">{description}</span>
+      ) : null}
+      {phase === 'slow' && recovery ? (
         <LoadingRecovery onRetry={onRetry} announce={announce} />
       ) : null}
     </div>
@@ -168,6 +217,8 @@ export function PageLoadingState({
   children,
   className = '',
   description,
+  delayed = false,
+  recovery = true,
   title,
   onRetry,
   resetKey,
@@ -175,26 +226,30 @@ export function PageLoadingState({
   announce?: boolean;
   children?: ReactNode;
   className?: string;
-  description: string;
+  description?: string;
+  delayed?: boolean;
+  recovery?: boolean;
   title: string;
   onRetry?: () => void;
   resetKey?: unknown;
 }) {
   const phase = useLoadingPhase(true, resetKey ?? title);
+  if (delayed && phase === 'hidden') return null;
   return (
     <section
       className={`page-loading-state state-message state-loading state-loading--prominent${className ? ` ${className}` : ''}`}
     >
-      <LoadingSeal visible={phase !== 'hidden'} />
+      <LoadingSeal />
       <h1>{title}</h1>
       <p
+        className={description ? undefined : 'sr-only'}
         role={announce ? 'status' : undefined}
         aria-live={announce ? 'polite' : undefined}
       >
         <span className="sr-only">{title}. </span>
         {description}
       </p>
-      {phase === 'slow' ? (
+      {phase === 'slow' && recovery ? (
         <LoadingRecovery onRetry={onRetry} announce={announce} />
       ) : null}
       {children}

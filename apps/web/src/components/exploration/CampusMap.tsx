@@ -368,6 +368,7 @@ export function CampusMap({
     <div className="campus-map" data-sign-in-map>
       <div
         aria-label={accessibleLabel}
+        aria-busy={status === 'loading'}
         className="campus-map__canvas"
         ref={containerRef}
         role="region"
@@ -377,6 +378,7 @@ export function CampusMap({
         <ExplorationLoadingPanel
           className="map-state exploration-loading-panel--inline"
           label="Loading the campus map…"
+          placeholder={false}
         />
       ) : null}
 

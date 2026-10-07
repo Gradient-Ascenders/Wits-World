@@ -206,7 +206,10 @@ describe('progression profile and standings page', () => {
         ?.querySelector('[role="status"]'),
     ).toHaveAttribute('role', 'status');
     expect(
-      screen.getByText('Loading standings…').closest('[role="status"]'),
+      screen
+        .getByRole('heading', { name: 'Loading standings…' })
+        .closest('section')
+        ?.querySelector('[role="status"]'),
     ).toHaveAttribute('role', 'status');
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));

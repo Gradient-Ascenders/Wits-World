@@ -168,6 +168,57 @@ afterEach(() => {
 });
 
 describe('live reported-location permission and lifecycle', () => {
+  it('prepares the map behind one initial page wait and reveals events without waiting for it', async () => {
+    let finishEvents!: (response: Response) => void;
+    let finishMap!: () => void;
+    const fetch = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          finishEvents = resolve;
+        }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const mapController = createMapController();
+    mapController.onLoad = vi.fn((listener) => {
+      finishMap = listener;
+    });
+    const view = renderExplore({ mapController });
+
+    await waitFor(() => expect(mapController.onLoad).toHaveBeenCalled());
+    expect(view.mapFactory).toHaveBeenCalledOnce();
+    expect(view.container.querySelector('.exploration-view')).toHaveClass(
+      'exploration-view--preparing',
+    );
+    expect(view.container.querySelectorAll('.page-loading-state')).toHaveLength(
+      1,
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Opening campus exploration…' }),
+    ).toBeInTheDocument();
+
+    await act(async () => finishEvents(discoveryResponse()));
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: /^Events/ }));
+    expect(await screen.findByText(event.title)).toBeInTheDocument();
+    expect(view.container.querySelector('.exploration-view')).not.toHaveClass(
+      'exploration-view--preparing',
+    );
+    expect(view.container.querySelector('.page-loading-state')).toBeNull();
+    expect(view.container.querySelector('.campus-map__canvas')).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+    expect(screen.getByText('Loading the campus map…')).toHaveClass('sr-only');
+
+    act(() => finishMap());
+    expect(view.container.querySelector('.campus-map__canvas')).toHaveAttribute(
+      'aria-busy',
+      'false',
+    );
+    expect(view.mapFactory).toHaveBeenCalledOnce();
+  });
+
   it('waits for a player gesture when permission is prompt or unknown', async () => {
     const user = userEvent.setup();
     vi.stubGlobal(

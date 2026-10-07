@@ -20,6 +20,7 @@ import { BottomSheetSurface, type BottomSheetSnap } from './BottomSheetSurface';
 import { CampusMap } from './CampusMap';
 import { MapLayersControl } from './MapLayersControl';
 import { PanelCollapseButton } from './PanelCollapseButton';
+import { PageLoadingState } from '../LoadingState';
 import {
   availabilityLabels,
   EventList,
@@ -193,6 +194,7 @@ export function CampusExplorer({
   trailDetail = { status: 'idle' },
   trailDiscovery = { status: 'idle' },
 }: CampusExplorerProps) {
+  const preparing = discovery.status === 'loading';
   const [isMobileMapViewport, setIsMobileMapViewport] = useState(
     () => window.matchMedia?.(MOBILE_MAP_QUERY).matches ?? false,
   );
@@ -766,10 +768,17 @@ export function CampusExplorer({
   return (
     <section
       aria-labelledby="campus-map-title"
-      className={`exploration-view exploration-view--panel-${panelMode}`}
+      className={`exploration-view exploration-view--panel-${panelMode}${preparing ? ' exploration-view--preparing' : ''}`}
       data-sheet-snap={sheetSnap}
       data-location-state={locationState}
     >
+      {preparing ? (
+        <PageLoadingState
+          className="exploration-page-loading"
+          title="Opening campus exploration…"
+          onRetry={onRetry}
+        />
+      ) : null}
       <h1 className="sr-only" id="campus-map-title">
         Explore the campus map
       </h1>

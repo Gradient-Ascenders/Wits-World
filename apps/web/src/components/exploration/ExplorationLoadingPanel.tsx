@@ -1,32 +1,28 @@
-import { QuestMarker } from '../branding/QuestMarker';
-import { LoadingRecovery } from '../LoadingState';
-import { useLoadingPhase } from '../loading-policy';
+import { RegionLoadingState } from '../LoadingState';
 
 export function ExplorationLoadingPanel({
   className = '',
   description,
+  immediate = false,
   label,
   onRetry,
+  placeholder = true,
 }: {
   className?: string;
   description?: string;
+  immediate?: boolean;
   label: string;
   onRetry?: () => void;
+  placeholder?: boolean;
 }) {
-  const phase = useLoadingPhase(true, label);
   return (
-    <div
-      className={`exploration-loading-panel state-message ${className}`}
-      data-loading-phase={phase}
-    >
-      <QuestMarker className="exploration-loading-panel__marker" />
-      <strong role="status">{label}</strong>
-      {description ? (
-        <span className="exploration-loading-panel__description">
-          {description}
-        </span>
-      ) : null}
-      {phase === 'slow' ? <LoadingRecovery onRetry={onRetry} /> : null}
-    </div>
+    <RegionLoadingState
+      className={`exploration-loading-panel ${className}`}
+      immediate={immediate}
+      label={label}
+      description={description}
+      onRetry={onRetry}
+      placeholder={placeholder}
+    />
   );
 }

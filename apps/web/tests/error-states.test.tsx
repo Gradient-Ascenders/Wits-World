@@ -9,7 +9,7 @@ function BrokenComponent(): never {
 }
 
 describe('application status states', () => {
-  it('announces local loading with the subtle marker', () => {
+  it('announces local loading with a quiet placeholder', () => {
     render(<LoadingState />);
 
     expect(screen.getByRole('status')).toHaveTextContent(
@@ -17,7 +17,13 @@ describe('application status states', () => {
     );
     expect(
       screen.getByRole('status').querySelector('.quest-marker'),
-    ).toBeTruthy();
+    ).toBeNull();
+    expect(screen.getByRole('status')).toHaveClass('sr-only');
+    expect(
+      screen
+        .getByRole('status')
+        .parentElement?.querySelector('.region-loading-state__placeholder'),
+    ).not.toBeNull();
     expect(
       screen.getByRole('status').querySelector('.loading-seal'),
     ).toBeNull();
