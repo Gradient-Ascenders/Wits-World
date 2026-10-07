@@ -88,7 +88,7 @@ for (const width of [390, 1440]) {
   }, info) => {
     await fixture(page);
     let holdCpu = true;
-    await page.route('**/api/v1/matches/cpu', (route) => {
+    await page.route('**/api/v1/matches/cpu/entry', (route) => {
       if (holdCpu) return;
       return route.fulfill({
         status: 404,

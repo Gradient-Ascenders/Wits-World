@@ -696,12 +696,15 @@ See the complete
 
 ## CPU battle and completed-match history
 
-The protected `/matches` route first performs the ownership-scoped active-match
-lookup. It resumes an existing match without requiring a remembered browser ID,
-or presents the currently selected saved deck when the API returns
-`CPU_MATCH_NOT_FOUND`. `/matches/:matchId` renders only the authoritative match
-state and its `legalActions`; `/matches/history` renders the authenticated
-completed history and links back to persisted direct detail.
+The protected `/matches` route first performs the compact, ownership-scoped
+`GET /matches/cpu/entry` lookup. That dashboard read returns only the match ID,
+start time, phase, turn, and active side; it does not rebuild or transfer the
+battle log. It resumes an existing match without requiring a remembered browser
+ID, or presents the currently selected saved deck when the API returns
+`CPU_MATCH_NOT_FOUND`. Full recovery still uses `GET /matches/cpu`, while
+`/matches/:matchId` renders the authoritative match state and its `legalActions`;
+`/matches/history` renders authenticated completed history and links back to
+persisted direct detail.
 
 Every action sends one generated `submissionId`, the displayed
 `expectedVersion`, and exactly one server-advertised intent. Controls are locked

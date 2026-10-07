@@ -162,6 +162,13 @@ export interface CpuMatch {
   winner: BattleSide | null;
 }
 
+export interface CpuMatchEntry {
+  matchId: string;
+  startedAt: string;
+  status: 'active';
+  state: Pick<CpuMatchState, 'currentSide' | 'phase' | 'turnNumber'>;
+}
+
 export interface CpuMatchHistoryAction {
   action: CpuMatchAction;
   createdAt: string;
@@ -273,6 +280,25 @@ export async function getActiveCpuMatch(
         ...options,
         method: 'GET',
         path: '/matches/cpu',
+      }),
+    );
+  } catch (error) {
+    if (error instanceof MatchApiError && error.failure === 'not-found') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function getActiveCpuMatchEntry(
+  options: MatchRequestOptions,
+): Promise<CpuMatchEntry | null> {
+  try {
+    return parseActiveMatchEntry(
+      await matchRequest({
+        ...options,
+        method: 'GET',
+        path: '/matches/cpu/entry',
       }),
     );
   } catch (error) {
@@ -601,6 +627,56 @@ function parseMatch(payload: unknown): CpuMatch {
     status: payload.status,
     version: payload.version,
     winner: payload.winner,
+  };
+}
+
+function parseActiveMatchEntry(payload: unknown): CpuMatchEntry {
+  if (isRecord(payload) && 'battleLog' in payload) {
+    const match = requireActiveMatch(parseMatch(payload));
+    return {
+      matchId: match.matchId,
+      startedAt: match.startedAt,
+      status: 'active',
+      state: {
+        currentSide: match.state.currentSide,
+        phase: match.state.phase,
+        turnNumber: match.state.turnNumber,
+      },
+    };
+  }
+
+  if (
+    !isRecord(payload) ||
+    !hasExactKeys(payload, [
+      'matchId',
+      'requestId',
+      'startedAt',
+      'state',
+      'status',
+    ]) ||
+    !isUuid(payload.matchId) ||
+    payload.status !== 'active' ||
+    !isDateTime(payload.startedAt) ||
+    typeof payload.requestId !== 'string' ||
+    !isRecord(payload.state) ||
+    !hasExactKeys(payload.state, ['currentSide', 'phase', 'turnNumber']) ||
+    !isNullableSide(payload.state.currentSide) ||
+    !isPhase(payload.state.phase) ||
+    payload.state.phase === 'completed' ||
+    !isNonNegativeInteger(payload.state.turnNumber)
+  ) {
+    throw new MatchApiError('unavailable');
+  }
+
+  return {
+    matchId: payload.matchId,
+    startedAt: payload.startedAt,
+    status: 'active',
+    state: {
+      currentSide: payload.state.currentSide,
+      phase: payload.state.phase,
+      turnNumber: payload.state.turnNumber,
+    },
   };
 }
 

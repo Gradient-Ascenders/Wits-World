@@ -770,12 +770,12 @@ test('completes a mocked authoritative CPU match through the production UI', asy
         return;
       }
 
-      if (pathname.endsWith('/matches/cpu')) {
-        if (request.method() === 'GET') {
-          await json(route, problem('CPU_MATCH_NOT_FOUND', 404), 404);
-          return;
-        }
+      if (pathname.endsWith('/matches/cpu/entry')) {
+        await json(route, problem('CPU_MATCH_NOT_FOUND', 404), 404);
+        return;
+      }
 
+      if (pathname.endsWith('/matches/cpu')) {
         current = initial;
         await json(route, response(current), 201);
         return;
@@ -1170,7 +1170,7 @@ test('offers the owned active CPU match for explicit resume', async ({
       });
       return;
     }
-    if (pathname.endsWith('/matches/cpu')) activeLookups += 1;
+    if (pathname.endsWith('/matches/cpu/entry')) activeLookups += 1;
     await json(route, response(active));
   });
 
@@ -1481,16 +1481,16 @@ test('renders recent results and starts from the selected deck dashboard', async
       return;
     }
 
-    if (pathname.endsWith('/matches/cpu')) {
-      if (request.method() === 'GET') {
-        if (active) {
-          await json(route, response(active));
-        } else {
-          await json(route, problem('CPU_MATCH_NOT_FOUND', 404), 404);
-        }
-        return;
+    if (pathname.endsWith('/matches/cpu/entry')) {
+      if (active) {
+        await json(route, response(active));
+      } else {
+        await json(route, problem('CPU_MATCH_NOT_FOUND', 404), 404);
       }
+      return;
+    }
 
+    if (pathname.endsWith('/matches/cpu')) {
       createRequests += 1;
       active = initial;
       await json(route, response(initial), 201);

@@ -12,11 +12,11 @@ import { Link, useLocation } from 'wouter';
 
 import { DeckApiError, listSavedDecks, type SavedDeck } from '../api/decks';
 import {
-  getActiveCpuMatch,
+  getActiveCpuMatchEntry,
   listCpuMatchHistory,
   MatchApiError,
   recoverOrCreateCpuMatch,
-  type CpuMatch,
+  type CpuMatchEntry,
   type CpuMatchHistoryItem,
 } from '../api/matches';
 import {
@@ -38,7 +38,7 @@ import './matches.css';
 type EntryState =
   | { status: 'loading' }
   | {
-      activeMatch: CpuMatch | null;
+      activeMatch: CpuMatchEntry | null;
       deck: SavedDeck | null;
       status: 'ready';
     }
@@ -80,7 +80,7 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const loadEntry = useCallback(
     async (signal: AbortSignal) => {
-      const active = await getActiveCpuMatch({
+      const active = await getActiveCpuMatchEntry({
         apiBaseUrl,
         getAccessToken,
         signal,
@@ -539,7 +539,7 @@ async function loadRecentBattles({
   };
 }
 
-function formatMatchPhase(match: CpuMatch) {
+function formatMatchPhase(match: CpuMatchEntry) {
   if (match.state.phase === 'initial_selection') {
     return 'Opening selection';
   }

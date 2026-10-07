@@ -4,6 +4,7 @@ import {
   createCpuMatch,
   forfeitCpuMatch,
   getActiveCpuMatch,
+  getActiveCpuMatchEntry,
   getCpuMatch,
   listCpuMatchHistory,
   MatchApiError,
@@ -94,6 +95,40 @@ describe('CPU match API client', () => {
         }),
         method: 'GET',
       }),
+    );
+  });
+
+  it('requests and validates the compact dashboard entry projection', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          matchId: MATCH_ID,
+          requestId: 'request-id',
+          startedAt: '2026-08-16T12:00:00.000Z',
+          status: 'active',
+          state: {
+            currentSide: 'player',
+            phase: 'active',
+            turnNumber: 3,
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getActiveCpuMatchEntry(options())).resolves.toEqual({
+      matchId: MATCH_ID,
+      startedAt: '2026-08-16T12:00:00.000Z',
+      status: 'active',
+      state: {
+        currentSide: 'player',
+        phase: 'active',
+        turnNumber: 3,
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/matches/cpu/entry`,
+      expect.objectContaining({ method: 'GET' }),
     );
   });
 

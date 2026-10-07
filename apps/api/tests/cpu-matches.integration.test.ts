@@ -41,6 +41,9 @@ let app: FastifyInstance;
 let service: {
   createMatch: ReturnType<typeof vi.fn<CpuMatchService['createMatch']>>;
   forfeitMatch: ReturnType<typeof vi.fn<CpuMatchService['forfeitMatch']>>;
+  getActiveMatchEntry: ReturnType<
+    typeof vi.fn<CpuMatchService['getActiveMatchEntry']>
+  >;
   getActiveMatch: ReturnType<typeof vi.fn<CpuMatchService['getActiveMatch']>>;
   getMatch: ReturnType<typeof vi.fn<CpuMatchService['getMatch']>>;
   submitAction: ReturnType<typeof vi.fn<CpuMatchService['submitAction']>>;
@@ -69,6 +72,16 @@ beforeEach(async () => {
       version: 1,
       winner: 'cpu',
       completedAt: '2026-08-16T00:01:00.000Z',
+    }),
+    getActiveMatchEntry: vi.fn().mockResolvedValue({
+      matchId: MATCH_ID,
+      startedAt: '2026-08-16T00:00:00.000Z',
+      status: 'active',
+      state: {
+        currentSide: 'player',
+        phase: 'active',
+        turnNumber: 1,
+      },
     }),
     getActiveMatch: vi.fn().mockResolvedValue(buildMatch()),
     getMatch: vi.fn().mockResolvedValue(buildMatch()),
@@ -476,6 +489,28 @@ describe('CPU match API', () => {
     });
   });
 
+  it('returns a compact active-match entry projection for the dashboard', async () => {
+    const response = await authenticatedRequest({
+      method: 'GET',
+      url: '/api/v1/matches/cpu/entry',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(service.getActiveMatchEntry).toHaveBeenCalledWith(PLAYER_ID);
+    expect(service.getActiveMatch).not.toHaveBeenCalled();
+    expect(response.json()).toEqual({
+      matchId: MATCH_ID,
+      requestId: expect.any(String),
+      startedAt: '2026-08-16T00:00:00.000Z',
+      status: 'active',
+      state: {
+        currentSide: 'player',
+        phase: 'active',
+        turnNumber: 1,
+      },
+    });
+  });
+
   it('returns the established not-found problem when no active match exists', async () => {
     service.getActiveMatch.mockRejectedValueOnce(new CpuMatchNotFoundError());
 
@@ -770,6 +805,9 @@ describe('CPU match API', () => {
     expect(document.paths?.['/api/v1/matches/cpu']?.post?.operationId).toBe(
       'createCpuMatch',
     );
+    expect(
+      document.paths?.['/api/v1/matches/cpu/entry']?.get?.operationId,
+    ).toBe('getActiveCpuMatchEntry');
   });
 });
 

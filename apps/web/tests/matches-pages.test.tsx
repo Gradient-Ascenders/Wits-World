@@ -377,7 +377,7 @@ describe('CPU match entry and history', () => {
       const never = new Promise<never>(() => undefined);
       const fetchMock = vi.fn((input: RequestInfo | URL) => {
         const path = new URL(String(input)).pathname;
-        if (path.endsWith('/matches/cpu')) {
+        if (path.endsWith('/matches/cpu/entry')) {
           if (stage === 'active match') return never;
           if (stage === 'response body') {
             const response = new Response();

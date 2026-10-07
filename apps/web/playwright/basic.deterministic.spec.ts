@@ -106,7 +106,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
     if (
       response.status() === 404 &&
       response.request().method() === 'GET' &&
-      response.url() === `${API_BASE_URL}/matches/cpu`
+      new URL(response.url()).pathname === '/api/v1/matches/cpu/entry'
     ) {
       expectedRecoveryMisses.push(response.url());
     }
@@ -577,7 +577,7 @@ test('keeps the authenticated shared application shell responsive and accessible
       });
       return;
     }
-    if (pathname.endsWith('/matches/cpu')) {
+    if (pathname.endsWith('/matches/cpu/entry')) {
       await json(
         route,
         {

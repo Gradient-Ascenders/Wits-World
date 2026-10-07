@@ -222,6 +222,13 @@ export interface CpuMatchResponse {
   battleLog: readonly CpuMatchBattleLogGroup[];
 }
 
+export interface CpuMatchEntry {
+  matchId: string;
+  startedAt: string;
+  status: 'active';
+  state: Pick<CpuMatchStateView, 'currentSide' | 'phase' | 'turnNumber'>;
+}
+
 export interface CpuMatchHistoryRound {
   roundNumber: number;
   actions: readonly CpuMatchHistoryAction[];
@@ -249,6 +256,7 @@ export interface CpuMatchHistory {
 
 export interface CpuMatchService {
   createMatch(input: CreateCpuMatchInput): Promise<CpuMatchResponse>;
+  getActiveMatchEntry(playerId: string): Promise<CpuMatchEntry>;
   getActiveMatch(playerId: string): Promise<CpuMatchResponse>;
   getMatch(playerId: string, matchId: string): Promise<CpuMatchResponse>;
   forfeitMatch(input: ForfeitCpuMatchInput): Promise<CpuMatchResponse>;
@@ -331,6 +339,12 @@ interface MatchViewRow extends MatchRow {
   log_actions: BattleLogActionRow[];
 }
 
+interface ActiveMatchViewRow extends MatchRow {
+  latest_battle_log: CpuMatchBattleLogGroup[] | null;
+  latest_last_action: StoredPublicBattleActionResult | null;
+  legacy_log_actions: BattleLogActionRow[];
+}
+
 interface ActionMatchRow extends MatchRow {
   action_sequence: number;
   latest_battle_log: CpuMatchBattleLogGroup[] | null;
@@ -339,6 +353,14 @@ interface ActionMatchRow extends MatchRow {
 
 interface MatchIdentityRow extends pg.QueryResultRow {
   id: string;
+}
+
+interface ActiveMatchEntryRow extends pg.QueryResultRow {
+  current_side: BattleState['currentSide'];
+  id: string;
+  phase: BattleState['phase'];
+  started_at: Date;
+  turn_number: number;
 }
 
 interface ActionResponseRow extends pg.QueryResultRow {
@@ -587,13 +609,56 @@ export function createCpuMatchService(
       }
     },
 
+    async getActiveMatchEntry(playerId) {
+      const client = await database.connect();
+
+      try {
+        const result = await client.query<ActiveMatchEntryRow>(
+          `
+            select
+              match.id::text,
+              match.started_at,
+              match.state ->> 'phase' as phase,
+              (match.state ->> 'turnNumber')::integer as turn_number,
+              match.state ->> 'currentSide' as current_side
+            from public.cpu_matches match
+            where match.player_id = $1::uuid
+              and match.status = 'active'
+          `,
+          [playerId],
+        );
+
+        if (result.rows.length > 1) {
+          throw new Error(
+            'CPU match active-state invariant was violated for a player.',
+          );
+        }
+
+        const match = result.rows[0];
+        if (!match) {
+          throw new CpuMatchNotFoundError();
+        }
+
+        return {
+          matchId: match.id,
+          startedAt: match.started_at.toISOString(),
+          status: 'active',
+          state: {
+            currentSide: match.current_side,
+            phase: match.phase,
+            turnNumber: match.turn_number,
+          },
+        };
+      } finally {
+        client.release();
+      }
+    },
+
     async getActiveMatch(playerId) {
       const client = await database.connect();
 
       try {
-        const result = await loadMatchView(client, playerId, {
-          activeOnly: true,
-        });
+        const result = await loadActiveMatchView(client, playerId);
 
         if (result.rows.length > 1) {
           throw new Error(
@@ -615,7 +680,13 @@ export function createCpuMatchService(
           startedAt: match.started_at,
           completedAt: match.completed_at,
           turnDeadline: match.turn_deadline,
-          logActions: match.log_actions,
+          logActions: match.legacy_log_actions,
+          ...(Array.isArray(match.latest_battle_log)
+            ? {
+                persistedBattleLog: match.latest_battle_log,
+                persistedLastAction: match.latest_last_action,
+              }
+            : {}),
           cardNames: match.card_names,
           cardRarities: match.card_rarities,
         });
@@ -1728,6 +1799,89 @@ async function loadMatchView(
   );
 }
 
+async function loadActiveMatchView(
+  client: CpuMatchClient,
+  playerId: string,
+): Promise<{ rows: ActiveMatchViewRow[] }> {
+  // Modern receipts contain the complete log through their synchronous CPU
+  // chain. Reuse the latest version-matched receipt and retain the historical
+  // action/round reconstruction only for pre-receipt data.
+  return client.query<ActiveMatchViewRow>(
+    `
+      select
+        match.id::text,
+        match.player_id::text,
+        match.status,
+        match.state,
+        match.version,
+        match.turn_started_at,
+        match.turn_deadline,
+        match.winner,
+        match.started_at,
+        match.completed_at,
+        coalesce(cards.names, '{}'::jsonb) as card_names,
+        coalesce(cards.rarities, '{}'::jsonb) as card_rarities,
+        case
+          when latest.response ->> 'version' = match.version::text
+            and jsonb_typeof(latest.response -> 'battleLog') = 'array'
+            then latest.response -> 'battleLog'
+          else null
+        end as latest_battle_log,
+        case
+          when latest.response ->> 'version' = match.version::text
+            and jsonb_typeof(latest.response -> 'battleLog') = 'array'
+            then latest.response -> 'lastAction'
+          else null
+        end as latest_last_action,
+        case
+          when latest.response ->> 'version' = match.version::text
+            and jsonb_typeof(latest.response -> 'battleLog') = 'array'
+            then '[]'::jsonb
+          else coalesce((
+            select jsonb_agg(
+              jsonb_build_object(
+                'sequence', action.sequence,
+                'roundNumber', round.round_number,
+                'roundStateBefore', round.state_before,
+                'roundStateAfter', round.state_after,
+                'result', action.result
+              )
+              order by action.sequence
+            )
+            from public.cpu_match_actions action
+            join public.cpu_match_rounds round on round.id = action.round_id
+            where action.match_id = match.id
+          ), '[]'::jsonb)
+        end as legacy_log_actions
+      from public.cpu_matches match
+      left join lateral (
+        select
+          jsonb_object_agg(
+            card.snapshot -> 'battleCard' ->> 'id',
+            card.snapshot ->> 'name'
+          ) as names,
+          jsonb_object_agg(
+            card.snapshot -> 'battleCard' ->> 'id',
+            card.snapshot ->> 'rarity'
+          ) as rarities
+        from public.cpu_match_cards card
+        where card.match_id = match.id
+      ) cards on true
+      left join lateral (
+        select action.response
+        from public.cpu_match_actions action
+        where action.match_id = match.id
+          and action.response is not null
+        order by action.sequence desc
+        limit 1
+      ) latest on true
+      where match.player_id = $1::uuid
+        and match.status = 'active'
+    `,
+    [playerId],
+  );
+}
+
 async function loadHistoryRounds(
   client: CpuMatchClient,
   matchIds: string[],
@@ -1793,6 +1947,8 @@ function createResponse(input: {
   completedAt: Date | null;
   turnDeadline: Date | null;
   logActions: readonly BattleLogActionRow[];
+  persistedBattleLog?: readonly CpuMatchBattleLogGroup[];
+  persistedLastAction?: StoredPublicBattleActionResult | null;
   previousBattleLog?: readonly CpuMatchBattleLogGroup[];
   cardNames?: Readonly<Record<string, string>>;
   cardRarities?: Readonly<Record<string, CardRarity>>;
@@ -1817,16 +1973,19 @@ function createResponse(input: {
       input.cardRarities,
     ),
     lastAction:
-      lastAction === null
-        ? null
-        : toPublicActionResult(
-            normalizeStoredActionResult(lastAction),
-            input.state,
-          ),
+      input.persistedBattleLog !== undefined
+        ? normalizeStoredPublicActionResult(input.persistedLastAction ?? null)
+        : lastAction === null
+          ? null
+          : toPublicActionResult(
+              normalizeStoredActionResult(lastAction),
+              input.state,
+            ),
     battleLog:
-      input.previousBattleLog === undefined
+      input.persistedBattleLog ??
+      (input.previousBattleLog === undefined
         ? currentBattleLog
-        : mergeBattleLogs(input.previousBattleLog, currentBattleLog),
+        : mergeBattleLogs(input.previousBattleLog, currentBattleLog)),
   };
 }
 
@@ -1845,15 +2004,20 @@ function normalizeStoredResponse(
   return {
     ...response,
     battleLog,
-    lastAction:
-      response.lastAction === null
-        ? null
-        : {
-            ...response.lastAction,
-            effects: response.lastAction.effects.map(toPublicAppliedEffect),
-            expiredEffects: response.lastAction.expiredEffects ?? [],
-          },
+    lastAction: normalizeStoredPublicActionResult(response.lastAction),
   };
+}
+
+function normalizeStoredPublicActionResult(
+  result: StoredPublicBattleActionResult | null,
+): PublicBattleActionResult | null {
+  return result === null
+    ? null
+    : {
+        ...result,
+        effects: result.effects.map(toPublicAppliedEffect),
+        expiredEffects: result.expiredEffects ?? [],
+      };
 }
 
 function addBattleLogToStoredResponse(
