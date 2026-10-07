@@ -236,8 +236,7 @@ export default function TradeDetailPage({
           void load();
         }}
         resetKey={readRetry}
-        description="Loading the latest offer."
-        title="Loading card trade"
+        title="Loading trade"
       />
     );
   }
@@ -443,7 +442,7 @@ export default function TradeDetailPage({
               {formatDate(trade.settlement?.completedAt ?? trade.terminalAt!)}.
             </p>
             {collectionRefresh === 'loading' ? (
-              <p role="status">Refreshing your collection…</p>
+              <p role="status">Updating cards…</p>
             ) : null}
             {collectionRefresh === 'ready' ? (
               <p role="status">Your collection is up to date.</p>

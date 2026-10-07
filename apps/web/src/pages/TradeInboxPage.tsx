@@ -176,7 +176,6 @@ export default function TradeInboxPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             void loadInitial();
           }}
           resetKey={readRetry}
-          description="Checking your offers."
           title="Loading trades"
         />
       </div>

@@ -263,7 +263,7 @@ export function DeveloperApiAccess({
               {state.status === 'ready'
                 ? `${activeCount} of ${state.data.activeKeyLimit} active`
                 : state.status === 'loading'
-                  ? 'Loading your developer API keys…'
+                  ? 'Loading API keys…'
                   : 'Keys unavailable'}
             </span>
             <CaretDown aria-hidden="true" size={18} />
@@ -277,7 +277,7 @@ export function DeveloperApiAccess({
       {state.status === 'ready' ? (
         <UpdatingIndicator
           active={refreshing}
-          label="Updating your API keys"
+          label="Updating API keys"
           error={refreshError ? 'Could not update your API keys.' : undefined}
           onRetry={() => void refresh()}
         />
@@ -414,7 +414,7 @@ export function DeveloperApiAccess({
         </form>
 
         {state.status === 'loading' ? (
-          <LoadingState label="Loading your developer API keys…" />
+          <LoadingState label="Loading API keys…" />
         ) : null}
 
         {state.status === 'ready' ? (

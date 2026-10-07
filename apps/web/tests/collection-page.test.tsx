@@ -332,15 +332,13 @@ describe('card collection page', () => {
 
     renderCollection();
 
-    expect(screen.getByRole('status')).toHaveTextContent('Loading your cards');
+    expect(screen.getByRole('status')).toHaveTextContent('Loading cards');
     expect(
       await screen.findByRole('heading', {
         name: 'Choose your starter affinity',
       }),
     ).toBeVisible();
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Loading your starter choices',
-    );
+    expect(screen.getByRole('status')).toHaveTextContent('Loading starters');
     await waitFor(() => expect(resolveOptions).toBeTypeOf('function'));
     resolveOptions(starterOptionsResponse());
 
@@ -1452,9 +1450,9 @@ describe('retained collection revisits', () => {
     expect(
       screen.getByRole('button', { name: 'View Retained Guardian details' }),
     ).toBeVisible();
-    expect(screen.getByText(/Updating your cards/u)).toBeVisible();
+    expect(screen.getByText(/Updating cards/u)).toBeVisible();
     expect(
-      screen.queryByRole('heading', { name: 'Loading your cards' }),
+      screen.queryByRole('heading', { name: 'Loading cards' }),
     ).not.toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await act(async () => {
@@ -1513,7 +1511,7 @@ describe('retained collection revisits', () => {
       }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Loading your cards' }),
+      screen.getByRole('heading', { name: 'Loading cards' }),
     ).toBeVisible();
   });
 
@@ -1551,7 +1549,7 @@ describe('retained collection revisits', () => {
       }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Loading your cards' }),
+      screen.getByRole('heading', { name: 'Loading cards' }),
     ).toBeVisible();
   });
 });

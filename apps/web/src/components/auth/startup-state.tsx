@@ -72,7 +72,7 @@ export function StartupGate({ children }: { children: ReactNode }) {
             </p>
             {loadingPhase === 'slow' && (
               <LoadingRecovery
-                message="Finishing sign-in is taking longer than expected. Check your connection and reload, or return home. Your protected data stays hidden until your session is confirmed."
+                message="Sign-in is taking longer than usual."
                 onRetry={() => window.location.reload()}
               />
             )}
@@ -102,7 +102,7 @@ export function StartupSettler() {
       return;
     }
     if (isLoading) {
-      startup.reportStatus('Checking your sign-in status…');
+      startup.reportStatus('Checking sign-in…');
       return;
     }
     if (
@@ -110,7 +110,7 @@ export function StartupSettler() {
       player.status !== 'ready' &&
       player.status !== 'error'
     ) {
-      startup.reportStatus('Confirming your Wits World player…');
+      startup.reportStatus('Confirming player…');
       return;
     }
     startup.reportReady(path);

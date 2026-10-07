@@ -501,8 +501,7 @@ export default function DecksPage({
       <div className="decks-page">
         <CollectionSectionNavigation />
         <PageLoadingState
-          title="Loading your decks and collection"
-          description="Loading your saved decks and cards…"
+          title="Loading decks"
           onRetry={reload}
           resetKey={revision}
         />
@@ -572,7 +571,7 @@ export default function DecksPage({
       <CollectionSectionNavigation />
       <UpdatingIndicator
         active={Boolean(state.refreshing)}
-        label="Updating decks and cards"
+        label="Updating decks"
         error={state.refreshError}
         onRetry={reload}
       />

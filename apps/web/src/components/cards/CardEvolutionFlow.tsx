@@ -329,7 +329,7 @@ export function CardEvolutionFlow({
           <div className="evolution-action-bar">
             <ActionLoadingFeedback
               active={isSubmitting}
-              label="Evolving your card"
+              label="Evolving card"
             />
             <div className="evolution-confirmation__actions">
               <button
@@ -364,7 +364,7 @@ export function CardEvolutionFlow({
       >
         {previewState.status === 'loading' ? (
           <LoadingState
-            label="Checking evolution availability…"
+            label="Checking evolution…"
             onRetry={() => void loadPreview()}
           />
         ) : previewState.status === 'error' ? (

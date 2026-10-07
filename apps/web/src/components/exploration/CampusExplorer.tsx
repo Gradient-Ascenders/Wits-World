@@ -775,7 +775,7 @@ export function CampusExplorer({
       {preparing ? (
         <PageLoadingState
           className="exploration-page-loading"
-          title="Opening campus exploration…"
+          title="Opening Explore…"
           onRetry={onRetry}
         />
       ) : null}

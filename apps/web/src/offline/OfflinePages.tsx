@@ -387,7 +387,7 @@ export function OfflineAttemptPage() {
       <section className="challenge-page challenge-panel">
         <h1>Saved attempt</h1>
         <LoadingState
-          label="Restoring this challenge from your device…"
+          label="Loading saved challenge…"
           onRetry={refresh}
           resetKey={revision}
         />

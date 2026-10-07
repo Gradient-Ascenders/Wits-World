@@ -481,7 +481,7 @@ test('map and event loading preserve discovery space', async ({
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/explore?map-loading', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByText('Loading the campus map…')).toBeVisible();
+  await expect(page.getByText('Loading map…')).toBeVisible();
   await expect(page.getByText('Loading events…')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Events —/ })).toBeInViewport({
     ratio: 1,

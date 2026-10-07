@@ -273,8 +273,7 @@ export default function TradeEditorPage({
       <PageLoadingState
         onRetry={() => setReadRetry((value) => value + 1)}
         resetKey={`${tradeId ?? 'new'}:${readRetry}`}
-        description="Loading your collection and the active card catalogue."
-        title={editing ? 'Loading trade editor' : 'Preparing a new trade'}
+        title={editing ? 'Loading trade' : 'Preparing trade'}
       />
     );
   }
@@ -464,7 +463,7 @@ export default function TradeEditorPage({
       <CollectionSectionNavigation />
       <UpdatingIndicator
         active={Boolean(state.refreshing)}
-        label="Updating trade choices"
+        label="Updating cards"
         error={state.refreshError}
         onRetry={() => setReadRetry((value) => value + 1)}
       />

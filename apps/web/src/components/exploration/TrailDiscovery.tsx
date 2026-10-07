@@ -330,7 +330,7 @@ export function NearbyList({
   }
 
   if (state.status === 'loading') {
-    return <ExplorationLoadingPanel label="Finding nearby unvisited events…" />;
+    return <ExplorationLoadingPanel label="Finding nearby events…" />;
   }
 
   if (state.status === 'error') {
@@ -484,7 +484,7 @@ const nearbyLocationContent: Record<
     title: 'Live location is not allowed here.',
   },
   'checking-permission': {
-    detail: 'You can browse all events and trails while this finishes.',
+    detail: '',
     title: 'Checking location access…',
   },
   denied: {
@@ -492,7 +492,7 @@ const nearbyLocationContent: Record<
     title: 'Live location is disabled.',
   },
   locating: {
-    detail: 'Nearby events will appear once your location is available.',
+    detail: '',
     title: 'Finding your location…',
   },
   'permission-required': {
@@ -509,7 +509,7 @@ const nearbyLocationContent: Record<
     title: 'Location signal timed out.',
   },
   tracking: {
-    detail: 'Searching from your latest location.',
+    detail: '',
     title: 'Finding nearby events…',
   },
   unavailable: {

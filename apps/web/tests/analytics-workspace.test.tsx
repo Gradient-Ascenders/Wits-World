@@ -285,7 +285,7 @@ describe('desktop analytics workspace', () => {
     expect(
       screen.getByRole('region', { name: 'Location analytics results' }),
     ).toBeVisible();
-    expect(screen.getByText(/Showing the previous result/)).toBeVisible();
+    expect(screen.getByText(/Showing previous results/)).toBeVisible();
     await user.click(screen.getByRole('link', { name: 'Rewards' }));
     expect(
       await screen.findByRole('region', { name: 'Card issuance results' }),

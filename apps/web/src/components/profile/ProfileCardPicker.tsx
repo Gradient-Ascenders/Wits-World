@@ -283,7 +283,7 @@ export function ProfileCardPicker({
         </div>
       ) : !collection ? (
         <LoadingState
-          label="Loading your cards…"
+          label="Loading cards…"
           onRetry={() => setRevision((value) => value + 1)}
           resetKey={revision}
         />

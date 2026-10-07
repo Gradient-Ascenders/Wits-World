@@ -152,8 +152,7 @@ export function PlayerShowcase({
   )
     return (
       <PageLoadingState
-        title="Loading player profile"
-        description="Getting your cards, activity and achievements…"
+        title="Loading profile"
         onRetry={() => setRevision((value) => value + 1)}
         resetKey={`${playerName ?? 'self'}:${revision}`}
       />
@@ -226,7 +225,7 @@ export function PlayerShowcase({
     <div className="player-profile">
       <UpdatingIndicator
         active={Boolean(state.refreshing)}
-        label="Updating player profile"
+        label="Updating profile"
         error={state.refreshError}
         onRetry={() => setRevision((value) => value + 1)}
       />

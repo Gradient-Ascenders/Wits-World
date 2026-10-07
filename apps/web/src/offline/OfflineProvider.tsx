@@ -147,9 +147,7 @@ export function OfflineProvider({
           .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
         if (!attempts.length) return;
         setSyncing(true);
-        setSyncMessage(
-          'Syncing saved attempts. Answers remain provisional until confirmed.',
-        );
+        setSyncMessage('Syncing saved attempts…');
         setSyncFailed(false);
         for (const attempt of attempts) {
           remaining.add(attempt.clientAttemptId);
@@ -169,7 +167,7 @@ export function OfflineProvider({
           controller.signal.throwIfAborted();
           updateAttempt(attempt.clientAttemptId, {
             status: 'syncing',
-            message: 'Syncing — awaiting server confirmation.',
+            message: 'Awaiting confirmation…',
           });
           const response = await syncWork(
             fetch(`${apiBaseUrl}/offline-challenge-attempts`, {

@@ -37,7 +37,7 @@ describe('shared loading policy', () => {
     view.rerender(<h1>Your trades</h1>);
     act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
     expect(screen.getByRole('heading', { name: 'Your trades' })).toBeVisible();
-    expect(screen.queryByText(/longer than expected/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/longer than usual/)).not.toBeInTheDocument();
   });
 
   it('keeps secondary waits quiet and restores quest markers for actionable feedback', () => {
@@ -56,7 +56,7 @@ describe('shared loading policy', () => {
     expect(
       screen.getByRole('status').querySelector('.quest-marker'),
     ).not.toBeNull();
-    expect(screen.queryByText(/longer than expected/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/longer than usual/)).not.toBeInTheDocument();
   });
 
   it('offers slow read retry and escape without moving keyboard focus', () => {
@@ -85,7 +85,7 @@ describe('shared loading policy', () => {
       'href',
       '/',
     );
-    expect(screen.getByText(/Leaving does not cancel/)).toHaveAttribute(
+    expect(screen.getByText('Taking longer than usual.')).toHaveAttribute(
       'role',
       'status',
     );
@@ -98,16 +98,14 @@ describe('shared loading policy', () => {
     const view = render(<RoutePreparation pathname="/matches" />);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     act(() => vi.advanceTimersByTime(LOADING_DELAY_MS));
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Opening battle page…',
-    );
+    expect(screen.getByRole('status')).toHaveTextContent('Opening battle…');
     expect(view.container.querySelector('.page-loading-state')).not.toBeNull();
     act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
     view.rerender(<RoutePreparation pathname="/collection/trades/new" />);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     act(() => vi.advanceTimersByTime(LOADING_DELAY_MS));
-    expect(screen.getByRole('status')).toHaveTextContent('Opening card trade…');
-    expect(screen.queryByText(/longer than expected/)).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Opening trade…');
+    expect(screen.queryByText(/longer than usual/)).not.toBeInTheDocument();
   });
 
   it('does not replay a mutation when confirmation is slow and resets for the next action', () => {
@@ -116,7 +114,7 @@ describe('shared loading policy', () => {
     );
     act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
     expect(screen.getByRole('status')).toHaveTextContent(
-      'The result is not confirmed',
+      'Still awaiting confirmation',
     );
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Return home' })).toHaveAttribute(
@@ -130,10 +128,10 @@ describe('shared loading policy', () => {
       <ActionLoadingFeedback active label="Sending your trade offer" />,
     );
     expect(screen.getByRole('status')).toHaveTextContent(
-      'awaiting confirmation',
+      'Sending your trade offer…',
     );
     expect(screen.getByRole('status')).not.toHaveTextContent(
-      'longer than expected',
+      'longer than usual',
     );
   });
 
@@ -230,6 +228,17 @@ describe('shared loading policy', () => {
   });
 });
 
+it('keeps ordinary refresh feedback brief, including during a slow update', () => {
+  render(<UpdatingIndicator active label="Updating nearby events" />);
+  expect(screen.getByRole('status').textContent).toBe(
+    'Updating nearby events…',
+  );
+  act(() => vi.advanceTimersByTime(LONG_WAIT_MS));
+  expect(screen.getByRole('status').textContent).toBe(
+    'Updating nearby events…',
+  );
+});
+
 it('keeps refresh feedback local, labels previous queries, and preserves focus through recovery', () => {
   const retry = vi.fn();
   const tree = (active: boolean, error?: string) => (
@@ -247,7 +256,7 @@ it('keeps refresh feedback local, labels previous queries, and preserves focus t
   const view = render(tree(true));
   screen.getByRole('textbox').focus();
   expect(screen.getByRole('status')).toHaveTextContent(
-    'Showing the previous result',
+    'Showing previous results',
   );
   expect(view.container.querySelector('.quest-marker')).toBeNull();
   act(() => vi.advanceTimersByTime(LONG_WAIT_MS));

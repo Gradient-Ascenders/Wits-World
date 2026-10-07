@@ -12,9 +12,7 @@ describe('application status states', () => {
   it('announces local loading with a quiet placeholder', () => {
     render(<LoadingState />);
 
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Loading this Wits World page…',
-    );
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
     expect(
       screen.getByRole('status').querySelector('.quest-marker'),
     ).toBeNull();

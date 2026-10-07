@@ -1834,7 +1834,7 @@ test('tablet and wide workspaces preserve loading, error, empty and deep-link st
   await page.setViewportSize({ height: 1024, width: 768 });
   state.eventDelayMs = 3000;
   await page.goto('/author/events');
-  await expect(page.getByText('Loading authored events…')).toBeVisible();
+  await expect(page.getByText('Loading events…')).toBeVisible();
   await expect(page.getByRole('button', { name: 'New event' })).toBeDisabled();
   await expect(
     page.getByRole('link', { name: /Great Hall Discovery/u }),

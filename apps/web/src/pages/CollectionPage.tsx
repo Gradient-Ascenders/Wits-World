@@ -391,11 +391,8 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
           onRetry={retryCollection}
           resetKey={collectionRevision}
           title={
-            section === 'evolutions'
-              ? 'Loading your evolutions'
-              : 'Loading your cards'
+            section === 'evolutions' ? 'Loading evolutions' : 'Loading cards'
           }
-          description="Fetching your collection…"
         />
       </div>
     );
@@ -444,7 +441,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
         <CollectionSectionNavigation />
         <UpdatingIndicator
           active={Boolean(collection.refreshing)}
-          label="Updating your cards"
+          label="Updating cards"
           error={collection.refreshError}
           onRetry={retryCollection}
         />
@@ -459,7 +456,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
       {collection.status === 'ready' ? (
         <UpdatingIndicator
           active={Boolean(collection.refreshing)}
-          label="Updating your cards"
+          label="Updating cards"
           error={collection.refreshError}
           onRetry={retryCollection}
         />
@@ -591,7 +588,7 @@ function StarterSelector({
       {optionsState.status === 'ready' ? (
         <UpdatingIndicator
           active={Boolean(optionsState.refreshing)}
-          label="Updating starter choices"
+          label="Updating starters"
           error={optionsState.refreshError}
           onRetry={onRetryOptions}
         />
@@ -599,7 +596,7 @@ function StarterSelector({
       {optionsState.status === 'idle' || optionsState.status === 'loading' ? (
         <LoadingState
           className="starter-options-state"
-          label="Loading your starter choices…"
+          label="Loading starters…"
         />
       ) : null}
 

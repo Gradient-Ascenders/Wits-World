@@ -82,8 +82,10 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (!session.match && session.connection !== 'unrecoverable') {
     return (
       <PageLoadingState
-        title="Connecting to Live Ranked"
-        description={session.feedback}
+        title="Connecting…"
+        description={
+          session.feedback === 'Connecting…' ? undefined : session.feedback
+        }
       >
         <Link className="button button--quiet" href="/matches/live">
           Return to Live Ranked
@@ -218,7 +220,7 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           match.status === 'active'
             ? {
                 detail: expired
-                  ? 'Waiting for the latest battle state.'
+                  ? 'Updating battle…'
                   : `Play by ${formatDate(match.turnDeadline!)}`,
                 label: expired
                   ? 'Deadline reached'
@@ -731,7 +733,7 @@ function RankedSettlementSummary({
     return (
       <LoadingState
         className="ranked-settlement ranked-settlement--loading"
-        label="Finalizing your ranked result"
+        label="Confirming result…"
       />
     );
   }
@@ -779,7 +781,7 @@ function RankedSettlementSummary({
       </div>
       <UpdatingIndicator
         active={Boolean(state.refreshing)}
-        label="Updating pending settlement"
+        label="Updating result"
         error={state.refreshError}
         onRetry={() => setRevision((value) => value + 1)}
         announce={false}
@@ -1049,7 +1051,7 @@ function useTimerAnnouncements(seconds: number, match: LiveProjection | null) {
     ) {
       setMessage(
         seconds === 0
-          ? 'Time expired. Waiting for the battle to update.'
+          ? 'Time expired. Updating battle…'
           : `${seconds} seconds remain to choose.`,
       );
     }

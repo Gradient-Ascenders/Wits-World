@@ -141,7 +141,7 @@ describe('player authentication', () => {
       'role',
       'status',
     );
-    expect(screen.getByText('Checking your sign-in status')).toBeVisible();
+    expect(screen.getByText('Checking sign-in')).toBeVisible();
     expect(
       screen.queryByRole('heading', { name: 'Explore the campus' }),
     ).not.toBeInTheDocument();
@@ -1003,7 +1003,7 @@ describe('player authentication', () => {
       }),
     );
 
-    expect(screen.getByText('Confirming your Wits World player')).toBeVisible();
+    expect(screen.getByText('Confirming player')).toBeVisible();
     expect(screen.queryByText('Signed in as')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Sign out' }),

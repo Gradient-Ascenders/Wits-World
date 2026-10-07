@@ -63,7 +63,7 @@ export function useLiveBattleSession({
   const [state, setState] = useState<SessionState>({
     connection: 'connecting',
     error: null,
-    feedback: 'Connecting to the live battle…',
+    feedback: 'Connecting…',
     match: null,
     pending: null,
     presence: null,
@@ -179,7 +179,7 @@ export function useLiveBattleSession({
         connection: 'reconnecting',
         feedback:
           delay === 0
-            ? 'Connection lost. Restoring the latest server state…'
+            ? 'Reconnecting…'
             : `Connection lost. Retrying in ${Math.ceil(delay / 1000)} seconds…`,
       }));
       reconnectTimer.current = window.setTimeout(() => {
@@ -294,7 +294,7 @@ export function useLiveBattleSession({
         pendingRef.current = { ...pending, stage: 'acknowledged' };
         update((previous) => ({
           ...previous,
-          feedback: 'Action accepted — synchronizing the battlefield…',
+          feedback: 'Action accepted. Updating battle…',
           pending: pendingRef.current,
         }));
         return;
@@ -330,8 +330,8 @@ export function useLiveBattleSession({
         ...previous,
         feedback:
           message.code === 'LIVE_ACTION_LATE'
-            ? 'That decision reached the server after its deadline. Restoring the authoritative turn…'
-            : 'The server did not apply that action. Restoring the authoritative turn…',
+            ? 'Action was too late. Updating turn…'
+            : 'Action not applied. Updating turn…',
         pending: null,
       }));
       recoverRef.current('transport');
@@ -351,10 +351,7 @@ export function useLiveBattleSession({
         ...previous,
         connection: reason === 'initial' ? 'connecting' : 'reconnecting',
         error: null,
-        feedback:
-          reason === 'initial'
-            ? 'Connecting to the live battle…'
-            : 'Fetching the latest authoritative battle state…',
+        feedback: reason === 'initial' ? 'Connecting…' : 'Updating battle…',
       }));
 
       void (async () => {
@@ -399,8 +396,7 @@ export function useLiveBattleSession({
             } catch {
               update((previous) => ({
                 ...previous,
-                feedback:
-                  'The live stream returned invalid data. Restoring from the server…',
+                feedback: 'Connection error. Reconnecting…',
               }));
               recoverRef.current('transport');
             }
@@ -466,7 +462,7 @@ export function useLiveBattleSession({
     stateRef.current = {
       connection: 'connecting',
       error: null,
-      feedback: 'Connecting to the live battle…',
+      feedback: 'Connecting…',
       match: null,
       pending: null,
       presence: null,
@@ -551,7 +547,7 @@ export function useLiveBattleSession({
           presence: null,
           error: null,
           connection: 'connecting' as const,
-          feedback: 'Connecting to the live battle…',
+          feedback: 'Connecting…',
         }
       : state;
   return {
@@ -571,7 +567,7 @@ function connectionFeedback(match: LiveProjection | null): string {
     return 'Watching the live public battle state.';
   return match.currentActor === 'self'
     ? 'Your turn. Choose one of the server-approved actions.'
-    : 'Waiting for your opponent’s server-approved action.';
+    : 'Waiting for opponent…';
 }
 
 function errorMessage(error: LiveApiError): string {

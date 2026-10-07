@@ -244,7 +244,7 @@ export function CardWorkspace({
       ) : null}
 
       {state === 'loading' && !confirmed ? (
-        <AuthorLoadingState label="Loading card definitions…" />
+        <AuthorLoadingState label="Loading cards…" />
       ) : null}
       {state === 'error' ? (
         <div
@@ -266,7 +266,7 @@ export function CardWorkspace({
       {confirmed ? (
         <UpdatingIndicator
           active={state === 'loading'}
-          label="Updating card definitions…"
+          label="Updating cards…"
           onRetry={onReload}
         />
       ) : null}
@@ -1524,7 +1524,7 @@ function ArtworkPreview({
         />
       ) : null}
       {url && (status === 'waiting' || status === 'loading') ? (
-        <AuthorLoadingState label="Loading artwork preview…" />
+        <AuthorLoadingState label="Loading preview…" />
       ) : status !== 'ready' ? (
         <p role="status">
           {!url

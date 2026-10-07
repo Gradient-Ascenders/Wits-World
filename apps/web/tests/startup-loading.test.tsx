@@ -47,7 +47,7 @@ describe('sign-in startup loading', () => {
 
     await act(() => vi.advanceTimersByTimeAsync(LONG_WAIT_MS));
     expect(
-      screen.getByText(/Finishing sign-in is taking longer/),
+      screen.getByText(/Sign-in is taking longer/),
     ).toBeVisible();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible();
     expect(screen.getByRole('link', { name: 'Return home' })).toHaveAttribute(

@@ -290,7 +290,6 @@ function EligibilityStatus({
     return (
       <ExplorationLoadingPanel
         className="exploration-loading-panel--inline"
-        description="Checking your location before starting."
         immediate
         label="Starting challenge…"
       />
@@ -357,7 +356,7 @@ function getEligibilityContent(
       return { title: 'This event is unavailable.' };
     case 'location-uncertain':
       return {
-        detail: 'Waiting for a more accurate location…',
+        detail: 'Improving location accuracy…',
         title: 'Location accuracy is too low.',
       };
     case 'location-stale':

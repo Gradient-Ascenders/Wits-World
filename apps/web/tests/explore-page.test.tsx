@@ -193,7 +193,7 @@ describe('live reported-location permission and lifecycle', () => {
       1,
     );
     expect(
-      screen.getByRole('heading', { name: 'Opening campus exploration…' }),
+      screen.getByRole('heading', { name: 'Opening Explore…' }),
     ).toBeInTheDocument();
 
     await act(async () => finishEvents(discoveryResponse()));
@@ -209,7 +209,7 @@ describe('live reported-location permission and lifecycle', () => {
       'aria-busy',
       'true',
     );
-    expect(screen.getByText('Loading the campus map…')).toHaveClass('sr-only');
+    expect(screen.getByText('Loading map…')).toHaveClass('sr-only');
 
     act(() => finishMap());
     expect(view.container.querySelector('.campus-map__canvas')).toHaveAttribute(
@@ -434,9 +434,7 @@ describe('selected-event authoritative eligibility', () => {
     expect(
       await screen.findByText('Location accuracy is too low.'),
     ).toBeVisible();
-    expect(
-      screen.getByText('Waiting for a more accurate location…'),
-    ).toBeVisible();
+    expect(screen.getByText('Improving location accuracy…')).toBeVisible();
     expect(mapController.setReportedLocation).toHaveBeenCalled();
   });
 

@@ -377,7 +377,7 @@ export function CampusMap({
       {status === 'loading' ? (
         <ExplorationLoadingPanel
           className="map-state exploration-loading-panel--inline"
-          label="Loading the campus map…"
+          label="Loading map…"
           placeholder={false}
         />
       ) : null}

@@ -1579,12 +1579,12 @@ function CollectionFeedback<T>({
         collection.confirmed ? (
           <UpdatingIndicator
             active
-            label={`Updating complete ${label}s`}
+            label={`Updating ${label}s`}
             onRetry={collection.reload}
             announce={false}
           />
         ) : (
-          <AuthorLoadingState label={`Loading complete ${label}s…`} />
+          <AuthorLoadingState label={`Loading ${label}s…`} />
         )
       ) : null}
       {collection.state === 'error' ? (

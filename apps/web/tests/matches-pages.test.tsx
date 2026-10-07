@@ -354,9 +354,7 @@ describe('CPU match entry and history', () => {
     vi.stubGlobal('fetch', withPvpDefaults(fetchMock));
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
-    expect(
-      screen.getByText('Checking your current CPU battle and selected deck…'),
-    ).toBeVisible();
+    expect(screen.getByText('Preparing CPU battle…')).toBeVisible();
     await waitFor(() => expect(screen.getByRole('alert')).toHaveFocus());
     expect(
       screen.getByRole('heading', { name: 'CPU battle could not be prepared' }),
@@ -415,9 +413,7 @@ describe('CPU match entry and history', () => {
         screen.queryByRole('button', { name: 'Start CPU battle' }),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByText(
-          'Checking your current CPU battle and selected deck…',
-        ),
+        screen.queryByText('Preparing CPU battle…'),
       ).not.toBeInTheDocument();
     },
   );

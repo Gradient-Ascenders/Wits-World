@@ -359,7 +359,7 @@ export function EventWorkspace({
       <AuthorFeedback message={message} refObject={feedbackRef} />
 
       {state === 'loading' && !confirmed ? (
-        <AuthorLoadingState label="Loading authored events…" />
+        <AuthorLoadingState label="Loading events…" />
       ) : null}
 
       {state === 'error' ? (
@@ -383,7 +383,7 @@ export function EventWorkspace({
       {confirmed ? (
         <UpdatingIndicator
           active={state === 'loading'}
-          label="Updating authored events…"
+          label="Updating events…"
           onRetry={load}
         />
       ) : null}

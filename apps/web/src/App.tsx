@@ -96,13 +96,13 @@ export function RoutePreparation({ pathname }: { pathname: string }) {
   const destination = pathname.startsWith('/author')
     ? 'author console'
     : pathname.startsWith('/matches')
-      ? 'battle page'
+      ? 'battle'
       : pathname.startsWith('/collection/trades')
-        ? 'card trade'
+        ? 'trade'
         : pathname.startsWith('/collection') || pathname === '/decks'
           ? 'collection'
           : pathname === '/explore'
-            ? 'campus exploration'
+            ? 'Explore'
             : pathname.startsWith('/offline')
               ? 'saved events'
               : pathname.startsWith('/challenge')
@@ -113,8 +113,8 @@ export function RoutePreparation({ pathname }: { pathname: string }) {
                     ? 'leaderboard'
                     : pathname.startsWith('/profile') ||
                         pathname.startsWith('/players')
-                      ? 'player profile'
-                      : 'Wits World home';
+                      ? 'profile'
+                      : 'home';
   return (
     <LoadingState
       delayed
@@ -294,7 +294,6 @@ export function AppRoutes({
                         page
                         recovery={false}
                         label="Checking author access"
-                        description="The console opens only after Wits World confirms your current role."
                       />
                     }
                   >

@@ -217,9 +217,7 @@ export function CampaignWorkspace({
   }
 
   if (state === 'loading' && !confirmed) {
-    return (
-      <AuthorLoadingState label="Loading campaigns and available members…" />
-    );
+    return <AuthorLoadingState label="Loading campaigns…" />;
   }
 
   if (state === 'error' && !confirmed) {
@@ -252,7 +250,7 @@ export function CampaignWorkspace({
       {confirmed ? (
         <UpdatingIndicator
           active={state === 'loading'}
-          label="Updating campaigns and available members…"
+          label="Updating campaigns…"
           error={state === 'error' ? authorErrorDetail(apiError!) : undefined}
           onRetry={load}
         />

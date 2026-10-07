@@ -721,7 +721,7 @@ describe('map-first campus exploration', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('keeps challenge-start status copy in separate mobile sheet rows', async () => {
+  it('keeps challenge-start status to one short mobile sheet row', async () => {
     const controller = createController();
     const mapFactory: MapFactory = vi.fn(async () => controller);
 
@@ -741,7 +741,7 @@ describe('map-first campus exploration', () => {
     );
     expect(
       status.querySelector('.region-loading-state__description'),
-    ).toHaveTextContent('Checking your location before starting.');
+    ).toBeNull();
   });
 
   it('connects an interactive map marker selection to the shared selection state', async () => {

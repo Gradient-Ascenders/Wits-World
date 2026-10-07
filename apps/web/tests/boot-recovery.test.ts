@@ -70,7 +70,7 @@ describe('document boot recovery', () => {
     expect(document.getElementById('app-boot')).toBe(fallback);
     expect(fallback).toHaveAttribute('data-state', 'slow');
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Opening Wits World is taking longer than expected.',
+      'Taking longer than usual.',
     );
     expect(screen.getByRole('link', { name: 'Return home' })).toHaveAttribute(
       'href',
@@ -95,6 +95,6 @@ describe('document boot recovery', () => {
     finishLoading();
     await loading;
     expect(vi.getTimerCount()).toBe(0);
-    expect(screen.queryByText(/longer than expected/)).toBeNull();
+    expect(screen.queryByText(/longer than usual/)).toBeNull();
   });
 });

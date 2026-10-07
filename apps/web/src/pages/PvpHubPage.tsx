@@ -981,7 +981,6 @@ function PlayerBattlesLoading({
       title="Loading Player Battles"
       onRetry={onRetry}
       resetKey={revision}
-      description="Checking battles and challenges…"
     />
   );
 }

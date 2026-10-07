@@ -15,7 +15,7 @@ export async function bootApplication(
       status.textContent =
         state === 'error'
           ? 'Wits World could not be opened.'
-          : 'Opening Wits World is taking longer than expected.';
+          : 'Taking longer than usual.';
     }
   }
 

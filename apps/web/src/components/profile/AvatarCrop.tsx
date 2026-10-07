@@ -193,7 +193,7 @@ export function AvatarCrop({
         </span>
         {!image ? (
           <span className="avatar-crop-loading" role="status">
-            Preparing your profile picture…
+            Preparing picture…
           </span>
         ) : null}
       </button>

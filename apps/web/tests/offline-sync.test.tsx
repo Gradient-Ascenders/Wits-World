@@ -211,7 +211,7 @@ describe('offline synchronization recovery', () => {
     expect(announcements[0]).toHaveTextContent('Syncing saved attempts');
     expect(announcements[0]?.closest('[aria-busy="true"]')).toBeNull();
     expect(
-      await screen.findByText(/Syncing — awaiting server confirmation/),
+      await screen.findByText(/Awaiting confirmation/),
     ).toBeInTheDocument();
     fireEvent.click(button);
     window.dispatchEvent(new Event('focus'));
@@ -353,7 +353,7 @@ describe('offline synchronization recovery', () => {
     });
     vi.stubGlobal('fetch', fetch);
     const view = renderOffline();
-    await screen.findByText(/Syncing — awaiting server confirmation/);
+    await screen.findByText(/Awaiting confirmation/);
     view.unmount();
     expect(signal.aborted).toBe(true);
     await act(async () =>

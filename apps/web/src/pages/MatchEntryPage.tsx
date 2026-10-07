@@ -305,7 +305,7 @@ function StartMatchPanel({
 
       {state.status === 'loading' ? (
         <LoadingState
-          label="Checking your current CPU battle and selected deck…"
+          label="Preparing CPU battle…"
           onRetry={onRetry}
           resetKey={revision}
         />

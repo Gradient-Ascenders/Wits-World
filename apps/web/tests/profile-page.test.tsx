@@ -201,7 +201,7 @@ describe('progression profile and standings page', () => {
 
     expect(
       screen
-        .getByRole('heading', { name: 'Loading player profile' })
+        .getByRole('heading', { name: 'Loading profile' })
         .closest('section')
         ?.querySelector('[role="status"]'),
     ).toHaveAttribute('role', 'status');
@@ -639,7 +639,7 @@ describe('retained standings refreshes', () => {
     await screen.findByText('confirmed_player');
     await userEvent.click(screen.getByRole('button', { name: 'This month' }));
     expect(screen.getByText('confirmed_player')).toBeVisible();
-    expect(screen.getByText(/Showing the previous result/u)).toBeVisible();
+    expect(screen.getByText(/Showing previous results/u)).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'All time' }));
     await waitFor(() => expect(resolveLatest).toBeDefined());
     resolveLatest(

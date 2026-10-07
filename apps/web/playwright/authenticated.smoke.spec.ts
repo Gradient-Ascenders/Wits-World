@@ -80,7 +80,7 @@ test('loads the protected app with data from the real API', async ({
   await expect(
     page.getByRole('heading', { name: 'Nearby events' }),
   ).toBeVisible();
-  await expect(page.getByText('Loading the campus map…')).toHaveCount(0, {
+  await expect(page.getByText('Loading map…')).toHaveCount(0, {
     timeout: 30_000,
   });
   expect(mapboxResponseErrors).toEqual([]);

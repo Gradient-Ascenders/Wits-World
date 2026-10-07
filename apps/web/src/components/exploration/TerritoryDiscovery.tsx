@@ -133,7 +133,7 @@ export function TerritoryDiscovery({
         ) : null}
 
         {list.status === 'loading' ? (
-          <ExplorationLoadingPanel label="Loading campus territories…" />
+          <ExplorationLoadingPanel label="Loading territories…" />
         ) : list.status === 'error' ? (
           <div
             className="territory-state state-message state-message--error"

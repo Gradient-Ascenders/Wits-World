@@ -2572,7 +2572,7 @@ describe('Basic author console', () => {
         getAccessToken={vi.fn().mockResolvedValue('refreshed-token')}
       />,
     );
-    await screen.findByText(/Updating authored events/);
+    await screen.findByText(/Updating events/);
     expect(title).toHaveValue('Preserve my unsaved event title');
     expect(screen.getByRole('button', { name: 'Save event' })).toBeDisabled();
     await act(async () =>

@@ -293,10 +293,10 @@ describe('live lobby and battle experience', () => {
     expect(screen.getByText('Season rating').parentElement).toHaveTextContent(
       /1\s248/,
     );
-    expect(screen.getByText(/Updating your record/)).toBeVisible();
+    expect(screen.getByText(/Updating record/)).toBeVisible();
     await user.click(screen.getByRole('tab', { name: 'Standings' }));
     expect(screen.getByText('CampusFox')).toBeVisible();
-    expect(screen.getByText(/Updating ranked standings/)).toBeVisible();
+    expect(screen.getByText(/Updating standings/)).toBeVisible();
     await act(async () => {
       rejectReads.forEach((reject) => reject(new TypeError('offline')));
     });

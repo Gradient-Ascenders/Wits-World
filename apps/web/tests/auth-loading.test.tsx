@@ -60,9 +60,7 @@ describe('authentication loading recovery', () => {
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     await act(() => vi.advanceTimersByTimeAsync(8_000));
 
-    expect(
-      screen.getByText(/This is taking longer than expected/),
-    ).toBeVisible();
+    expect(screen.getByText(/Taking longer than usual/)).toBeVisible();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible();
     expect(screen.getByRole('link', { name: 'Return home' })).toHaveAttribute(
       'href',

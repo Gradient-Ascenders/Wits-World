@@ -530,7 +530,7 @@ test('Author reports retain previous-query content through a delayed failed upda
   state.failOverview(true);
   await selectOption(page.getByLabel('Reporting period'), '7');
   await expect(
-    page.getByRole('status').filter({ hasText: 'Showing the previous result' }),
+    page.getByRole('status').filter({ hasText: 'Showing previous results' }),
   ).toBeVisible();
   await expect(results).toBeVisible();
   await expect(
@@ -551,7 +551,7 @@ test('Author reports retain previous-query content through a delayed failed upda
   state.failOverview(false);
   await page.getByRole('button', { name: 'Retry update' }).click();
   await expect(
-    page.getByRole('status').filter({ hasText: 'Showing the previous result' }),
+    page.getByRole('status').filter({ hasText: 'Showing previous results' }),
   ).toHaveCount(0);
   await expect(results).toBeVisible();
   // A workspace revisit uses the console-owned snapshot, then confirms it again.

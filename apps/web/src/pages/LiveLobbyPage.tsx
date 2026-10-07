@@ -789,7 +789,6 @@ export default function LiveLobbyPage({
         title="Loading ranked battles"
         onRetry={() => setSeasonRevision((value) => value + 1)}
         resetKey={seasonRevision}
-        description="Checking your deck…"
       />
     );
   }
@@ -886,7 +885,7 @@ export default function LiveLobbyPage({
 
       <UpdatingIndicator
         active={Boolean(state.refreshing)}
-        label="Updating ranked readiness"
+        label="Updating ranked battles"
         error={state.refreshError}
         onRetry={refreshSeasonResources}
       />
@@ -1144,7 +1143,7 @@ export default function LiveLobbyPage({
                       {season?.status === 'closing'
                         ? 'Season closing. Play resumes next season.'
                         : seasonBoundaryReached
-                          ? 'Season ended. Checking for a new season…'
+                          ? 'Season ended. Checking season…'
                           : 'No active season. Check back later.'}
                     </p>
                     <button
@@ -1361,7 +1360,7 @@ function RankedSeasonStrip({
       {profile.status === 'ready' && !mismatch ? (
         <UpdatingIndicator
           active={Boolean(profile.refreshing)}
-          label="Updating your record"
+          label="Updating record"
           error={profile.refreshError}
           onRetry={onRetry}
         />
@@ -1369,7 +1368,7 @@ function RankedSeasonStrip({
       {profile.status === 'loading' ? (
         <LoadingState
           className="ranked-season-strip__state"
-          label="Loading your record"
+          label="Loading record"
         />
       ) : profile.status === 'error' ? (
         <div className="ranked-season-strip__state" role="alert">
@@ -1447,7 +1446,7 @@ function TerritoryQueueOption({
 
       {contest ? (
         state.status === 'loading' ? (
-          <LoadingState label="Loading active territories" />
+          <LoadingState label="Loading territories" />
         ) : state.status === 'error' ? (
           <div className="ranked-territory-option__state" role="status">
             <p>Couldn’t load territories. Retry or turn this option off.</p>
@@ -1548,7 +1547,7 @@ function RankedStandingsSection({
       {state.status === 'ready' && !mismatch ? (
         <UpdatingIndicator
           active={Boolean(state.refreshing)}
-          label="Updating ranked standings"
+          label="Updating standings"
           error={state.refreshError}
           onRetry={onRetry}
         />
@@ -1842,7 +1841,7 @@ function queueAnnouncement(queue: RankedQueueState): string {
   if (queue.status === 'searching') return 'Finding a ranked opponent.';
   if (queue.status === 'proposed') {
     return queue.accepted
-      ? 'Match accepted. Waiting for the other player.'
+      ? 'Accepted. Waiting for opponent…'
       : 'Opponent found. Accept within 20 seconds or decline the match.';
   }
   if (queue.status === 'matched') return 'Ranked battle ready.';

@@ -579,9 +579,7 @@ describe('Author curation workspaces', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Submit for review' }),
     );
-    expect(
-      await screen.findByText(/Updating campaigns and available members/),
-    ).toBeVisible();
+    expect(await screen.findByText(/Updating campaigns/)).toBeVisible();
     expect(
       screen.getByRole('button', { name: /Submitting campaign/ }),
     ).toBeDisabled();

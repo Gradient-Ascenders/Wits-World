@@ -76,7 +76,7 @@ for (const width of [390, 1440]) {
         await expect(page.locator('.event-panel')).toBeHidden();
       } else {
         await expect(
-          page.getByRole('heading', { name: 'Loading your cards' }),
+          page.getByRole('heading', { name: 'Loading cards' }),
         ).toBeVisible();
       }
       await expect(page.locator('.page-loading-state')).toHaveCount(1);
@@ -170,7 +170,7 @@ for (const viewport of [
     await page.clock.install();
     await page.goto('/collection');
     await expect(
-      page.getByRole('heading', { name: 'Loading your cards' }),
+      page.getByRole('heading', { name: 'Loading cards' }),
     ).toBeVisible();
     await page.clock.fastForward(8_100);
     const home = page.getByRole('link', { name: 'Return home', exact: true });
@@ -273,7 +273,7 @@ test('author region supports slow recovery and zoom without taking over the side
   await page.clock.install();
   await page.goto('/author/events');
   await expect(
-    page.getByText('Loading authored events…', { exact: true }),
+    page.getByText('Loading events…', { exact: true }),
   ).toBeVisible();
   await page.clock.fastForward(8_100);
   await expect(
@@ -401,14 +401,14 @@ for (const width of [390, 1440]) {
     await expect.poll(() => reads).toBe(2);
     if (process.env.RETENTION_BASELINE === 'true') {
       await expect(
-        page.getByRole('heading', { name: 'Loading your cards' }),
+        page.getByRole('heading', { name: 'Loading cards' }),
       ).toBeVisible();
       await expect(cards).toHaveCount(0);
     } else {
       await expect(cards).toBeVisible();
       await expect(page.locator('.page-loading-state')).toHaveCount(0);
       await expect(
-        page.getByRole('status').filter({ hasText: 'Updating your cards' }),
+        page.getByRole('status').filter({ hasText: 'Updating cards' }),
       ).toBeVisible();
       await capture(page, info, `retained-revisit-${width}`);
       await pending!.fulfill({

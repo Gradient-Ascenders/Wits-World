@@ -594,7 +594,6 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     return (
       <PageLoadingState
         title="Loading battle"
-        description="Checking the latest state…"
         onRetry={() => setRevision((value) => value + 1)}
         resetKey={`${matchId}:${revision}`}
       />
@@ -1339,7 +1338,7 @@ function matchStatusMessage(match: AsyncPvpMatch) {
   if (match.state.phase === 'replacement')
     return match.currentActor === 'self'
       ? 'Your Creature was defeated. Choose an available replacement.'
-      : 'Waiting for the opponent to choose a replacement.';
+      : 'Opponent choosing replacement…';
   return match.currentActor === 'self'
     ? 'Your turn. Choose an available action.'
     : `Waiting for ${match.opponent.playerName}. The battle will refresh automatically.`;

@@ -327,7 +327,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   await page.setViewportSize({ height: 844, width: 390 });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(
-    page.getByRole('heading', { name: 'Loading your cards' }),
+    page.getByRole('heading', { name: 'Loading cards' }),
   ).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('loading-mobile.png') });
   collectionState = 'error';

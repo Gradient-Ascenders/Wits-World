@@ -127,7 +127,7 @@ describe('asynchronous player battle lobby', () => {
         name: 'Loading Player Battles',
       }),
     ).toBeVisible();
-    expect(loadingState).toHaveTextContent('Checking battles and challenges…');
+    expect(loadingState).toHaveTextContent('Loading Player Battles');
     expect(
       screen.queryByRole('navigation', { name: 'Player battle sections' }),
     ).toBeNull();

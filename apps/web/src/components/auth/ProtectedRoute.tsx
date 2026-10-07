@@ -78,14 +78,14 @@ export function ProtectedRoute({
         {loadingFallback ?? (
           <LoadingState
             prominent
-            label="Checking your sign-in status"
+            label="Checking sign-in"
             onRetry={() => window.location.reload()}
           />
         )}
         {loadingFallback && loadingPhase === 'slow' && (
           <section className="auth-state state-message">
             <LoadingRecovery
-              message="Restoring your sign-in is taking longer than expected. Try reloading this page or return home while your protected data stays hidden."
+              message="Sign-in is taking longer than usual."
               onRetry={() => window.location.reload()}
             />
           </section>
@@ -138,7 +138,7 @@ export function ProtectedRoute({
         {loadingFallback ?? (
           <LoadingState
             prominent
-            label="Confirming your Wits World player"
+            label="Confirming player"
             onRetry={retryPlayer}
             resetKey={loadingAttempt}
           />
@@ -146,7 +146,7 @@ export function ProtectedRoute({
         {loadingFallback && loadingPhase === 'slow' && (
           <section className="auth-state state-message">
             <LoadingRecovery
-              message="Confirming your player is taking longer than expected. Check your connection and retry, or return home. Your protected data stays hidden."
+              message="Player confirmation is taking longer than usual."
               onRetry={retryPlayer}
             />
           </section>

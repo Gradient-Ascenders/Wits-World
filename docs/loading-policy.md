@@ -71,6 +71,13 @@ appears or completes. Existing dialog traps, pagination/result focus, error
 focus, and reduced-motion preferences remain authoritative. CSS motion is
 decorative and never the only indication of progress.
 
+Keep loading copy to a short action and subject, such as “Loading cards…” or
+“Updating nearby events…”. Omit descriptions that repeat the label and routine
+explanations about retained content. When a changed filter still shows older
+results, add “Showing previous results.” Slow reads say “Taking longer than
+usual.” beside recovery controls. Slow submissions keep confirmation and
+duplicate-submission guidance; leaving does not cancel the action.
+
 ## Coverage inventory
 
 The tables cover the current `App.tsx` switch and `author-routing.ts` parser.

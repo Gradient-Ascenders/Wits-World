@@ -8,7 +8,7 @@ import { QuestMarker } from './branding/QuestMarker';
 /** Read-only refresh feedback. Keep confirmed content mounted beside this. */
 export function UpdatingIndicator({
   active,
-  label = 'Updating this view',
+  label = 'Updating',
   previous = false,
   error,
   onRetry,
@@ -28,12 +28,7 @@ export function UpdatingIndicator({
       <p role={announce ? 'status' : undefined}>
         {active && phase !== 'hidden' ? <QuestMarker /> : null}
         {active ? `${label.replace(/[.…]+$/, '')}…` : error}
-        {previous
-          ? ' Showing the previous result until this view is confirmed.'
-          : ' Showing last-confirmed content.'}
-        {active && phase === 'slow'
-          ? ' The update is taking longer than expected.'
-          : null}
+        {previous ? ' Showing previous results.' : null}
       </p>
       {onRetry && (!active || phase === 'slow') ? (
         <button
@@ -62,8 +57,8 @@ export function ActionLoadingFeedback({
     <div className="action-loading-feedback">
       <p role="status">
         {phase === 'slow'
-          ? `${label} is taking longer than expected. The result is not confirmed. Leaving does not cancel the submitted action. Check the latest status before submitting again.`
-          : `${label} — awaiting confirmation…`}
+          ? 'Still awaiting confirmation. Leaving does not cancel this action. Check its status before retrying.'
+          : `${label.replace(/[.…]+$/, '')}…`}
       </p>
       {phase === 'slow' ? (
         <div className="state-message__actions">
@@ -80,7 +75,7 @@ export function LoadingRecovery({
   onRetry,
   escapeHref = '/',
   escapeLabel = 'Return home',
-  message = 'This is taking longer than expected. You can leave this view and try again. Leaving does not cancel any submitted action.',
+  message = 'Taking longer than usual.',
   announce = true,
 }: {
   onRetry?: () => void;
@@ -125,7 +120,7 @@ export function LoadingSeal({ visible = true }: { visible?: boolean }) {
 
 export function LoadingState({
   announce = true,
-  label = 'Loading this Wits World page…',
+  label = 'Loading…',
   prominent = false,
   className = '',
   onRetry,
