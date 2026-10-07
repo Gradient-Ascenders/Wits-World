@@ -2214,7 +2214,9 @@ test('author save state remains visible through edits, saving, failure and recov
   });
   await page.getByRole('button', { name: 'Save event' }).click();
   await expect(saveBar).toContainText('Saving changes…');
-  await expect(saveBar.getByRole('button', { name: 'Saving…' })).toBeDisabled();
+  await expect(
+    saveBar.getByRole('button', { name: 'Saving event draft…' }),
+  ).toBeDisabled();
   releaseSave();
   await expect(saveBar).toContainText('Not saved. Review the errors above.');
   await expect(page.getByLabel('Event title')).toHaveValue(
