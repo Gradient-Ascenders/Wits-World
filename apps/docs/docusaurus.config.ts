@@ -68,7 +68,22 @@ const config: Config = {
         {
           to: '/docs/',
           position: 'left',
-          label: 'Documentation',
+          label: 'Guides',
+        },
+        {
+          to: '/docs/api-reference',
+          position: 'left',
+          label: 'API Reference',
+        },
+        {
+          to: '/docs/project',
+          position: 'left',
+          label: 'Project',
+        },
+        {
+          href: 'https://witsworld.co.za/',
+          label: 'Play Wits Quest',
+          position: 'right',
         },
         {
           href: 'https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World',
@@ -84,24 +99,24 @@ const config: Config = {
           title: 'Documentation',
           items: [
             {
-              label: 'Start here',
+              label: 'Introduction',
               to: '/docs/',
             },
             {
-              label: 'Game rules & player experience',
-              to: '/docs/product-requirements',
+              label: 'Player Guide',
+              to: '/docs/player-guide',
             },
             {
-              label: 'Technical guides',
-              to: '/docs/technical-reference',
+              label: 'Author Guide',
+              to: '/docs/author-guide',
             },
             {
-              label: 'Development & deployment',
-              to: '/docs/development-operations',
+              label: 'Developer Guide',
+              to: '/docs/developer-guide',
             },
             {
-              label: 'Testing & feedback',
-              to: '/docs/testing-quality',
+              label: 'API Reference',
+              to: '/docs/api-reference',
             },
           ],
         },
@@ -109,8 +124,12 @@ const config: Config = {
           title: 'Project',
           items: [
             {
-              label: 'Project & sprint records',
-              to: '/docs/project-management',
+              label: 'Project evidence and history',
+              to: '/docs/project',
+            },
+            {
+              label: 'Play Wits Quest',
+              href: 'https://witsworld.co.za/',
             },
             {
               label: 'Gitea repository',

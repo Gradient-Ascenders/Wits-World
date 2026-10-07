@@ -29,18 +29,19 @@ provides the underlying product and operational reference.
 ## Choose a path
 
 - **Understand the product:** begin with
-  [Game rules & player experience](/docs/product-requirements) for current rules,
+  the [Player Guide](/docs/player-guide) for current rules,
   confirmed decisions, and player journeys.
 - **Develop or run the system:** use
   the [Developer Guide](development/getting-started.md) for a new checkout, then
-  [Development & deployment](/docs/development-operations) for local data,
+  the [Developer Guide](/docs/developer-guide) for local data,
   CI/CD, deployment, and database runbooks.
-- **Review the technical design:** use [Technical guides](/docs/technical-reference)
-  for architecture, API guides, data models, and decisions.
+- **Review the technical design:** use the [Developer Guide](/docs/developer-guide)
+  for architecture, data models, and decisions, and the
+  [API Reference](/docs/api-reference) for endpoint contracts.
 - **Review quality and project evidence:** use
-  [Testing & feedback](/docs/testing-quality) for current verification, user feedback, and
-  stakeholder reviews, and [Project & sprint records](/docs/project-management) for
-  methodology, [Gitea work and bug tracking](planning/work-tracking-and-issue-management.md),
+  [Project evidence](/docs/project) for current verification, user feedback,
+  stakeholder reviews, methodology,
+  [Gitea work and bug tracking](planning/work-tracking-and-issue-management.md),
   plans, historical release evidence, and Planning and Scrum meetings.
 - **Design the player experience:** consult the
   [Wits World design system](design/design-system.md) for visual, interaction,
