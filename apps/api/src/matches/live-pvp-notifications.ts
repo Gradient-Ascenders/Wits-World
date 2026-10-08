@@ -38,6 +38,7 @@ export function createLivePvpNotificationListener(
   logger: LivePvpNotificationLogger = console,
 ): LivePvpNotificationListener {
   let client: pg.PoolClient | undefined;
+  let detachClientHandlers: (() => void) | undefined;
   let reconnectTimer: NodeJS.Timeout | undefined;
   let stopped = true;
   let connecting: Promise<void> | undefined;
@@ -52,6 +53,7 @@ export function createLivePvpNotificationListener(
     emitPoolEvent(logger, {
       event,
       category: 'listener',
+      pool_role: 'listener',
       ...(typeof database.totalCount === 'number'
         ? poolSnapshot(database)
         : {}),
@@ -108,8 +110,15 @@ export function createLivePvpNotificationListener(
         throw error;
       }
       let listening = false;
+      let released = false;
+      const destroy = () => {
+        if (released) return;
+        released = true;
+        next.release(true);
+        lifecycle('listener_destroy');
+      };
       try {
-        next.on('notification', (notification: pg.Notification) => {
+        const onNotification = (notification: pg.Notification) => {
           if (
             notification.channel !== LIVE_PVP_NOTIFY_CHANNEL &&
             notification.channel !== LIVE_PVP_PRESENCE_NOTIFY_CHANNEL
@@ -125,21 +134,27 @@ export function createLivePvpNotificationListener(
           void broadcast.catch(() =>
             logger.warn({}, 'Live PvP notification fan-out failed.'),
           );
-        });
-        next.on('error', (error: unknown) => {
+        };
+        const onError = (error: unknown) => {
           if (client !== next) return;
           client = undefined;
+          detachClientHandlers = undefined;
           recoveryRequired = true;
           lifecycle('listener_client_error', error, 'client');
-          next.release(true);
-          lifecycle('listener_destroy');
+          destroy();
           if (!stopped) scheduleReconnect();
-        });
+        };
+        next.on('notification', onNotification);
+        next.on('error', onError);
 
         await next.query(`listen ${LIVE_PVP_NOTIFY_CHANNEL}`);
         await next.query(`listen ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`);
         listening = true;
         client = next;
+        detachClientHandlers = () => {
+          next.off('notification', onNotification);
+          next.off('error', onError);
+        };
         lifecycle('listener_listen_success');
         logger.info({}, 'Live PvP PostgreSQL notification listener started.');
 
@@ -154,9 +169,11 @@ export function createLivePvpNotificationListener(
         }
       } catch (error) {
         lifecycle('database_error', error, listening ? 'transaction' : 'query');
-        if (client === next) client = undefined;
-        next.release(true);
-        lifecycle('listener_destroy');
+        if (client === next) {
+          client = undefined;
+          detachClientHandlers = undefined;
+        }
+        destroy();
         throw error;
       }
     })();
@@ -203,7 +220,8 @@ export function createLivePvpNotificationListener(
     async stop() {
       return serializeLifecycle(async () => {
         stopped = true;
-        clearReconnectTimer();
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
         if (connecting) {
           try {
             await connecting;
@@ -212,26 +230,30 @@ export function createLivePvpNotificationListener(
           }
         }
         const active = client;
+        const detach = detachClientHandlers;
         client = undefined;
+        detachClientHandlers = undefined;
         if (!active) return;
-        let destroyClient = false;
+        let unlistened = false;
         try {
           await active.query(`unlisten ${LIVE_PVP_NOTIFY_CHANNEL}`);
           await active.query(`unlisten ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`);
+          unlistened = true;
         } catch (error) {
-          destroyClient = true;
           lifecycle('database_error', error, 'query');
-          throw new Error(
-            'Live PvP notification listener could not be stopped.',
-            { cause: error },
+          // Shutdown errors may reach the server logger. Preserve only the safe
+          // classification, never the driver's message, stack or connection data.
+          const cleanupError = new Error(
+            'Live PvP notification listener cleanup failed.',
+            {
+              cause: { error_category: classifyDatabaseError(error, 'query') },
+            },
           );
+          throw cleanupError;
         } finally {
-          if (destroyClient) {
-            active.release(true);
-          } else {
-            active.release();
-          }
-          lifecycle('listener_release');
+          detach?.();
+          active.release(unlistened ? undefined : true);
+          lifecycle(unlistened ? 'listener_release' : 'listener_destroy');
         }
       });
     },

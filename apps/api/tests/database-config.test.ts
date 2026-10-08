@@ -1,9 +1,75 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildDatabaseConfig } from '../src/config/database.js';
+import {
+  buildDatabaseConfig,
+  buildListenerDatabaseConfig,
+} from '../src/config/database.js';
 
 const neonUrl =
   'postgresql://neondb_owner:password@example.neon.tech/neondb?sslmode=require';
+
+describe('explicit listener database configuration', () => {
+  it('does not fall back to either shared or test configuration', () => {
+    for (const LISTENER_DATABASE_URL of [undefined, '', '   ']) {
+      expect(() =>
+        buildListenerDatabaseConfig({
+          DATABASE_URL: neonUrl,
+          TEST_DATABASE_URL: neonUrl,
+          LISTENER_DATABASE_URL,
+        }),
+      ).toThrow('LISTENER_DATABASE_URL is required');
+    }
+  });
+  it('accepts an explicit direct endpoint without deriving or changing it', () => {
+    expect(
+      buildListenerDatabaseConfig({ LISTENER_DATABASE_URL: ` ${neonUrl} ` }),
+    ).toEqual({
+      connectionString: neonUrl,
+      variableName: 'LISTENER_DATABASE_URL',
+    });
+    expect(
+      buildListenerDatabaseConfig({
+        LISTENER_DATABASE_URL: 'postgres://user:password@localhost/test',
+      }).variableName,
+    ).toBe('LISTENER_DATABASE_URL');
+  });
+  it.each([
+    'private-marker',
+    'https://user:private-marker@example.test/db',
+    'postgres://user:private-marker@example.neon.tech/db',
+    'postgres://user:private-marker@example.neon.tech/db?sslmode=disable',
+    'postgres://user:private-marker@ep-example-pooler.neon.tech/db?sslmode=require',
+    'postgres://user:private-marker@EP-EXAMPLE-POOLER.NEON.TECH./db?sslmode=require',
+    'postgres://user:private-marker@example.test/',
+    ...[
+      'host',
+      'HOST',
+      'port',
+      'database',
+      'dbname',
+      'db',
+      'hostaddr',
+      'service',
+    ].map(
+      (key) =>
+        `postgres://user:private-marker@example.test/db?${key}=private-marker`,
+    ),
+  ])(
+    'rejects unsafe configuration without exposing its contents (%#)',
+    (url) => {
+      let message = '';
+      try {
+        buildListenerDatabaseConfig({ LISTENER_DATABASE_URL: url });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain('LISTENER_DATABASE_URL');
+      expect(message).not.toContain('private-marker');
+      expect(message).not.toContain('example.test');
+      expect(message).not.toContain('example.neon.tech');
+    },
+  );
+});
 
 describe('database configuration', () => {
   it('loads the development database URL', () => {

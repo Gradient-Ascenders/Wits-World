@@ -2,8 +2,15 @@ import { buildApp } from './app.js';
 import { createOfflineChallengeService } from './challenges/offline-challenges.js';
 import { buildApiConfig } from './config/api.js';
 import { buildAuthConfig } from './config/auth.js';
-import { buildDatabaseConfig, loadApiEnvironment } from './config/database.js';
-import { createDatabasePool } from './database/connection.js';
+import {
+  buildDatabaseConfig,
+  buildListenerDatabaseConfig,
+  loadApiEnvironment,
+} from './config/database.js';
+import {
+  createDatabasePool,
+  createListenerDatabasePool,
+} from './database/connection.js';
 import {
   createCachedEventDiscoveryService,
   createEventDiscoveryService,
@@ -101,8 +108,10 @@ async function startServer(): Promise<void> {
     createReauthenticationTokenVerifier(authConfig);
   const corsConfig = buildCorsConfig();
   const databaseConfig = buildDatabaseConfig();
+  const listenerDatabaseConfig = buildListenerDatabaseConfig();
 
   const database = createDatabasePool(databaseConfig);
+  const listenerDatabase = createListenerDatabasePool(listenerDatabaseConfig);
   const gameplayLogger = {
     error(_context: Record<string, unknown>, message: string) {
       console.error(message);
@@ -410,7 +419,7 @@ async function startServer(): Promise<void> {
     },
   );
   const livePvpNotificationListener = createLivePvpNotificationListener(
-    database,
+    listenerDatabase,
     livePvpGateway,
     app.log,
   );
@@ -459,14 +468,21 @@ async function startServer(): Promise<void> {
     await placementScheduler.stop();
     await livePvpRuntimeScheduler.stop();
     await rankedScheduler.stop();
-    await livePvpNotificationListener.stop();
-    await livePvpGateway.closeAll();
-    await accountDeletionRetryScheduler.stop();
-    await movementEvidenceCleanupScheduler.stop();
-    await trustEvaluationScheduler.stop();
-    await asyncPvpDeadlineScheduler.stop();
-    await cardTradeMaintenanceScheduler.stop();
-    await database.end();
+    try {
+      await livePvpNotificationListener.stop();
+    } finally {
+      try {
+        await listenerDatabase.end();
+      } finally {
+        await livePvpGateway.closeAll();
+        await accountDeletionRetryScheduler.stop();
+        await movementEvidenceCleanupScheduler.stop();
+        await trustEvaluationScheduler.stop();
+        await asyncPvpDeadlineScheduler.stop();
+        await cardTradeMaintenanceScheduler.stop();
+        await database.end();
+      }
+    }
   });
 
   try {
