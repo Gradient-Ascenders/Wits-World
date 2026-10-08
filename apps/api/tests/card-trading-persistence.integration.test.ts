@@ -350,6 +350,378 @@ describe.skipIf(!runIntegrationTests)(
       expect(receipt.rowCount).toBe(0);
     });
 
+    it('discovers, reads, and declines trades with durable command replay', async () => {
+      const sender = await insertPlayerWithCollection(pool, 'decline_sender');
+      const recipient = await insertPlayerWithCollection(
+        pool,
+        'decline_recipient',
+      );
+      const service = createCardTradeService(pool);
+      const created = await service.createTrade({
+        senderPlayerId: sender.id,
+        recipientPlayerName: ` ${recipient.playerName.toUpperCase()} `,
+        offeredOwnedCardIds: [sender.cards[0]!.id],
+        requestedDefinitions: [
+          { cardDefinitionId: recipient.cards[0]!.definitionId, quantity: 1 },
+        ],
+      });
+
+      await expect(
+        service.findRecipient(sender.id, recipient.playerName),
+      ).resolves.toBe(recipient.playerName.toLowerCase());
+      await expect(
+        service.findRecipient(sender.id, 'missing_trade_recipient'),
+      ).rejects.toMatchObject({ code: 'TRADE_PLAYER_UNAVAILABLE' });
+      await expect(
+        service.getTrade(created.tradeId, sender.id),
+      ).resolves.toMatchObject({
+        tradeId: created.tradeId,
+        status: 'open',
+        version: 1,
+      });
+      await expect(
+        service.listTrades({
+          playerId: recipient.id,
+          direction: 'received',
+          status: 'open',
+          page: 1,
+          pageSize: 1,
+        }),
+      ).resolves.toMatchObject({
+        page: 1,
+        pageSize: 1,
+        hasMore: false,
+        items: [
+          {
+            tradeId: created.tradeId,
+            direction: 'received',
+            status: 'open',
+            counterpartyPlayerName: sender.playerName,
+          },
+        ],
+      });
+
+      const snapshot = async () =>
+        pool.query(
+          `select trade.status,
+                  (select count(*)::integer from private.card_trade_reservations reservation where reservation.trade_id = trade.id) reservation_count,
+                  (select count(*)::integer from private.card_trade_submission_receipts receipt where receipt.trade_id = trade.id) receipt_count
+             from private.card_trades trade
+            where trade.id = $1::uuid`,
+          [created.tradeId],
+        );
+      const beforeRejectedCommand = await snapshot();
+      const submissionId = randomUUID();
+      await expect(
+        service.declineTradeCommand({
+          tradeId: created.tradeId,
+          playerId: sender.id,
+          submissionId,
+        }),
+      ).rejects.toMatchObject({ code: 'TRADE_ACTION_NOT_ALLOWED' });
+      expect((await snapshot()).rows).toEqual(beforeRejectedCommand.rows);
+
+      const declined = await service.declineTradeCommand({
+        tradeId: created.tradeId,
+        playerId: recipient.id,
+        submissionId,
+      });
+      const replay = await service.declineTradeCommand({
+        tradeId: created.tradeId,
+        playerId: recipient.id,
+        submissionId,
+      });
+      expect(declined.status).toBe('declined');
+      expect(replay.tradeId).toBe(declined.tradeId);
+      expect(replay.status).toBe('declined');
+
+      const persisted = await pool.query<{
+        status: string;
+        reservation_count: number;
+        receipt_count: number;
+        decline_receipt_count: number;
+      }>(
+        `select trade.status,
+                (select count(*)::integer from private.card_trade_reservations reservation where reservation.trade_id = trade.id) reservation_count,
+                (select count(*)::integer from private.card_trade_submission_receipts receipt where receipt.trade_id = trade.id) receipt_count,
+                (select count(*)::integer from private.card_trade_submission_receipts receipt where receipt.trade_id = trade.id and receipt.operation = 'trade_decline') decline_receipt_count
+           from private.card_trades trade
+          where trade.id = $1::uuid`,
+        [created.tradeId],
+      );
+      expect(persisted.rows[0]).toEqual({
+        status: 'declined',
+        reservation_count: 0,
+        receipt_count: 1,
+        decline_receipt_count: 1,
+      });
+
+      const deletionPending = await insertPlayerWithCollection(
+        pool,
+        'deletion_pending',
+      );
+      await pool.query(
+        `with request as (
+           insert into public.account_deletion_requests (id, requested_at, status)
+           values ($1::uuid, clock_timestamp(), 'pending')
+           returning id
+         )
+         update public.players
+            set lifecycle_status = 'deletion_pending',
+                deletion_request_id = (select id from request)
+          where id = $2::uuid`,
+        [randomUUID(), deletionPending.id],
+      );
+      await expect(
+        service.createTrade({
+          senderPlayerId: sender.id,
+          recipientPlayerId: deletionPending.id,
+          offeredOwnedCardIds: [sender.cards[1]!.id],
+          requestedDefinitions: [
+            {
+              cardDefinitionId: deletionPending.cards[1]!.definitionId,
+              quantity: 1,
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({ code: 'TRADE_PLAYER_UNAVAILABLE' });
+      const rejectedDeletionTarget = await pool.query<{ count: number }>(
+        `select count(*)::integer as count
+           from private.card_trades
+          where sender_player_id = $1::uuid
+            and recipient_player_id = $2::uuid`,
+        [sender.id, deletionPending.id],
+      );
+      expect(rejectedDeletionTarget.rows[0]?.count).toBe(0);
+
+      const directDeclineTrade = await service.createTrade({
+        senderPlayerId: sender.id,
+        recipientPlayerId: recipient.id,
+        offeredOwnedCardIds: [sender.cards[2]!.id],
+        requestedDefinitions: [
+          { cardDefinitionId: recipient.cards[1]!.definitionId, quantity: 1 },
+        ],
+      });
+      await expect(
+        service.declineTrade(directDeclineTrade.tradeId, recipient.id),
+      ).resolves.toMatchObject({ status: 'declined' });
+    });
+
+    it('persists imbalance acknowledgements per participant and blocks unacknowledged acceptance', async () => {
+      const sender = await insertPlayerWithCollection(pool, 'imbalance_sender');
+      const recipient = await insertPlayerWithCollection(
+        pool,
+        'imbalance_recipient',
+      );
+      const senderGrant = await pool.query<{ id: string }>(
+        `select id::text from public.player_starter_grants
+          where player_id = $1::uuid`,
+        [sender.id],
+      );
+      const extraSenderPowers = await pool.query<{
+        id: string;
+        card_definition_id: string;
+      }>(
+        `insert into public.player_cards (
+           id, player_id, card_definition_id, source_starter_grant_id,
+           acquisition_kind
+         )
+         select gen_random_uuid(), $1::uuid, definition.id, $2::uuid, 'starter'
+           from public.card_definitions definition
+          where definition.category = 'power'
+            and definition.is_active
+            and definition.authoring_status = 'published'
+            and definition.catalogue_class = 'ordinary'
+            and not exists (
+              select 1 from public.player_cards owned
+               where owned.player_id = $1::uuid
+                 and owned.card_definition_id = definition.id
+            )
+          order by definition.name, definition.id
+          limit 3
+         returning id::text, card_definition_id::text`,
+        [sender.id, senderGrant.rows[0]!.id],
+      );
+      expect(extraSenderPowers.rows).toHaveLength(3);
+      const senderOffer = [
+        sender.cards[0]!,
+        ...extraSenderPowers.rows.map((card) => ({
+          id: card.id,
+          definitionId: card.card_definition_id,
+        })),
+      ];
+      const service = createCardTradeService(pool);
+      const created = await service.createTrade({
+        senderPlayerId: sender.id,
+        recipientPlayerId: recipient.id,
+        offeredOwnedCardIds: senderOffer.map((card) => card.id),
+        requestedDefinitions: [
+          { cardDefinitionId: recipient.cards[0]!.definitionId, quantity: 1 },
+        ],
+      });
+      try {
+        const complete = await service.reviseTrade({
+          tradeId: created.tradeId,
+          playerId: recipient.id,
+          expectedVersion: created.version,
+          offeredOwnedCardIds: [recipient.cards[0]!.id],
+          requestedDefinitions: senderOffer.map((card) => ({
+            cardDefinitionId: card.definitionId,
+            quantity: 1,
+          })),
+        });
+        expect(complete.complete).toBe(true);
+        expect(complete.imbalanceWarningRequired).toBe(true);
+
+        const senderAckId = randomUUID();
+        const senderAcknowledgement = await service.acknowledgeImbalance({
+          tradeId: created.tradeId,
+          playerId: sender.id,
+          submissionId: senderAckId,
+          expectedVersion: complete.version,
+        });
+        const senderAckReplay = await service.acknowledgeImbalance({
+          tradeId: created.tradeId,
+          playerId: sender.id,
+          submissionId: senderAckId,
+          expectedVersion: complete.version,
+        });
+        expect(senderAcknowledgement.sender.imbalanceAcknowledged).toBe(true);
+        expect(senderAckReplay.sender.imbalanceAcknowledged).toBe(true);
+        expect(senderAckReplay.recipient.imbalanceAcknowledged).toBe(false);
+
+        const accepted = await service.acceptTrade({
+          tradeId: created.tradeId,
+          playerId: sender.id,
+          submissionId: randomUUID(),
+          expectedVersion: complete.version,
+        });
+        expect(accepted).toMatchObject({
+          status: 'open',
+          complete: true,
+          sender: { accepted: true },
+          recipient: { accepted: false },
+        });
+        await expect(
+          service.acceptTrade({
+            tradeId: created.tradeId,
+            playerId: recipient.id,
+            submissionId: randomUUID(),
+            expectedVersion: complete.version,
+          }),
+        ).rejects.toMatchObject({ code: 'TRADE_IMBALANCE_ACK_REQUIRED' });
+
+        const beforeRecipientAcknowledgement = await pool.query<{
+          status: string;
+          acknowledgement_count: number;
+          acceptance_count: number;
+          reservation_count: number;
+          receipt_count: number;
+        }>(
+          `select trade.status,
+                  (select count(*)::integer from private.card_trade_imbalance_acknowledgements acknowledgement where acknowledgement.trade_id = trade.id and acknowledgement.version = trade.current_version) acknowledgement_count,
+                  (select count(*)::integer from private.card_trade_acceptances acceptance where acceptance.trade_id = trade.id and acceptance.version = trade.current_version) acceptance_count,
+                  (select count(*)::integer from private.card_trade_reservations reservation where reservation.trade_id = trade.id) reservation_count,
+                  (select count(*)::integer from private.card_trade_submission_receipts receipt where receipt.trade_id = trade.id) receipt_count
+             from private.card_trades trade
+            where trade.id = $1::uuid`,
+          [created.tradeId],
+        );
+        expect(beforeRecipientAcknowledgement.rows[0]).toEqual({
+          status: 'open',
+          acknowledgement_count: 1,
+          acceptance_count: 1,
+          reservation_count: 5,
+          receipt_count: 2,
+        });
+
+        const recipientAcknowledgement = await service.acknowledgeImbalance({
+          tradeId: created.tradeId,
+          playerId: recipient.id,
+          submissionId: randomUUID(),
+          expectedVersion: complete.version,
+        });
+        expect(recipientAcknowledgement.recipient.imbalanceAcknowledged).toBe(
+          true,
+        );
+        const acknowledgements = await pool.query<{
+          player_id: string;
+          version: number;
+        }>(
+          `select player_id::text, version
+             from private.card_trade_imbalance_acknowledgements
+            where trade_id = $1::uuid
+            order by player_id`,
+          [created.tradeId],
+        );
+        expect(acknowledgements.rows).toEqual(
+          [sender.id, recipient.id].sort().map((playerId) => ({
+            player_id: playerId,
+            version: complete.version,
+          })),
+        );
+      } finally {
+        const current = await service.getTrade(created.tradeId, sender.id);
+        if (current.status === 'open') {
+          await service.cancelTrade(created.tradeId, sender.id);
+        }
+      }
+    });
+
+    it('leaves versions and reservations unchanged after stale and wrong-owner revisions', async () => {
+      const sender = await insertPlayerWithCollection(pool, 'reject_sender');
+      const recipient = await insertPlayerWithCollection(
+        pool,
+        'reject_recipient',
+      );
+      const service = createCardTradeService(pool);
+      const created = await service.createTrade({
+        senderPlayerId: sender.id,
+        recipientPlayerId: recipient.id,
+        offeredOwnedCardIds: [sender.cards[0]!.id],
+        requestedDefinitions: [
+          { cardDefinitionId: recipient.cards[0]!.definitionId, quantity: 1 },
+        ],
+      });
+      const snapshot = async () =>
+        pool.query(
+          `select trade.status, trade.current_version,
+                  (select count(*)::integer from private.card_trade_versions version where version.trade_id = trade.id) version_count,
+                  (select count(*)::integer from private.card_trade_reservations reservation where reservation.trade_id = trade.id) reservation_count,
+                  (select count(*)::integer from private.card_trade_submission_receipts receipt where receipt.trade_id = trade.id) receipt_count,
+                  (select count(*)::integer from private.card_trade_acceptances acceptance where acceptance.trade_id = trade.id) acceptance_count
+             from private.card_trades trade
+            where trade.id = $1::uuid`,
+          [created.tradeId],
+        );
+      const before = await snapshot();
+
+      await expect(
+        service.reviseTrade({
+          tradeId: created.tradeId,
+          playerId: recipient.id,
+          expectedVersion: created.version + 1,
+          offeredOwnedCardIds: [recipient.cards[0]!.id],
+          requestedDefinitions: [
+            { cardDefinitionId: sender.cards[0]!.definitionId, quantity: 1 },
+          ],
+        }),
+      ).rejects.toMatchObject({ code: 'TRADE_VERSION_STALE' });
+      await expect(
+        service.reviseTrade({
+          tradeId: created.tradeId,
+          playerId: recipient.id,
+          expectedVersion: created.version,
+          offeredOwnedCardIds: [sender.cards[0]!.id],
+          requestedDefinitions: [
+            { cardDefinitionId: sender.cards[0]!.definitionId, quantity: 1 },
+          ],
+        }),
+      ).rejects.toMatchObject({ code: 'TRADE_COPY_CONFLICT' });
+
+      expect((await snapshot()).rows).toEqual(before.rows);
+    });
+
     it('prevents conflicting reservations and makes acceptance version-specific', async () => {
       const sender = await insertPlayerWithCollection(pool, 'version_sender');
       const recipient = await insertPlayerWithCollection(
@@ -1085,6 +1457,63 @@ describe.skipIf(!runIntegrationTests)(
         terminal_reason: 'account_deletion',
         reservations: 0,
       });
+    });
+
+    it('keeps participant authority and not-found guards from changing an open offer', async () => {
+      const sender = await insertPlayerWithCollection(pool, 'authority_sender');
+      const recipient = await insertPlayerWithCollection(
+        pool,
+        'authority_recipient',
+      );
+      const outsider = await insertPlayerWithCollection(
+        pool,
+        'authority_outsider',
+      );
+      const service = createCardTradeService(pool);
+      const trade = await service.createTrade({
+        senderPlayerId: sender.id,
+        recipientPlayerId: recipient.id,
+        offeredOwnedCardIds: [sender.cards[0]!.id],
+        requestedDefinitions: [
+          { cardDefinitionId: recipient.cards[0]!.definitionId, quantity: 1 },
+        ],
+      });
+
+      await expect(
+        service.getTrade(randomUUID(), sender.id),
+      ).rejects.toMatchObject({
+        code: 'TRADE_NOT_FOUND',
+      });
+      await expect(
+        service.getTrade(trade.tradeId, outsider.id),
+      ).rejects.toMatchObject({ code: 'TRADE_NOT_PARTICIPANT' });
+      await expect(
+        service.declineTrade(trade.tradeId, outsider.id),
+      ).rejects.toMatchObject({ code: 'TRADE_NOT_PARTICIPANT' });
+
+      const persisted = await pool.query<{
+        status: string;
+        version: number;
+        reservation_count: number;
+        acceptance_count: number;
+      }>(
+        `select trade.status, trade.current_version as version,
+                (select count(*)::integer from private.card_trade_reservations reservation
+                  where reservation.trade_id = trade.id) reservation_count,
+                (select count(*)::integer from private.card_trade_acceptances acceptance
+                  where acceptance.trade_id = trade.id) acceptance_count
+           from private.card_trades trade
+          where trade.id = $1::uuid`,
+        [trade.tradeId],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          status: 'open',
+          version: 1,
+          reservation_count: 1,
+          acceptance_count: 0,
+        },
+      ]);
     });
   },
 );

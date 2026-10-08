@@ -4,6 +4,7 @@ import {
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -13,6 +14,7 @@ import {
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from '../src/pages/ProfilePage';
+import { updateAccessibilityPreferences } from '../src/accessibility/preferences';
 import { buildPlayerProfile } from './fixtures/player-profile';
 import { buildCard } from './fixtures/cards';
 import { jsonResponse } from './fixtures/progression';
@@ -23,6 +25,7 @@ import { parseCardPresentation } from '../src/api/cards';
 const emojiPickerTestTimeout = 20_000;
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -119,6 +122,19 @@ describe('player showcase', () => {
       screen.queryByRole('link', { name: /View player profile/ }),
     ).not.toBeInTheDocument();
     const trigger = screen.getByRole('button', { name: 'First Quiz: Earned' });
+    const thumbnail = trigger.querySelector('img');
+    expect(thumbnail).toHaveAttribute('alt', '');
+    expect(thumbnail).toHaveAttribute('loading', 'lazy');
+    expect(thumbnail).toHaveAttribute('sizes', 'auto, 21rem');
+    Object.defineProperties(thumbnail!, {
+      complete: { value: true },
+      naturalWidth: { value: 106 },
+      currentSrc: { value: '/loaded-achievement-atlas.webp' },
+    });
+    const drawImage = vi.fn();
+    const canvasContext = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
     await user.click(trigger);
     const dialog = screen.getByRole('dialog', { name: 'First Quiz' });
     const close = within(dialog).getByRole('button', {
@@ -126,6 +142,21 @@ describe('player showcase', () => {
     });
     expect(close).toHaveFocus();
     expect(dialog).toHaveAttribute('aria-modal', 'true');
+    const preview = dialog.querySelector('canvas')!;
+    expect(preview).toBeVisible();
+    expect(drawImage).toHaveBeenCalledWith(thumbnail, 0, 0, 1536, 1024);
+    const enlargedArtwork = dialog.querySelector('.showcase-badge-art img');
+    expect(enlargedArtwork).toHaveAttribute('loading', 'eager');
+    expect(enlargedArtwork).toHaveAttribute('sizes', '36rem');
+    expect(enlargedArtwork?.getAttribute('srcset')).toContain('1536w');
+    act(() => updateAccessibilityPreferences({ scale: '150' }));
+    expect(enlargedArtwork).toHaveAttribute('sizes', '54rem');
+    expect(thumbnail).toHaveAttribute('sizes', 'auto, 31.5rem');
+    act(() => updateAccessibilityPreferences({ scale: '100' }));
+    fireEvent.error(enlargedArtwork!);
+    expect(dialog.querySelector('canvas')).toBe(preview);
+    expect(enlargedArtwork).not.toBeVisible();
+    expect(drawImage).toHaveBeenCalledTimes(1);
     expect(within(dialog).getByText('naledi-star')).toBeVisible();
     expect(within(dialog).queryByRole('progressbar')).not.toBeInTheDocument();
     await user.tab();
@@ -135,9 +166,79 @@ describe('player showcase', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+    expect(preview).toHaveAttribute('width', '0');
+    expect(preview).toHaveAttribute('height', '0');
     await user.click(trigger);
     await user.click(document.querySelector('.achievement-backdrop')!);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    canvasContext.mockRestore();
+  });
+
+  it('keeps the decoded preview until the larger image finishes decoding, then releases its canvas', async () => {
+    const user = userEvent.setup();
+    mount();
+    const trigger = await screen.findByRole('button', {
+      name: 'First Quiz: Earned',
+    });
+    const thumbnail = trigger.querySelector('img')!;
+    Object.defineProperties(thumbnail, {
+      complete: { value: true },
+      naturalWidth: { value: 106 },
+    });
+    const canvasContext = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({
+        drawImage: vi.fn(),
+      } as unknown as CanvasRenderingContext2D);
+    await user.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'First Quiz' });
+    const preview = dialog.querySelector('canvas')!;
+    const image = dialog.querySelector('img')!;
+    let finishDecode!: () => void;
+    const decode = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDecode = resolve;
+        }),
+    );
+    Object.defineProperties(image, {
+      decode: { value: decode },
+      naturalWidth: { value: 1536 },
+    });
+    fireEvent.load(image);
+    expect(decode).toHaveBeenCalledTimes(1);
+    expect(preview).toBeVisible();
+    expect(image).not.toBeVisible();
+    await act(async () => finishDecode());
+    expect(image).toBeVisible();
+    expect(dialog.querySelector('canvas')).toBeNull();
+    expect(preview).toHaveAttribute('width', '0');
+    expect(preview).toHaveAttribute('height', '0');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    canvasContext.mockRestore();
+  });
+
+  it('retains a decorative medal placeholder when no list artwork is loaded and the larger image fails', async () => {
+    const user = userEvent.setup();
+    mount();
+    const trigger = await screen.findByRole('button', {
+      name: 'First Quiz: Earned',
+    });
+    await user.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'First Quiz' });
+    const placeholder = dialog.querySelector('.showcase-badge-placeholder');
+    expect(placeholder).toBeVisible();
+    expect(placeholder).toHaveAttribute('aria-hidden', 'true');
+    const image = dialog.querySelector('img')!;
+    expect(image).not.toBeVisible();
+    fireEvent.error(image);
+    expect(placeholder).toBeVisible();
+    expect(image).not.toBeVisible();
+    expect(dialog.querySelector('canvas')).toBeNull();
+    await user.keyboard('{Escape}');
     expect(trigger).toHaveFocus();
   });
 

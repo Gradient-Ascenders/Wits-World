@@ -11,6 +11,133 @@ added when a feature crosses the browser, API, database, or an external service.
 A passing unit test is not proof of deployment, accessibility, user acceptance,
 or field behaviour. Each claim must match the type of evidence collected.
 
+## Coverage profiles
+
+`npm run coverage` remains the fast, database-free profile. `npm run
+coverage:full` runs the same source coverage denominator and adds real
+PostgreSQL/PostGIS integration tests. PR and main coverage jobs use the full
+profile against their own ephemeral PostGIS service; database and Redis
+coordination gates remain independent correctness checks.
+
+For a local full run, explicitly supply the disposable PostGIS administration URL:
+
+```bash
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55434/postgres npm run coverage:full
+```
+
+The full API configuration refuses missing or remote test targets, bounds
+database concurrency to four workers, and makes the ordinary database URL
+unusable. Tests provision and drop their own databases. Do not use Neon or
+production credentials for coverage.
+
+Coverage summaries and LCOV are written under `coverage/<workspace>/`. The badge
+uses total covered lines divided by total measured lines across all five
+workspaces, not the average of their percentages. No source exclusions or lower
+thresholds are used to raise a score. A percentage counts executed code, not
+assertion quality or proof that every branch is correct.
+
+The disposable administration role needs permission to create databases and
+install PostGIS. Fixture-only timestamp setup also uses transaction-local
+`session_replication_role`; the local container and CI service provide that
+permission. These are isolated test-administration privileges, not permissions
+required by the production application role. Services execute with integrity
+triggers enabled; the timestamp helpers restore the normal mode before the
+behaviour under test.
+
+The pre-change baseline on 8 October 2026, at `e04bf0c`, was:
+
+| Scope                                   | Line coverage |
+| --------------------------------------- | ------------: |
+| API, database-free                      |        65.12% |
+| API, PostGIS-integrated                 |        83.95% |
+| Web                                     |        82.74% |
+| Game rules                              |        88.95% |
+| Documentation and account policy        |          100% |
+| Weighted repository, database-free      |        75.42% |
+| Weighted repository, PostGIS-integrated |        83.40% |
+
+The clean Web baseline passed 951 tests; the integrated API baseline passed
+1,955 tests with seven environment-gated tests skipped. An earlier concurrent
+profiling run timed out two existing Web tests; the sequential rerun passed.
+Do not describe coverage gained by including already-existing database tests as
+new test coverage: compare the integrated baseline with the integrated result.
+
+The added regression scope covers database CLI target selection and failures,
+Redis activity validation and safe errors, API startup/resource cleanup, live
+PvP connection authority and persisted transitions, atomic trading and placement
+rejections, ranked queue and season lifecycle, territory visibility/bonuses,
+offline submissions, Author client contracts, profile editing, and mobile sheet
+and save-bar interactions.
+
+### Measured coverage improvement
+
+The local result on 8 October 2026 (UTC) was measured on
+`test/improve-application-coverage`, based on `e04bf0c`, with the branch changes
+still uncommitted. The environment used Node.js 24.15.0, npm 11.12.1, and the
+disposable local PostgreSQL 17 / PostGIS 3.5 container. npm was older than the repository's
+specified 11.18.0; dependencies and the lockfile were not changed.
+
+| Scope                           | Covered / measured lines | Line coverage | Passing Vitest tests |
+| ------------------------------- | -----------------------: | ------------: | -------------------: |
+| API, PostGIS-integrated         |           9,893 / 10,954 |        90.31% |                2,068 |
+| Web                             |          12,832 / 14,321 |        89.60% |                1,165 |
+| Game rules                      |                481 / 507 |        94.87% |                   49 |
+| Documentation                   |                  10 / 10 |          100% |                    5 |
+| Account policy                  |                  28 / 28 |          100% |                   16 |
+| Weighted repository, full suite |          23,244 / 25,820 |        90.02% |                3,303 |
+
+On the unchanged 25,820-line denominator, this is an increase from 83.40% to
+90.02%, with 1,709 additional covered lines and 344 additional test cases.
+Combined statement coverage is 88.60%, branch coverage 81.63%, and function
+coverage 91.79%; the 90.02% figure is specifically **line** coverage.
+
+The API run passed 195 files with seven Redis-coordination tests skipped; those
+tests require the independent PostgreSQL/Redis gate. The Web run passed 102
+files, and its three native static-server tests also passed. The three native
+deployment-guard tests passed separately. The tests assert authoritative
+results, rollback and release, rejected intent, recovery without duplicate
+mutations, draft-loss prevention, and keyboard interaction; the application
+source, schema, coverage exclusions, and thresholds were unchanged.
+
+The full coverage scope can be reproduced using the command above. The local
+measurement used the API full-profile step, the Web coverage step, and the
+three shared-workspace coverage steps, then `npm run coverage:badge`. Inspect
+`coverage/<workspace>/coverage-summary.json` and `lcov.info` for the measured
+source, and `coverage/coverage.svg` for the generated 90.0% badge. The
+database-free profile is a different execution scope and must not be presented
+as the full-suite result. These are local results; the changed Gitea coverage
+jobs have not yet run remotely.
+
+### Post-rebase verification
+
+On 8 October 2026 (UTC), the coverage branch was rebased onto `main` at
+`827937e`. Its code/test commit `c03b4a9` was checked again after the upstream
+artwork change. Web coverage passed 104 files and 1,169 tests, plus the three
+native static-server tests, and measured **89.61%** (12,853 / 14,342 lines).
+The API and shared-package source/tests were unchanged by the rebase, so their
+verified reports above were retained.
+
+The combined result is **90.03%** (23,265 / 25,841 lines), and regenerating the
+badge produced **90.0%**. The additional 21 measured Web lines come from the
+upstream artwork implementation, not a change to coverage exclusions. Preserve
+the original baseline comparison above; this follow-up is not a claim that
+upstream tests or coverage gains were added by this branch. These remain local
+results; live badge publication requires successful main-branch CI after merge.
+
+### Remaining test boundaries
+
+- Auth0, Upstash and other external provider behaviour is simulated at public
+  boundaries in application tests. Disposable PostgreSQL/Redis coordination
+  tests and configured deployed smoke tests provide separate integration evidence.
+- jsdom tests do not prove browser layout, touch-device rendering, canvas pixels,
+  screen-reader quality or real map/geolocation behaviour. Keep Playwright,
+  accessibility and campus field checks separate.
+- V8 reports TypeScript execution, not SQL statement or migration coverage.
+  Database constraint, rollback, concurrency and migration assertions are the
+  evidence for SQL behaviour.
+- Coverage is not a production load test, security audit, backup restore test or
+  proof of behaviour during every possible multi-instance race or network failure.
+
 ## Test layers
 
 | Layer                   | What it checks                                                                      | Main location                                    |
@@ -163,7 +290,10 @@ the acceptance criteria or protected invariants.
 
 ## AI declaration
 
-This page was generated, edited, and reviewed with assistance from Codex,
-Codex-CLI, and ChatGPT-Web models listed in its earlier revision. It was
-rewritten in simpler language with assistance from Codex[GPT-5]. Repository
-paths and workflow claims were checked against the current source.
+This testing strategy was generated, edited, and reviewed with assistance from
+Codex[GPT-6], Codex[GPT-5], Codex[gpt-5.6-sol], Codex-CLI[GPT-5],
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-6], and ChatGPT-Web[GPT-5.6 Sol].
+It was rewritten in simpler language with assistance from Codex[GPT-5].
+Coverage profiles and regression scope were updated with assistance from
+Codex[GPT-5] and Luna subagents[gpt-6-luna]. This merge was reconciled with
+assistance from Codex[GPT-6].

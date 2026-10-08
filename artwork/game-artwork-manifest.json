@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "generator": "node scripts/generate-game-artwork.mjs",
+  "encoder": "Sharp 0.35.2; WebP 1.6.0",
+  "options": {
+    "quality": 90,
+    "alphaQuality": 100,
+    "effort": 6,
+    "smartSubsample": true
+  },
+  "resizeKernel": "lanczos3",
+  "provenance": "Resized and encoded from the existing campus PNG and achievement PNG. No artwork generated or redesigned. Original files and achievement provenance retained. Alpha is encoded losslessly; RGB uses quality 90 WebP.",
+  "attribution": "Codex[GPT-6] assisted with the generation script, responsive delivery, verification and documentation. The existing artwork retains its original provenance.",
+  "assets": [
+    {
+      "source": "apps/web/src/assets/home/campus-transparent.png",
+      "sourceSha256": "3889a0365abf43e7b3e75bb23ac2691ed9051c73ccffec8231b972bfc8efd593",
+      "sourceBytes": 1780531,
+      "width": 1448,
+      "height": 1086,
+      "variants": [
+        {
+          "file": "apps/web/src/assets/home/campus-transparent-480.webp",
+          "width": 480,
+          "height": 360,
+          "bytes": 68708,
+          "sha256": "ad8ed58030510df72fbb5eff738b66710ab743e55da2e97abe34dd62329d0baf"
+        },
+        {
+          "file": "apps/web/src/assets/home/campus-transparent-768.webp",
+          "width": 768,
+          "height": 576,
+          "bytes": 144514,
+          "sha256": "714a227eff060806082c4d39421695117c952a8b1304c48b32e5a9f99f53e422"
+        },
+        {
+          "file": "apps/web/src/assets/home/campus-transparent-1152.webp",
+          "width": 1152,
+          "height": 864,
+          "bytes": 266066,
+          "sha256": "76df799804d5fa4a0b4dbfc8aaf742267e6388bcf260ec9415f407692c49fb29"
+        },
+        {
+          "file": "apps/web/src/assets/home/campus-transparent-1448.webp",
+          "width": 1448,
+          "height": 1086,
+          "bytes": 349418,
+          "sha256": "de1c12cc911c9d889fc59ace314acb7308a235437571885f6fd53441b85968e1"
+        }
+      ]
+    },
+    {
+      "source": "apps/web/src/assets/profile/achievements.png",
+      "sourceSha256": "0bd7f50f2d1b52b987a55f40784bac8744226f77d86f2e25b9c02acf7a921d05",
+      "sourceBytes": 1920026,
+      "width": 1536,
+      "height": 1024,
+      "variants": [
+        {
+          "file": "apps/web/src/assets/profile/achievements-384.webp",
+          "width": 384,
+          "height": 256,
+          "bytes": 33496,
+          "sha256": "d44c38948d8addc6e55061e0dd9c38ca52592ee1c0a688e7f621849e32bf50ea"
+        },
+        {
+          "file": "apps/web/src/assets/profile/achievements-768.webp",
+          "width": 768,
+          "height": 512,
+          "bytes": 88916,
+          "sha256": "c15069bd3fdcec71ebf571f73203aee3f7b1c0715ab20af453c62420fecce5e9"
+        },
+        {
+          "file": "apps/web/src/assets/profile/achievements-1152.webp",
+          "width": 1152,
+          "height": 768,
+          "bytes": 168066,
+          "sha256": "ad91ffc8ecc4a4bbe0c3a17f1c7bf3ed58667641762e7ae86a32018b6e22bbb6"
+        },
+        {
+          "file": "apps/web/src/assets/profile/achievements-1536.webp",
+          "width": 1536,
+          "height": 1024,
+          "bytes": 234920,
+          "sha256": "cb2458827abd4c89975fdf120e08a1b859c746bbda033b90f682d1f38e744968"
+        }
+      ]
+    }
+  ]
+}
