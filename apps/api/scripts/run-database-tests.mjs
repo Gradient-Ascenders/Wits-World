@@ -43,6 +43,7 @@ const testFiles = [
   'tests/ranked-service.integration.test.ts',
   'tests/trust-persistence.integration.test.ts',
   'tests/trust-scoring.integration.test.ts',
+  'tests/trust-history.integration.test.ts',
   'tests/trust-review-service.integration.test.ts',
   'tests/campaign-persistence.integration.test.ts',
   'tests/movement-evidence-database.integration.test.ts',
