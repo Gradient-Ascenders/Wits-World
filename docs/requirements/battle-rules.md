@@ -23,10 +23,9 @@ offer different tactics, giving deck building a purpose beyond selecting high
 stats.
 
 The core requirements remain: players choose a deck, take turns against the
-computer, follow server-enforced rules, and retain completed matches. The
-[decision register](basic-tier-decision-register.md#status-and-authority)
-records team confirmation of this departure on 25 August 2026; it does not
-record a formal amendment to the supplied brief.
+computer, follow server-enforced rules, and retain completed matches. The team
+confirmed this departure on 25 August 2026; that confirmation does not record a
+formal amendment to the supplied brief.
 
 ## Starting and turn order
 

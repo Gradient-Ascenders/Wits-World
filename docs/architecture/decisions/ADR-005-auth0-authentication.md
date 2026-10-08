@@ -553,7 +553,7 @@ Remaining authentication work still covers:
 ## Confirmation required
 
 The Basic-tier items below are tracked with named owners and evidence in the
-[Basic-tier decision register](../../requirements/basic-tier-decision-register.md).
+[Basic-tier decision register](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/docs/requirements/basic-tier-decision-register.md).
 The team must still confirm:
 
 - whether Wits SSO is available or required;

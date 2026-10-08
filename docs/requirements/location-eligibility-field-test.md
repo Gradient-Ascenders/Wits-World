@@ -10,7 +10,7 @@ This page preserves the Sprint 1 field-test protocol and its recorded evidence
 state. Current eligibility semantics are documented in
 [Event Eligibility Calculation](../database/event-eligibility.md); confirmed
 product decisions are maintained in the
-[Basic-tier decision register](basic-tier-decision-register.md).
+[Basic-tier decision register](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/docs/requirements/basic-tier-decision-register.md).
 
 :::
 

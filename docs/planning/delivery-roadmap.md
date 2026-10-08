@@ -6,7 +6,7 @@ This roadmap preserves the intended delivery sequence and milestone framing at
 the time it was written. For current delivered Basic scope, use the
 [Basic release overview](../basic-release-reference.md); confirmed product
 decisions are maintained in the
-[Basic-tier decision register](../requirements/basic-tier-decision-register.md).
+[Basic-tier decision register](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/docs/requirements/basic-tier-decision-register.md).
 
 :::
 

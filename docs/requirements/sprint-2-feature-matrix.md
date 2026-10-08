@@ -16,7 +16,7 @@ Advanced/Intermediate/Basic **marking bands** are not product feature tiers.
 **Implemented** means the referenced source/contracts exist in this revision.
 It does not mean every deployed or participant check passed. Use the
 [dated test and release snapshot](../testing/sprint-2-validation-status.md) for
-execution evidence and the [decision register](basic-tier-decision-register.md)
+execution evidence and the [decision register](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/docs/requirements/basic-tier-decision-register.md)
 for the full BASIC-01–19 decisions.
 
 ## Basic and cross-project requirements

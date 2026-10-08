@@ -12,7 +12,7 @@ boundary implemented by issue #72.
 The approved player-visible deck rules are defined in
 [Wits Quest Basic Game Rules](../requirements/basic-game-rules.md), with their
 decision evidence maintained in the
-[Basic-tier decision register](../requirements/basic-tier-decision-register.md).
+[Basic-tier decision register](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/docs/requirements/basic-tier-decision-register.md).
 
 Issue #72 implements saved deck persistence, validation, CRUD, and active-deck
 selection. CPU match persistence and match-owned card/stat snapshots remain the

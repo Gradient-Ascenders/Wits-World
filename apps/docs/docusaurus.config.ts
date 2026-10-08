@@ -1,7 +1,9 @@
 import { themes as prismThemes } from 'prism-react-renderer';
+import { GlobExcludeDefault } from '@docusaurus/utils';
 import type { Config } from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 import type { PluginOptions as SearchOptions } from '@easyops-cn/docusaurus-search-local';
+import { repositoryOnlyDocs } from './docs-publication';
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
@@ -49,6 +51,7 @@ const config: Config = {
       {
         docs: {
           path: '../../docs',
+          exclude: [...GlobExcludeDefault, ...repositoryOnlyDocs],
           sidebarPath: './sidebars.ts',
           routeBasePath: 'docs',
         },

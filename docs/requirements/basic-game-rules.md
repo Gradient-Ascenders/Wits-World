@@ -11,9 +11,8 @@ identifies the features added beyond Basic.
 
 The API and database determine eligibility, correctness, rewards, ownership,
 deck legality, and battle outcomes. The browser displays state and submits
-player actions. Product decisions and their provenance are retained in the
-[Basic decision register](basic-tier-decision-register.md); release evidence is
-tracked in the [acceptance checklist](../testing/basic-tier-release-validation.md).
+player actions. Release evidence is tracked in the
+[acceptance checklist](../testing/basic-tier-release-validation.md).
 
 ## Event challenge
 

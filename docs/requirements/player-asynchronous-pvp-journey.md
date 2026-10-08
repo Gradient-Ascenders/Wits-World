@@ -1,6 +1,6 @@
 ---
 title: 'Player battles'
-description: Async and live PvP, ranked seasons, progression points, and territory influence.
+description: Choose async or live PvP, manage invitations, play a battle, and enter territory contests.
 ---
 
 # Player battles
@@ -85,86 +85,32 @@ to view older records.
 
 1. Open **Live Ranked** at `/matches/live` and review your deck. **Change deck**
    opens `/collection/decks`.
-2. Choose **Find battle**. Matchmaking looks for a nearby rating and widens its
-   search as you wait.
-3. When a match is proposed, choose **Accept** within **20 seconds**. Both players
-   must accept before the battle starts. Declining or missing acceptance adds a
-   **30-second cooldown**, without changing your rating.
-4. Select your opening Creature, then take turns using the shared battle
-   controls. Each opening selection, turn, or replacement has a **60-second
-   deadline**. Missing a normal turn skips it; missed selections are resolved
-   automatically. **3 consecutive missed decisions** lose the match.
+2. Choose **Find battle** and keep the lobby open while it searches.
+3. When an opponent is found, choose **Accept** before the displayed deadline.
+   Both players must accept before the battle starts.
+4. Select your opening Creature, then use the shared battle controls to take
+   turns. See [Battle rules](battle-rules.md#decision-deadlines) for live deadlines
+   and missed decisions.
 
-You can **Cancel search** before a match starts. After it starts, forfeiting or
-reaching the timeout limit records a rated loss. Reconnecting does not pause
-deadlines. The lobby's **Watch** tab also lets you open a live battle using its
-link or ID; watching does not affect your rating or influence.
+**Cancel search** ends a search while you are waiting. Once the battle starts,
+use **Forfeit** to concede. Reconnecting does not pause the battle deadline.
 
-## Ratings, standings, and seasons
+The lobby shows your season rating and placement progress. Open **Standings**
+to compare players, or **Watch** to open a live battle using its link or ID.
+[Ranked competition](ranked-competition-policy.md) explains matchmaking,
+acceptance cooldowns, rating changes, placements, and season resets.
 
-Competition uses a single seasonal leaderboard. Named leagues or divisions
-are not currently implemented.
+## Contest a territory
 
-- **Starting rating:** 1000 in your first season. Elo-style rating changes depend
-  on the result and the opponent's rating: beating a stronger opponent is worth
-  more than beating a weaker one. Rating cannot fall below 100.
-- **Placements:** complete **5 ranked matches each season** to appear in public
-  standings. These first matches use larger rating adjustments; your
-  provisional rating is visible to you while placements are incomplete.
-- **Standings:** open **Standings** in Live Ranked to compare rating, rank, wins,
-  and losses. This leaderboard is separate from permanent-point rankings.
-- **Season length:** **28 days** from activation. When the season closes, new
-  searches stop while existing matches finish. Final standings are archived
-  before the next scheduled season begins.
-- **New season:** ratings move halfway back toward 1000. For example, 1240 becomes 1120. Match counts reset and everyone completes 5 placements again.
+For optional campus-zone contests, follow the
+[territory journey](contested-campus-zone-policy.md#contest-a-zone). That guide
+covers location checks, influence, ownership, and owner card bonuses.
 
-Forfeits in an already-started ranked match affect rating. Cancelled searches
-and unaccepted proposals do not. Detailed calculations and rollover rules are
-in [ranked competition](ranked-competition-policy.md).
+## How it works
 
-## How battles connect to territories
-
-Territories connect **Explore**, **ranked battles**, and **challenge rewards**.
-Browse campus zones and their owners in **Explore → Territories**. Ownership is
-held by individual players and is decided separately from leaderboard rank.
-
-To contest a zone, enable **Contest territory** in Live Ranked and choose
-**Find territory battle**. The browser requests your location and the server
-checks that you are inside an active zone. Its location grant lasts **5 minutes**
-and must still be valid when the match starts. Ordinary ranked play works
-without territory participation or a location grant.
-
-An eligible win adds **1 influence** to your snapshotted zone. You must have
-completed 5 ranked matches **before this match starts**, so your fifth placement
-win does not contribute. Influence is capped at **5 per player per zone per
-Johannesburg calendar day**. Async, CPU, casual live, and provisional wins add
-no territory influence. The queue still pairs by rating, so your opponent can
-be contesting a different zone or none at all.
-
-Ownership is settled **hourly**. A player needs at least **3 influence in that
-hour**, then the highest qualifying total takes the zone. A current owner keeps
-it when tied for the lead; other ties favour the earliest contribution. If
-nobody qualifies, ownership stays as it is. At season closure, final territory
-results are archived and zones start the next season unowned with fresh
-influence windows.
-
-Owning a zone can also earn **1 extra Common card** from a challenge in that
-zone. You must own it when the attempt starts and score at least **3 correct
-answers**. The bonus is limited to **1 card per player per Johannesburg
-challenge-start date**, across all owned zones. It adds to ordinary challenge
-rewards and can expand your collection for future decks.
-
-See [territory rules](contested-campus-zone-policy.md) for eligibility,
-settlement, and owner bonuses, or [Explore](player-location-journey.md) for the
-map journey.
-
-## Progression points and saved state
-
-An async victory awards **25 permanent progression points**; the loser receives 0. Completed async battles count as activity for both players. These points
-feed the [all-time and monthly rankings](player-progression-rules.md) and
-[profile](../design/profile-showcase.md). Ranked live results change seasonal
-rating and may add territory influence; they do not award these permanent
-points. Rating, progression points, and influence are separate measures.
+For point awards, streaks, and achievements, see
+[progression](player-progression-rules.md). The mode comparison above identifies
+which competitive measure each battle affects.
 
 The server validates and snapshots cards: the sender's deck when an async
 invitation is sent, the recipient's on acceptance, and both live decks when the

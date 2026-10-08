@@ -1,150 +1,110 @@
 ---
-title: 'Trail rules and progress'
+title: 'Trail rules'
+description: Follow campus events in order, understand saved progress, and find the next available stop.
 ---
 
-# Trail rules and progress
+# Trail rules
 
-## Purpose
+Trails arrange existing campus events into an Author-defined order. They help
+you find the next unfinished stop. Each stop uses the normal event challenge;
+finishing a trail does not award extra cards or progression points.
 
-Trails join existing campus events into an Author-defined order. They guide a
-player from the next unfinished event to the next without changing the event
-challenge, location eligibility, or reward rules.
+## Follow a trail
 
-## Confirmed rules
+1. Open **Explore → Trails** and choose **View trail**.
+2. Check your completed count and the numbered stops. The map pins use the same
+   stop numbers as the list.
+3. Choose **Open event** on the current stop. Follow the
+   [event access journey](player-location-journey.md#player-journey) to check your
+   range and start its challenge.
+4. Complete the [challenge](player-challenge-journey.md), then return to Trails
+   to see the next stop.
 
-- A trail has a title, optional description, lifecycle status, and an ordered
-  list of unique events.
-- An event may appear once within one trail and may be reused by other trails.
-- A trail requires at least two events before publication.
-- Every member event must be published and not retired when the trail is
-  published.
-- Draft trails may be edited and reordered.
-- Published trails are immutable. An Author may retire one but cannot rewrite
-  its historical order.
-- Retired trails remain visible only to players who have progress on them.
-- Retiring a trail does not delete event completions or historical progress.
-- A published trail assigned directly to a campaign follows the campaign's
-  effective window. Upcoming and ended trails remain visible but unavailable.
-- Retiring a campaign removes its trail from new discovery while preserving it
-  for players with progress.
-- Campaign membership gates the trail, not its member events in standalone
-  event discovery.
+You can browse trails without location permission. Opening a current stop does
+not grant challenge access; the normal server location and availability checks
+still apply.
 
 ## Progress rule
 
-Trail progress is the longest contiguous prefix of events for which the
-authenticated player has an authoritative `event_completions` record.
+Progress counts completed stops **from the start of the trail up to the first
+missing completion**. It uses your saved event results, including results
+completed outside the trail or through another trail.
 
-Any finalised event attempt counts as completion for trail ordering, including
-a timeout or a score of zero. The trail does not create a second success or
-reward rule. Challenge score, progression points, and cards remain governed by
-the challenge and progression reward policies.
+Any finalised challenge counts, including a timeout or a score of 0. Starting
+an attempt or saving answers without finalising it does not complete the stop.
+Scores, points, and cards follow the existing
+[challenge rules](basic-game-rules.md) and
+[progression rules](player-progression-rules.md).
 
-Example:
+| Stop state  | Meaning                                                |
+| ----------- | ------------------------------------------------------ |
+| Completed   | Part of your completed sequence from the start.        |
+| Current     | The next unfinished stop is available to open.         |
+| Locked      | An earlier stop still needs a completion.              |
+| Unavailable | The next stop or the trail is not currently available. |
 
-| Trail order | Existing completion | Derived state before event 1 completes | Derived state after event 1 completes |
-| ----------- | ------------------- | -------------------------------------- | ------------------------------------- |
-| Event 1     | No                  | Current                                | Completed                             |
-| Event 2     | Yes                 | Locked                                 | Completed                             |
-| Event 3     | No                  | Locked                                 | Current                               |
+For example, if you completed stop 2 before stop 1, stop 2 stays locked in the
+trail view. Completing stop 1 then counts both stops and advances you to stop 3.
+You do not repeat stop 2.
 
-Completing Event 2 early does not skip Event 1. The Event 2 completion remains
-authoritative and is incorporated automatically when Event 1 later closes the
-gap. The player does not repeat Event 2.
+Locking controls trail guidance. It does not block an otherwise available event
+from being played through the normal Events view. Completing an event shared by
+several trails can therefore advance each trail once its earlier stops are done.
 
-For an active trail:
+## Availability and retirement
 
-- prefix events are `completed`;
-- the first missing event is `current` when it is active and published;
-- the first missing event is `unavailable` when it is upcoming, ended, or
-  retired; and
-- every later event is `locked`.
+The next unfinished stop must be published, active, and available. If it is
+upcoming, ended, or retired, the trail shows why it cannot be opened. Later stops
+remain locked; the trail does not skip the blocked stop.
 
-For an incomplete retired trail, completed prefix events remain `completed` and
-all remaining events are `unavailable` with reason `trail_retired`. A fully
-completed trail remains `completed` even if it is later retired.
+A trail assigned directly to a published campaign follows that campaign's
+window. Upcoming and ended trails remain visible, but cannot offer a current
+stop. Including a trail in a campaign does not automatically schedule its member
+events; their availability is checked separately.
 
-## Nearby unvisited guidance
+Retiring a trail, or retiring its campaign when no other published campaign
+window applies, removes it from new discovery. It remains visible to players
+with a saved completion for at least 1 of its events. Completed progress is
+preserved, and unfinished stops become unavailable. A fully completed trail
+still shows as completed after retirement.
 
-The nearby endpoint returns active, published, unvisited events within the
-requested distance when they are either:
+## Nearby unvisited events
 
-- the player's current step in at least one published trail; or
-- not a member of any published trail.
+**Explore → Nearby** uses your reported location to find active events you have
+not completed. By default, it returns up to **20 events within 1,000 metres**,
+ordered by distance.
 
-Locked later trail steps are excluded. One event may contain multiple trail
-contexts when it is currently actionable in multiple trails.
+An event appears when it is either:
 
-The defaults are a 1,000 metre search distance and 20 results. Callers may
-request 100 to 5,000 metres and 1 to 50 results.
+- your current stop in at least 1 active, published trail; or
+- not part of any active, published trail.
 
-Nearby guidance uses a fresh browser location claim, but it does not make the
-player eligible to open a challenge. Event eligibility still requires the
-separate server-authoritative eligibility or challenge-start check.
+Later locked stops are excluded unless the same event is current in another
+active trail. One result can show several trail contexts. Upcoming, ended, and
+retired trails do not impose this filter on otherwise available events.
 
-## Authority and privacy
+Choose **View event** to open a result or **Refresh nearby** to update the search.
+The search needs a fresh location reading with sufficient accuracy. Appearing
+in Nearby does not mean you are in challenge range; access is checked when you
+open the event and start the challenge.
 
-The API derives player identity from the validated bearer token. The browser
-cannot submit progress, completed positions, unlock state, or another player
-ID.
+## How it works
 
-The nearby request contains latitude, longitude, reported accuracy, and device
-acquisition time. The claim is validated for range, freshness, and usable
-accuracy. It is used for the bounded PostGIS query and is not persisted as
-trail history.
+Authors can publish trails with **2–50 unique events**, all published and not
+retired at publication. An event may be reused in different trails. Draft order
+can change; published order is fixed. Published trails can be retired, and a
+trail attached to a published campaign requires that campaign to be retired
+first.
 
-## API operations
+The API derives your progress from saved event completions. The browser displays
+the returned order and states; it cannot mark stops complete or unlock them.
+Reopening a trail recalculates progress from those same records.
 
-Player operations:
+Nearby location readings are used for the search and are not stored as trail
+history. For persistence and endpoint details, see
+[Trail storage and API](../database/ordered-trails-persistence.md).
 
-- `GET /api/v1/trails`
-- `GET /api/v1/trails/{trailId}`
-- `POST /api/v1/events/nearby-unvisited`
+---
 
-Author operations:
-
-- `GET /api/v1/author/trails`
-- `POST /api/v1/author/trails`
-- `PUT /api/v1/author/trails/{trailId}`
-- `POST /api/v1/author/trails/{trailId}/publish`
-- `POST /api/v1/author/trails/{trailId}/retire`
-
-The generated OpenAPI document is authoritative for request and response
-schemas.
-
-## Player discovery experience
-
-The authenticated `/explore` sheet provides map-independent **Events**,
-**Nearby**, and **Trails** views. Trail summaries show authoritative completed
-and total step counts. Trail detail preserves the server-returned order and
-labels every stop as completed, current, locked, unavailable, or retired with
-text and an icon rather than colour alone.
-
-Trail pins are numbered to match the server-provided stop positions in the list.
-Retired trails retain their completed stops and show the shared retirement notice
-once; stop-specific availability warnings remain visible.
-
-Only a server-returned `current` step exposes **Open current event**. That action
-opens the existing event detail, reported-location eligibility, and challenge
-start journey; it does not create a trail-specific challenge path or infer
-eligibility in React.
-
-Nearby discovery runs only after a player asks for that view and a usable
-reported-location claim is available. The result list and displayed map-marker
-set use the same API response. Empty, permission-denied, inaccurate, malformed,
-retired, and network-failure states retain the full event and trail lists as
-alternatives and expose a safe retry where retry can help.
-
-## Deferred work
-
-This implementation does not add offline trails, automatic route optimisation,
-advanced event placement, or a trail-specific reward.
-
-## AI declaration
-
-This rule document was generated, edited, and reviewed with the assistance of
-Codex-CLI[gpt-5.6-sol medium] and Codex-CLI[GPT-5]. It records the decisions
-approved for issues `#176` and `#177` and was reconciled with the implemented
-API, migration, and player discovery UI.
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
+This page was prepared and edited with assistance from
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], Codex-CLI[GPT-6], and Codex[GPT-6].

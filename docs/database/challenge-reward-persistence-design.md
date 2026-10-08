@@ -769,7 +769,7 @@ The event rule remains `starts_at < ends_at`; this design does not introduce an
 unapproved one-to-three-hour duration limit. `BASIC-12` now defines which
 account-linked records are deleted, anonymised, or retained, including the
 12-month minimal deletion audit. That confirmed policy is recorded in the
-[Basic-tier decision register](../requirements/basic-tier-decision-register.md)
+[Basic-tier decision register](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/docs/requirements/basic-tier-decision-register.md)
 and [Basic game rules](../requirements/basic-game-rules.md#account-deletion-and-re-registration).
 Issue `#160` implements the transactional retention backend, including deletion
 of individual answers/snapshots and separation of retained card-reward outcomes

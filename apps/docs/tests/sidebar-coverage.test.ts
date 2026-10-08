@@ -1,6 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { repositoryOnlyDocs } from '../docs-publication';
 import sidebars from '../sidebars';
 
 const docsRoot = fileURLToPath(new URL('../../../docs/', import.meta.url));
@@ -21,12 +22,13 @@ function collectDocIds(value: unknown): string[] {
 
 const files = readdirSync(docsRoot, { recursive: true, encoding: 'utf8' })
   .filter((file) => /\.mdx?$/.test(file))
+  .filter((file) => !repositoryOnlyDocs.includes(file.replaceAll('\\', '/')))
   .map((file) => file.replaceAll('\\', '/').replace(/\.mdx?$/, ''))
   .sort();
 const listed = Object.values(sidebars).flatMap(collectDocIds);
 
 describe('documentation navigation coverage', () => {
-  it('includes every document in the sidebar', () => {
+  it('includes every published document in the sidebar', () => {
     expect(
       files.filter((id) => !listed.includes(id)),
       'Add these docs to a reader-focused section in apps/docs/sidebars.ts',

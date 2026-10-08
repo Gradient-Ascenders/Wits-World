@@ -104,8 +104,7 @@ const sidebars: SidebarsConfig = {
           doc('requirements/player-cpu-battle-journey', 'CPU battles'),
           doc('requirements/player-asynchronous-pvp-journey', 'Player battles'),
         ]),
-        category('Rules and progression', [
-          doc('requirements/basic-tier-decision-register', 'Game decisions'),
+        category('Game systems', [
           doc(
             'requirements/player-progression-rules',
             'Points and achievements',

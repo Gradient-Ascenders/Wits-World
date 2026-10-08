@@ -14,11 +14,11 @@ description: Find campus events, check range, and open a challenge.
 
 Other Explore views provide additional ways to browse:
 
-| View        | Action                                                        |
-| ----------- | ------------------------------------------------------------- |
-| Nearby      | Enable location and find unvisited events.                    |
-| Trails      | Select a trail to inspect its steps and next available event. |
-| Territories | Select a zone to inspect its status.                          |
+| View                                                              | Action                                                        |
+| ----------------------------------------------------------------- | ------------------------------------------------------------- |
+| [Nearby](ordered-trails-rules.md#nearby-unvisited-events)         | Enable location and find unvisited events.                    |
+| [Trails](ordered-trails-rules.md#follow-a-trail)                  | Select a trail to inspect its steps and next available event. |
+| [Territories](contested-campus-zone-policy.md#browse-territories) | Select a zone to inspect ownership and activity.              |
 
 ## How it works
 

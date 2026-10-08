@@ -60,9 +60,9 @@ its sidebar entry.
    from the repository folders. Each document belongs in exactly one section.
 3. Use a clear title and relative Markdown links to other documents. Label dated
    evidence and historical plans accurately, and include required AI attribution.
-4. Run the docs checks below. The navigation test requires each Markdown/MDX
-   document to have a sidebar entry and rejects missing, stale, or duplicate
-   references. Both PR and main CI run this test.
+4. Run the docs checks below. The navigation test requires each published
+   Markdown/MDX document to have a sidebar entry and rejects missing, stale, or
+   duplicate references. Both PR and main CI run this test.
 
 The current docs use path-based IDs: `docs/testing/example.md` has the ID
 `testing/example`. The landing page's `slug: /` changes its URL, not its ID.
@@ -71,6 +71,12 @@ reference separate from historical records, and link to related documents rather
 than listing the same document in several sections. Existing document paths and
 public category URLs are preserved even when their navigation grouping changes.
 Custom document IDs require updating the path-based coverage check.
+
+Repository-only records stay under `docs/` but are listed in `repositoryOnlyDocs`
+in `apps/docs/docs-publication.ts`. The build excludes them from routes and
+search, and navigation coverage checks only published documents. Do not add
+them to the sidebar. Public pages should link to the repository copy when
+historical evidence needs a reference.
 
 The six main sections are Start here, Players, Authors, Developers, API, and
 Project. Use the
