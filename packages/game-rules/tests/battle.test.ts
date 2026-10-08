@@ -5,6 +5,7 @@ import {
   basicTurnTimerConfig,
   chooseCpuAction,
   createBattleState,
+  getEffectDamageMultiplier,
   getLegalActions,
   getTypeMultiplier,
   IllegalBattleActionError,
@@ -233,6 +234,12 @@ describe('Basic battle rules', () => {
     expect(getTypeMultiplier('spark', 'wit', 1)).toBe(1);
     expect(getTypeMultiplier('mystic', 'spirit', 1)).toBe(0.75);
     expect(getTypeMultiplier('mystic', 'wit', 1)).toBe(1.5);
+  });
+
+  it('calculates effect damage modifiers and clamps oversized debuffs', () => {
+    expect(getEffectDamageMultiplier('buff', 25)).toBe(1.25);
+    expect(getEffectDamageMultiplier('debuff', 25)).toBe(0.75);
+    expect(getEffectDamageMultiplier('debuff', 150)).toBe(0);
   });
 
   it('reveals both initial Creatures before selecting the first side by coin flip', () => {
@@ -1390,6 +1397,366 @@ describe('Basic battle rules', () => {
     expect(chooseCpuAction(cpuTurnWithoutActions, randomZero)).toEqual({
       type: 'timeout',
     });
+  });
+
+  it('rejects duplicate card instances and missing Power cards in a deck', () => {
+    const duplicateCardId = makeDeck('duplicate', {
+      powerCards: [
+        makePowerCard('duplicate-creature-1', [
+          { id: 'duplicate-effect', effectType: 'heal', effectValue: 1 },
+        ]),
+        makePowerCard('duplicate-power-2', [
+          { id: 'other-effect', effectType: 'heal', effectValue: 1 },
+        ]),
+      ],
+    });
+    const missingPowerCard = makeDeck('missing-power', {
+      powerCards: [
+        makePowerCard('only-power', [
+          { id: 'only-effect', effectType: 'heal', effectValue: 1 },
+        ]),
+      ],
+    });
+
+    expect(() => createBattleState(duplicateCardId, makeDeck('cpu'))).toThrow(
+      'appears more than once in the deck',
+    );
+    expect(() => createBattleState(missingPowerCard, makeDeck('cpu'))).toThrow(
+      'exactly 2 Power cards',
+    );
+  });
+
+  it('validates executable-effect thresholds while allowing valueless built-ins', () => {
+    const effect = {
+      id: 'invalid-threshold',
+      effectCode: 'self_damage' as const,
+      effectType: 'debuff' as const,
+      effectValue: 1,
+      minimumHpExclusive: -1,
+    };
+    const invalidDeck = makeDeck('invalid-threshold', {
+      powerCards: [
+        makePowerCard('threshold-power', [effect]),
+        makePowerCard('second-power', [
+          { id: 'second-effect', effectType: 'heal', effectValue: 1 },
+        ]),
+      ],
+    });
+    const valuelessBuiltIns = makeDeck('valueless-builtins', {
+      powerCards: [
+        makePowerCard('restore-power', [
+          {
+            id: 'restore',
+            effectCode: 'restore_power_to_max',
+            effectType: 'buff',
+            effectValue: null,
+          },
+        ]),
+        makePowerCard('swap-power', [
+          {
+            id: 'swap',
+            effectCode: 'swap_hp_percentages',
+            effectType: 'buff',
+            effectValue: null,
+          },
+        ]),
+      ],
+    });
+    const missingExecutableValue = makeDeck('missing-executable-value', {
+      powerCards: [
+        makePowerCard('missing-value-power', [
+          {
+            id: 'missing-value',
+            effectCode: 'poison',
+            effectType: 'debuff',
+            effectValue: null,
+          },
+        ]),
+        makePowerCard('second-missing-value-power', [
+          { id: 'second-effect', effectType: 'heal', effectValue: 1 },
+        ]),
+      ],
+    });
+
+    expect(() => createBattleState(invalidDeck, makeDeck('cpu'))).toThrow(
+      'minimum HP must be a non-negative integer',
+    );
+    expect(() =>
+      createBattleState(missingExecutableValue, makeDeck('cpu')),
+    ).toThrow('must define an effect value before battle use');
+    expect(() =>
+      createBattleState(valuelessBuiltIns, makeDeck('cpu')),
+    ).not.toThrow();
+  });
+
+  it('rejects CPU choice without a legal action or with invalid injected randomness', () => {
+    const initial = createBattleState(makeDeck('player'), makeDeck('cpu'));
+    const selected = action(initial, 'cpu', {
+      type: 'select_initial_creature',
+      creatureId: 'cpu-creature-1',
+    });
+
+    expect(getLegalActions(selected, 'cpu')).toEqual([]);
+    expect(() => chooseCpuAction(selected, randomZero)).toThrow(
+      'The CPU has no legal action in the current phase',
+    );
+
+    expect(() => chooseCpuAction(initial, () => 3)).toThrow(
+      'injected random source returned an invalid action index',
+    );
+  });
+
+  it('settles a final poison knockout and rejects actions after the battle ends', () => {
+    const poisonMove: BattleMove = {
+      id: 'poison-only',
+      name: 'Poison',
+      moveType: 'basic',
+      powerCost: 0,
+      effects: [
+        {
+          id: 'poison',
+          effectType: 'debuff',
+          effectCode: 'poison',
+          effectValue: 1,
+          durationTurns: 1,
+        },
+      ],
+    };
+    const cpuMove = makeDamageMove('cpu-zero-damage', 0, 'basic', 0);
+    let state = startBattle(
+      makeDeck('player', { moves: [poisonMove] }),
+      makeDeck('cpu', { creatureHp: 1, moves: [cpuMove] }),
+    );
+    for (let position = 1; position <= 3; position += 1) {
+      state = action(state, 'player', {
+        type: 'use_move',
+        moveId: poisonMove.id,
+      });
+      expect(activeCreature(state, 'cpu').currentHp).toBe(1);
+      const poisoned = applyBattleAction(
+        state,
+        'cpu',
+        { type: 'use_move', moveId: cpuMove.id },
+        randomZero,
+      );
+      expect(poisoned.result.effects).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            effectType: 'debuff',
+            effectCode: 'poison',
+            amount: 1,
+            targetSide: 'cpu',
+          }),
+        ]),
+      );
+      state = poisoned.state;
+      if (position < 3) {
+        expect(state.phase).toBe('replacement');
+        state = action(state, 'cpu', {
+          type: 'select_replacement',
+          creatureId: `cpu-creature-${position + 1}`,
+        });
+      }
+    }
+    expect(state).toMatchObject({
+      phase: 'completed',
+      winner: 'player',
+      currentSide: null,
+    });
+    expect(
+      state.participants.cpu.creatures.every(
+        (creature) => creature.defeated && creature.currentHp === 0,
+      ),
+    ).toBe(true);
+    expect(getLegalActions(state, 'player')).toEqual([]);
+    expect(chooseCpuAction(state, randomZero)).toBeNull();
+    expect(() =>
+      applyBattleAction(
+        state,
+        'player',
+        { type: 'use_move', moveId: poisonMove.id },
+        randomZero,
+      ),
+    ).toThrow(IllegalBattleActionError);
+  });
+
+  it('times out an exhausted CPU rather than cycling between reserve Creatures', () => {
+    const playerMove = makeDamageMove('player-zero-damage', 0, 'basic', 0);
+    let state = startBattle(
+      makeDeck('player', { moves: [playerMove] }),
+      makeDeck('cpu', { creaturePower: 0 }),
+    );
+    for (let position = 1; position <= 2; position += 1) {
+      state = action(state, 'player', {
+        type: 'use_move',
+        moveId: playerMove.id,
+      });
+      expect(chooseCpuAction(state, randomZero)).toEqual({
+        type: 'use_power_card',
+        powerCardId: `cpu-power-${position}`,
+      });
+      state = action(state, 'cpu', {
+        type: 'use_power_card',
+        powerCardId: `cpu-power-${position}`,
+      });
+    }
+    state = action(state, 'player', {
+      type: 'use_move',
+      moveId: playerMove.id,
+    });
+    expect(getLegalActions(state, 'cpu')).toEqual([
+      { type: 'swap_creature', creatureId: 'cpu-creature-2' },
+      { type: 'swap_creature', creatureId: 'cpu-creature-3' },
+    ]);
+    expect(chooseCpuAction(state, randomZero)).toEqual({ type: 'timeout' });
+  });
+
+  it.each([
+    {
+      name: 'duplicate Creature instances',
+      mutate: (deck: BattleDeck): BattleDeck => ({
+        ...deck,
+        creatureCards: [
+          deck.creatureCards[0]!,
+          deck.creatureCards[0]!,
+          deck.creatureCards[2]!,
+        ],
+      }),
+    },
+    {
+      name: 'duplicate move instances',
+      mutate: (deck: BattleDeck): BattleDeck => ({
+        ...deck,
+        creatureCards: deck.creatureCards.map((creature) => ({
+          ...creature,
+          moves: [
+            creature.moves[0]!,
+            creature.moves[0]!,
+            creature.moves[2]!,
+            creature.moves[3]!,
+          ],
+        })),
+      }),
+    },
+    {
+      name: 'moves with no effect',
+      mutate: (deck: BattleDeck): BattleDeck => ({
+        ...deck,
+        creatureCards: deck.creatureCards.map((creature) => ({
+          ...creature,
+          moves: creature.moves.map((move) => ({ ...move, effects: [] })),
+        })),
+      }),
+    },
+    {
+      name: 'Power cards with no effect',
+      mutate: (deck: BattleDeck): BattleDeck => ({
+        ...deck,
+        powerCards: deck.powerCards.map((card) => ({ ...card, effects: [] })),
+      }),
+    },
+    {
+      name: 'duplicate effects',
+      mutate: (deck: BattleDeck): BattleDeck => ({
+        ...deck,
+        powerCards: deck.powerCards.map((card) => ({
+          ...card,
+          effects: [card.effects[0]!, card.effects[0]!],
+        })),
+      }),
+    },
+    {
+      name: 'direct healing mixed with a modifier',
+      mutate: (deck: BattleDeck): BattleDeck => ({
+        ...deck,
+        powerCards: deck.powerCards.map((card) => ({
+          ...card,
+          effects: [
+            {
+              id: `${card.id}-invalid`,
+              effectType: 'heal',
+              effectValue: 5,
+              modifier: { stat: 'hp', operation: 'add' },
+            },
+          ],
+        })),
+      }),
+    },
+    {
+      name: 'multiplicative HP changes',
+      mutate: (deck: BattleDeck): BattleDeck => ({
+        ...deck,
+        powerCards: deck.powerCards.map((card) => ({
+          ...card,
+          effects: [
+            {
+              id: `${card.id}-invalid`,
+              effectType: 'buff',
+              effectValue: 5,
+              modifier: { stat: 'hp', operation: 'multiply' },
+            },
+          ],
+        })),
+      }),
+    },
+    {
+      name: 'additive damage multipliers',
+      mutate: (deck: BattleDeck): BattleDeck => ({
+        ...deck,
+        powerCards: deck.powerCards.map((card) => ({
+          ...card,
+          effects: [
+            {
+              id: `${card.id}-invalid`,
+              effectType: 'buff',
+              effectValue: 5,
+              modifier: { stat: 'damage_multiplier', operation: 'add' },
+            },
+          ],
+        })),
+      }),
+    },
+    {
+      name: 'duration on a direct Power restoration',
+      mutate: (deck: BattleDeck): BattleDeck => ({
+        ...deck,
+        powerCards: deck.powerCards.map((card) => ({
+          ...card,
+          effects: [
+            {
+              id: `${card.id}-invalid`,
+              effectType: 'buff',
+              effectValue: 5,
+              modifier: { stat: 'power', operation: 'add', durationTurns: 2 },
+            },
+          ],
+        })),
+      }),
+    },
+    {
+      name: 'zero maximum HP',
+      mutate: (deck: BattleDeck): BattleDeck => ({
+        ...deck,
+        creatureCards: deck.creatureCards.map((card) => ({
+          ...card,
+          maxHp: 0,
+        })),
+      }),
+    },
+    {
+      name: 'negative maximum Power',
+      mutate: (deck: BattleDeck): BattleDeck => ({
+        ...deck,
+        creatureCards: deck.creatureCards.map((card) => ({
+          ...card,
+          maxPower: -1,
+        })),
+      }),
+    },
+  ])('rejects malformed catalogue data: $name', ({ mutate }) => {
+    expect(() =>
+      createBattleState(mutate(makeDeck('invalid')), makeDeck('cpu')),
+    ).toThrow(InvalidBattleSetupError);
   });
 
   it('rejects invalid decks and non-executable Buff/Debuff data', () => {
