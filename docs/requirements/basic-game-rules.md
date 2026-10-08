@@ -1,402 +1,380 @@
 ---
 title: 'Basic game rules'
+description: Current rules for event challenges, card rewards, starters, decks, CPU battles, and content publication.
 ---
 
 # Basic game rules
 
-## Purpose
+The Basic gameplay loop is **explore → complete a challenge → collect cards →
+build a deck → battle the CPU**. This page describes the current core rules and
+identifies the features added beyond Basic.
 
-This document consolidates the approved player-visible and server-authoritative
-rules for the Wits Quest Basic tier. It is an implementation input, not an
-implementation. The status and evidence for each rule are maintained in the
-[Basic-tier decision register](basic-tier-decision-register.md).
+The API and database determine eligibility, correctness, rewards, ownership,
+deck legality, and battle outcomes. The browser displays state and submits
+player actions. Product decisions and their provenance are retained in the
+[Basic decision register](basic-tier-decision-register.md); release evidence is
+tracked in the [acceptance checklist](../testing/basic-tier-release-validation.md).
 
-The team confirmed on 25 August 2026 that the implemented five-question
-challenge, score-based zero-to-two-card rewards, and current move/Power-card CPU
-battle rules are intentional Wits World product rules. That team decision does
-not assert that the lecturer or client formally amended the supplied project
-brief. As of 25 August 2026, no supplementary Wits Quest brief had been provided
-to the team.
+## Event challenge
 
-No browser may submit or calculate an authoritative identity, eligibility,
-correctness, score, reward, deck validity, legal battle action, battle outcome,
-or ownership result.
+### Eligibility
+
+A new attempt requires an active player, a published event within its
+availability period, and a location claim accepted by the API.
+
+The current location policy requires:
+
+- A reported point within the event's stored radius, including its boundary.
+- Reported accuracy no greater than `min(150 metres, 2 × event radius)`.
+- An acquisition timestamp no more than 120 seconds old and not in the future.
+- Acceptance of the applicable movement-plausibility and gameplay-access checks.
+
+PostGIS calculates distance. Event availability uses
+`starts_at <= now < ends_at`. The map does not decide eligibility, and accepted
+coordinates remain device-reported claims rather than proof of physical presence.
+The 120-second freshness limit is provisional. See
+[event eligibility](../database/event-eligibility.md) for the complete policy.
+
+### Start and resume
+
+Each player has one attempt per event. Starting an event again returns its
+existing attempt rather than creating another one. The selected questions,
+shuffled options, accepted answers, and original deadline are preserved.
+
+Refreshing or reconnecting does not restart the timer. An attempt started
+while the event is available keeps its original deadline even if the event
+closes. Completed and timed-out attempts cannot be replayed.
+
+### Questions and timing
+
+A Basic attempt contains **five distinct multiple-choice questions**, selected
+by the server from at least five published questions. Each question has four
+choices, one accepted answer, and an integer difficulty from 1 to 3. Question
+selection and option order are saved for the attempt.
+
+The average difficulty determines the time limit:
+
+| Average difficulty   |  Time limit |
+| -------------------- | ----------: |
+| At most 1.5          |  90 seconds |
+| Above 1.5, up to 2.5 | 120 seconds |
+| Above 2.5            | 150 seconds |
+
+Ordering questions are an implemented extension beyond Basic. They use four
+items whose complete submitted order is marked by the server. See the
+[challenge contract](../architecture/challenge-attempt-api-contract.md).
+
+### Answers, expiry, and feedback
+
+An accepted answer is locked. Repeating it is idempotent; replacing it with a
+different answer is rejected. Server receipt time determines whether an answer
+is on time: it must arrive **before** the deadline. An answer received exactly
+at the deadline is late.
+
+The attempt completes after all five answers are accepted or when expiry is
+resolved. Unanswered questions count as incorrect. A low score does not grant
+another attempt.
+
+During an active attempt, the API withholds correct answers, correctness,
+score, and reward outcomes. After completion, it returns the final score,
+rewards, and five ordered review entries showing the player's answer, the
+correct answer, and correctness. Unanswered entries have no player answer.
+The player review does not expose Author explanations or private answer-key IDs.
+
+## Rewards
+
+### Card rewards
+
+| Correct answers | Card award                                      |
+| --------------: | ----------------------------------------------- |
+|             0–2 | None                                            |
+|               3 | One guaranteed Common card                      |
+|               4 | One card: 75% Common, 25% Rare                  |
+|               5 | 80% chance of one card; 20% chance of two cards |
+
+For a perfect score, each awarded card independently uses these rarity weights:
+
+| Rarity    | Probability |
+| --------- | ----------: |
+| Common    |         45% |
+| Rare      |         40% |
+| Epic      |         14% |
+| Legendary |          1% |
+
+After selecting rarity, the server selects uniformly from active, published,
+**reward-eligible** definitions in that rarity. The ordinary reward pool
+contains non-evolved Creatures and Power cards. Evolved definitions are acquired
+through their evolution recipes. Affinity and category are not separately weighted.
+
+If a weighted rarity has no eligible definitions, its probability is
+redistributed proportionally across the available weighted rarities. A
+three-correct reward still requires an eligible Common definition.
+
+Completion, card awards, owned copies, progression, and the saved result commit
+in one transaction. Retrying returns the persisted result without rerolling
+or issuing duplicate rewards.
+
+### Progression points
+
+The current application awards **10 permanent points per correct challenge
+answer**, from 0 to 50. A CPU victory awards 25 points; a CPU loss awards none.
+These are progression points, separate from deck rarity costs. They cannot be
+spent. There is no active coin wallet, card shop, or card-selling economy.
+
+Points, achievements, streaks, and standings were added beyond Basic. Their
+complete rules are in [Player progression](player-progression-rules.md).
+
+## Cards and ownership
+
+The ordinary catalogue contains **30 definitions: 24 Creatures and six Power
+cards**. Creatures have one of five affinities: Wit, Grit, Spark, Spirit, or
+Mystic. The current Power cards are typeless. Both categories use Common,
+Rare, Epic, and Legendary rarities.
+
+A definition describes a card; an owned copy identifies a player's individual
+card. Duplicate awards create separate owned copies. Server-managed definitions
+supply gameplay values; artwork and browser metadata do not.
+
+### Attributes, moves, effects, and type modifiers
+
+HP and maximum Creature Power are authored per definition, with no fixed
+rarity-wide stat ranges. Every published Creature has four ordered moves.
+Each move is Basic or matches its Creature's affinity.
+
+A move consumes its authored Power cost and is legal only when the active
+Creature has enough remaining Power and satisfies any additional move
+conditions. Stun prevents Creature moves; Power-card and swap availability
+remain governed by the engine's legal actions.
+
+Moves and Power cards resolve effects in their authored order. Supported
+effects include damage, healing, Power changes, damage modifiers, Poison,
+Stun, Dodge, Reflect, Lifesteal, Power restoration, self-damage, and
+HP-percentage swaps. HP and Power changes stay within the valid card ranges.
+
+Duration-based modifiers count affected active-Creature turns. Charge-based
+modifiers are consumed by matching actions. Compatible damage multipliers are
+combined, with damage floored after the calculation and never below zero.
+Affinity modifies damage only; it does not modify healing or Power restoration.
+
+The [complete card catalogue](../design/basic-card-roster.md) records individual
+stats, costs, conditions, and effect behaviour.
+
+### Damage matchup table
+
+Rows show the attacking move's type; columns show the defending Creature's
+affinity. Basic moves and explicitly neutral Power-card damage use `1×`.
+
+| Attacker / Defender | Wit   | Grit  | Spark | Spirit | Mystic |
+| ------------------- | ----- | ----- | ----- | ------ | ------ |
+| Wit                 | 1×    | 1.5×  | 0.75× | 1×     | 1×     |
+| Grit                | 0.75× | 1×    | 1.5×  | 0.75×  | 1.5×   |
+| Spark               | 1.5×  | 0.75× | 1×    | 1.5×   | 0.75×  |
+| Spirit              | 1×    | 1.5×  | 0.75× | 1×     | 1.5×   |
+| Mystic              | 1×    | 0.75× | 1.5×  | 1.5×   | 1×     |
+
+Wit, Grit, and Spark form an advantage cycle. Wit is neutral against Spirit and
+Mystic. Spirit and Mystic both have advantage against each other.
+
+New matches store `affinityRulesVersion: 2`. Historical states without that
+field retain the original version 1 cycle. Saved match rules and results are
+not rewritten. Battle-serving API instances must support the stored version;
+rollback also requires a version-aware binary.
+
+## Starter grant
+
+A player chooses **Wit, Grit, or Spark** once. The server grants:
+
+- Three distinct Common Creatures of the chosen affinity.
+- The shared Common Power cards **Field Kit** and **Reserve Focus**.
+
+The grant is transactional and cannot be repeated to obtain another set.
+Historical Spirit and Mystic starter grants remain readable, but those
+choices are not offered to new players.
+
+## Saved decks
+
+A legal deck contains **five distinct owned copies**:
+
+- Three Creature cards.
+- Two Power cards.
+- A combined rarity cost of at most 10 points.
+
+| Rarity    | Cost per card |
+| --------- | ------------: |
+| Common    |             1 |
+| Rare      |             2 |
+| Epic      |             3 |
+| Legendary |             4 |
+
+The same owned copy may appear in multiple saved decks, but only once in any
+one deck. Using the same definition twice in a deck requires two owned copies.
+The API validates ownership, composition, and rarity cost.
+
+Players select a saved deck for battle. Each match snapshots its cards and
+values, so later deck or catalogue changes do not alter that match. See the
+[collection and deck journey](player-deck-building-journey.md).
+
+## CPU battles
+
+### Setup and legal actions
+
+A player may have only one active CPU match. They can resume it or forfeit it
+before starting another. Both sides select an initial Creature, then the server
+randomly chooses who goes first.
+
+The configured CPU deck contains Quillip, Voltiki, Karrik, Field Kit, and
+Reserve Focus. The CPU uses the same battle engine and legality checks as the
+player. It randomly selects legal moves or Power cards and selects Creatures
+when required; it does not choose voluntary swaps.
+
+During a normal turn, the player may take one legal action:
+
+| Action              | Consequence                                                        |
+| ------------------- | ------------------------------------------------------------------ |
+| Use a Creature move | Pay its Power cost and resolve its effects.                        |
+| Play a Power card   | Resolve its effects and discard it for the remainder of the match. |
+| Swap Creature       | Switch to a living bench Creature and end the turn.                |
+
+Power cards require an active Creature. Swapping preserves each Creature's
+HP, Power, and remaining effects. The outgoing Creature's end-of-turn effects
+resolve before the incoming Creature becomes active.
+
+### Timing, defeat, and completion
+
+A normal player turn has a **90-second deadline**. If an action reaches the API
+at or after that deadline, the server resolves a timeout instead of the intended
+action. The turn ends without a move or Power-card action. Initial selection
+and mandatory replacement do not use this normal-turn deadline.
+
+A defeated Creature cannot return. If another living Creature remains, the
+player must select a replacement before normal turns continue. Replacement
+does not consume a normal turn.
+
+Defeating all opposing Creatures wins the match. The engine produces a winner
+rather than a draw. A player may also **forfeit an active battle**, which records
+a CPU victory and a zero-point player result. Completed results and action
+history remain available privately to the owning player until account deletion.
+
+The browser submits action identifiers and the expected match version. The API
+resolves effects, randomness, timing, and completion, and rejects stale or
+illegal actions. Pure battle logic lives in `packages/game-rules`; persistence
+and request coordination live in the API. See the
+[CPU battle journey](player-cpu-battle-journey.md).
 
 ## Roles, authority, and account lifecycle
 
 ### Authentication and email verification
 
-- Auth0 authentication remains required for normal gameplay and every protected
-  Wits World application feature.
-- Email verification is not required for that access. An Auth0-authenticated
-  principal with `email_verified: true`, `email_verified: false`, or no
-  `email_verified` claim has ordinary application access under the existing
-  valid-token, local-lifecycle, role, and object-permission rules.
-- Wits World must not claim that email verification proves Wits institutional
-  identity. Wits single sign-on and any institutional identity requirement
-  remain separate decisions.
-- Automatic Auth0 verification email for Wits World database-connection
-  sign-ups is intentionally disabled through tenant configuration. Password
-  reset and recovery email remains enabled. The authoritative architecture and
-  tenant settings are defined by the [Auth0 authentication ADR](../architecture/decisions/ADR-005-auth0-authentication.md#email-verification)
-  and [deployment guide](../deployment/azure-deployment-setup.md#91-auth0-email-delivery-policy).
+Auth0 authentication is required for normal online gameplay and protected
+features. Email verification is not an application access requirement and does
+not establish Wits institutional identity. Access still depends on a valid
+token, an active local account, the required role, and object permissions.
+
+The configured email policy disables automatic verification emails while
+retaining password recovery. Actual tenant configuration and delivery require
+operator verification; see the
+[Auth0 decision record](../architecture/decisions/ADR-005-auth0-authentication.md#email-verification).
 
 ### Roles and authoring
 
-- Basic has only two roles: Player and Author. There is no separate
-  Administrator role in Basic.
-- New accounts receive the Player role. Author assignment and revocation happen
-  out-of-band through the database or deployment process; no browser or API
-  operation may grant or change roles.
-- Authors may create and edit draft Basic content. Publication requires a review
-  cycle; the latest submitting Author cannot approve or return their own
-  submission, while any Author may publish approved content or retire published
-  content.
-- Players cannot access author endpoints, accepted answers, or unpublished
-  content.
-- Author create, edit, submit, approve, return, publish, and retire actions record
-  the acting local Author, transition, version, timestamp, and any safe bounded
-  note in the audit trail. In-app role management and advanced administration are
-  deferred beyond Basic.
+New accounts receive the Player role. Author access is assigned or revoked
+outside the application. Basic has no separate Administrator role or in-app
+role management.
+
+Authors create and edit content through protected operations. Players cannot
+read unpublished content or call Author endpoints. Private answer keys and
+explanations are available only through authorised content-management operations;
+completed player reviews expose only their defined answer feedback.
 
 ### Author content lifecycle
 
-- Author-created events, challenges, questions, and cards follow `draft →
-in_review → approved → published → retired`. Editing is draft-only. A return
-  from review or approval requires a reason and starts a new draft/review cycle.
-  No state except `published` is player-available.
-- A multiple-choice question may be approved or published only when it has exactly four
-  choices, exactly one private accepted choice, a difficulty from `1` through
-  `3`, and a nonblank explanation. Published question content is immutable;
-  later changes require replacement content.
-- A challenge may be approved or published only when it contains at least five valid
-  published questions. A published challenge cannot return to draft.
-- A newly authored event may be approved or published only when it has one valid published
-  challenge and the active catalogue contains at least one Common card required
-  by the Basic reward policy.
-- Published event content is immutable. Retiring an event removes it from
-  player discovery without deleting its authored record, and a retired event
-  cannot be republished. The published challenge belonging to a live published
-  event cannot be retired until the event itself has been retired.
-- Card definitions use the same five authoring states. Only
-  published cards are active for starter and reward selection. Retiring a card
-  removes it from future catalogue selection without deleting owned copies that
-  already reference that definition. A configured canonical starter definition
-  cannot be retired until the authoritative starter-package configuration has a
-  replacement, so all three starter options remain grantable.
-- Approval and publication recheck readiness under dependency locks. Every edit
-  and lifecycle request includes the expected version; stale concurrent requests
-  fail without changing content. See the
-  [Author curation API contract](../architecture/author-curation-api-contract.md).
-- Protected Author APIs may return private accepted-answer information and
-  explanations required for content management. Player APIs never expose
-  private answer-key identifiers or explanations. During an active timed
-  attempt they also withhold correct answers and per-question correctness;
-  after authoritative completion the defined five-question review may return
-  the player's selected choice, the correct choice, and server-derived
-  correctness.
-- Authors do not configure progression-point values, reward rarity outcomes, or
-  awarded card definitions. Challenge points and card rewards remain
-  server-authoritative and are calculated from their approved score policies.
+Events, challenges, questions, cards, and campaigns use:
+
+**Draft → In review → Approved → Published → Retired**
+
+Editing is draft-only. The latest submitting Author cannot approve or return
+their own submission. Another Author may return it to draft with a reason; any
+Author may publish approved content or retire published content. Retired content
+cannot be republished.
+
+Approval and publication recheck readiness and dependencies:
+
+| Content        | Required before approval and publication                                               |
+| -------------- | -------------------------------------------------------------------------------------- |
+| Basic question | Four choices, one private accepted answer, difficulty 1–3, and a nonblank explanation. |
+| Challenge      | At least five valid published questions.                                               |
+| Event          | A valid published challenge and an available Common reward definition.                 |
+| Creature       | Exactly four ordered, executable moves. Drafts may contain zero to four.               |
+
+Card-definition names are globally unique after trimming and case-insensitive
+comparison. Retired names remain reserved; this does not restrict separately
+owned duplicates.
+
+Edits and transitions require `expectedVersion` and record an audit entry.
+Conflicting requests fail without changing the content. Published content is
+immutable; changes require replacement content. Retirement removes future
+availability while retaining authored records, owned copies, and historical
+snapshots. A published challenge cannot be retired while its published event
+still depends on it. Canonical starter cards require a configured replacement
+before retirement.
+
+Authors do not choose progression awards, reward rarity rolls, or the cards
+awarded to a player. See the
+[content authoring contract](../architecture/author-curation-api-contract.md)
+for the full dependency and audit rules.
 
 ### Account deletion and re-registration
 
-These are confirmed Basic requirements. Issue `#160` implements the
-transactional persistence and retention backend; issue `#161` implements the
-player-facing profile/account experience.
+Deletion requires recent authentication and explicit confirmation. The account
+locks immediately while provider and database cleanup complete; there is no
+grace period. Failures leave the account locked for automatic retry.
 
-- Deletion requires recent authentication and explicit permanent-deletion
-  confirmation. Access locks immediately; Basic has no deletion grace period.
-- The Auth0 account and local player row are permanently deleted. Shared
-  history may retain a profile-free actor UUID and display `Deleted player`.
-- Player-owned cards, decks, active-deck selection, any retired legacy wallet,
-  and starter selection are permanently deleted.
-- Personal challenge attempts, completions, reward outcomes, legacy coin
-  transactions, CPU matches, progression, achievements, and ratings are purged.
-  Shared PvP, trade, and territory outcomes can remain with a profile-free
-  actor key where counterparties or system integrity require them.
-- Published events, questions, and cards remain available as system-owned
-  definitions. Author audit records retain only a profile-free actor UUID,
-  and `Deleted author` is shown where needed.
-- Auth0 or database cleanup failures trigger idempotent automatic retry and an
-  operational alert while the account remains locked. The workflow is marked
-  pending until cleanup completes.
-- A person may register again as a completely new player with no previous
-  progress, cards, or decks.
-- A minimal deletion audit record is retained for `12 months` and contains only
-  a random deletion ID, request/completion timestamps, status, and applicable
-  failure reason. It contains no email, Auth0 subject, name, location, or other
-  identifying data.
+Cleanup removes the Auth0 user, local player, owned cards, decks, starter
+selection, developer keys, personal challenges, CPU matches, progression,
+profile, and personal ratings. Registration afterwards creates a new player
+with no restored progress.
 
-## Event challenge
+Published content and required shared PvP, trade, ranked, and territory history
+remain against a fresh profile-free historical actor. Player-facing history
+uses `Deleted player`; retained Author history may use `Deleted author`.
+Formal trust-case records have separate bounded retention rules.
 
-### Start and resume
+A minimal deletion receipt is retained for 12 months. A private salted identity
+digest is retained for 30 days to prevent old tokens from recreating the deleted
+account. See [account deletion and retained data](../database/account-deletion-retention.md)
+for the exact purge, historical-reference, and retention boundaries.
 
-- A player may start the event's published challenge only after a fresh,
-  API-evaluated reachable location claim while the event is active.
-- Each player has one attempt and one completion per event.
-- A repeated start while the attempt is in progress returns the same attempt,
-  including its selected questions, shuffled choices, locked answers, and
-  original deadline.
-- Refreshing or reconnecting does not restart the timer.
-- An attempt started while the event is active keeps its full deadline even if
-  the event closes during the attempt.
-- A completed or timed-out attempt cannot be replayed in Basic.
+## Features beyond Basic
 
-### Questions and timing
+Later features extend the application while retaining the core ownership,
+deck, effect, and server-authority rules.
 
-- The format is a timed multiple-choice quiz.
-- The Intermediate ordering format added by issue #162 is an additive extension;
-  it does not change these Basic multiple-choice rules.
-- The server selects exactly five distinct questions.
-- Each question has four preset choices and exactly one private accepted choice.
-- Difficulty is an integer from `1` through `3`.
-- Choice order is shuffled once and persisted for the attempt.
-- The average difficulty selects the time limit:
+### Asynchronous PvP
 
-| Average difficulty   |  Time limit |
-| -------------------- | ----------: |
-| `<= 1.5`             |  90 seconds |
-| `> 1.5` and `<= 2.5` | 120 seconds |
-| `> 2.5`              | 150 seconds |
+An invitation expires after 24 hours. After acceptance, each turn or mandatory
+replacement has a 24-hour decision window. Missing it ends the match by
+forfeit, rather than skipping a turn.
 
-### Answers, expiry, and feedback
+The challenger may cancel a pending invitation before expiry. Either match
+participant may voluntarily forfeit on either player's turn. An already elapsed
+decision deadline takes precedence over voluntary resignation. Deck snapshots,
+hidden opponent cards, and idempotent actions are enforced by the server.
+See the [asynchronous battle contract](../architecture/asynchronous-pvp-api-contract.md).
 
-- The API locks an answer when it accepts it.
-- Repeating the same answer is idempotent; submitting a different choice for an
-  answered question is rejected.
-- Server receipt time decides whether an answer met the deadline.
-- At expiry, unanswered questions count as incorrect and the attempt completes.
-- Marking is server-authoritative. During an active timed attempt, the API does
-  not reveal correctness or answer keys. After authoritative completion, it
-  returns the final score and reward outcome plus five ordered review entries
-  containing the player's locked answer (or `null` after timeout), the correct
-  answer, and server-derived correctness. The completed Player review has no
-  explanation field.
-- Scores from zero through five are completed attempts. A low score does not
-  create another attempt.
+### Other extensions
 
-## Rewards
+Live PvP uses one-minute turns and its own timeout, reconnect, and completion
+policy; see the [live battle contract](../architecture/live-pvp-api-contract.md).
+Ranked competition, trails, evolution, trading, prepared offline challenges,
+territories, trust review, profiles, and analytics also have separate contracts.
+They are implemented extensions, not additional Basic release requirements.
 
-Challenge points follow the permanent, non-spendable progression table in
-[Player progression rules](./player-progression-rules.md). Cards follow this
-separate score policy:
+The [game overview](../basic-release-reference.md#features-beyond-basic) links
+to those rules. Feature implementation does not establish deployment, gameplay
+balance, or stakeholder acceptance; those require recorded validation.
 
-| Correct | Card award                     |
-| ------: | ------------------------------ |
-|       0 | None                           |
-|       1 | None                           |
-|       2 | None                           |
-|       3 | One guaranteed Common          |
-|       4 | One card: 75% Common, 25% Rare |
-|       5 | 80% one card, 20% two cards    |
+---
 
-Each card for a five-correct reward independently rolls 45% Common, 40% Rare,
-14% Epic, and 1% Legendary. After rarity selection, the server selects uniformly
-from active Creature and Power definitions in that rarity. Affinity and category
-are not separately weighted.
-
-If a positive-probability rarity has no active definition, the server
-redistributes its probability proportionally over the available
-positive-probability rarities. A guaranteed Common reward requires an active
-Common definition. Completion, its progression award, card awards, owned
-copies, and the persisted result commit atomically; a retry returns the same
-result instead of rerolling.
-
-## Cards and ownership
-
-- Categories: Creature and Power.
-- Affinities: Wit, Grit, Spark, Spirit, and Mystic.
-- Rarities: Common, Rare, Epic, and Legendary.
-- Every awarded duplicate is a separate owned copy.
-- The catalogue is server-managed data; React artwork or display metadata never
-  defines gameplay values.
-
-### Attributes, moves, effects, and type modifiers
-
-- HP and Creature Power are set per card during catalogue authoring. There are
-  no fixed rarity-wide stat ranges.
-- Move types are Basic, Wit, Grit, Spark, Spirit, and Mystic.
-- Every published Creature has four ordered moves. Each move is either Basic or
-  matches the Creature's affinity and may contain multiple ordered effects.
-- Executable effects include damage, healing, Power changes, outgoing or
-  incoming damage modifiers, Poison, Stun, Dodge, Reflect, Lifesteal,
-  restore-to-maximum Power, self-damage, and HP-percentage swaps.
-- Effect configuration declares its target, magnitude, duration or finite
-  charges, affinity behavior, and any legality threshold required by the
-  effect. HP and Power changes are clamped to the Creature's valid range.
-- Duration-based modifiers count the affected Creature's subsequent turns.
-  Charge-based modifiers are consumed by the matching future action.
-- Multiple compatible damage modifiers are multiplied together. Base damage,
-  affinity, and active modifiers are multiplied and floored once at the end.
-  Damage cannot become negative.
-- Effects are applied in their authored order. An effect that lacks the data
-  required to execute is invalid catalogue data and cannot be used in a battle.
-- `power` is the resource cost consumed from the Creature's remaining Power.
-  A move is legal only when the Creature has enough remaining Power.
-- Only Damage is affected by type advantage or disadvantage. The confirmed
-  5 September 2026 matchup table below replaces the original five-type cycle.
-  The starters form Wit -> Grit -> Spark -> Wit. Wit is neutral against Spirit
-  and Mystic. Spirit and Mystic both deal `1.5x` damage to each other; this is
-  an intentional exception to reciprocal advantage/disadvantage.
-- Power cards are typeless. Their effects use explicitly neutral damage where
-  applicable and resolve in their stored order before the card is discarded.
-- The complete release definitions and special-effect behavior are recorded in
-  the [complete card catalogue](../design/basic-card-roster.md).
-
-### Damage matchup table
-
-Rows are the attacking Creature move's type; columns are the defending
-Creature's affinity. Basic and Power-card damage are neutral.
-
-| Attacker / Defender | Wit   | Grit  | Spark | Spirit | Mystic |
-| ------------------- | ----- | ----- | ----- | ------ | ------ |
-| Wit                 | 1x    | 1.5x  | 0.75x | 1x     | 1x     |
-| Grit                | 0.75x | 1x    | 1.5x  | 0.75x  | 1.5x   |
-| Spark               | 1.5x  | 0.75x | 1x    | 1.5x   | 0.75x  |
-| Spirit              | 1x    | 1.5x  | 0.75x | 1x     | 1.5x   |
-| Mystic              | 1x    | 0.75x | 1.5x  | 1.5x   | 1x     |
-
-New server-created matches store `affinityRulesVersion: 2` in their battle
-state. Existing stored states without a version retain the original five-type
-cycle (version 1). Both Creature moves and Power-card damage use the stored
-version; healing and modifiers are unaffected. Historical results are not
-rewritten. Deploy all battle-serving API instances together: older binaries do
-not understand version 2 and must not process new-version matches. Rollback
-requires a version-aware binary, not an older engine that ignores this field.
-
-This is the agreed matchup design, not a claim of proven balance. Review card
-coverage and Spirit/Mystic first-turn outcomes in playtests before release.
-
-## Starter grant
-
-- The player selects Wit, Grit, or Spark once.
-- The server grants that affinity's three distinct Common Creatures plus the
-  shared typeless Common Power cards Field Kit and Reserve Focus.
-- The transaction and uniqueness rules prevent repeated or concurrent starter
-  requests from issuing another starter set.
-- Historical Spirit and Mystic grants remain readable but those affinities are
-  not offered to new players.
-
-## Saved decks
-
-- A deck contains five owned copies: three Creature and two Power cards.
-- A deck's five cards may total no more than ten points. Common cards cost `1`
-  point, Rare cards `2`, Epic cards `3`, and Legendary cards `4`; the fixed
-  rarity value applies equally to Creature and Power cards.
-- A player may reuse one owned copy across multiple saved decks.
-- Two copies of a definition in the same deck require two separately owned
-  copies.
-- The API validates ownership and final deck validity.
-- A match snapshots its deck and card values; later deck or catalogue edits do
-  not alter active or completed matches.
-
-The API validates the point total using the server-authoritative card rarity;
-the client may present the same values but must not decide deck validity.
-
-## CPU battles
-
-The Basic release uses a move-based, server-authoritative CPU match and private
-completed-match history. It does not use direct attribute comparison.
-
-- The server flips a coin to choose the first player.
-- Player and CPU actions use the same legal-action rules. A turn allows either
-  one legal Creature move, one Power card, or one voluntary Creature swap.
-- A Power card may be played only while an active Creature is on the board. It
-  is discarded immediately after use, cannot be reused during that battle, and
-  may define multiple authored effects.
-- The later live PvP mode uses a `1 minute` turn timer; the CPU match turn timer
-  is `1.5 minutes`. The shared rule remains configurable. The implemented
-  asynchronous PvP mode is separate and uses 24-hour decision windows.
-- For CPU and later live PvP modes, if the timer expires without a selected
-  move or action, the turn ends without an action. Asynchronous PvP instead
-  applies the forfeit rule documented below.
-- The CPU selects randomly from legal move and Power-card actions using
-  server-side randomness; it does not currently choose voluntary swaps.
-  Difficulty levels and machine-learning behaviour are deferred.
-- Ties are not possible in the current move-based system.
-- A defeated Creature cannot return. Replacement is mandatory and does not consume
-  the replacement player's normal turn. During a normal turn, a player may swap
-  their active Creature for a living bench Creature instead of attacking or
-  using a Power card. This ends the turn; the outgoing Creature's end-of-turn
-  effects resolve before the new Creature enters. HP, Power, and remaining
-  effects stay attached to each Creature.
-- CPU battle-log action and effect entries may include the UUID of the visible
-  Creature involved. The player presentation uses that ID to show a swap
-  before the CPU response action and to apply later effects to the correct
-  Creature, even when two owned copies have the same display name.
-- A player loses when all of their Creatures are defeated.
-- The browser submits only an intended action identifier, such as a move ID or
-  Power-card ID. It never submits damage, HP, Power, effects, multipliers,
-  random results, round outcomes, winner, or completion status. The server loads
-  card definitions, calculates effects, performs required randomness, and
-  resolves the authoritative outcome.
-
-The pure implementation lives in `packages/game-rules`. It accepts validated
-card/deck snapshots, returns a new battle state for every legal action, and
-receives randomness through an injected integer source. Match persistence and
-HTTP coordination remain API responsibilities.
-
-## Asynchronous PvP
-
-Issues `#178` through `#181` implement an Intermediate asynchronous mode that
-reuses the same server-authoritative move, effect, replacement, deck, and
-victory rules. It is not the one-minute live mode and is not part of the Basic
-release.
-
-An invitation expires after 24 hours. Once accepted, each active move or
-mandatory-replacement decision receives a 24-hour response window. Missing that
-window completes the match as an automatic forfeit; it does not use the CPU or
-live `timeout` action that merely ends a turn without an action. The browser
-continues to submit intent only, opponent cards remain hidden until legally
-revealed, and persisted deck snapshots prevent later catalogue or saved-deck
-changes from altering the match.
-
-Issue `#220` lets only the authenticated challenger cancel their own pending
-invitation before its deadline. The server records the distinct immutable
-`cancelled` state and an idempotency receipt, retains the invitation audit, and
-creates no match or progression. Recipient decline, time expiry, and
-account-lifecycle invalidation remain separate terminal meanings.
-
-Issue `#219` adds voluntary resignation as an API-owned terminal rule. Either
-authenticated participant may resign an active match on either player's turn.
-The resigning participant loses, the opponent wins, and the server records the
-distinct `voluntary_resignation` reason. An already elapsed decision deadline
-takes precedence and records `turn_forfeit`; the browser cannot select the
-participant, winner, reason, or progression result.
-
-The player interface calls this action **Forfeit battle** and presents the
-result as “you forfeited” or “opponent forfeited.” The resign endpoint and
-persisted completion-reason values are contract terminology and are not shown
-to players.
-
-The endpoint, privacy, idempotency, polling, deadline, history, and
-progression boundaries are defined in the
-[asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md).
-
-## Basic exclusions
-
-The following are not Basic game rules: PvP, matchmaking, ratings, spectators,
-trading, selling, evolution, rarity upgrades, offline play, movement tracking,
-anti-cheat trust scoring, territory control, seasons, advanced analytics, or an
-advanced administration console. The implemented curated Author review workflow
-is part of Basic content integrity and its unblocked Author-console review and
-campaign controls are implemented under issue `#185`. Additional Author question
-analytics is implemented under `#184`, and ordering-question authoring under
-`#163`; these extensions do not change the Basic multiple-choice rules.
-
-The [card evolution rules](./card-evolution-rules.md) record the confirmed
-three-copy conversion rule and the evolved definitions supplied by issue #164.
-The player-facing evolution action remains outside Basic. Its backend and
-collection UI are implemented separately under #174/#175, not by the catalogue
-migration alone.
-
-This document was planned, generated, and edited with the assistance of
-Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5.6 Sol], Codex[GPT-5], and
-Codex[gpt-5.6-sol].
-
-Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
-
-This account-deletion update was edited with assistance from Codex[GPT-6].
+This page was planned, generated, and edited with assistance from
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5.6 Sol], Codex[GPT-5],
+Codex[gpt-5.6-sol], Codex-CLI[GPT-6], and Codex[GPT-6].

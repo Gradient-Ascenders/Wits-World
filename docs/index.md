@@ -1,48 +1,37 @@
 ---
 title: 'Documentation home'
-description: Clear guides to the Wits Quest product, code, evidence, and project process.
+description: Guides to playing, authoring, developing, and reviewing Wits Quest.
 slug: /
 ---
 
 # Wits World documentation
 
-**Wits World** is the project repository. **Wits Quest** is the campus
-exploration game built in that repository.
+Wits Quest is a campus exploration and card-battle game. Players discover
+events, complete challenges, collect cards, and build decks for CPU and player
+battles. Wits World is the project that contains the game, API, and this
+documentation.
 
-:::tip[For external markers]
+## Start here
 
-Start with the [Sprint 3 overview](sprint-3-overview.md). It maps each
-Milestone 3 criterion to evidence and lists the remaining gaps. Use the
-[visual guide](architecture/diagrams/index.md) for presentation-ready system,
-database, and deployment diagrams.
+Read [About Wits Quest](basic-release-reference.md) for the gameplay overview
+and the features added beyond Basic. For detailed timing, rewards, decks, and
+CPU battles, see the [game rules](requirements/basic-game-rules.md).
 
-:::
+To run the project locally, follow [Getting started](development/getting-started.md).
+The [visual guide](architecture/diagrams/index.md) explains the system,
+database, and deployment through diagrams.
 
-## Choose a guide
+## Find your guide
 
-| Guide                                    | Use it to                                                                         |
-| ---------------------------------------- | --------------------------------------------------------------------------------- |
-| [Player Guide](/docs/player-guide)       | Understand exploration, challenges, cards, and battles.                           |
-| [Author Guide](/docs/author-guide)       | Review content creation, moderation, placement, and analytics.                    |
-| [Developer Guide](/docs/developer-guide) | Set up the project and inspect its architecture, database, tests, and deployment. |
-| [API Reference](/docs/api-reference)     | Review authentication, HTTP endpoints, errors, and feature contracts.             |
-| [Project evidence](/docs/project)        | Inspect testing, feedback, methodology, decisions, and sprint records.            |
+| Guide                                | What you will find                                                                                        |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| [Players](/docs/player-guide)        | Campus exploration, challenges, cards, evolution, trading, profiles, battles, and progression.            |
+| [Authors](/docs/author-guide)        | Content creation, independent review, publication, campaigns, event placement, moderation, and analytics. |
+| [Developers](/docs/developer-guide)  | Architecture, database design, configuration, testing, and deployment.                                    |
+| [API reference](/docs/api-reference) | Authentication, endpoints, errors, rate limits, and feature contracts.                                    |
+| [Project records](/docs/project)     | Delivery process, sprint reports, stakeholder feedback, testing results, and release evidence.            |
 
-## How to read the evidence
-
-Read the [sprint reports](planning/scrum/index.md) for the team's planning,
-progress, reviews, retrospectives, and meeting photos. Each sprint is presented
-as one report, with links to its detailed records and release evidence.
-
-Current reference pages explain how the system works now. Dated sprint pages
-show what was known at a specific time. A test plan describes a procedure; it
-does not prove that the test ran. Result pages identify the revision,
-environment, outcome, and remaining limits.
-
-## AI declaration
+---
 
 This page was created and edited with assistance from Codex-CLI[GPT-5],
-Codex[GPT-5], Codex-CLI[GPT-6], and Codex-CLI[gpt-6-sol]. It was simplified
-with assistance from Codex[GPT-5].
-
-Sprint report navigation updated with assistance from Codex[GPT-6].
+Codex[GPT-5], Codex-CLI[GPT-6], Codex-CLI[gpt-6-sol], and Codex[GPT-6].

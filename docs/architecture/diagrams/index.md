@@ -1,77 +1,143 @@
 ---
 title: 'Visual guide to Wits World'
+description: Diagrams of the player journey, application boundaries, data relationships, and deployment.
 ---
 
 # Visual guide to Wits World
 
-Start here for a visual explanation of the product, database, and technical
-design. These diagrams describe the implementation on this branch; they do not
-replace the [Sprint 3 validation evidence](../../testing/sprint-3-validation-status.md).
-The [Sprint 2 validation record](../../testing/sprint-2-validation-status.md)
-remains the historical reference for the previous increment.
+These diagrams explain the Wits Quest player journey and the systems that
+support it. Use the overview below, then follow the links for detailed flows
+and database relationships.
 
-## The player experience
+## The player journey
 
-<div className="diagram-scroll" role="region" aria-label="Visual guide to Wits World — diagram 1" tabIndex={0}>
+<div className="diagram-scroll" role="region" aria-label="Wits Quest player journey" tabIndex={0}>
 
 ```mermaid
-flowchart TB
-    accTitle: The Wits Quest player journey
-    accDescr: Discover an event, pass the server eligibility check, play a challenge, receive the stored result, grow a card collection, build a valid deck and battle. Trails and progression connect repeated play.
-    Explore["Discover campus events<br/>Map, list and ordered trails"]
-    Eligible{"Server checks event access"}
-    Retry["Show the reason<br/>Retry when the issue is resolved"]
-    Challenge["Complete a timed challenge"]
-    Results["View score, answer review<br/>and awarded cards"]
-    Collection["Grow the collection<br/>Review cards and eligible evolution"]
-    Deck["Build a valid deck"]
-    Battle["Play CPU, asynchronous or live player battles"]
-    Progress["View progression and achievements"]
-    Explore --> Eligible
-    Eligible -->|"Eligible"| Challenge
-    Eligible -->|"Not eligible"| Retry
-    Retry -.-> Explore
-    Challenge --> Results --> Collection --> Deck --> Battle --> Progress
+flowchart LR
+    accTitle: From campus events to card battles
+    accDescr: The API checks event access before a five-question challenge. Its saved result determines card rewards. Players manage owned cards, build a legal deck, and choose CPU, asynchronous, or live battles. This is a gameplay flow rather than a mandatory navigation sequence.
+
+    Events["Campus events<br/>Map, list and trails"]
+    Quiz["Timed challenge<br/>Five questions"]
+    Result["Saved result<br/>Score, review and rewards"]
+    Cards["Owned cards<br/>Collection and evolution"]
+    Deck["Legal deck<br/>3 Creatures + 2 Powers"]
+    CPU["CPU battle<br/>90-second turns"]
+    Async["Asynchronous PvP<br/>24-hour decisions"]
+    Live["Live PvP<br/>60-second turns"]
+
+    Events -->|"API checks access"| Quiz
+    Quiz -->|"API marks answers"| Result
+    Result --> Cards
+    Cards --> Deck
+    Deck --> CPU
+    Deck --> Async
+    Deck --> Live
+
+    classDef authoritative stroke:#9d8130,stroke-width:2px;
+    class Result,Deck authoritative;
 ```
 
 </div>
 
-Rewards and points follow the server's rules. Completing a challenge does not
-promise a particular card, and the browser never chooses a score or reward.
-The diagram shows the main journey, not a required screen order: players can
-return to their existing collection, decks, or matches.
+The Basic loop ends in a CPU battle. Trails, evolution, asynchronous PvP, and
+live PvP are later extensions. Players can also claim a one-time starter set
+and open existing collections, decks, or matches directly.
 
-## Choose a diagram
+The API checks event availability and reported location before a new challenge
+starts. It marks answers and saves rewards transactionally; a completed
+challenge may award no cards. Decks use owned copies and have a ten-point
+rarity cap. Match snapshots preserve their card values across later edits.
 
-| What you want to explain          | Diagram                                                 | Main takeaway                                                                                 |
-| --------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| The product and external services | [System and external services](system-context.md)       | What Wits World owns, and what Auth0, Mapbox and the hosts provide                            |
-| How the applications fit together | [Frontend, API and database](application-containers.md) | The browser presents; the API validates and controls database access                          |
-| How Advanced services coordinate  | [Advanced systems and authority](advanced-systems.md)   | Realtime, ranked, territory, trading, trust, placement and analytics share server-owned state |
-| How game data relates             | [Database relationships](database-relationships.md)     | Players, events, attempts, rewards, owned cards, decks and progression                        |
-| How an answer becomes a result    | [Challenge and reward flow](challenge-flow.md)          | Server deadlines, private marking and atomic, retry-safe rewards                              |
-| How content becomes visible       | [Content review and publication](content-review.md)     | A different Author reviews content before publication                                         |
-| How changes reach production      | [Hosting and deployment](deployment.md)                 | PR checks, main deployments, guarded migrations and a separate docs publish                   |
+Challenge results, CPU matches, and asynchronous PvP feed permanent progression
+under their defined award rules. Ranked live competition uses a separate
+seasonal rating. See the [game rules](../../requirements/basic-game-rules.md),
+[progression rules](../../requirements/player-progression-rules.md), and
+[ranked policy](../../requirements/ranked-competition-policy.md).
 
-For a short meeting walkthrough, use the player journey above, the system
-context, the three database views, and the challenge flow. The written
-[database guide](../../database/overview.md) explains constraints, migrations,
-and the reasons for PostgreSQL/PostGIS.
+## The system at a glance
 
-For more database detail, use the [battle database diagrams](database-battles.md)
-and [event/trail relationships](../../database/event-schema.md).
+<div className="diagram-scroll" role="region" aria-label="Wits World application and service boundaries" tabIndex={0}>
+
+```mermaid
+flowchart TB
+    accTitle: Wits World application and service boundaries
+    accDescr: The React and Vite Web application uses Auth0 for identity and Mapbox for map presentation. It sends HTTPS requests and live WebSocket messages to Fastify. The API owns protected decisions and accesses PostgreSQL and PostGIS. Upstash provides production rate-limit state and configurable gameplay coordination; it does not replace the authoritative game database.
+
+    Web["Web application<br/>React · Vite"]
+    Auth["Auth0<br/>Identity and recovery"]
+    Map["Mapbox<br/>Map presentation"]
+    API["API<br/>Fastify · shared battle rules"]
+    DB[("Neon PostgreSQL / PostGIS<br/>Game state and transactions")]
+    Redis["Upstash Redis<br/>Rate limits and coordination"]
+
+    Web -->|"Sign-in and tokens"| Auth
+    Web -->|"Tiles and styles"| Map
+    Web -->|"HTTPS · live WebSocket"| API
+    API <-->|"SQL · committed notifications"| DB
+    API -->|"Shared request limits"| Redis
+    API -.->|"Configured gameplay coordination"| Redis
+
+    classDef authoritative stroke:#9d8130,stroke-width:2px;
+    class API,DB authoritative;
+```
+
+</div>
+
+The API validates Auth0 tokens, resolves local identity and permissions, and
+applies protected game rules. The browser's actions and location readings are
+untrusted inputs. Mapbox supplies presentation; PostGIS supplies spatial checks.
+
+Live matches persist state, versions, and deadlines in PostgreSQL. Notifications
+prompt API instances to reload committed state. The notification listener uses
+a dedicated direct database connection, separate from the application query
+pool. WebSocket memory is not match authority.
+
+Production request limiting uses Upstash. Gameplay scheduling defaults to
+`polling`; optional Upstash coordination requires a staged rollout across
+producers sharing the database. See [rate limiting](../rate-limiting.md) and
+[scheduler operations](../../deployment/ranked-operations.md).
+
+The Web and API deploy separately to Azure App Service. Docusaurus publishes
+these docs to Cloudflare Pages. External developer applications use a separate,
+read-only `X-API-Key` boundary; they cannot act as player or Author sessions.
+
+## Detailed diagrams
+
+| Topic                  | Diagram                                             | What it explains                                                                      |
+| ---------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Users and integrations | [System context](system-context.md)                 | Players, Authors, external developers, and service boundaries.                        |
+| Application structure  | [Web, API, and database](application-containers.md) | Runtime components and their responsibilities.                                        |
+| Later gameplay systems | [Advanced systems](advanced-systems.md)             | Live play, ranked competition, territories, trading, trust, placement, and analytics. |
+| Core data model        | [Database relationships](database-relationships.md) | Players, events, attempts, rewards, owned cards, decks, and progression.              |
+| Battle persistence     | [Battle relationships](database-battles.md)         | CPU and player matches, snapshots, actions, and results.                              |
+| Challenge completion   | [Challenge and reward flow](challenge-flow.md)      | Deadlines, private marking, and atomic rewards.                                       |
+| Author publication     | [Content review](content-review.md)                 | Independent review and publication dependencies.                                      |
+| Delivery               | [Hosting and deployment](deployment.md)             | CI checks, guarded database releases, and application deployments.                    |
+
+The [database guide](../../database/overview.md) explains constraints and
+migrations. The [event schema](../../database/event-schema.md) covers event,
+challenge, and trail relationships in more detail.
 
 ## Reading the diagrams
 
-Boxes represent systems, steps, or tables; labelled arrows explain the
-relationship. Database diagrams have a separate relationship legend. On a
-narrow screen, focus a diagram and scroll horizontally to read it at full size.
-Each diagram also has a nearby explanation for readers who prefer text.
+Rectangles represent applications or steps; cylinders represent persistent
+data stores. Arrow labels name the interaction. Solid arrows show the main
+flow; the dashed arrow above identifies configurable coordination. Database
+diagrams provide their own relationship notation.
 
-## AI declaration
+Diagrams retain readable label sizes. On narrower screens, scroll within the
+diagram region; it can also receive keyboard focus. Each diagram includes an
+accessible title and description, with its main points explained in nearby text.
 
-Prepared from repository contracts, migrations, and implementation with
-assistance from Codex-CLI[GPT-6].
+The diagrams describe architecture and rules. Executed checks and release
+acceptance are recorded separately in the
+[Basic acceptance checklist](../../testing/basic-tier-release-validation.md)
+and the [Sprint 2](../../testing/sprint-2-validation-status.md) and
+[Sprint 3](../../testing/sprint-3-validation-status.md) validation records.
 
-Sprint 3 references and the live-battle journey were added with assistance from
-Codex-CLI[gpt-6-sol].
+---
+
+This guide was prepared and edited with assistance from Codex-CLI[GPT-6],
+Codex-CLI[gpt-6-sol], and Codex[GPT-6].
