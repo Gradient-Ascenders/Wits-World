@@ -2,7 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import type pg from 'pg';
 
 import { createDemandScheduler } from '../database/demand-scheduler.js';
-import { observeRollback } from '../database/pool-observability.js';
+import {
+  createPoolRunObserver,
+  observeRollback,
+  type PoolTelemetryLogger,
+} from '../database/pool-observability.js';
 import type {
   GameplayActivitySnapshot,
   GameplayActivityStore,
@@ -23,7 +27,7 @@ export interface GameplayMutationGuard {
   begin(): Promise<GameplayMutationPermit>;
 }
 
-interface Logger {
+interface Logger extends PoolTelemetryLogger {
   error(context: Record<string, unknown>, message: string): void;
 }
 
@@ -135,6 +139,14 @@ export function createGameplayCoordination(
     ranked: false,
   };
   let previousEpoch: string | undefined;
+  const monitorObservation = createPoolRunObserver(
+    'coordination_monitor',
+    logger,
+  );
+  const idleObservations = {
+    ranked: createPoolRunObserver('ranked_coordination', logger),
+    live: createPoolRunObserver('live_coordination', logger),
+  };
 
   function wakeFrom(snapshot: GameplayActivitySnapshot): void {
     const reset = previousEpoch !== snapshot.epoch;
@@ -149,8 +161,9 @@ export function createGameplayCoordination(
   const monitor = createDemandScheduler({
     activeIntervalMs: GAMEPLAY_COORDINATION_POLL_INTERVAL_MS,
     idleIntervalMs: GAMEPLAY_COORDINATION_POLL_INTERVAL_MS,
+    onCoalesced: () => monitorObservation.skipped(),
     run: async () => {
-      wakeFrom(await store.read());
+      wakeFrom(await monitorObservation.run(() => store.read()));
       return false;
     },
     onError: () => {
@@ -165,7 +178,12 @@ export function createGameplayCoordination(
 
   return {
     start: monitor.start,
-    stop: monitor.stop,
+    async stop() {
+      await monitor.stop();
+      monitorObservation.flush();
+      idleObservations.ranked.flush();
+      idleObservations.live.flush();
+    },
     async observeActive(worker, active) {
       if (active && !locallyActive[worker]) {
         try {
@@ -178,48 +196,51 @@ export function createGameplayCoordination(
       locallyActive[worker] = active;
     },
     async confirmIdle(worker, probe) {
-      let client: pg.PoolClient | undefined;
-      let open = false;
-      let destroy = false;
-      try {
-        client = await database.connect();
-        await client.query('begin');
-        open = true;
-        const lock = await client.query<{ acquired: boolean }>(
-          'select pg_try_advisory_xact_lock($1, $2) as acquired',
-          [ADVISORY_LOCK_CLASS, workerIds[worker]],
-        );
-        if (!lock.rows[0]?.acquired) return { idle: false, nextSweep: true };
+      return idleObservations[worker].run(async () => {
+        let client: pg.PoolClient | undefined;
+        let open = false;
+        let destroy = false;
+        try {
+          client = await database.connect();
+          await client.query('begin');
+          open = true;
+          const lock = await client.query<{ acquired: boolean }>(
+            'select pg_try_advisory_xact_lock($1, $2) as acquired',
+            [ADVISORY_LOCK_CLASS, workerIds[worker]],
+          );
+          if (!lock.rows[0]?.acquired) return { idle: false, nextSweep: true };
 
-        // The exclusive lock fences every in-flight writer and any delayed
-        // producer must revalidate its intent after taking the shared lock.
-        await store.removeAbandoned(worker);
-        const snapshot = await store.read();
-        const nextSweep = await probe(client);
-        if (nextSweep === true || !(await store.tryIdle(worker, snapshot))) {
-          return { idle: false, nextSweep: true };
-        }
-        locallyActive[worker] = false;
-        return { idle: true, nextSweep };
-      } catch {
-        logger.error(
-          {},
-          'Gameplay idle confirmation failed; retaining fast scans.',
-        );
-        return { idle: false, nextSweep: true };
-      } finally {
-        if (client) {
-          if (open) {
-            try {
-              const acquired = client;
-              await observeRollback(() => acquired.query('rollback'));
-            } catch {
-              destroy = true;
-            }
+          // The exclusive lock fences every in-flight writer and any delayed
+          // producer must revalidate its intent after taking the shared lock.
+          await store.removeAbandoned(worker);
+          const snapshot = await store.read();
+          const nextSweep = await probe(client);
+          if (nextSweep === true || !(await store.tryIdle(worker, snapshot))) {
+            return { idle: false, nextSweep: true };
           }
-          client.release(destroy || undefined);
+          locallyActive[worker] = false;
+          return { idle: true, nextSweep };
+        } catch {
+          idleObservations[worker].failed();
+          logger.error(
+            {},
+            'Gameplay idle confirmation failed; retaining fast scans.',
+          );
+          return { idle: false, nextSweep: true };
+        } finally {
+          if (client) {
+            if (open) {
+              try {
+                const acquired = client;
+                await observeRollback(() => acquired.query('rollback'));
+              } catch {
+                destroy = true;
+              }
+            }
+            client.release(destroy || undefined);
+          }
         }
-      }
+      });
     },
   };
 }

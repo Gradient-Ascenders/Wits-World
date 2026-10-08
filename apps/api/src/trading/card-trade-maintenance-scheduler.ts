@@ -1,3 +1,4 @@
+import { createPoolRunObserver } from '../database/pool-observability.js';
 import type { FastifyBaseLogger } from 'fastify';
 
 import {
@@ -29,19 +30,28 @@ export function createCardTradeMaintenanceScheduler(
   let timer: NodeJS.Timeout | undefined;
   let running: Promise<void> | undefined;
   let stopped = false;
+  const workObservation = createPoolRunObserver('trade_expiry', logger);
+  const retentionObservation = createPoolRunObserver('trade_retention', logger);
 
   const run = async () => {
-    if (running) return running;
+    if (running) {
+      workObservation.skipped();
+      return running;
+    }
     running = (async () => {
       try {
-        const expired = await service.expireDueTrades();
+        const expired = await workObservation.run(() =>
+          service.expireDueTrades(),
+        );
         logger.info({ expired }, 'Card trade expiry maintenance completed');
       } catch {
         logger.warn({}, 'Card trade expiry maintenance failed');
       }
 
       try {
-        const purged = await service.purgeTerminalTrades();
+        const purged = await retentionObservation.run(() =>
+          service.purgeTerminalTrades(),
+        );
         logger.info({ purged }, 'Card trade retention cleanup completed');
       } catch {
         logger.warn({}, 'Card trade retention cleanup failed');
@@ -64,6 +74,8 @@ export function createCardTradeMaintenanceScheduler(
       if (timer) clearInterval(timer);
       timer = undefined;
       await running;
+      workObservation.flush();
+      retentionObservation.flush();
     },
   };
 }

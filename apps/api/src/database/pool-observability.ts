@@ -1,18 +1,35 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type pg from 'pg';
 
-const categories = [
+export const poolCategories = [
   'request',
   'ranked_maintenance',
   'live_deadline',
   'listener',
+  'live_cleanup',
+  'movement_retention',
+  'trust_evaluation',
+  'trust_retention',
+  'placement_sweep',
+  'placement_boundary',
+  'account_deletion_retry',
+  'async_pvp_deadline',
+  'trade_expiry',
+  'trade_retention',
+  'ranked_probe',
+  'live_probe',
+  'coordination_monitor',
+  'ranked_coordination',
+  'live_coordination',
   'other',
 ] as const;
+const categories = poolCategories;
 const events = [
   'checkout',
   'checkout_failed',
   'release',
   'pool_summary',
+  'operation_summary',
   'pool_shutdown',
   'scheduler_summary',
   'database_error',
@@ -81,6 +98,17 @@ const numericFields = [
   'run_failures_count',
   'skipped_count',
   'running_count',
+  'acquisition_attempts_count',
+  'acquisitions_count',
+  'pending_count',
+  'oldest_pending_ms',
+  'holds_completed_count',
+  'checkout_max_ms',
+  'hold_max_ms',
+  'runs_completed_count',
+  'runs_ms',
+  'peak_pending_count',
+  'peak_active_holds_count',
 ] as const;
 
 /** Construct rather than serialize caller data. No arbitrary strings or objects. */
@@ -108,6 +136,35 @@ export function safePoolEvent(
       (!field.endsWith('_count') || Number.isInteger(value))
     )
       output[field] = value;
+  }
+  if (Array.isArray(input.operations)) {
+    const operations = input.operations;
+    output.operations = categories.flatMap((category) => {
+      const row = operations.find(
+        (value: unknown) =>
+          value !== null &&
+          typeof value === 'object' &&
+          (value as Record<string, unknown>).category === category,
+      ) as Record<string, unknown> | undefined;
+      if (!row) return [];
+      const safe: Record<string, unknown> = { category };
+      for (const field of [
+        'active_holds_count',
+        'pending_count',
+        'oldest_hold_ms',
+        'oldest_pending_ms',
+      ] as const) {
+        const value = row[field];
+        if (
+          typeof value === 'number' &&
+          Number.isFinite(value) &&
+          value >= 0 &&
+          (!field.endsWith('_count') || Number.isSafeInteger(value))
+        )
+          safe[field] = value;
+      }
+      return [safe];
+    });
   }
   return output;
 }
@@ -169,6 +226,8 @@ interface Metrics {
   checkout_failures_count: number;
   checkout_ms: number;
   contention_count: number;
+  holds_completed_count?: number;
+  hold_ms?: number;
   before_total?: number;
   before_idle?: number;
   before_waiting?: number;
@@ -180,15 +239,29 @@ interface Scope {
   category: PoolCategory;
   logger?: PoolTelemetryLogger;
   metrics?: Metrics;
+  markFailed?: () => void;
 }
+const emptyAcquisitions = () => ({
+  acquisition_attempts_count: 0,
+  acquisitions_count: 0,
+  checkout_failures_count: 0,
+  checkout_ms: 0,
+  checkout_max_ms: 0,
+  holds_completed_count: 0,
+  hold_ms: 0,
+  hold_max_ms: 0,
+  peak_pending_count: 0,
+  peak_active_holds_count: 0,
+});
 const context = new AsyncLocalStorage<Scope>();
 export function withPoolObservation<T>(
   category: PoolCategory,
   operation: () => T,
   logger?: PoolTelemetryLogger,
   metrics?: Metrics,
+  markFailed?: () => void,
 ): T {
-  return context.run({ category, logger, metrics }, operation);
+  return context.run({ category, logger, metrics, markFailed }, operation);
 }
 export function observeDatabaseError(
   error: unknown,
@@ -235,6 +308,13 @@ export function instrumentPool(
     pg.PoolClient,
     { start: number; category: PoolCategory }
   >();
+  const pending = new Map<object, { start: number; category: PoolCategory }>();
+  const aggregates = new Map(
+    categories.map((category) => [category, emptyAcquisitions()]),
+  );
+  const counts = new Map(
+    categories.map((category) => [category, { pending: 0, active: 0 }]),
+  );
   let checkoutCount = 0,
     failures = 0,
     newConnections = 0,
@@ -264,6 +344,11 @@ export function instrumentPool(
     const groups: Record<string, number> = {
       active_holds_count: held.size,
       oldest_hold_ms: Math.max(0, ...holds.map((x) => now - x.start)),
+      pending_count: pending.size,
+      oldest_pending_ms: Math.max(
+        0,
+        ...[...pending.values()].map((x) => now - x.start),
+      ),
     };
     for (const group of [
       'listener',
@@ -285,8 +370,65 @@ export function instrumentPool(
     }
     return groups;
   };
+  const operationSnapshot = (category: PoolCategory) => {
+    const now = performance.now();
+    const holders = [...held.values()].filter((x) => x.category === category);
+    const waiters = [...pending.values()].filter(
+      (x) => x.category === category,
+    );
+    return {
+      active_holds_count: holders.length,
+      oldest_hold_ms: Math.max(0, ...holders.map((x) => now - x.start)),
+      pending_count: waiters.length,
+      oldest_pending_ms: Math.max(0, ...waiters.map((x) => now - x.start)),
+    };
+  };
+  const operationStates = () =>
+    categories.flatMap((category) => {
+      const state = operationSnapshot(category);
+      return state.pending_count || state.active_holds_count
+        ? [{ category, ...state }]
+        : [];
+    });
+  // Fixed-cardinality summaries bypass the detailed-event cap. Counters are
+  // updated before suppression and remain valid even when detail is dropped.
+  const reportOperations = () => {
+    for (const category of categories) {
+      const metrics = aggregates.get(category)!;
+      const state = operationSnapshot(category);
+      if (
+        metrics.acquisition_attempts_count ||
+        metrics.acquisitions_count ||
+        metrics.checkout_failures_count ||
+        metrics.holds_completed_count ||
+        state.pending_count ||
+        state.active_holds_count
+      ) {
+        emitPoolEvent(logger, {
+          event: 'operation_summary',
+          pool_role: poolRole,
+          category,
+          ...poolSnapshot(pool),
+          ...metrics,
+          ...state,
+        });
+      }
+      Object.assign(metrics, emptyAcquisitions());
+      metrics.peak_pending_count = state.pending_count;
+      metrics.peak_active_holds_count = state.active_holds_count;
+    }
+  };
   const timer = setInterval(() => {
-    if (!checkoutCount && !held.size && !failures && !suppressed) return;
+    reportOperations();
+    if (
+      !checkoutCount &&
+      !held.size &&
+      !pending.size &&
+      !failures &&
+      !newConnections &&
+      !suppressed
+    )
+      return;
     emitPoolEvent(logger, {
       event: 'pool_summary',
       pool_role: poolRole,
@@ -297,6 +439,7 @@ export function instrumentPool(
       new_connections_count: newConnections,
       suppressed_count: suppressed,
       ...holdSnapshot(),
+      operations: operationStates(),
     });
     checkoutCount = failures = newConnections = suppressed = 0;
   }, 60_000);
@@ -309,14 +452,35 @@ export function instrumentPool(
     ) => void,
   ) => {
     const scope = context.getStore();
-    const category = scope?.category ?? 'other';
+    const category = categories.includes(scope?.category as PoolCategory)
+      ? scope!.category
+      : 'other';
     const sink = scope?.logger ?? logger;
     const before = poolSnapshot(pool),
       started = performance.now();
     checkoutCount++;
+    const totals = aggregates.get(category)!;
+    const current = counts.get(category)!;
+    totals.acquisition_attempts_count++;
+    const attempt = {};
+    pending.set(attempt, { start: started, category });
+    current.pending++;
+    totals.peak_pending_count = Math.max(
+      totals.peak_pending_count,
+      current.pending,
+    );
+    let completed = false;
     const complete = (error?: Error, client?: pg.PoolClient) => {
+      if (completed) return;
+      completed = true;
+      pending.delete(attempt);
+      current.pending--;
       const after = poolSnapshot(pool),
         duration = performance.now() - started;
+      totals.checkout_ms += duration;
+      totals.checkout_max_ms = Math.max(totals.checkout_max_ms, duration);
+      totals.checkout_failures_count += error ? 1 : 0;
+      totals.acquisitions_count += client && !error ? 1 : 0;
       const contention =
         before.waitingCount > 0 ||
         (before.idleCount === 0 && before.totalCount >= pool.options.max!);
@@ -328,6 +492,15 @@ export function instrumentPool(
         Object.assign(scope.metrics, snapshots(before, after));
       }
       if (error) failures++;
+      const acquired = performance.now();
+      if (client && !error) {
+        held.set(client, { start: acquired, category });
+        current.active++;
+        totals.peak_active_holds_count = Math.max(
+          totals.peak_active_holds_count,
+          current.active,
+        );
+      }
       if (error || duration >= 250 || contention)
         publish(
           {
@@ -336,24 +509,34 @@ export function instrumentPool(
             checkout_ms: duration,
             ...snapshots(before, after),
             ...holdSnapshot(),
+            operations: operationStates(),
             ...(error ? { error_category: classifyDatabaseError(error) } : {}),
           },
           sink,
         );
       if (!client || error) return;
-      const acquired = performance.now(),
-        release = client.release;
-      held.set(client, { start: acquired, category });
+      const release = client.release;
       let released = false;
       client.release = function (releaseError?: Error | boolean) {
         // Native double-release errors remain authoritative.
         if (released) return release.call(client, releaseError);
         released = true;
+        // pg can synchronously hand this same client to a queued checkout
+        // inside release(). Retire the old ownership before that handoff.
+        held.delete(client);
+        current.active--;
         try {
           return release.call(client, releaseError);
         } finally {
-          held.delete(client);
           const hold = performance.now() - acquired;
+          totals.holds_completed_count++;
+          totals.hold_ms += hold;
+          totals.hold_max_ms = Math.max(totals.hold_max_ms, hold);
+          if (scope?.metrics) {
+            scope.metrics.holds_completed_count =
+              (scope.metrics.holds_completed_count ?? 0) + 1;
+            scope.metrics.hold_ms = (scope.metrics.hold_ms ?? 0) + hold;
+          }
           if (hold >= 1_000 || category === 'listener')
             publish(
               {
@@ -367,26 +550,32 @@ export function instrumentPool(
         }
       };
     };
-    if (callback)
-      return connect((error, client, release) => {
-        complete(error ?? undefined, client);
-        callback(error, client, client?.release ?? release);
-      });
-    return connect().then(
-      (client) => {
-        complete(undefined, client);
-        return client;
-      },
-      (error: Error) => {
-        complete(error);
-        throw error;
-      },
-    );
+    try {
+      if (callback)
+        return connect((error, client, release) => {
+          complete(error ?? undefined, client);
+          callback(error, client, client?.release ?? release);
+        });
+      return connect().then(
+        (client) => {
+          complete(undefined, client);
+          return client;
+        },
+        (error: Error) => {
+          complete(error);
+          throw error;
+        },
+      );
+    } catch (error) {
+      complete(error as Error);
+      throw error;
+    }
   }) as pg.Pool['connect'];
   pool.end = ((callback?: () => void) => {
     clearInterval(timer);
     pool.off('connect', onConnect);
-    const finished = () =>
+    const finished = () => {
+      reportOperations();
       emitPoolEvent(logger, {
         event: 'pool_shutdown',
         category: 'other',
@@ -394,6 +583,7 @@ export function instrumentPool(
         ...poolSnapshot(pool),
         ...holdSnapshot(),
       });
+    };
     if (callback)
       return end(() => {
         finished();
@@ -405,88 +595,124 @@ export function instrumentPool(
   }) as pg.Pool['end'];
 }
 
-/** One bounded summary per minute, plus slow/contended/failed runs. */
+/** Fixed-size aggregates; no timers, admission or changes to worker promises. */
 export function createPoolRunObserver(
-  category: 'ranked_maintenance' | 'live_deadline',
+  category: PoolCategory,
   logger: PoolTelemetryLogger,
 ) {
   let runs = 0,
+    completed = 0,
+    failures = 0,
     skipped = 0,
-    lastReport = performance.now();
+    duration = 0;
+  let lastReport = performance.now();
   let hasReported = false;
-  let active:
-    | {
-        started: number;
-        unix: number;
-        metrics: Metrics;
-        failed: boolean;
-        runningReported: boolean;
-      }
-    | undefined;
-  const report = (running: boolean) => {
-    if (!active) return;
+  const metrics: Metrics = {
+    checkout_count: 0,
+    checkout_failures_count: 0,
+    checkout_ms: 0,
+    contention_count: 0,
+    holds_completed_count: 0,
+    hold_ms: 0,
+  };
+  const active = new Set<{
+    started: number;
+    unix: number;
+    failed: boolean;
+    runningReported: boolean;
+  }>();
+  const report = (run?: { started: number; unix: number }) => {
     emitPoolEvent(logger, {
       event: 'scheduler_summary',
       pool_role: 'shared',
       category,
-      run_started_unix_ms: active.unix,
-      run_ms: performance.now() - active.started,
+      run_started_unix_ms: run?.unix,
+      run_ms: run ? performance.now() - run.started : 0,
       runs_count: runs,
+      runs_completed_count: completed,
+      runs_ms: duration,
       skipped_count: skipped,
-      running_count: running ? 1 : 0,
-      run_failures_count: active.failed ? 1 : 0,
-      ...active.metrics,
+      running_count: active.size,
+      run_failures_count: failures,
+      ...metrics,
     });
-    if (running) active.runningReported = true;
-    runs = skipped = 0;
+    for (const current of active) current.runningReported = true;
+    runs = completed = failures = skipped = duration = 0;
+    for (const key of Object.keys(metrics) as (keyof Metrics)[])
+      delete metrics[key];
+    Object.assign(metrics, {
+      checkout_count: 0,
+      checkout_failures_count: 0,
+      checkout_ms: 0,
+      contention_count: 0,
+      holds_completed_count: 0,
+      hold_ms: 0,
+    });
     lastReport = performance.now();
     hasReported = true;
   };
   return {
     failed() {
-      if (active) active.failed = true;
+      context.getStore()?.markFailed?.();
     },
     skipped() {
       skipped++;
-      if (performance.now() - lastReport >= 60_000) report(true);
+      if (performance.now() - lastReport >= 60_000) report([...active][0]);
+    },
+    flush() {
+      if (
+        runs ||
+        completed ||
+        skipped ||
+        metrics.checkout_count ||
+        metrics.holds_completed_count
+      )
+        report([...active][0]);
     },
     async run<T>(operation: () => Promise<T>): Promise<T> {
       runs++;
-      const metrics: Metrics = {
-        checkout_count: 0,
-        checkout_failures_count: 0,
-        checkout_ms: 0,
-        contention_count: 0,
-      };
-      active = {
+      const run = {
         started: performance.now(),
         unix: Date.now(),
-        metrics,
         failed: false,
         runningReported: false,
       };
-      let failed = false;
+      active.add(run);
       try {
-        return await withPoolObservation(category, operation, logger, metrics);
+        return await withPoolObservation(
+          category,
+          operation,
+          logger,
+          metrics,
+          () => {
+            run.failed = true;
+          },
+        );
       } catch (error) {
-        failed = true;
-        active.failed = true;
+        run.failed = true;
         throw error;
       } finally {
+        active.delete(run);
+        completed++;
+        failures += run.failed ? 1 : 0;
+        duration += performance.now() - run.started;
         const exceptional =
-          failed ||
-          active.failed ||
+          run.failed ||
           metrics.checkout_failures_count ||
           metrics.contention_count ||
-          performance.now() - active.started >= 1_000;
+          performance.now() - run.started >= 1_000;
+        const reportFirstSuccess =
+          !hasReported &&
+          category !== 'ranked_maintenance' &&
+          category !== 'live_deadline';
         if (
-          active.runningReported ||
+          (run.runningReported && active.size === 0) ||
+          reportFirstSuccess ||
           (exceptional &&
             (!hasReported || performance.now() - lastReport >= 10_000)) ||
           performance.now() - lastReport >= 60_000
         )
-          report(false);
-        active = undefined;
+          report(run);
       }
     },
   };

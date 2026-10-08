@@ -70,7 +70,7 @@ describe('movement evidence cleanup scheduler', () => {
 
     expect(purgeExpired).toHaveBeenCalledTimes(2);
     expect(logger.info).toHaveBeenNthCalledWith(
-      1,
+      2,
       { deleted: 2 },
       'Expired movement evidence cleanup completed.',
     );
