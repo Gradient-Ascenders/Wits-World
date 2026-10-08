@@ -61,7 +61,7 @@ applied filenames and checksums before applying pending SQL; missing or changed
 applied files stop the run.
 
 Normal seeding loads reusable reference data and checks that the card catalogue
-is ready. To add events, challenges, and trails, follow [Demo data](basic-demo-seed.md).
+is ready.
 
 ## Prepare the test target
 

@@ -4,200 +4,105 @@ title: 'CPU battle storage'
 
 # CPU battle storage
 
-## Scope
+CPU battles persist authoritative state, immutable card snapshots, and ordered
+action history. The API applies player intent and all required CPU actions through
+`@wits-world/game-rules`, then commits the complete transition.
 
-Issue #75 adds the server and database boundary for Basic CPU matches. The
-browser submits an intended action identifier; the API loads the match state,
-validates the action with `@wits-world/game-rules`, performs CPU actions with
-server-side randomness, and commits the resulting state and audit records in
-one transaction.
+The [CPU battle guide](../requirements/player-cpu-battle-journey.md) owns player
+controls, and [Battle rules](../requirements/battle-rules.md) defines combat.
 
-The player can have one active CPU match. Completed matches remain private to
-the authenticated player and are never recalculated from a later deck or card
-catalogue change. The API also provides an authenticated lookup for the one
-unfinished match so the browser never has to retain a match identifier as an
-authority record.
+## Stored model
 
-## Stored data
+| Relation            | Responsibility                                                           |
+| ------------------- | ------------------------------------------------------------------------ |
+| `cpu_matches`       | Owner, state, status, version, turn timer, winner, and timestamps.       |
+| `cpu_match_cards`   | Immutable player and CPU card/stat/move/effect snapshots.                |
+| `cpu_match_rounds`  | Before/after state and the results of one submitted transition.          |
+| `cpu_match_actions` | Ordered player and CPU actions, results, and player submission receipts. |
 
-Migration `0012_create_cpu_matches.sql` adds:
+A partial unique index permits **1 active CPU match per player**. The optional
+source deck reference becomes null when that saved deck is deleted; snapshots
+remain unchanged.
 
-- `cpu_matches` for the current authoritative state, status, version,
-  timestamps, winner, and an optional source deck reference;
-- `cpu_match_cards` for immutable player and CPU card snapshots;
-- `cpu_match_rounds` for before/after state and the results of one submitted
-  transition; and
-- `cpu_match_actions` for each player and server CPU action, including ordering,
-  submission id, action input, and result. Action results also identify effects
-  that expire during that transition, so expiry ordering does not need to be
-  inferred from a multi-action round snapshot.
+JSONB stores rules-engine state and results. Database checks require object-shaped
+states, card snapshots, and action inputs/results, with array-shaped round
+results. SQL-nullable response and submitted-intent objects remain optional.
+These checks validate outer shape; the rules engine validates battle semantics.
 
-The current state and round snapshots are JSONB because they are the complete
-state accepted by the pure rules package. The relational match, player, side,
-sequence, and status columns remain queryable and constrained by PostgreSQL.
-The source deck reference is nullable on deletion so removing a saved deck
-does not remove or invalidate a match snapshot.
+## Action transaction
 
-Migration `0065_constrain_cpu_match_json_shapes.sql` validates the outer JSON
-shapes: states, card snapshots and per-action inputs/results are objects; round
-results are arrays; response and submitted-intent objects remain SQL-nullable.
-JSON `null`, scalar values and mismatched object/array types are rejected.
-Existing legacy keys and two-move snapshots remain valid. The migration checks
-retained rows without replacing them; the shared rules engine still validates
-the actual battle semantics.
+<div className="diagram-scroll" role="region" aria-label="CPU action processing and atomic battle persistence" tabIndex={0}>
 
-## Transaction and concurrency boundary
+```mermaid
+flowchart TB
+    accTitle: One submitted action can commit several CPU transitions
+    accDescr: The API locks the owned match and checks its receipt, deadline, and version. The rules engine applies player intent and required CPU actions. One transaction saves the round, ordered actions, response receipt, and resulting match state. Terminal results also save progression.
 
-Every player action runs in a transaction:
+    Intent["Player intent<br/>Submission ID and expected version"]
+    Lock["Lock owned match<br/>Check replay, timer, version, and legality"]
+    Rules["Shared rules engine<br/>Player action and required CPU actions"]
+    Commit[("Atomic commit<br/>Round, actions, receipt, state, and result")]
 
-1. Lock the owning `cpu_matches` row with `FOR UPDATE`, while reading the
-   current maximum action sequence and only the cumulative `battleLog` from the
-   latest receipt. A modern action therefore extends that compact projection
-   without a separate or growing full-history query. The same statement loads
-   raw history only for a legacy match whose latest receipt predates
-   `battleLog`; the next successful action stores the upgraded projection.
-2. In a fresh statement after the lock is acquired, return the previously
-   stored response when the submission id was already completed. This lookup
-   must not be folded into the locking statement: a statement snapshot created
-   while waiting for another writer does not see that writer's newly committed
-   action receipt through a subquery. When that receipt is legacy, this same
-   fresh statement reconstructs through the final action in the receipt's
-   round, because synchronous CPU transitions follow the player's receipt row.
-3. Reject a completed match or stale expected version.
-4. Apply the player action through the shared rules package.
-5. Apply all required CPU actions using the server random source.
-6. Use one data-modifying statement to insert the round, bulk-insert every
-   transition in explicit ordinal order, store the player submission receipt,
-   and update the match state, version, timer, and terminal result. The next
-   action sequence is based on the existing maximum action sequence, not the
-   match version, because rounds contain a variable number of transitions.
-7. Validate the returned round identity, action count and sequence range,
-   receipt count, and match update before committing.
-8. Commit the complete transition.
+    Intent --> Lock
+    Lock --> Rules
+    Rules --> Commit
 
-Any failure rolls back the match state and all audit rows. The unique
-`(match_id, submission_id)` constraint and the match row lock prevent one
-client submission from being applied twice.
-
-The API uses a 90-second server timer for a player's active CPU turn. A late
-active-turn request becomes the rules engine's trusted `timeout` action. CPU
-turns are resolved synchronously by the API and are never delegated to the
-browser.
-
-Match reads are read-only. Both active recovery and a direct owned-match read
-select the match, immutable card names, and ordered action/round records in one
-PostgreSQL statement. The service projects those records into `battleLog` and
-derives `lastAction` from the same final ordered action, so each response
-represents one coherent committed database snapshot. Concurrent reads do not
-lock or mutate the match. When an action commits during a read, the read observes
-either the state and log before that transition or both values after it; it
-cannot assemble them from different statements. When
-completion is already visible to an active recovery read, the row no longer
-qualifies as active and the API returns the no-active result. The partial unique
-index on `cpu_matches.player_id` where `status = 'active'` remains the final
-one-active-match guarantee; the service fails internally instead of choosing a
-row if that invariant is ever violated.
-
-## HTTP contract
-
-Protected routes are exposed under `/api/v1`:
-
-- `POST /matches/cpu` creates a match from the player's selected deck;
-- `GET /matches/cpu` returns the authenticated player's one active CPU match;
-- `GET /matches/:matchId` returns the owner's safe current state;
-- `POST /matches/:matchId/actions` accepts a submission id, expected version,
-  and one intended action; and
-- `GET /matches/history` returns the authenticated player's completed records.
-
-`GET /matches/cpu` accepts no player or match identifier. Authentication and
-the active-player pre-handler supply the only ownership identity. A successful
-lookup returns `200` with the same `CpuMatchResponse` representation used by
-creation, direct state reads, and action responses. If no committed unfinished
-match is visible for the authenticated player, including when their previous
-match is completed, it returns the established problem response:
-
-```json
-{
-  "type": "https://wits.world/problems/cpu_match_not_found",
-  "title": "CPU match not found",
-  "status": 404,
-  "code": "CPU_MATCH_NOT_FOUND",
-  "detail": "The requested CPU match was not found.",
-  "requestId": "<server request ID>"
-}
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class Commit authority;
 ```
 
-`battleLog` groups deterministic, sequence-keyed event messages by opening and
-battle turn. It contains only events supported by persisted action results and
-immutable match snapshots. Older actions that predate explicit expiry metadata
-remain readable, but the projection does not invent an expiry for them from a
-round-level before/after comparison. Unrevealed CPU reserve identities remain
-absent.
+</div>
 
-Completed matches remain available through `/matches/history` and their known
-`/matches/:matchId` detail route; they are never returned by the active lookup.
-The lookup reveals nothing about another player's active or completed matches.
+The match row lock serialises writers. After acquiring it, a fresh statement
+checks for an existing submission receipt so a request waiting behind another
+writer can see that writer's commit. Identical retries return the saved response.
 
-## Browser recovery contract
+New actions reject stale versions, enforce the **90-second** player-turn timer,
+and apply server-owned CPU randomness. Action sequences use the latest action
+number rather than match version, because a round can contain several actions.
 
-Issue #76 may use the following lifecycle contract:
+The service writes the round, all ordered actions, receipt, and updated match
+together. Terminal transitions also save progression. Any failure rolls back the
+entire operation; unique match/submission keys prevent duplicate application.
 
-### Normal battle entry
+Modern receipts retain the cumulative `battleLog`, avoiding repeated full-history
+reads during action processing. Older receipts can reconstruct their log from
+persisted actions without rewriting historical outcomes.
 
-On battle entry, refresh, browser restart, or later re-entry, call
-`GET /api/v1/matches/cpu` before offering to create a match:
+## Reads and recovery
 
-- `200` means an authoritative active match is visible. Use the returned
-  `matchId`, `version`, `state`, and `legalActions` to resume it.
-- `404 CPU_MATCH_NOT_FOUND` means no committed active match is visible to that
-  lookup. The UI may offer `POST /api/v1/matches/cpu` using the selected deck.
+Active recovery and direct owned-match reads use one PostgreSQL statement for
+state, card names, and ordered history. Each response therefore represents one
+committed snapshot. Reads do not lock or advance gameplay.
 
-After completion, use `/matches/history` for the private completed list.
+`GET /api/v1/matches/cpu` finds the authenticated player's active match without
+accepting a player or match ID. No visible active match returns
+`404 CPU_MATCH_NOT_FOUND`; completed matches belong to history.
 
-### Ambiguous creation failure
+After an uncertain create response, this lookup recovers a committed match.
+An immediate not-found response cannot exclude a creation still in flight.
+A repeated create remains protected by the one-active-match constraint.
 
-When a network failure leaves the browser unable to know whether
-`POST /api/v1/matches/cpu` committed:
+## API and privacy
 
-1. Reconcile with `GET /api/v1/matches/cpu`.
-2. A `200` response recovers the committed match.
-3. An immediate `404 CPU_MATCH_NOT_FOUND` does not prove the original creation
-   will never commit. Its transaction may still be in flight and invisible to
-   the recovery read.
-4. Use a small bounded reconciliation and retry strategy before concluding
-   that no active match became visible. Issue #76 may choose a sensible bounded
-   retry or backoff without treating browser state as authoritative.
-5. If a subsequent create attempt returns `409 CPU_MATCH_ALREADY_ACTIVE`, keep
-   that conflict meaning unchanged and reconcile again through the GET lookup.
-6. Never automatically replay gameplay actions as part of creation recovery.
+| Operation                 | Route                                   |
+| ------------------------- | --------------------------------------- |
+| Create from selected deck | `POST /api/v1/matches/cpu`              |
+| Recover active match      | `GET /api/v1/matches/cpu`               |
+| Read owned match          | `GET /api/v1/matches/:matchId`          |
+| Submit action             | `POST /api/v1/matches/:matchId/actions` |
+| Read completed history    | `GET /api/v1/matches/history`           |
 
-The browser may cache a route for convenience, but it does not own match state
-or use local storage, guessed identifiers, client simulation, or direct data
-access as a recovery authority.
+The API derives ownership and returns legal actions and a player-safe projection.
+Unrevealed CPU reserves remain hidden. Battle logs use persisted action results;
+legacy records do not gain invented expiry events.
 
-Current responses expose the player's cards and legal actions. CPU cards that
-have not been revealed remain hidden; only the active and defeated CPU
-Creatures and aggregate remaining counts are returned. The browser cannot send
-card stats, effects, random outcomes, winners, or completion state.
+Completed results never recalculate from later decks or catalogue data.
+Account deletion removes personal CPU matches and their snapshots/history.
+See [Progression storage](player-progression-persistence.md),
+[Account retention](account-deletion-retention.md), and the
+[API reference](../architecture/api-overview.md).
 
-## Verification
-
-The API route tests cover authentication, identity derivation, active recovery,
-the no-active response, OpenAPI, rejection of client-authoritative result
-fields, legal action payloads, timeout rejection, and history isolation.
-Service tests cover coherent read-only active and direct snapshots, invariant
-failure, a player action followed by a server CPU action in one transaction,
-and stale-version rollback. PostgreSQL integration tests cover
-lost-create-response recovery after commit, pre-commit transaction invisibility,
-coherent direct reads before and after a concurrent commit, authoritative
-post-action state, ownership isolation, concurrent reads, active uniqueness,
-completed exclusion, snapshots, actions, and rounds. Migration `0012` remains
-unchanged and continues to receive the existing clean database migration
-coverage.
-
-This document was generated and edited with assistance from
-ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and Codex-CLI[gpt-5.6-sol].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
-
-CPU JSON-shape guidance updated with assistance from Codex[GPT-5].
+**AI declaration:** Prepared and updated with assistance from
+ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], Codex-CLI[gpt-5.6-sol],
+Codex-CLI[GPT-6], and Codex[GPT-6].

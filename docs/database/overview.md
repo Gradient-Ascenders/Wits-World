@@ -132,10 +132,7 @@ inspection. Its table counts are not current production counts.
 
 ## Known evidence gaps
 
-The [data quality reference](data-quality-and-structure.md) records the dated
-Milestone 4 inspection, content and schema releases, the read-only `db:audit`
-command, and remaining provenance and credential-separation work. Migration
-`0065` adds CPU JSON shape checks without rewriting historical snapshots.
+Migration `0065` adds CPU JSON shape checks without rewriting historical snapshots.
 The migration runner validates all applied names and checksums before applying
 pending SQL, including refusing applied files missing from the source tree.
 

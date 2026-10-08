@@ -4,152 +4,129 @@ title: 'Ranked competition storage'
 
 # Ranked competition storage
 
-## Scope
+Ranked storage connects accepted matchmaking proposals to live battles, freezes
+rating inputs at match creation, and settles both players' ratings with the
+terminal result. Seasons and standings use those committed records.
 
-Migration `0047_persist_ranked_competition.sql` adds the issue `#263` database
-foundation for the approved [ranked-v1 policy](../requirements/ranked-competition-policy.md).
-Issue `#266` adds the queue routes, rating calculations, matchmaking worker,
-season-close automation, and private ten-minute standings snapshots in
-`0050_create_ranked_standings_snapshots.sql`. Migration `0051` permits an
-accepted player to withdraw while a proposal still awaits the other player.
-Migration `0052` records the 30-second cooldown when final validation rejects
-an invalid proposed player. Migration `0053_persist_contested_territory.sql`
-adds a separate persistence boundary that may derive exactly one territory
-contribution decision from an authoritative ranked settlement without changing
-its Elo result. Territory eligibility, match-to-zone snapshots, settlement
-calculation, workers, and player UI remain separate runtime work. The existing
-[live PvP match](live-pvp-persistence.md) remains the only battle authority.
+[Ranked competition](../requirements/ranked-competition-policy.md) owns rating
+values, placement rules, and resets. The [ranked API contract](../architecture/ranked-matchmaking-api-contract.md)
+defines queue and standings requests.
 
-## Relationships and authority
+## Stored model
 
-| Relation                                           | Responsibility                                                                                                                  |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `private.ranked_policy_versions`                   | Immutable `ranked-v1` constants and policy identity.                                                                            |
-| `public.ranked_seasons`                            | Scheduled, active, closing, and closed lifecycle; one active or closing at a time.                                              |
-| `public.ranked_player_season_ratings`              | One current rating, wins, losses, match count, and initial/soft-reset seed per user and season.                                 |
-| `private.ranked_queue_entries`                     | Selected owned deck while active, immutable original join time, 30-second searching lease, status, and retained player history. |
-| `private.ranked_matchmaking_proposals`             | A 20-second acceptance window shared by exactly two players.                                                                    |
-| `private.ranked_matchmaking_proposal_participants` | Each player's queue claim, acceptance decision, and any 30-second decline cooldown.                                             |
-| `private.ranked_matchmaking_receipts`              | One accepted proposal bound to one live match, season, and policy version.                                                      |
-| `private.ranked_match_rating_inputs`               | Both immutable pre-match rating, provisional count, and K-factor snapshots.                                                     |
-| `private.ranked_rating_settlements`                | One terminal match result and settlement receipt per ranked live match.                                                         |
-| `private.ranked_rating_ledger_entries`             | Immutable per-player pre/post rating, match count, expected score, and applied delta.                                           |
-| `public.ranked_season_standing_archives`           | Immutable established-player rank and result facts, without a Player Name snapshot.                                             |
-| `private.ranked_season_close_receipts`             | Exactly one season-close result and reconciled archive/settlement counts.                                                       |
+| Relations                                      | Responsibility                                                               |
+| ---------------------------------------------- | ---------------------------------------------------------------------------- |
+| `private.ranked_policy_versions`               | Immutable competition constants and policy identity.                         |
+| `ranked_seasons`                               | Scheduled, active, closing, and closed season lifecycle.                     |
+| `ranked_player_season_ratings`                 | Current seasonal rating, seed, wins, losses, and settled-match count.        |
+| `private.ranked_queue_entries`                 | Deck choice, original wait time, search lease, and queue lifecycle.          |
+| Private matchmaking proposals and participants | Acceptance window, queue claims, responses, and cooldowns.                   |
+| `private.ranked_matchmaking_receipts`          | Accepted proposal's live match, season, and policy.                          |
+| `private.ranked_match_rating_inputs`           | Both players' starting ratings, prior match counts, and K factors.           |
+| `private.ranked_rating_settlements`            | Exactly-once terminal settlement per ranked match.                           |
+| `private.ranked_rating_ledger_entries`         | Immutable per-player pre/post ratings, expected scores, and applied changes. |
+| `ranked_season_standing_archives`              | Final established-player competitive facts.                                  |
+| `private.ranked_season_close_receipts`         | Reconciled settlement/archive counts at season close.                        |
+| Private standings snapshots and rows           | Viewer-bound pagination facts valid for 10 minutes.                          |
 
-`public` is a PostgreSQL schema, not permission to expose ratings or archives
-via a public API. The player-facing API must derive player identity from the
-validated token, return only that player's provisional rating/queue state, and
-exclude provisional, deleted, or deletion-pending users from public current
-standings. Closed archives resolve the **current** safe Player Name via the
-linked `players` row; account deletion removes that player's personal archive
-and rating rows. Shared results display `Deleted player`. No queue, deck,
-proposal, email, Auth0 identity, or precise location belongs in the archive.
+## Queue and match creation
 
-Queue history survives saved-deck deletion and account deletion without
-retaining a restrictive reference to a removed deck. An active searching or
-proposed queue requires an owned deck and blocks its deletion. Once the queue
-is terminal, deleting that deck clears only `selected_deck_id` through the
-composite foreign key, even for an active player. Queue identity, timestamps,
-status, proposal linkage, and the player reference remain immutable. Account
-deletion first cancels active queue/proposal state, then removes owned decks;
-the retained rows refer to a profile-free actor key.
+Partial unique indexes permit only 1 active/closing season and 1 searching or
+proposed queue entry per player. A searching lease is renewed explicitly;
+reading queue status does not renew it.
 
-## Concurrency and transactions
+Matchmaking locks candidate entries, rechecks season, lease, account, deck,
+restrictions, and active-match state, then creates both claims and the proposal
+atomically. Concurrent workers cannot claim one entry for different matches.
 
-The partial unique indexes enforce one active/closing season and one searching
-or proposed queue entry per player across API instances. The searching index
-orders claims by `(season_id, original_joined_at, id)`; leases have a separate
-expiry index. The issue `#266` service locks candidate entries in a consistent
-order with `FOR UPDATE SKIP LOCKED`, rechecks each player's account, deck,
-restriction, season, lease, and active-match state, then moves **both** entries
-to `proposed` and creates one proposal with its two
-participant rows in the same transaction. A losing concurrent claim must
-return the authoritative current state, never mint another proposal. Response,
-requeue, and matched receipt updates likewise commit together. A mere queue
-status read must not renew its lease.
+Responses compare the current proposal state under locks. Acceptance,
+withdrawal, cooldown, and requeue changes commit together. Requeue can preserve
+original waiting time without extending the proposal's acceptance deadline.
 
-Match creation consumes both accepted entries, creates the normal live match
-and snapshots, and inserts the matchmaking receipt and two rating input rows
-atomically. Deferred checks require two accepted proposal participants and two
-match participants with rating inputs equal to their current seasonal state.
-Once created, a ranked match retains its original season and `ranked-v1`
-snapshot even after the season enters `closing`; an ordinary live match with
-no receipt is never ranked.
+When both accept, one transaction creates the live match, deck snapshots,
+matchmaking receipt, and both rating inputs. Any territory grants are consumed
+and snapshotted there as well.
 
-Terminal live-match completion and rating settlement must share **one**
-database transaction. Lock the match and both player ratings in stable ID
-order; use the live result, snapshotted opponents/ratings/counts and the
-approved Elo formula to write both ledger entries, increment both current
-ratings, and create one match-keyed settlement receipt. The deferred check
-rejects a nonterminal or mismatched winner/reason, a missing ledger side, an
-invalid expected score or delta, and current ratings not backed by that
-ledger. A unique settlement key prevents replay from applying ratings twice;
-the runtime must return the persisted receipt for identical retries. Any
-failure rolls back the live terminal transition as well as both rating
-updates. A deferred guard rejects any ranked live-match completion without a
-settlement in the same transaction; issue `#266` integrates settlement
-inside the existing live completion coordinator. CPU, async, and casual live
-matches cannot be linked to a ranked settlement without an accepted proposal
-and match receipt.
+An active queue protects its selected deck from deletion. Once terminal, deleting
+the deck clears the optional reference without removing queue history.
 
-For season closure, cancel remaining queue/proposal state, drain ranked
-matches, snapshot established users' competition ranks, insert one close
-receipt and change the season to `closed` in one transaction. Deferred checks
-reject missing settlements, active queue/proposals, incomplete archives,
-incorrect competition ranks, or mismatched totals. An active season is exactly
-28 days from actual activation; waiting scheduled seasons do not silently
-shorten their active period. When populating the next season, carry the
-previous closed season's rating with the reviewed soft-reset rule or seed 1000
-for a new player; match counts and provisional status start over. Closed
-season rows, archived results, ledger entries, snapshots, and receipts cannot
-be mutated or deleted.
+## Rating settlement
 
-## Indexes and privacy
+<div className="diagram-scroll" role="region" aria-label="Ranked live creation and atomic terminal settlement" tabIndex={0}>
 
-The schema indexes searching claims, queue lease expiry, proposal deadlines,
-player queue and ledger history, established current standings, archived
-standings, player season history, and closed-season browsing. Indexed public
-standings still require a server-enforced bound and stable pagination. No raw
-location, trust evidence, accepted trivia answer, bearer token, or opponent
-candidate list is stored by this migration. Queue and proposal internals
-remain in `private` with public grants revoked. Retained results use stable
-profile-free actor keys after account deletion.
+```mermaid
+flowchart TB
+    accTitle: Ranked authority starts with an accepted proposal
+    accDescr: An accepted proposal creates a live match and immutable season, policy, and rating inputs. Terminal live completion commits the rating settlement, both ledger entries and current ratings, and a territory contribution decision in one transaction.
 
-Before account-deletion cleanup removes owned decks, it cancels any searching
-queue and any awaiting proposal involving the player in the same transaction.
-Both proposed queue entries become terminal and pending proposal responses
-become system-cancelled; already accepted responses remain historical facts.
-The other player's deck is untouched. A failed cleanup rolls back the queue,
-proposal, deck, and identity changes together.
+    Proposal["Both players accept<br/>Eligibility rechecked"]
+    Start[("Atomic match creation<br/>Live snapshots, matchmaking receipt,<br/>season, policy, and rating inputs")]
+    Live["Live battle<br/>Shared rules and authoritative deadlines"]
+    Settle[("Atomic terminal settlement<br/>Result, receipt, both rating ledgers,<br/>current ratings, and territory decision")]
 
-## Deployment and verification
+    Proposal --> Start
+    Start --> Live
+    Live --> Settle
 
-Apply migrations `0047`, `0050`, `0051`, and `0052` through the guarded
-[database release procedure](database-release-procedure.md). They are additive,
-do not backfill historical casual live matches or automatically create a
-season. The API adds ranked routes and a configurable worker interval. After
-application, correct defects with a **new** migration rather than editing a
-recorded checksum. An operator must still schedule a season before ranked play
-becomes available; see [ranked operations](../deployment/ranked-operations.md).
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class Start,Settle authority;
+```
 
-`apps/api/tests/ranked-persistence.integration.test.ts` creates a disposable
-test database, upgrades from the preceding migration set, verifies migration
-reruns, tests queue and proposal concurrency, runs account deletion against
-ranked queue history, completes real live-match rows with paired rating
-settlements, and checks closed archive immutability and soft reset. These are
-test-database checks, not evidence of a production
-migration, player acceptance, or a deployed ranked match.
+</div>
 
-The territory persistence integration suite creates genuine ranked settlement
-fixtures before testing source-result uniqueness so territory history cannot be
-seeded from a second or fabricated battle authority. See
-[Contested-campus territory persistence](contested-campus-territory-persistence.md).
+A matchmaking receipt makes a battle ranked. CPU, async, and casual live results
+cannot acquire a rating settlement without that accepted proposal and receipt.
+Existing casual battles are not converted retroactively.
 
-## AI declaration
+Terminal completion locks the match and both rating rows in stable order. It
+uses immutable pre-match inputs and the authoritative winner to write both
+ledger entries, update current ratings, and save one settlement receipt.
 
-This page and the issue `#263` implementation were drafted and reviewed with
-assistance from Codex[GPT-5.6 Sol], Codex[GPT-5] (issue `#266` update), and
-ChatGPT-Web[GPT-5.6 Sol] (issue `#268` persistence update).
+Deferred checks reject missing ledger sides, mismatched terminal results,
+invalid calculations, or current ratings not backed by the ledger. A unique
+match key makes settlement replay safe. Any failure rolls back the live result,
+both ratings, and the associated
+[territory decision](contested-campus-territory-persistence.md).
 
-This account-deletion update was edited with assistance from Codex[GPT-6].
+## Season closure
+
+New matches stop when the season enters `closing`. Existing ranked battles
+retain their original season and policy and must finish and settle.
+
+The season service then seals territory contributions and final windows,
+archives established-player standings, records reconciled close counts, and
+marks the season `closed` in one transaction. Incomplete matches, queue state,
+settlements, or archives prevent closure.
+
+A due scheduled successor activates only after the previous season closes.
+Its **28-day** active period starts at actual activation. Rating seeds use the
+previous closed season's soft reset, or the initial value for a new player;
+match counts and placement status restart.
+
+Closed season facts, rating inputs, ledger entries, and settlement receipts
+remain immutable under ordinary writes.
+
+## Standings, privacy, and deletion
+
+Current standings include active players who completed placements. The caller's
+provisional rating remains available privately. Competition rank handles ties;
+stable ordering and bounded pagination make traversal deterministic.
+
+Current standings traversals use private **10-minute** viewer-bound snapshots.
+They freeze competitive facts while Player Names resolve from current account
+state. Closed archives also store competitive facts without copying names.
+
+Queue candidates, decks, proposals, raw location, and trust evidence are not
+standings fields. Public-schema tables still require authenticated projections.
+
+Account deletion cancels active queue/proposal state before owned-deck cleanup.
+It removes personal ratings, archive rows, and standings-cache entries.
+Shared receipts and ledgers retain profile-free actors, preserving the opponent's
+result. See [Account retention](account-deletion-retention.md).
+
+Ranked rating is separate from
+[permanent progression](player-progression-persistence.md); ranked live results
+do not create point awards.
+
+**AI declaration:** Prepared and updated with assistance from
+Codex[GPT-5.6 Sol], Codex[GPT-5], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-6].

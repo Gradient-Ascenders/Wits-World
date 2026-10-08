@@ -1,259 +1,155 @@
 ---
-title: 'Contested-campus territory persistence'
+title: 'Territory storage'
 ---
 
-# Contested-campus territory persistence
+# Territory storage
 
-## Scope
+Territories connect reviewed campus boundaries to ranked results and versioned
+ownership. They use the ranked settlement as their battle authority, then derive
+influence and hourly ownership. Challenge owner bonuses have a separate saved
+eligibility and award boundary.
 
-Migration `0053_persist_contested_territory.sql` implements issue `#268`, the
-persistence foundation for the Advanced-tier
-[`territory-v1` policy](../requirements/contested-campus-zone-policy.md).
-Migration `0054_implement_contested_territory_runtime.sql` implements the
-issue `#270` runtime persistence without rewriting `0053`: private short-lived
-zone grants, immutable ranked match snapshots, season-close sealing, final
-partial settlement support, and owner-bonus snapshots/decisions. The API then
-calculates contribution eligibility and deterministic ownership from those
-contracts. Map presentation remains issue `#271`.
+[Territory rules](../requirements/contested-campus-zone-policy.md) owns thresholds,
+limits, and player controls. The [territory API contract](../architecture/contested-campus-territory-api-contract.md)
+defines location claims and safe read projections.
 
-The existing ranked subsystem remains the only rating and battle authority. A
-territory contribution decision must reference one committed
-`private.ranked_rating_settlements` row and its authoritative winner; CPU,
-asynchronous, casual live, incomplete, or otherwise non-ranked results cannot
-be used as a territory source through this schema.
+## Stored model
 
-## Stored relations
+| Relations                                        | Responsibility                                                             |
+| ------------------------------------------------ | -------------------------------------------------------------------------- |
+| `private.territory_policy_versions`              | Immutable eligibility, influence, settlement, and bonus policy.            |
+| `territory_zones`                                | Reviewed geometry, sources, definition version, and lifecycle.             |
+| `private.territory_zone_grants`                  | Short-lived queue-bound eligibility and one-time consumption.              |
+| `private.territory_ranked_match_snapshots`       | Immutable per-participant zone/policy context at match creation.           |
+| `private.territory_contribution_decisions`       | Exactly 1 accepted or excluded decision per ranked source match.           |
+| `private.territory_influence_contributions`      | Append-only accepted influence.                                            |
+| Private settlement receipts and totals           | Zone/season/window result, immutable counts, tie inputs, and input digest. |
+| Private ownership versions and current ownership | Authoritative append-only history and a rebuildable latest-state pointer.  |
+| `private.territory_season_close_receipts`        | Exactly-once season contribution/settlement seal.                          |
+| Private owner-bonus snapshots and decisions      | Challenge-start eligibility and exactly-once completed bonus outcome.      |
 
-| Relation                                    | Responsibility                                                                                                                |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `private.territory_policy_versions`         | Immutable `territory-v1` constants and reviewed policy identity.                                                              |
-| `public.territory_zones`                    | Independently versioned WGS 84 `MultiPolygon` zone definitions, provenance, and lifecycle.                                    |
-| `private.territory_contribution_decisions`  | Exactly one accepted or excluded territory decision per authoritative ranked source match.                                    |
-| `private.territory_influence_contributions` | The append-only one-point ledger for accepted decisions only.                                                                 |
-| `private.territory_settlement_receipts`     | One committed receipt for a zone, ranked season, and fixed hourly window, including before/after owner and state versions.    |
-| `private.territory_settlement_totals`       | Immutable per-player accepted counts, first-contribution tie-break input, and eligibility snapshot for one receipt.           |
-| `private.territory_ownership_versions`      | Append-only owner state after activation, settlement, lifecycle changes, account deletion, and later season reset operations. |
-| `private.territory_current_ownership`       | Rebuildable one-row-per-zone projection pointing at the latest ownership version.                                             |
-| `private.territory_zone_grants`             | Short-lived queue-bound eligibility grants containing coarse evidence only; no latitude, longitude, accuracy, or path.        |
-| `private.territory_ranked_match_snapshots`  | Immutable per-participant zone/policy context consumed atomically when a ranked live match is created.                        |
-| `private.territory_season_close_receipts`   | Exactly-once seal proving all ranked sources and active-zone settlement reached one authoritative close instant.              |
-| `private.territory_owner_bonus_snapshots`   | Challenge-start ownership/date eligibility frozen from authoritative event placement and current ownership.                   |
-| `private.territory_owner_bonus_decisions`   | Exactly-once bonus outcome with a unique awarded player/Johannesburg-date boundary.                                           |
+Private tables have `PUBLIC` privileges revoked. Public-schema zone storage
+still requires authenticated, shaped API reads.
 
-Relations in the `private` schema have privileges revoked from PostgreSQL
-`PUBLIC`. `public.territory_zones` is a database-schema placement, not a browser
-permission: future API reads still require server-side authentication,
-validation, and response shaping.
+## Reviewed boundaries and lifecycle
 
-## Policy and reviewed geometry bootstrap
+Zones store nonempty, valid WGS 84 `MultiPolygon` geometry in SRID 4326.
+GiST indexes support containment. Active zones cannot overlap in positive area;
+shared boundaries are permitted, but do not establish unambiguous eligibility.
 
-`territory-v1` persists the issue `#267` constants rather than taking them from
-browser configuration: two-minute claim age, five-minute grant lifetime,
-24-hour expired-grant cleanup deadline, one point per eligible win, five prior
-ranked settlements, five accepted contributions per player/zone/Johannesburg
-date, hourly settlement, three-point ownership threshold, and the reviewed
-owner-bonus settings. The policy row cannot be updated or deleted.
+Only 1 active or suspended definition of a logical zone can exist. Boundary
+replacement creates a new reviewed version and retires the old definition.
+Copied placement provenance does not link territory lifecycle to later
+placement edits.
 
-The initial zone definitions are `east_campus`, `west_campus`, and
-`arts_and_community`. Their geometry, display name, source URLs, review evidence,
-and source placement identity are copied from the reviewed `placement-v1`
-catalogue into `public.territory_zones`. The copied geometry is an immutable
-snapshot. A later placement status or geometry version cannot silently change a
-territory boundary or owner.
+Activation creates unowned state. Suspension and retirement append unowned
+versions without removing history. Reactivation starts unowned; retirement
+is terminal.
 
-Migrations run before repeatable seeds on a clean database. For that reason the
-migration installs `private.bootstrap_territory_v1_zones()` and invokes it once:
+`territory_ownership_versions` is the authority. `territory_current_ownership`
+points to the latest version and can be rebuilt from history. Deferred checks
+reject a pointer to an older state.
 
-- an existing seeded database is bootstrapped during migration `0053`;
-- a clean database initially has no placement rows, so the call is a no-op; and
-- `database/seeds/0004_territory_catalogue.sql` invokes the same function after
-  `0003_event_placement_catalogue.sql` creates the reviewed source catalogue.
+## Grants and ranked contribution
 
-Rerunning the seed verifies the copied definition/provenance but never updates an
-existing territory lifecycle. A suspended or retired territory zone therefore
-stays suspended or retired.
+<div className="diagram-scroll" role="region" aria-label="Zone eligibility, ranked influence, and ownership settlement" tabIndex={0}>
 
-Every zone geometry must be a non-empty valid `MultiPolygon` in SRID 4326. A
-GiST index supports future PostGIS containment work. A serialized definition
-guard rejects positive-area intersections between simultaneously active zones;
-shared boundaries are permitted because boundary points are resolved later as
-ambiguous by the eligibility service. Only one active or suspended definition
-of a logical zone may exist at a time. Replacing a reviewed boundary requires a
-new definition version and retirement of the previous current definition.
+```mermaid
+flowchart TB
+    accTitle: Ranked results feed influence before hourly ownership settlement
+    accDescr: A validated location creates a queue-bound grant. Ranked match creation consumes it into an immutable zone snapshot. Terminal rating settlement records an accepted or excluded contribution decision. Accepted influence enters its hourly window, whose settlement appends ownership history and updates the current pointer.
 
-## Zone lifecycle and ownership state
+    Grant[("Queue-bound zone grant<br/>No stored player coordinates")]
+    Match[("Ranked match creation<br/>Consume grant and freeze zone context")]
+    Result[("Terminal ranked transaction<br/>Rating settlement and contribution decision")]
+    Influence[("Accepted influence ledger<br/>Excluded decisions add no influence")]
+    Ownership[("Hourly settlement<br/>Receipt, totals, ownership version,<br/>and current-state pointer")]
 
-The database permits the reviewed policy lifecycle:
+    Grant --> Match
+    Match --> Result
+    Result -->|Accepted| Influence
+    Influence --> Ownership
 
-```text
-pending_review -> active
-pending_review -> retired
-active         -> suspended
-active         -> retired
-suspended      -> active
-suspended      -> retired
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class Result,Ownership authority;
 ```
 
-Retirement is terminal and definitions cannot be deleted. Activating a zone
-creates its first unowned ownership state. Suspending or retiring a zone appends
-another unowned state in the same transaction, preserving all prior ownership
-versions. Reactivation appends a fresh unowned state rather than restoring the
-previous owner.
+</div>
 
-`private.territory_ownership_versions` is authoritative history. State versions
-increase exactly once for each appended state and carry the previous owner so a
-consumer can distinguish a real transfer from an hourly settlement that retains
-the incumbent. `private.territory_current_ownership` stores only a pointer to
-the latest version. `private.rebuild_territory_current_ownership()` deletes and
-recreates that projection from maximum authoritative state versions. A deferred
-integrity guard rejects a projection pointer that does not reference that zone's
-latest history row, so the projection is not a second source of truth.
+The API evaluates the reported point and accuracy envelope with PostGIS. Accepted
+grants save the player, queue, zone, policy/lifecycle version, timing, and use
+state. They save no submitted latitude, longitude, accuracy, or movement path.
 
-## Contribution decisions and append-only influence
+Match creation requires a valid, unconsumed grant and unchanged eligible zone
+context. Grant consumption and the ranked match snapshot commit together.
+Matchmaking itself continues to use rating rather than zone proximity.
 
-A contribution decision is keyed by `source_match_id`. Its composite foreign key
-binds the source to the existing ranked settlement's match, season, and ranked
-policy, and a trigger verifies that `winner_player_id` is the settlement's
-winner. This makes retries converge on one row and prevents another match type
-from being presented as ranked territory evidence.
+The contribution decision references the authoritative ranked settlement and
+winner. CPU, async, casual live, and unfinished battles cannot supply influence.
+An excluded result saves a reason and cannot later become accepted.
 
-An accepted decision must name one active territory zone and active local
-player and records one point. An excluded decision records zero points with a
-safe machine-readable exclusion reason and cannot later be changed into an
-accepted result. A deferred integrity check requires every accepted decision to
-have exactly one influence row and every excluded decision to have none in the
-same transaction.
+Contribution checks use the winner's saved pre-match placement status and zone,
+then recheck account, zone, completion reason, and daily cap. An accepted decision
+has exactly 1 influence row; an excluded decision has none. All of this commits
+with the ranked result.
 
-`private.territory_influence_contributions` is append-only. Before insert it
-locks and rechecks the contributing player, then locks the target territory
-zone, samples `clock_timestamp()`, and derives
-the calendar date in `Africa/Johannesburg`. This gives the later settlement
-runtime the required boundary rule: a contribution waiting behind settlement
-receives its authoritative time only after settlement releases the zone lock and
-therefore falls into the next half-open window. The schema indexes both
-`(zone, season, time, player)` settlement scans and `(zone, player, local date)`
-daily-cap checks. The database rejects a contribution once the persisted daily
-cap has already been reached; issue `#270` must also acquire the zone lock before
-its accepted-decision calculation so concurrent API instances see the latest
-committed count before deciding acceptance.
+## Settlement and concurrency
 
-Contribution decisions and accepted influence cannot be updated or deleted.
+Contribution and settlement paths use player locks before the same zone lock.
+Accepted influence receives its database timestamp after that zone lock, so a
+contribution waiting behind settlement falls into the next half-open window.
+Daily-cap dates use `Africa/Johannesburg`.
 
-## Settlement receipts, totals, and concurrency
+A unique zone/season/window key identifies each settlement receipt. It saves
+before/after owner, expected/resulting state version, policy, and input digest.
+Immutable totals retain accepted counts, earliest contribution, and account
+eligibility. Deferred checks compare those facts with the ledger.
 
-One `private.territory_settlement_receipts` row identifies a zone, ranked
-season, policy, Johannesburg-aligned half-open one-hour window, input digest,
-owner before and after, expected state version, resulting state version, and
-authoritative settlement time. The unique window key makes a retry discover the
-existing receipt instead of committing a second settlement. A receipt insert
-locks the zone row and rejects an inactive zone, a future/non-hourly window, an
-inactive/closed season, an unavailable new owner, or a stale expected owner or
-state version.
+The service applies the policy's threshold and deterministic tie rules, then
+commits the receipt, totals, new ownership version, and current pointer together.
+A retained owner still produces a new state version without implying a transfer.
 
-After a receipt is inserted, the database appends the corresponding ownership
-version and refreshes the current projection inside the same transaction. A
-same-owner receipt advances state without implying a transfer: the history row
-has the same previous and resulting owner. A stale writer cannot skip a state
-version.
+Maintenance catches up fixed hourly windows in order, using separate transactions
+per window. Season closure first drains ranked sources, settles any final partial
+window to one close instant, seals contributions, and appends unowned reset state
+before the ranked season closes.
 
-`private.territory_settlement_totals` snapshots the accepted count and earliest
-accepted contribution for each contributing player plus the service's
-account-eligibility decision. Deferred validation compares those immutable count
-and earliest-time facts with the accepted contribution ledger for the receipt's
-window. The issue `#270` settlement service now chooses the winner deterministically:
-minimum threshold, highest count, incumbent tie retention, earliest accepted
-contribution, then stable internal UUID. The service writes the immutable totals
-and SHA-256 input digest before the database advances ownership state. Normal
-receipts remain exactly one cadence; `0054` adds a distinct `season_final` kind
-for the closing partial window and an exactly-once season-close seal.
+## Challenge owner bonuses
 
-The required runtime lock boundary is one territory-zone row, with player locks
-ordered before that zone boundary. Future ranked completion must finish its
-ranked match/rating locks, lock the contributing player, lock the relevant
-territory zone, decide the contribution, then insert the accepted contribution
-so its time is sampled after that zone lock. Settlement locks any before/after
-owners in stable UUID order before locking the same zone. Account deletion
-already locks the player by updating its lifecycle before it clears owned zones.
-This common player-then-zone order prevents ownership or influence from being
-committed for a player whose deletion won the race, while preventing a
-contribution from being silently omitted from both adjacent windows.
+Challenge start resolves the event's effective location, current active zone
+ownership, and Johannesburg start date. It saves a private eligibility snapshot
+under the same player/zone locking boundary.
 
-## Retirement, deletion, and privacy
+Completion saves an immutable outcome and, when eligible, an extra Common card
+with `source_territory_bonus_id`. A partial unique player/date index permits at
+most 1 awarded bonus across all zones. Starting an eligible attempt does not
+reserve that day's award.
 
-Suspension and retirement append unowned state but never delete geometry,
-contribution decisions, accepted influence, settlement receipts/totals, or
-ownership versions. Retired zones remain historical records and cannot be
-reactivated.
+Later ownership or placement changes do not rewrite saved eligibility. Bonus
+decisions and cards commit with normal challenge completion and progression.
+[Reward storage](challenge-reward-persistence-design.md) defines that transaction;
+[Territory rules](../requirements/contested-campus-zone-policy.md#owner-card-bonus)
+owns the award conditions.
 
-When a player's lifecycle changes from `active` to `deletion_pending`, migration
-`0053` immediately appends an `account_deletion` ownership version for every
-currently owned zone and makes each projection unowned. Historical player
-references remain against a profile-free historical actor key. The standard
-account-deletion flow later removes the player row, so
-history can render `Deleted player` without rewriting counts, receipt order, or
-ownership dates.
+## Privacy, retention, and deletion
 
-Territory persistence stores no latitude, longitude, accuracy envelope, path,
-email, Auth0 issuer/subject, bearer token, trust score, deck, opponent detail, or
-raw match payload. The source ranked match ID, zone, and local player UUID remain
-private evidence. Future player-facing APIs must expose only the privacy-limited
-fields approved by the territory policy.
+Player views use named owners, anonymous leading influence counts, and the
+caller's own allowance. They omit other players' grants, queues, contribution
+source matches, and private evidence. Ownership describes past participation,
+not a player's current location.
 
-## Verification
+Expired grants become cleanup-eligible **24 hours after expiry**; ranked
+maintenance runs their cleanup. Consumed context remains in immutable match
+snapshots. Territory storage retains curated geometry, but no submitted player
+coordinate or path history.
 
-`apps/api/tests/territory-persistence.integration.test.ts` uses disposable test
-databases to cover both clean migration-plus-seed and upgrade paths. It checks
-the immutable policy, copied geometry/provenance, GiST and current-definition
-indexes, active-zone overlap rejection, independence from placement lifecycle,
-seed idempotency without reactivation, exactly-once contribution persistence
-under concurrent retries, append-only guards, versioned settlement history,
-stale-state rejection, current-projection rebuild, account-deletion owner
-removal, and retirement history. The ranked contribution fixture creates a real
-ranked live-match settlement rather than fabricating a second battle authority.
+Deletion immediately appends unowned state for any currently owned zone.
+Completion removes personal grants and owner-bonus records, while shared
+contributions, settlement facts, and ownership history retain profile-free actors.
+History displays **Deleted player**. Zone retirement preserves that history.
 
-Run migration tests before the focused database suite. Local database tests are
-verification against the disposable `TEST_DATABASE_URL`; they are not evidence
-that a production migration or worker has run. Full database validation remains
-a CI/release gate under the documented
-[database release procedure](database-release-procedure.md).
+See [Ranked storage](ranked-competition-persistence.md) and
+[Account retention](account-deletion-retention.md).
 
-## AI declaration
-
-This page and the issue `#268` implementation were generated and reviewed with
-assistance from ChatGPT-Web[GPT-5.6 Sol].
-
-## Runtime grants, finalization, and owner bonus (`0054`)
-
-`private.territory_zone_grants` deliberately has no coordinate or accuracy
-columns. The API evaluates the untrusted claim with PostGIS and persists only
-the queue/player/zone/policy/lifecycle decision, device acquisition time,
-server issue/expiry time, and one-time consumption state. Used grants may be
-cleaned after the policy deadline because the immutable ranked-match snapshot
-retains the gameplay provenance needed for settlement.
-
-Ranked terminal settlement writes the territory contribution decision inside
-the same transaction as the authoritative ranked rating settlement. The API
-locks the contributing player before the target zone, rechecks the daily cap,
-and samples the accepted contribution timestamp only after the zone lock. The
-same player-before-zone ordering is used by settlement and account-deletion
-interactions. A stale ownership version or a contributor discovered while the
-zone boundary is being acquired causes a bounded rollback-to-savepoint retry.
-
-Season closure freezes one database close instant after all ranked source
-matches have settled. Complete missed hourly windows are caught up first; each
-active zone then settles the remaining partial interval to that same instant.
-`private.territory_season_close_receipts` seals contribution history, and an
-unowned `season_reset` ownership version is appended before the ranked season
-may become closed.
-
-Owner bonus state is private. Challenge start freezes effective event-location
-ownership and the Johannesburg bonus date; completion writes an immutable safe
-outcome. A partial unique index permits at most one `awarded` decision per
-player/date, and the owned bonus card references that decision while continuing
-to use the existing event-completion card ownership lifecycle. Eligible card
-definitions are active, published, reward-eligible, Common, and non-evolved.
-
-Player-facing route and privacy details are documented in the
-[contested-campus territory API contract](../architecture/contested-campus-territory-api-contract.md).
-
-This account-deletion update was edited with assistance from Codex[GPT-6].
+**AI declaration:** Prepared and updated with assistance from
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-6].

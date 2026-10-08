@@ -4,114 +4,119 @@ title: 'Account deletion and retained data'
 
 # Account deletion and retained data
 
-Voluntary deletion removes the Auth0 user and physically removes the local
-`public.players` account. A later Auth0 registration creates a new player UUID
-with normal starting state; no old card, point, achievement, rating, or rank is
-restored. Permanent banning is a separate, unimplemented product lifecycle.
-The forward migration also purges and removes previously completed local
-`deleted` tombstones left by the former retention model.
+Voluntary deletion removes the Auth0 user, the local player row, and personal
+gameplay data. Required shared history remains under a profile-free historical
+actor. A later registration receives a new UUID and normal starting state.
 
-## Request and external boundary
+## Request and transaction boundaries
 
-`POST /api/v1/auth/account-deletion` requires an active interactive player,
-exact confirmation, and a recent Auth0 ID token for the same identity. The API
-first commits a `pending` deletion request and `deletion_pending` account state.
-This immediately denies normal API and developer-key activity and finalizes
-dependent gameplay. The API then deletes the Auth0 user via the Management API;
-`404` means the desired provider state was already reached. Finally, one local
-transaction purges account-owned data, removes the player row, creates a
-short-lived old-token denial marker, and marks the request completed.
+`POST /api/v1/auth/account-deletion` requires an authenticated interactive
+account, confirmation `DELETE_MY_ACCOUNT`, and a recent Auth0 ID token for
+the same issuer and subject. The default recent-authentication window is
+**5 minutes**.
 
-Auth0 and PostgreSQL do not share a transaction. A provider failure or ambiguous
-response leaves a locked account for automatic retry. A local failure after
-provider deletion rolls back the entire local purge. The worker retries the
-provider call (`404` is success) and the local transaction. Concurrent completion
-calls serialize on the deletion request and identity locks. A completed request
-is returned without repeating cleanup. The scheduler processes pending requests
-and removes completed request receipts after twelve months and denial markers
-after their thirty-day expiry.
+<div className="diagram-scroll" role="region" aria-label="Account deletion across PostgreSQL and Auth0" tabIndex={0}>
 
-## Purged records
+```mermaid
+flowchart TB
+    accTitle: Account deletion locks access before external deletion and local purge
+    accDescr: The API commits a pending request and locked account state in PostgreSQL. It deletes the Auth0 user, then commits the personal-data purge and completed receipt in another local transaction. Failed external or local work remains pending for automatic retry.
 
-The deletion transaction removes:
+    Request["Validated deletion request"]
+    Pending[("PostgreSQL transaction<br/>Pending request, gameplay closure,<br/>and deletion_pending state")]
+    Provider["Delete Auth0 user<br/>Already absent also counts as success"]
+    Purge[("PostgreSQL transaction<br/>Purge personal data, rekey retained history,<br/>remove player, and complete receipt")]
+    Retry["Automatic retry<br/>Account stays locked"]
 
-- the player account, Auth0 issuer/subject, Player Name, and role;
-- owned cards, starter grants, decks and selections, retired wallet, and
-  developer API keys;
-- challenge attempts, answers and snapshots, event completions and their card
-  reward outcomes, and retired coin ledger rows;
-- active and completed CPU match state, rounds, actions, and deck snapshots;
-- point awards, daily and monthly progression, streaks, total points, and
-  achievement unlocks;
-- player card-evolution transactions and consumed-copy snapshots;
-- precise movement evidence and derived movement decisions at request time;
-- seasonal player rating rows, personal season-archive rows, and current
-  standings pagination cache entries;
-- territory grants and unfinished owner-bonus state; completed personal
-  owner-bonus decisions and snapshots are removed during completion;
-- trust signals and score snapshots without a retained formal case.
+    Request --> Pending
+    Pending --> Provider
+    Provider -->|Success| Purge
+    Provider -->|Failure or uncertain outcome| Retry
+    Purge -->|Transaction failure| Retry
+    Retry --> Provider
 
-The cleanup function and its deletion-only trigger guards require a matching
-`deletion_pending` player and request. Ordinary immutability and foreign-key
-protection remain in force outside that transaction. `private.player_history_actors`
-is a private UUID-only reference table. At completion, retained shared
-references are rewritten from the old player UUID to a fresh random historical
-actor UUID and the old actor row is removed in the same transaction. The table
-keeps no mapping between them, Auth0 identity, profile, role, status, or
-progression. New registrations receive a new player UUID and cannot inherit
-those rows. Historical records can still be pseudonymous through their own
-content or external copies; access controls and retention remain privacy-policy
-decisions.
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class Pending,Purge authority;
+```
 
-## Shared and moderation history
+</div>
 
-Deletion does not cascade through shared content or other players' outcomes.
-Pending PvP invitations become terminal and active PvP matches reach an
-authoritative outcome before the account is locked. Completed asynchronous and
-live match outcomes, ranked settlement and ledger evidence, consumed territory
-contributions and ownership versions, and completed trade provenance remain
-against a profile-free historical actor where needed to keep counterparties'
-records coherent. Active ranked queues and open trade offers become terminal;
-current territory ownership is closed. Personal rating and standings rows are
-removed. Cached asynchronous PvP retry responses linked to the deleted player
-replace a copied Player Name or player UUID with `Deleted player` while keeping
-the receipt for idempotency. Player-facing history resolves the absent account
-as `Deleted player`.
+The first transaction closes dependent gameplay and commits the deletion request
+with `deletion_pending`. Normal account and developer-key access then stops.
+Precise movement evidence and active trust signals are removed at this boundary.
 
-Published events, challenges, questions, cards, trails, campaigns, placement
-definitions, and their audit records remain. Author/reviewer references point
-to a profile-free historical actor after account removal, rather than deleting
-shared content.
+Auth0 and PostgreSQL do not share a transaction. An Auth0 failure leaves the
+locked request for retry; a provider `404` counts as successful deletion.
+Local cleanup is atomic: if it fails after Auth0 deletion, the purge rolls back
+and the worker retries both boundaries.
 
-A formal open trust case keeps its review state and audit trail when deletion
-starts. Safe evidence summaries, reviewer decisions, restriction and appeal
-history, and associated score snapshots remain under bounded retention rules;
-an unfinished case expires 90 days after deletion completion, as confirmed for
-this redesign. Formally closed cases keep their existing 12-month rule after
-final resolution. Raw
-movement evidence and active trust signals are removed; ordinary progression is
-not retained because of an investigation. An already-finalized case retains its
-existing bounded audit history. These retained records no longer point to a
-`players` account row. Retained restrictions are historical audit records and
-cannot enforce capabilities or appear active without an active player account.
-Permanent ban/Auth0 block behavior is future
-work, not part of this deletion lifecycle.
+Request and identity locks serialise concurrent completion. Completed requests
+return their saved state without repeating cleanup. Signing out or closing the
+browser does not cancel a committed deletion request.
 
-Reviewers can still read a retained case under `Deleted player` after account
-removal. The case is read-only because reviewer actions require an active
-target player. Its latest score snapshot remains available until the case's
-retention boundary so the case detail does not disappear prematurely. Free-form
-appeal text and reviewer reason notes are redacted at completion because they
-could contain copied names, Auth0 subjects, or account UUIDs; structured case,
-decision, and appeal metadata remain until the applicable cutoff.
+## Personal data removed
 
-The deletion request receipt stores a random request ID, times, status, and
-safe failure category, without a player FK. The private old-token marker stores
-only a salted issuer/subject digest, issue-time cutoff, and expiry; it prevents
-pre-deletion JWTs from creating another account while they may remain valid.
+| Data                             | Purge scope                                                                                                |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Account and profile              | Player row, Auth0 mapping, Player Name, role, showcase fields, favourites, and visibility preferences.     |
+| Cards and decks                  | Owned cards, starter grants, decks, selections, and personal evolution/consumption records.                |
+| Challenges and CPU battles       | Attempts, answers, snapshots, completions, rewards, and active/completed CPU match records.                |
+| Progression and competition      | Points, activity, streaks, achievements, personal seasonal ratings, archive entries, and standings caches. |
+| Location and territories         | Precise movement and derived journey decisions, territory grants, and personal owner-bonus state.          |
+| Credentials and retired currency | All developer keys and verifiers, retired wallet, and personal coin-ledger rows.                           |
 
-This describes application database behavior. Backup, provider-log, exported
-case, and device-local retention require separate operational policy and
-verification; the implementation alone is not a POPIA compliance finding.
+Database cleanup requires the matching pending player and deletion request.
+Normal writes retain their immutability and foreign-key protections.
 
-This page was revised with assistance from Codex[GPT-6].
+## Shared history retained
+
+Deletion closes pending PvP invitations, active matches, ranked queues, open
+trade offers, and current territory ownership through their normal terminal
+transitions. Counterparties keep coherent outcomes.
+
+Completed async and live PvP results, ranked settlement evidence, consumed
+territory contributions and ownership history, and completed trade provenance
+can remain. Published content and its review/audit history also remain.
+
+At completion, retained actor references change from the old player UUID to
+a fresh random UUID in `private.player_history_actors`. That table stores no
+profile, Auth0 identity, or old-to-new mapping. The original actor row is removed.
+Player-facing history resolves the absent account as **Deleted player**;
+retained async retry responses redact copied Player Names and player IDs.
+
+These records do not restore ownership, progression, ratings, or restrictions
+to a later registration. Historical content or external copies may still be
+pseudonymous; a profile-free actor is not a guarantee of anonymity.
+
+## Moderation retention
+
+Open formal trust cases retain safe evidence, structured decisions, restriction
+and appeal history, and required score snapshots. They become read-only because
+review actions require an active target account. Free-text reviewer reasons and
+appeal text are redacted at completion.
+
+Unfinished retained cases expire **90 days after deletion completion**.
+Finalised cases retain their existing **12-month governance** boundary.
+Retained restrictions are audit history and cannot enforce capabilities without
+an active account. A case does not preserve personal progression or precise
+movement evidence.
+
+[Trust storage](trust-persistence.md) defines the case graph and retention anchors.
+Permanent banning is separate and is not implemented by this deletion workflow.
+
+## Receipts and scope
+
+A completed `account_deletion_requests` receipt retains its random request ID,
+timestamps, status, and safe failure category for **12 months**. It has no
+player foreign key.
+
+A private token-denial marker retains a salted issuer/subject digest, issue-time
+cutoff, and **30-day** expiry. It prevents pre-deletion access tokens from
+provisioning another account while they may remain valid. Cleanup removes
+expired markers and completed receipts.
+
+These rules describe application database behaviour. Backup copies, provider
+logs, exported case files, and device-local data have separate retention
+boundaries; completing the database purge does not delete those copies.
+
+**AI declaration:** Prepared and updated with assistance from Codex[GPT-6].

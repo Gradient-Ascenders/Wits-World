@@ -22,9 +22,7 @@ Migration `0065_constrain_cpu_match_json_shapes.sql` validates existing CPU JSON
 outer shapes without rewriting history. Run the read-only `db:audit` command
 before release and inspect `structure.cpuJsonShapes` for incompatible rows.
 An incompatible row makes the migration fail transactionally; investigate its
-origin instead of automatically coercing historical state. See
-[production data and database quality](./data-quality-and-structure.md) for
-data-origin evidence and the separate runtime/migration credential cutover.
+origin instead of automatically coercing historical state.
 
 The Data and Infrastructure Lead executes manual procedures and owns the
 guarded Gitea deployment configuration. The API and Security Lead approves

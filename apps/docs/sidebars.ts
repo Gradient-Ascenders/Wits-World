@@ -163,7 +163,6 @@ const sidebars: SidebarsConfig = {
         category('Setup', [
           doc('development/getting-started', 'Getting started'),
           doc('database/neon-postgis-setup', 'Neon and PostGIS'),
-          doc('database/basic-demo-seed', 'Demo data'),
           doc('development/documentation-site', 'Documentation site'),
         ]),
         category(
@@ -200,7 +199,6 @@ const sidebars: SidebarsConfig = {
         category(
           'Database',
           [
-            doc('database/data-quality-and-structure', 'Data quality'),
             category('Events', [
               doc('database/event-schema', 'Schema'),
               doc('database/verified-event-content', 'Questions and sources'),

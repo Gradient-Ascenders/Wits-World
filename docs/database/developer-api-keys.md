@@ -4,102 +4,68 @@ title: 'Developer API key storage'
 
 # Developer API key storage
 
-## Purpose
+Developer keys authenticate the external read-only API. PostgreSQL stores a
+secret verifier and safe key metadata; the full reusable credential is returned
+only when created.
 
-Migration `0058_create_developer_api_access.sql` adds the private persistence
-needed for Wits World's external read-only developer API. The design keeps the
-reusable credential secret out of persistent storage while supporting named
-keys, immediate revocation, per-key rate limiting, and account-deletion cleanup.
+The [Developer API guide](../architecture/developer-api.md) owns key-management
+routes, public resources, rate limits, and response formats.
 
-## Relation
+## Stored fields
 
-`private.developer_api_keys` stores:
+`private.developer_api_keys` has no table privileges for `PUBLIC`.
 
-| Column            | Purpose                                                                     |
-| ----------------- | --------------------------------------------------------------------------- |
-| `id`              | Random internal credential UUID used for ownership and rate-limit identity. |
-| `owner_player_id` | Local Wits World account that created the key.                              |
-| `name`            | Trimmed human-readable application name, limited to 80 characters.          |
-| `public_id`       | Random 16-hex-character non-secret lookup identifier.                       |
-| `secret_hash`     | 32-byte SHA-256 verifier of the random secret component.                    |
-| `created_at`      | Creation timestamp.                                                         |
-| `last_used_at`    | Coarsened operational usage timestamp, updated at most once per minute.     |
-| `revoked_at`      | Immediate revocation timestamp, or `NULL` while active.                     |
+| Column            | Contract                                                       |
+| ----------------- | -------------------------------------------------------------- |
+| `id`              | Random internal credential UUID.                               |
+| `owner_player_id` | Owning local player; deletion is restricted until key cleanup. |
+| `name`            | Nonblank trimmed application name, at most 80 characters.      |
+| `public_id`       | Unique 16-character lowercase hexadecimal lookup identifier.   |
+| `secret_hash`     | 32-byte SHA-256 verifier of the random secret component.       |
+| `created_at`      | Creation timestamp.                                            |
+| `last_used_at`    | Nullable usage timestamp, updated at most once per minute.     |
+| `revoked_at`      | Null while active; set when revoked.                           |
 
-The table is in the `private` schema and grants no table privileges to
-`PUBLIC`. A unique constraint protects `public_id`; check constraints protect
-name, verifier length, public-ID format, and timestamp order.
+Database checks enforce identifier format, verifier length, and timestamp order.
 
-## Credential construction
+## Credential verification
 
-The server creates a credential in the form:
+The server generates an 8-byte public identifier and a 32-byte random secret.
+It assembles the credential in this format:
 
 ```text
 ww_api_<16 lowercase hex characters>_<43 base64url characters>
 ```
 
-The public identifier comes from 8 random bytes and the secret comes from 32
-random bytes. The client receives the assembled credential once. Only
-`public_id` and `SHA-256(secret)` are persisted.
+Only the public identifier and `SHA-256(secret)` are saved. SHA-256 verifies a
+random 256-bit machine secret here; it is not a human-password storage scheme.
 
-SHA-256 is used here as a verifier for a cryptographically random 256-bit
-machine secret, not as password storage for a human-chosen low-entropy value.
-Authentication locates the candidate row by the public identifier and compares
-the derived verifier using a timing-safe comparison.
+Authentication parses the credential, finds its public identifier, and compares
+the derived hash with a timing-safe comparison. It accepts only an unrevoked
+key belonging to an active account.
 
-## Active-key limit and concurrency
+## Creation and revocation
 
-Each account may have at most five active developer keys. Creation executes in
-a transaction and locks the owning `players` row before counting active
-credentials and inserting another. Concurrent create requests for one owner
-therefore serialize around the limit rather than both observing the same stale
-count.
+Each account can have **5 active keys**. Creation locks the owning player row
+before counting and inserting, so concurrent requests cannot exceed the limit.
+A deleting or unavailable owner cannot create a key.
 
-Revoked rows do not count toward the active limit and remain visible as safe
-metadata in Account settings.
+Revocation sets `revoked_at` idempotently. Subsequent authentication rejects
+the key. Revoked rows stop counting toward the limit and remain available as
+safe Account metadata; listing never returns a secret or verifier.
 
-## Account lifecycle
+## Account lifecycle and privacy
 
-Authentication joins the key to its owning player and accepts it only while the
-player lifecycle is `active`. Moving to `deletion_pending` therefore disables
-all of that account's keys immediately without waiting for asynchronous account
-cleanup.
+Entering `deletion_pending` disables all of the account's keys immediately.
+Deletion completion removes every key row, including revoked credentials and
+their verifiers.
 
-Migration `0058` also extends the existing additive
-`private.delete_player_owned_data(uuid, uuid)` wrapper chain. During local
-account-deletion completion it deletes all developer-key rows before invoking
-the previous cleanup implementation. No reusable credential or verifier is
-retained after the player row is removed.
+`last_used_at` is coarse operational metadata. Key storage adds no per-request
+history, endpoint history, IP address, or device fingerprint. The API logger
+redacts `X-API-Key`; credentials are accepted in that header rather than URLs.
 
-## Privacy and logging
+A key grants access to server-defined public read projections. It does not
+grant access to its owner's private player resources or allow gameplay writes.
 
-`last_used_at` is operational metadata only. This design does not add request
-history, endpoint history, IP-address storage, browser fingerprinting, or
-per-developer analytics. The API logger redacts the `X-API-Key` header, and
-credentials are not accepted from query parameters or URLs.
-
-The external data routes then project intentionally public fields rather than
-returning raw database records. The credential itself grants no access to the
-owner's private player resources.
-
-## Verification
-
-Focused automated coverage checks:
-
-- generation and one-time-secret semantics;
-- verifier-only persistence;
-- malformed/incorrect/revoked credential rejection;
-- the five-active-key limit under concurrent creation;
-- table privacy and verifier length;
-- immediate denial after account deletion starts; and
-- removal during account-deletion completion.
-
-See the [External developer API](../architecture/developer-api.md) for the HTTP
-contract and public resource boundary.
-
-## AI declaration
-
-This document was generated and edited with the assistance of:
-ChatGPT-Web[GPT-5.6 Sol].
-
-This account-deletion update was edited with assistance from Codex[GPT-6].
+**AI declaration:** Prepared and updated with assistance from
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-6].
