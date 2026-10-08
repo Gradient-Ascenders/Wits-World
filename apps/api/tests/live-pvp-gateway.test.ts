@@ -118,6 +118,40 @@ afterEach(async () => {
 });
 
 describe('live PvP WebSocket gateway', () => {
+  it('treats duplicate and stale notification versions as read-only hints', async () => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 1,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+    service.getCommittedEventMeta.mockResolvedValue(null);
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+    const before = messages(socket).length;
+    for (const version of [7, 7, 6, 8])
+      await gateway.broadcastMatch(MATCH_ID, version);
+    const after = messages(socket).slice(before) as {
+      type: string;
+      version: number;
+    }[];
+    expect(after).toHaveLength(3);
+    expect(
+      after.every(
+        (message) => message.type === 'match.snapshot' && message.version === 7,
+      ),
+    ).toBe(true);
+    expect(service.getCommittedEventMeta).toHaveBeenCalledTimes(4);
+    expect(service.submitAction).not.toHaveBeenCalled();
+    expect(service.resign).not.toHaveBeenCalled();
+    expect(service.processOverdueMatch).not.toHaveBeenCalled();
+  });
   it('waits for the notification subscription before loading the initial snapshot', async () => {
     const service = createService();
     service.redeemConnectionTicket.mockResolvedValue({

@@ -1,12 +1,16 @@
 import pg from 'pg';
 
-import type { DatabaseConfig } from '../config/database.js';
+import type {
+  DatabaseConfig,
+  ListenerDatabaseConfig,
+} from '../config/database.js';
 import {
   classifyDatabaseError,
   emitPoolEvent,
   instrumentPool,
   poolSnapshot,
   type PoolTelemetryLogger,
+  type PoolRole,
 } from './pool-observability.js';
 
 const { Pool } = pg;
@@ -37,6 +41,22 @@ export function createDatabasePool(
   databaseConfig: DatabaseConfig,
   { logger = defaultLogger }: CreateDatabasePoolOptions = {},
 ) {
+  return createPool(databaseConfig, logger, 'shared', 4);
+}
+
+export function createListenerDatabasePool(
+  databaseConfig: ListenerDatabaseConfig,
+  { logger = defaultLogger }: CreateDatabasePoolOptions = {},
+) {
+  return createPool(databaseConfig, logger, 'listener', 1);
+}
+
+function createPool(
+  databaseConfig: DatabaseConfig | ListenerDatabaseConfig,
+  logger: DatabasePoolLogger,
+  poolRole: PoolRole,
+  max: 4 | 1,
+) {
   const connectionUrl = new URL(databaseConfig.connectionString);
   const sslMode = connectionUrl.searchParams.get('sslmode');
   connectionUrl.searchParams.delete('sslmode');
@@ -44,10 +64,10 @@ export function createDatabasePool(
   const pool = new Pool({
     connectionString: connectionUrl.toString(),
     connectionTimeoutMillis: 5_000,
-    // Retain no permanent connection floor. Background maintenance is spaced
-    // far enough apart for this pool and a serverless database compute to idle.
+    // Retain no permanent connection floor. Released idle clients can expire;
+    // actual compute suspension also depends on scheduler mode and traffic.
     idleTimeoutMillis: 75_000,
-    max: 4,
+    max,
     min: 0,
     ssl:
       sslMode === null || sslMode === 'disable'
@@ -59,6 +79,7 @@ export function createDatabasePool(
     emitPoolEvent(logger, {
       event: 'database_error',
       category: 'other',
+      pool_role: poolRole,
       error_category: classifyDatabaseError(error, 'client'),
       ...poolSnapshot(pool),
     });
@@ -70,7 +91,7 @@ export function createDatabasePool(
     );
   });
 
-  instrumentPool(pool, logger);
+  instrumentPool(pool, logger, poolRole);
   return pool;
 }
 

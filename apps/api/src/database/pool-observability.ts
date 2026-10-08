@@ -13,6 +13,7 @@ const events = [
   'checkout_failed',
   'release',
   'pool_summary',
+  'pool_shutdown',
   'scheduler_summary',
   'database_error',
   'listener_checkout_start',
@@ -35,6 +36,7 @@ const errors = [
   'unknown_db_error',
 ] as const;
 export type PoolCategory = (typeof categories)[number];
+export type PoolRole = 'shared' | 'listener';
 export type PoolEvent = (typeof events)[number];
 export type DatabaseErrorCategory = (typeof errors)[number];
 export interface PoolTelemetryLogger {
@@ -95,6 +97,8 @@ export function safePoolEvent(
   };
   if (errors.includes(input.error_category as DatabaseErrorCategory))
     output.error_category = input.error_category;
+  if (input.pool_role === 'shared' || input.pool_role === 'listener')
+    output.pool_role = input.pool_role;
   for (const field of numericFields) {
     const value = input[field];
     if (
@@ -220,7 +224,11 @@ const snapshots = (before: PoolSnapshot, after: PoolSnapshot) => ({
 });
 
 /** Preserve native promise/callback checkout and query semantics; no SQL interception. */
-export function instrumentPool(pool: pg.Pool, logger?: PoolTelemetryLogger) {
+export function instrumentPool(
+  pool: pg.Pool,
+  logger?: PoolTelemetryLogger,
+  poolRole: PoolRole = 'shared',
+) {
   const connect = pool.connect.bind(pool);
   const end = pool.end.bind(pool);
   const held = new Map<
@@ -244,7 +252,7 @@ export function instrumentPool(pool: pg.Pool, logger?: PoolTelemetryLogger) {
       return;
     }
     emitted++;
-    emitPoolEvent(sink, fields);
+    emitPoolEvent(sink, { ...fields, pool_role: poolRole });
   };
   const onConnect = () => {
     newConnections++;
@@ -281,6 +289,7 @@ export function instrumentPool(pool: pg.Pool, logger?: PoolTelemetryLogger) {
     if (!checkoutCount && !held.size && !failures && !suppressed) return;
     emitPoolEvent(logger, {
       event: 'pool_summary',
+      pool_role: poolRole,
       category: 'other',
       ...poolSnapshot(pool),
       checkout_count: checkoutCount,
@@ -377,7 +386,22 @@ export function instrumentPool(pool: pg.Pool, logger?: PoolTelemetryLogger) {
   pool.end = ((callback?: () => void) => {
     clearInterval(timer);
     pool.off('connect', onConnect);
-    return callback ? end(callback) : end();
+    const finished = () =>
+      emitPoolEvent(logger, {
+        event: 'pool_shutdown',
+        category: 'other',
+        pool_role: poolRole,
+        ...poolSnapshot(pool),
+        ...holdSnapshot(),
+      });
+    if (callback)
+      return end(() => {
+        finished();
+        callback();
+      });
+    return end().then(() => {
+      finished();
+    });
   }) as pg.Pool['end'];
 }
 
@@ -403,6 +427,7 @@ export function createPoolRunObserver(
     if (!active) return;
     emitPoolEvent(logger, {
       event: 'scheduler_summary',
+      pool_role: 'shared',
       category,
       run_started_unix_ms: active.unix,
       run_ms: performance.now() - active.started,

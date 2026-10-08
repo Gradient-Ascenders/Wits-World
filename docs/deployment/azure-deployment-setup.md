@@ -319,6 +319,17 @@ NODE_ENV  = production
 `DATABASE_URL` and `AUTH0_MANAGEMENT_CLIENT_SECRET` are secrets and must never
 be committed.
 
+Before deploying Issue #358 listener isolation, separately provision the private
+`LISTENER_DATABASE_URL` API App Service setting for the same application database
+through an explicit direct/session-compatible endpoint. It is required at server
+startup; a missing value fails closed. Neon `-pooler` endpoints are rejected and
+there is no shared-URL fallback or endpoint derivation. This requirement is not
+a claim that the setting is already provisioned. Do not change the web settings.
+Keep the shared pool max4 and budget one additional direct listener session per
+API process (5N application connections, up to 10N with deployment overlap),
+plus other consumers. Confirm aggregate Neon headroom before reviewed normal
+CI/CD deployment. See [listener verification](../testing/pvp-request-phase-timing.md#dedicated-notification-pool-issue-358-workstream-1a).
+
 Before deploying the shared rate limiter, provision an Upstash Redis database
 for the API and set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` as
 server-only API App Service settings. These are rollout requirements, not a
@@ -1827,3 +1838,5 @@ Gameplay scheduler rollout guidance was updated with assistance from
 Codex[GPT-5], based on user-provided implementation requirements.
 
 Existing-work outage recovery documented with assistance from Codex-CLI[GPT-5].
+
+Listener isolation rollout prerequisites updated with assistance from Codex[GPT-6].
