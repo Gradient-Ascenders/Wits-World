@@ -29,6 +29,9 @@
 
   --ifm-background-color: #fbfaf6;
   --ifm-navbar-height: 64px;
+  --ifm-navbar-search-input-background-color: #f3f1e9;
+  --ifm-navbar-search-input-color: #263449;
+  --ifm-navbar-search-input-placeholder-color: #526079;
 
   --ifm-font-family-base:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
@@ -60,6 +63,9 @@
   --ifm-heading-color: var(--ww-text);
 
   --ifm-navbar-background-color: #07101e;
+  --ifm-navbar-search-input-background-color: var(--ww-bg-secondary);
+  --ifm-navbar-search-input-color: var(--ww-text);
+  --ifm-navbar-search-input-placeholder-color: var(--ww-text-secondary);
   --ifm-footer-background-color: #050b16;
 
   --ifm-toc-border-color: rgba(212, 175, 55, 0.14);
@@ -79,6 +85,67 @@
 .navbar__title {
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+/* Use the header palette instead of the search plugin's default pill. */
+.navbar .navbar__search-input {
+  height: 40px;
+  border: 1px solid var(--ww-border-subtle);
+  border-radius: 8px;
+  padding-inline: 2.25rem 4.75rem;
+  font-family: var(--ifm-font-family-base);
+  font-size: 0.875rem;
+  font-weight: 400;
+  caret-color: var(--ifm-navbar-search-input-color);
+}
+
+.navbar .navbar__search-input::placeholder {
+  opacity: 1;
+}
+
+.navbar .navbar__search-input:hover {
+  border-color: var(--ww-gold-muted);
+}
+
+.navbar .navbar__search-input:focus {
+  border-color: var(--search-local-input-active-border-color);
+  outline: 2px solid var(--search-local-input-active-border-color);
+  outline-offset: 2px;
+}
+
+.navbar__search kbd {
+  min-width: 20px;
+  padding: 2px 4px;
+  border: 1px solid var(--ww-border-subtle);
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ifm-navbar-search-input-placeholder-color);
+  font-family: var(--ifm-font-family-base);
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  text-align: center;
+}
+
+@media (max-width: 576px) {
+  .navbar .navbar__search-input {
+    height: 44px;
+    padding-inline: 2.25rem 2rem;
+  }
+
+  .navbar .navbar__search-input:not(:focus) {
+    width: 44px;
+    padding-inline: 0;
+    color: transparent;
+  }
+
+  .navbar .navbar__search-input:not(:focus)::placeholder {
+    color: transparent;
+  }
+
+  .navbar .navbar__search-input:focus {
+    width: clamp(7rem, calc(100vw - 15rem), 12.5rem);
+  }
 }
 
 .footer {
