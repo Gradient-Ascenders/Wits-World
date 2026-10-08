@@ -377,6 +377,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'database/data-quality-and-structure',
+              label: 'Production data and database quality',
+            },
+            {
+              type: 'doc',
               id: 'database/event-schema',
               label: 'Event fields and relationships',
             },

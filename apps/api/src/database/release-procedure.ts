@@ -31,17 +31,23 @@ const BASIC_DEMO_PORTABLE_EVENT_IDS = [
   '00000000-0000-4000-8000-000000000030',
   '00000000-0000-4000-8000-000000000031',
 ];
-const VERIFIED_EVENT_KEYS = [
-  'foundations',
-  'heritage',
-  'discovery',
-  'arts',
-  'civic',
-  'early-order',
-  'science-order',
-  'culture-order',
-  'public-order',
-  'modern-order',
+const ACTIVE_CAMPUS_EVENT_KEYS = [
+  'great-hall-foundations',
+  'cullen-library-heritage',
+  'origins-centre-discoveries',
+  'school-of-arts-culture',
+  'matrix-campus-life',
+  'digital-dome-early-years',
+  'science-stadium-milestones',
+  'art-museum-timeline',
+  'wits-club-public-life',
+  'amphitheatre-modern-century',
+  'msl-science-challenge',
+];
+const ACTIVE_CAMPUS_TRAIL_KEYS = [
+  'east-campus-essentials',
+  'west-campus-discovery',
+  'arts-and-community',
 ];
 
 export interface DatabaseReleaseInspection {
@@ -57,6 +63,7 @@ export interface DatabaseReleaseVerification {
   migrationCount: number;
   verifiedEventCount?: number;
   verifiedQuestionCount?: number;
+  verifiedTrailCount?: number;
 }
 
 export interface DatabaseReleaseResult {
@@ -213,32 +220,55 @@ export async function verifyDatabaseRelease(
         `select count(*)::text as count
            from public.events
           where id in (
-            select md5('wits-world-verified-event:' || event_key)::uuid
+            select md5('wits-world-campus-event-v3:' || event_key)::uuid
               from unnest($1::text[]) event_key
-          )`,
-        [VERIFIED_EVENT_KEYS],
+          )
+            and is_published = true
+            and authoring_status = 'published'
+            and retired_at is null`,
+        [ACTIVE_CAMPUS_EVENT_KEYS],
       );
       const questions = await client.query<{ count: string }>(
         `select count(*)::text as count
            from public.challenge_questions question
            join public.event_challenges challenge on challenge.id = question.challenge_id
           where challenge.event_id in (
-            select md5('wits-world-verified-event:' || event_key)::uuid
+            select md5('wits-world-campus-event-v3:' || event_key)::uuid
               from unnest($1::text[]) event_key
           )
             and question.status = 'published'`,
-        [VERIFIED_EVENT_KEYS],
+        [ACTIVE_CAMPUS_EVENT_KEYS],
+      );
+      const trails = await client.query<{ count: string }>(
+        `select count(*)::text as count
+           from public.trails
+          where id in (
+            select md5('wits-world-campus-trail-v3:' || trail_key)::uuid
+              from unnest($1::text[]) trail_key
+          )
+            and status = 'published'`,
+        [ACTIVE_CAMPUS_TRAIL_KEYS],
       );
       const verifiedEventCount = parseCount(events, 'verified event');
       const verifiedQuestionCount = parseCount(questions, 'verified question');
+      const verifiedTrailCount = parseCount(trails, 'verified trail');
 
-      if (verifiedEventCount !== 10 || verifiedQuestionCount !== 100) {
+      if (
+        verifiedEventCount !== 11 ||
+        verifiedQuestionCount !== 110 ||
+        verifiedTrailCount !== 3
+      ) {
         throw new Error(
-          `Database verification failed: expected 10 verified events and 100 questions, found ${verifiedEventCount} and ${verifiedQuestionCount}.`,
+          `Database verification failed: expected 11 verified events, 110 questions, and 3 trails; found ${verifiedEventCount}, ${verifiedQuestionCount}, and ${verifiedTrailCount}.`,
         );
       }
 
-      return { migrationCount, verifiedEventCount, verifiedQuestionCount };
+      return {
+        migrationCount,
+        verifiedEventCount,
+        verifiedQuestionCount,
+        verifiedTrailCount,
+      };
     }
 
     const demoEvents = await client.query<{ count: string }>(
