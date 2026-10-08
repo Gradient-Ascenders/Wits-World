@@ -14,6 +14,7 @@ const vitestEntrypoint = path.resolve(
 );
 const testFiles = [
   'tests/pool-observability.integration.test.ts',
+  'tests/live-pvp-notifications.integration.test.ts',
   'tests/offline-challenges-database.integration.test.ts',
   'tests/event-database.integration.test.ts',
   'tests/player-database.integration.test.ts',

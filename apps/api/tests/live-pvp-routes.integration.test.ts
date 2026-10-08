@@ -89,6 +89,7 @@ beforeEach(async () => {
     recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
     closeAll: vi.fn().mockResolvedValue(undefined),
     connectionCount: vi.fn().mockReturnValue(0),
+    refreshConnections: vi.fn().mockResolvedValue(undefined),
   };
 
   app = await buildApp({

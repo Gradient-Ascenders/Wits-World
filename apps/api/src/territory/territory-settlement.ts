@@ -398,6 +398,7 @@ export async function maintainTerritorySettlements(
         const now = await rankedDatabaseNow(client);
         return settleDueWindowsWithinTransaction(client, seasonId, now, 1);
       },
+      database.existingWorkGuard,
     );
     if (settledThisTransaction === 0) break;
     settledWindows += settledThisTransaction;

@@ -115,6 +115,13 @@ jobs:
     runs-on: wits-world-ci
 
     services:
+      redis:
+        image: docker.io/redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
       postgres:
         image: docker.io/postgis/postgis:17-3.5
         env:
@@ -155,6 +162,26 @@ jobs:
           set -euo pipefail
 
           time npm run db:check:test --workspace @wits-world/api
+
+      - name: Verify durable gameplay coordination with isolated PostgreSQL and Redis
+        env:
+          CI: 'true'
+          GAMEPLAY_COORDINATION_TEST_DATABASE_URL: postgresql://wits_world_ci:wits_world_ci@postgres:5432/wits_world_test
+          GAMEPLAY_COORDINATION_TEST_REDIS_HOST: redis
+        run: |
+          set -euo pipefail
+
+          if ! command -v redis-cli >/dev/null; then
+            if [ "$(id -u)" -eq 0 ]; then
+              apt-get update -qq
+              apt-get install -y --no-install-recommends redis-tools
+            else
+              sudo apt-get update -qq
+              sudo apt-get install -y --no-install-recommends redis-tools
+            fi
+          fi
+
+          time npm test --workspace @wits-world/api -- tests/gameplay-coordination.integration.test.ts
 
       - name: Run database integration and migration tests
         run: |

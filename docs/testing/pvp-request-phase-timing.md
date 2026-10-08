@@ -220,8 +220,9 @@ the comparative run or claim unavailable measurements are zero.
 ## PostgreSQL pool pressure observations
 
 Pool observations supplement request timing; they do not identify the root cause
-of a production incident until correlated evidence is available. They change no
-pool limits, timeouts, scheduler cadence, LISTEN endpoint, SQL or HTTP behavior.
+of a production incident until correlated evidence is available. The listener
+is now isolated as described below; shared-pool limits, timeouts, scheduler
+cadence, SQL and HTTP behavior remain unchanged.
 
 The fixed message `PostgreSQL pool observation` carries allowlisted fields only.
 Request events use the existing request logger and request ID; process summaries
@@ -275,6 +276,79 @@ error, reconnect, recovery, release and destruction. A long listener hold is
 expected; it still explains occupied pool capacity. Recovery callback failures
 are not automatically classified as SQL failures. No payload or match identifier
 is included in listener telemetry or its fan-out failure warning.
+
+### Dedicated notification pool (Issue #358, workstream 1A)
+
+Every API server runtime requires an explicit, private `LISTENER_DATABASE_URL`
+for the same application's database through a direct/session-compatible
+endpoint. There is no `DATABASE_URL` fallback and no hostname rewriting. Missing,
+empty, malformed or non-PostgreSQL values fail startup before pools are allocated.
+Neon requires `sslmode=require`; obvious Neon `-pooler` endpoints and endpoint
+override query parameters are rejected with secret-free errors. Validation
+cannot prove an arbitrary provider's pooling mode, database identity or network
+reachability: operators must verify these before release. Do not publish URLs,
+provider hostnames, roles, credentials or backend PIDs.
+
+```text
+HTTP/services/transactions/gateway reads/maintenance -> shared pool (max4)
+notification listener -> dedicated pool (max1) -> LISTEN two existing channels
+notification hint -> gateway -> shared-pool authoritative state reload
+```
+
+Both pools retain min0, a 5,000 ms acquisition timeout, a 75,000 ms idle timeout
+and the existing TLS behavior. The merged gameplay scheduler disconnects the
+listener when neither persisted active work nor local sockets need fan-out, and
+reconnects it before a gateway reports ready. Listener start/stop operations stay
+serialized. Isolation adds no keepalive, lifetime, query-timeout or scheduler
+policy changes. Notification payload validation and durable/versioned match
+authority remain unchanged. Retry stays fixed at 5,000 ms. After a gap, existing
+gateway recovery closes sockets with 1012 so clients revalidate durable state.
+
+Shutdown stops retries, awaits any in-flight listener acquisition, UNLISTENs both
+channels and releases the session. If either UNLISTEN fails, the uncertain session
+is destroyed and cleanup throws a generic error with only a safe cause category.
+Clean-session handlers are detached before release so repeated startup cannot
+accumulate callbacks on a reused client. Shutdown first stops gameplay coordination and the Live/Ranked schedulers so
+they cannot restart the listener. The dedicated pool then ends before remaining
+gateway/shared-pool shutdown, including failed listener cleanup. `pool_role` is allowlisted to `shared` or `listener` on pool-generated
+events and listener lifecycle events; each pool keeps its own existing rate
+limit and minute summary. A fixed `pool_shutdown` event reports completion.
+Shared summaries should show
+`listener_holds_count=0`, dedicated summaries one listener holder while connected.
+Fast uncontented checkouts still remain quiet; listener lifecycle events include
+`checkout_ms`. Holder counts do not identify sessions or prove query causes.
+
+The per-process maximum increases from 4 to 5 connections: four shared and one
+listener. Budget `5N` for N active processes and up to `10N` during overlapping
+deployment generations, plus other clients and provider overhead. This isolation
+does not bound maintenance holds or guarantee lower request latency.
+
+Run focused configuration/connection/pool/listener tests and the full API suite.
+The gated `live-pvp-notifications.integration.test.ts`, registered in
+`npm run test:database --workspace @wits-world/api`, uses the unchanged approved
+`TEST_DATABASE_URL` explicitly as its test listener endpoint (not a runtime
+fallback). It needs a direct session-compatible disposable database. It checks
+two listeners, commit delivery, rollback non-delivery, shared request/maintenance
+ownership, termination of only its own test session, recovery and clean shutdown.
+It creates no application rows, schema or seed data. Existing protocol/gateway
+tests verify durable version checks and 1012 revalidation.
+
+Before normal CI/CD release, an operator must provision the private direct
+`LISTENER_DATABASE_URL` App Service secret for the correct database and verify
+Neon aggregate session headroom. This change does not provision it or deploy.
+Future verification must prove the actual current API artifact/deploy step ran,
+confirm endpoint classification without exposing it, then correlate a small
+matched `/auth/me`, homepage restoration, Battles, Live and PvP hub sample with
+bounded pool/scheduler telemetry. Check shared max4/no listener holder, dedicated
+max1/one holder per process while listening and zero after idle release,
+subscription readiness on reconnect, waits/slow checkouts versus the diagnosed baseline,
+request/maintenance hold ages and Ranked/Live lag/skips. Inspect aggregate Neon
+session headroom and test reconnect separately using disposable mechanisms.
+Stop on any five-second DB checkout failure. Do not claim a production benefit
+from local structural tests; measure before considering workstream 1B maintenance
+bounding. No cadence, semaphore or maintenance pool change is included here. Preserve
+the separate staged polling-to-Upstash rollout prerequisites from PR #361; this
+listener slice does not activate coordinated scheduling or prove Neon suspension.
 
 | `error_category`        | Evidence / interpretation                                                                                                  |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |

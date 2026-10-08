@@ -3,26 +3,43 @@ import {
   observeDatabaseError,
   observeRollback,
 } from '../database/pool-observability.js';
+import type { GameplayMutationGuard } from './gameplay-coordination.js';
 
-export type RankedDatabase = Pick<pg.Pool, 'connect' | 'query'>;
+export type RankedDatabase = Pick<pg.Pool, 'connect' | 'query'> & {
+  activityGuard?: GameplayMutationGuard;
+  existingWorkGuard?: GameplayMutationGuard;
+};
 export type RankedClient = pg.PoolClient;
 
 export async function rankedTransaction<T>(
   database: RankedDatabase,
   operation: (client: RankedClient) => Promise<T>,
+  guard?: GameplayMutationGuard,
 ): Promise<T> {
-  const client = await database.connect();
+  const permit = await (guard ?? database.activityGuard)?.begin();
+  let client: RankedClient | undefined;
+  let destroy = false;
   try {
+    client = await database.connect();
     await client.query('begin');
+    await permit?.enter(client);
     const result = await operation(client);
     await client.query('commit');
     return result;
   } catch (error) {
     observeDatabaseError(error, 'transaction');
-    await observeRollback(() => client.query('rollback'));
+    if (client) {
+      try {
+        await observeRollback(() => client!.query('rollback'));
+      } catch {
+        destroy = true;
+      }
+    }
     throw error;
   } finally {
-    client.release();
+    if (destroy) client?.release(true);
+    else client?.release();
+    await permit?.finish();
   }
 }
 

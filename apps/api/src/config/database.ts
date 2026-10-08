@@ -11,6 +11,53 @@ export interface DatabaseConfig {
   variableName: 'DATABASE_URL' | 'TEST_DATABASE_URL';
 }
 
+export interface ListenerDatabaseConfig {
+  connectionString: string;
+  variableName: 'LISTENER_DATABASE_URL';
+}
+
+/** LISTEN requires an explicitly supplied session-compatible endpoint. */
+export function buildListenerDatabaseConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): ListenerDatabaseConfig {
+  const connectionString = env.LISTENER_DATABASE_URL?.trim();
+  if (!connectionString)
+    throw new Error(
+      'LISTENER_DATABASE_URL is required for notification listening.',
+    );
+  const url = parsePostgresConnectionString(
+    connectionString,
+    'LISTENER_DATABASE_URL',
+  );
+  if (!url.hostname || !url.pathname || url.pathname === '/')
+    throw new Error('LISTENER_DATABASE_URL must specify a host and database.');
+  const overrides = [
+    'host',
+    'hostaddr',
+    'port',
+    'database',
+    'dbname',
+    'db',
+    'service',
+  ];
+  if (
+    [...url.searchParams.keys()].some((key) =>
+      overrides.includes(key.toLowerCase()),
+    )
+  )
+    throw new Error(
+      'LISTENER_DATABASE_URL must not contain endpoint override parameters.',
+    );
+  if (
+    isNeonHostname(url.hostname) &&
+    url.hostname.toLowerCase().split('.')[0]?.endsWith('-pooler')
+  )
+    throw new Error(
+      'LISTENER_DATABASE_URL must use a direct, non-pooled Neon endpoint.',
+    );
+  return { connectionString, variableName: 'LISTENER_DATABASE_URL' };
+}
+
 interface DatabaseIdentity {
   databasePath: string;
   hostname: string;

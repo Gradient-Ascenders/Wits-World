@@ -21,6 +21,11 @@ import {
 import { createRankedLiveMatch } from './ranked-match-creation.js';
 import { rankedSearchRange } from './ranked-policy.js';
 import {
+  createGameplayMutationGuard,
+  GameplayCoordinationUnavailable,
+} from './gameplay-coordination.js';
+import type { GameplayActivityStore } from './gameplay-activity-store.js';
+import {
   assertTerritoryQueueGrantAvailable,
   createTerritoryQueueGrant,
   loadTerritoryGrantForQueue,
@@ -119,7 +124,36 @@ export interface RankedService {
 export function createRankedService(
   database: RankedDatabase,
   trustRestrictions: TrustRestrictionService,
+  options: {
+    activityStore?: GameplayActivityStore;
+    logger?: { error(context: Record<string, unknown>, message: string): void };
+  } = {},
 ): RankedService {
+  async function mutation<T>(
+    operation: (client: RankedClient) => Promise<T>,
+    createsMatch = false,
+  ): Promise<T> {
+    const guard = options.activityStore
+      ? createGameplayMutationGuard(
+          options.activityStore,
+          createsMatch ? ['live', 'ranked'] : ['ranked'],
+          options.logger ?? { error: () => {} },
+        )
+      : undefined;
+    try {
+      return await rankedTransaction(database, operation, guard);
+    } catch (error) {
+      if (error instanceof GameplayCoordinationUnavailable) {
+        throw new RankedError(
+          503,
+          'GAMEPLAY_COORDINATION_UNAVAILABLE',
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
   async function status(playerId: string): Promise<RankedQueueView> {
     const client = await database.connect();
     try {
@@ -135,7 +169,7 @@ export function createRankedService(
     deckId: string,
     territoryClaim?: TerritoryClaim,
   ): Promise<RankedQueueView> {
-    return rankedTransaction(database, async (client) => {
+    return mutation(async (client) => {
       const player = await client.query<{ lifecycle_status: string }>(
         `select lifecycle_status from public.players
           where id = $1::uuid for update`,
@@ -260,7 +294,7 @@ export function createRankedService(
   }
 
   async function heartbeat(playerId: string): Promise<RankedQueueView> {
-    return rankedTransaction(database, async (client) => {
+    return mutation(async (client) => {
       const queue = await loadActiveQueue(client, playerId, true);
       const now = await rankedDatabaseNow(client);
       if (!queue || queue.status !== 'searching') {
@@ -298,7 +332,7 @@ export function createRankedService(
         if (result) return result;
         continue;
       }
-      const result = await rankedTransaction(database, async (client) => {
+      const result = await mutation(async (client) => {
         await lockPlayers(client, [playerId]);
         const queue = await loadActiveQueue(client, playerId, true);
         const now = await rankedDatabaseNow(client);
@@ -349,7 +383,7 @@ export function createRankedService(
     response: 'accepted' | 'declined',
     cancelIntent = false,
   ): Promise<RankedQueueView | null> {
-    return rankedTransaction(database, async (client) => {
+    return mutation(async (client) => {
       const proposalPreview = await client.query<ProposalRow>(
         `select id::text, season_id::text, status, acceptance_deadline
            from private.ranked_matchmaking_proposals
@@ -519,7 +553,7 @@ export function createRankedService(
         }
       }
       return finish();
-    });
+    }, response === 'accepted');
   }
 
   return {
@@ -966,10 +1000,12 @@ async function expireQueueEntries(
   database: RankedDatabase,
   limit: number,
 ): Promise<number> {
-  return rankedTransaction(database, async (client) => {
-    const now = await rankedDatabaseNow(client);
-    const result = await client.query<{ id: string }>(
-      `with due as (
+  return rankedTransaction(
+    database,
+    async (client) => {
+      const now = await rankedDatabaseNow(client);
+      const result = await client.query<{ id: string }>(
+        `with due as (
          select id from private.ranked_queue_entries
           where status = 'searching' and lease_expires_at <= $1
           order by lease_expires_at, id
@@ -981,10 +1017,12 @@ async function expireQueueEntries(
          from due
         where queue.id = due.id
        returning queue.id::text`,
-      [now, limit],
-    );
-    return result.rows.length;
-  });
+        [now, limit],
+      );
+      return result.rows.length;
+    },
+    database.existingWorkGuard,
+  );
 }
 
 async function expireProposals(
@@ -1001,50 +1039,55 @@ async function expireProposals(
   );
   let expired = 0;
   for (const { id } of due.rows) {
-    const resolved = await rankedTransaction(database, async (client) => {
-      const preview = await loadProposal(client, id);
-      if (!preview || preview.status !== 'awaiting_acceptance') return false;
-      const season = await client.query<SeasonRow>(
-        `select id::text, policy_version, status, active_ends_at
+    const resolved = await rankedTransaction(
+      database,
+      async (client) => {
+        const preview = await loadProposal(client, id);
+        if (!preview || preview.status !== 'awaiting_acceptance') return false;
+        const season = await client.query<SeasonRow>(
+          `select id::text, policy_version, status, active_ends_at
            from public.ranked_seasons
           where id = $1::uuid for share`,
-        [preview.season_id],
-      );
-      const playersPreview = await loadProposalPlayers(client, id);
-      await lockPlayers(
-        client,
-        playersPreview.map((row) => row.player_id),
-      );
-      const proposal = await loadProposal(client, id, true);
-      if (!proposal || proposal.status !== 'awaiting_acceptance') return false;
-      const players = await loadProposalPlayers(client, id, true);
-      const now = await rankedDatabaseNow(client);
-      if (
-        season.rows[0]?.status !== 'active' ||
-        !season.rows[0].active_ends_at ||
-        now >= season.rows[0].active_ends_at
-      ) {
-        await resolveProposal(client, proposal, players, now, 'system');
-      } else if (now >= proposal.acceptance_deadline) {
-        const invalid = await findInvalidPlayers(
-          client,
-          players.filter((player) => player.acceptance_status === 'accepted'),
-          restrictions,
+          [preview.season_id],
         );
-        await addUnavailableTerritoryPlayers(client, players, invalid, now);
-        await resolveProposal(
+        const playersPreview = await loadProposalPlayers(client, id);
+        await lockPlayers(
           client,
-          proposal,
-          players,
-          now,
-          'timeout',
-          invalid,
+          playersPreview.map((row) => row.player_id),
         );
-      } else {
-        return false;
-      }
-      return true;
-    });
+        const proposal = await loadProposal(client, id, true);
+        if (!proposal || proposal.status !== 'awaiting_acceptance')
+          return false;
+        const players = await loadProposalPlayers(client, id, true);
+        const now = await rankedDatabaseNow(client);
+        if (
+          season.rows[0]?.status !== 'active' ||
+          !season.rows[0].active_ends_at ||
+          now >= season.rows[0].active_ends_at
+        ) {
+          await resolveProposal(client, proposal, players, now, 'system');
+        } else if (now >= proposal.acceptance_deadline) {
+          const invalid = await findInvalidPlayers(
+            client,
+            players.filter((player) => player.acceptance_status === 'accepted'),
+            restrictions,
+          );
+          await addUnavailableTerritoryPlayers(client, players, invalid, now);
+          await resolveProposal(
+            client,
+            proposal,
+            players,
+            now,
+            'timeout',
+            invalid,
+          );
+        } else {
+          return false;
+        }
+        return true;
+      },
+      database.existingWorkGuard,
+    );
     if (resolved) expired += 1;
   }
   return expired;

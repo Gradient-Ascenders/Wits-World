@@ -33,6 +33,12 @@ function client() {
 }
 
 describe('privacy-safe pool observations', () => {
+  it('accepts only fixed pool-role labels', () => {
+    for (const pool_role of ['shared', 'listener'])
+      expect(safePoolEvent({ pool_role }).pool_role).toBe(pool_role);
+    for (const pool_role of ['private-marker', {}, undefined])
+      expect(safePoolEvent({ pool_role })).not.toHaveProperty('pool_role');
+  });
   it('constructs numeric snapshots without serializing the pool', () => {
     const sensitive = {
       totalCount: 4,

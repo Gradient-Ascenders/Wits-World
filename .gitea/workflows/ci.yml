@@ -623,6 +623,7 @@ jobs:
       AZURE_RESOURCE_GROUP: witsworld-rg
       AZURE_WEBAPP_NAME: witsworld-api
       PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS: '1800000'
+      PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND: ${{ vars.PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND || 'polling' }}
 
     steps:
       - name: Check out exact main commit
@@ -914,8 +915,13 @@ jobs:
             exit 0
           fi
 
-          # Keep the database-backed workers aligned so serverless Postgres can
-          # suspend between sweeps instead of receiving a query every minute.
+          case "$PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND" in
+            polling|upstash) ;;
+            *) echo "Invalid production gameplay scheduler backend." >&2; exit 1 ;;
+          esac
+
+          # Promote the repository variable to upstash only after all older,
+          # unfenced writers have been retired. The first rollout stays polling.
           az webapp config appsettings set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEBAPP_NAME" \
@@ -923,6 +929,10 @@ jobs:
               "ACCOUNT_DELETION_RETRY_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
               "ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
               "MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "TRUST_EVALUATION_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "CARD_TRADE_MAINTENANCE_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "GAMEPLAY_SCHEDULER_BACKEND=${PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND}" \
             --output none
 
       - name: Release production database

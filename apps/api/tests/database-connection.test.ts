@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createDatabasePool,
+  createListenerDatabasePool,
   type DatabasePoolLogger,
 } from '../src/database/connection.js';
 
@@ -18,6 +19,46 @@ describe('database connection pool', () => {
   afterEach(async () => {
     await Promise.all(pools.map(async (pool) => pool.end()));
     pools.length = 0;
+  });
+
+  it('isolates the max-one listener pool with unchanged TLS and acquisition settings', async () => {
+    const logger = { info: vi.fn(), error: vi.fn() };
+    const pool = createListenerDatabasePool(
+      {
+        connectionString: databaseConfig.connectionString,
+        variableName: 'LISTENER_DATABASE_URL',
+      },
+      { logger },
+    );
+    pools.push(pool);
+    expect(pool.options).toMatchObject({
+      max: 1,
+      min: 0,
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 75_000,
+      ssl: { rejectUnauthorized: true },
+    });
+    pool.emit('error', new Error('private-marker'));
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'database_error',
+        pool_role: 'listener',
+      }),
+      'PostgreSQL pool observation',
+    );
+    await pool.end();
+    pools.pop();
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'pool_shutdown',
+        pool_role: 'listener',
+        active_holds_count: 0,
+      }),
+      'PostgreSQL pool observation',
+    );
+    expect(JSON.stringify(logger.info.mock.calls)).not.toContain(
+      'private-marker',
+    );
   });
 
   it('retains idle connections across the normal background-worker interval', () => {
@@ -91,6 +132,24 @@ describe('database connection pool', () => {
 
     expect(pool.ended).toBe(true);
     pools.pop();
+  });
+
+  it('preserves callback pool shutdown and labels the completed shared pool', async () => {
+    const logger = { info: vi.fn(), error: vi.fn() };
+    const pool = createPool(logger);
+    await new Promise<void>((resolve) => {
+      pool.end(resolve);
+    });
+    pools.pop();
+    expect(pool.ended).toBe(true);
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'pool_shutdown',
+        pool_role: 'shared',
+        active_holds_count: 0,
+      }),
+      'PostgreSQL pool observation',
+    );
   });
 
   function createPool(logger?: DatabasePoolLogger) {

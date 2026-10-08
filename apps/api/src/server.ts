@@ -2,8 +2,15 @@ import { buildApp } from './app.js';
 import { createOfflineChallengeService } from './challenges/offline-challenges.js';
 import { buildApiConfig } from './config/api.js';
 import { buildAuthConfig } from './config/auth.js';
-import { buildDatabaseConfig, loadApiEnvironment } from './config/database.js';
-import { createDatabasePool } from './database/connection.js';
+import {
+  buildDatabaseConfig,
+  buildListenerDatabaseConfig,
+  loadApiEnvironment,
+} from './config/database.js';
+import {
+  createDatabasePool,
+  createListenerDatabasePool,
+} from './database/connection.js';
 import {
   createCachedEventDiscoveryService,
   createEventDiscoveryService,
@@ -51,6 +58,16 @@ import { createLivePvpService } from './matches/live-pvp-service.js';
 import { createLivePvpGateway } from './matches/live-pvp-gateway.js';
 import { createLivePvpDeadlineProcessor } from './matches/live-pvp-deadline-processor.js';
 import { createLivePvpRuntimeScheduler } from './matches/live-pvp-runtime-scheduler.js';
+import { hasLivePvpWork, nextRankedSweep } from './matches/gameplay-work.js';
+import { createUpstashGameplayActivityStore } from './matches/gameplay-activity-store.js';
+import {
+  createGameplayCoordination,
+  createGameplayExistingWorkGuard,
+  createGameplayMutationGuard,
+  gameplayCoordinationNamespace,
+  type GameplayCoordination,
+} from './matches/gameplay-coordination.js';
+import type { RankedDatabase } from './matches/ranked-database.js';
 import { createLivePvpNotificationListener } from './matches/live-pvp-notifications.js';
 import { createTrustService } from './trust/trust-service.js';
 import { createTrustRestrictionService } from './trust/trust-restrictions.js';
@@ -91,8 +108,41 @@ async function startServer(): Promise<void> {
     createReauthenticationTokenVerifier(authConfig);
   const corsConfig = buildCorsConfig();
   const databaseConfig = buildDatabaseConfig();
+  const listenerDatabaseConfig = buildListenerDatabaseConfig();
 
   const database = createDatabasePool(databaseConfig);
+  const listenerDatabase = createListenerDatabasePool(listenerDatabaseConfig);
+  const gameplayLogger = {
+    error(_context: Record<string, unknown>, message: string) {
+      console.error(message);
+    },
+  };
+  const activityStore =
+    config.rateLimitBackend === 'upstash' ||
+    config.gameplaySchedulerBackend === 'upstash'
+      ? createUpstashGameplayActivityStore({
+          url: config.upstashRedisRestUrl!,
+          token: config.upstashRedisRestToken!,
+          namespace:
+            config.gameplaySchedulerNamespace ??
+            gameplayCoordinationNamespace(databaseConfig.connectionString),
+          timeoutMs: config.rateLimitTimeoutMs,
+        })
+      : undefined;
+  // Producers announce work even during the initial, fast-polling rollout.
+  // Pure ranked page reads keep using the original, unguarded pool.
+  const rankedDatabase: RankedDatabase = activityStore
+    ? {
+        connect: database.connect.bind(database),
+        query: database.query.bind(database),
+        activityGuard: createGameplayMutationGuard(
+          activityStore,
+          ['ranked'],
+          gameplayLogger,
+        ),
+        existingWorkGuard: createGameplayExistingWorkGuard('ranked'),
+      }
+    : database;
 
   const auth0ManagementClient =
     createAuth0ManagementClient(authManagementConfig);
@@ -101,7 +151,10 @@ async function startServer(): Promise<void> {
   const trustReviewService = createTrustReviewService(database);
   const placementService = createPlacementService(database);
   const trustRestrictions = createTrustRestrictionService(database);
-  const rankedService = createRankedService(database, trustRestrictions);
+  const rankedService = createRankedService(rankedDatabase, trustRestrictions, {
+    activityStore,
+    logger: gameplayLogger,
+  });
   const rankedReadService = createRankedReadService(
     database,
     createSignedCursorCodec(config.asyncPvpCursorSigningKey),
@@ -191,8 +244,17 @@ async function startServer(): Promise<void> {
     database,
     eventDiscoveryService,
   );
-  const livePvpGateway = createLivePvpGateway(livePvpService);
+  let wakeLiveWorker = () => {};
+  let wakeRankedWorker = () => {};
+  const livePvpGateway = createLivePvpGateway(livePvpService, undefined, {
+    onActivity: () => wakeLiveWorker(),
+    prepareConnection: () => livePvpNotificationListener.start(true),
+  });
   const app = await buildApp({
+    gameplayWorkers: {
+      live: { wake: () => wakeLiveWorker() },
+      ranked: { wake: () => wakeRankedWorker() },
+    },
     placementService,
     offlineChallengeService: process.env.OFFLINE_PACK_SIGNING_KEY
       ? createOfflineChallengeService(database, {
@@ -276,6 +338,7 @@ async function startServer(): Promise<void> {
       analytics: authorAnalyticsService,
     },
   });
+  gameplayLogger.error = (context, message) => app.log.error(context, message);
 
   const accountDeletionRetryProcessor = createAccountDeletionRetryProcessor(
     auth0ManagementClient,
@@ -319,6 +382,7 @@ async function startServer(): Promise<void> {
     livePvpService,
     app.log,
   );
+  let gameplayCoordination: GameplayCoordination | undefined;
   const livePvpRuntimeScheduler = createLivePvpRuntimeScheduler(
     livePvpDeadlineProcessor,
     livePvpService,
@@ -326,20 +390,73 @@ async function startServer(): Promise<void> {
     {
       deadlineSweepIntervalMs: config.livePvpDeadlineSweepIntervalMs,
       transientCleanupIntervalMs: config.livePvpTransientCleanupIntervalMs,
+      coordinatedIdle: config.gameplaySchedulerBackend === 'upstash',
+      hasActiveWork: async () => {
+        const pending = await hasLivePvpWork(database);
+        if (!pending && livePvpGateway.connectionCount() > 0) {
+          await livePvpGateway.refreshConnections();
+        }
+        if (pending || livePvpGateway.connectionCount() > 0) {
+          await gameplayCoordination?.observeActive('live', true);
+          return true;
+        }
+        if (!gameplayCoordination) return false;
+        const confirmation = await gameplayCoordination.confirmIdle(
+          'live',
+          hasLivePvpWork,
+        );
+        return !confirmation.idle;
+      },
+      onWorkState: async (active) => {
+        // No local sockets need fan-out while idle. Stop reconnect attempts too,
+        // otherwise a suspended compute would be woken by the listener itself.
+        if (active || livePvpGateway.connectionCount() > 0) {
+          await livePvpNotificationListener.start();
+        } else {
+          await livePvpNotificationListener.stop();
+        }
+      },
     },
   );
   const livePvpNotificationListener = createLivePvpNotificationListener(
-    database,
+    listenerDatabase,
     livePvpGateway,
     app.log,
   );
   const rankedScheduler = createRankedScheduler(
-    database,
+    rankedDatabase,
     rankedService,
     rankedReadService,
     app.log,
     config.rankedSweepIntervalMs,
+    {
+      onMatchesCreated: () => livePvpRuntimeScheduler.wake(),
+      coordinatedIdle: config.gameplaySchedulerBackend === 'upstash',
+      nextSweep: async () => {
+        const next = await nextRankedSweep(database);
+        if (!gameplayCoordination) return next;
+        if (next === true) {
+          await gameplayCoordination.observeActive('ranked', true);
+          return true;
+        }
+        const confirmation = await gameplayCoordination.confirmIdle(
+          'ranked',
+          nextRankedSweep,
+        );
+        return confirmation.idle ? confirmation.nextSweep : true;
+      },
+    },
   );
+  if (config.gameplaySchedulerBackend === 'upstash') {
+    gameplayCoordination = createGameplayCoordination(
+      database,
+      activityStore!,
+      { live: livePvpRuntimeScheduler, ranked: rankedScheduler },
+      app.log,
+    );
+  }
+  wakeLiveWorker = () => livePvpRuntimeScheduler.wake();
+  wakeRankedWorker = () => rankedScheduler.wake();
   const cardTradeMaintenanceScheduler = createCardTradeMaintenanceScheduler(
     cardTradeService,
     app.log,
@@ -347,17 +464,25 @@ async function startServer(): Promise<void> {
   );
 
   app.addHook('onClose', async () => {
+    await gameplayCoordination?.stop();
     await placementScheduler.stop();
-    await livePvpNotificationListener.stop();
     await livePvpRuntimeScheduler.stop();
     await rankedScheduler.stop();
-    await livePvpGateway.closeAll();
-    await accountDeletionRetryScheduler.stop();
-    await movementEvidenceCleanupScheduler.stop();
-    await trustEvaluationScheduler.stop();
-    await asyncPvpDeadlineScheduler.stop();
-    await cardTradeMaintenanceScheduler.stop();
-    await database.end();
+    try {
+      await livePvpNotificationListener.stop();
+    } finally {
+      try {
+        await listenerDatabase.end();
+      } finally {
+        await livePvpGateway.closeAll();
+        await accountDeletionRetryScheduler.stop();
+        await movementEvidenceCleanupScheduler.stop();
+        await trustEvaluationScheduler.stop();
+        await asyncPvpDeadlineScheduler.stop();
+        await cardTradeMaintenanceScheduler.stop();
+        await database.end();
+      }
+    }
   });
 
   try {
@@ -366,9 +491,9 @@ async function startServer(): Promise<void> {
       port: config.port,
     });
 
-    await livePvpNotificationListener.start();
     livePvpRuntimeScheduler.start();
     rankedScheduler.start();
+    gameplayCoordination?.start();
     accountDeletionRetryScheduler.start();
     movementEvidenceCleanupScheduler.start();
     trustEvaluationScheduler.start();

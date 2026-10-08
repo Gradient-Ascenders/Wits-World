@@ -32,6 +32,8 @@ export interface ApiConfig {
   livePvpDeadlineSweepIntervalMs: number;
   livePvpTransientCleanupIntervalMs: number;
   rankedSweepIntervalMs: number;
+  gameplaySchedulerBackend: 'polling' | 'upstash';
+  gameplaySchedulerNamespace?: string;
   movementEvidenceCleanupIntervalMs: number;
   movementEvidenceRetentionMs: number;
   maxPlausibleJourneySpeedMetresPerSecond: number;
@@ -96,6 +98,19 @@ export function buildApiConfig({
   const rankedSweepIntervalMs = Number(
     env.RANKED_SWEEP_INTERVAL_MS?.trim() ?? '1000',
   );
+  const gameplaySchedulerBackend =
+    env.GAMEPLAY_SCHEDULER_BACKEND?.trim() ?? 'polling';
+  const gameplaySchedulerNamespace =
+    env.GAMEPLAY_SCHEDULER_NAMESPACE?.trim() || undefined;
+  if (!['polling', 'upstash'].includes(gameplaySchedulerBackend)) {
+    throw new Error('GAMEPLAY_SCHEDULER_BACKEND must be polling or upstash.');
+  }
+  if (
+    gameplaySchedulerNamespace !== undefined &&
+    !/^[A-Za-z0-9_-]{1,80}$/u.test(gameplaySchedulerNamespace)
+  ) {
+    throw new Error('GAMEPLAY_SCHEDULER_NAMESPACE must be a safe namespace.');
+  }
   const rateLimitMaxRequests = Number(
     env.RATE_LIMIT_MAX_REQUESTS?.trim() ?? '120',
   );
@@ -278,7 +293,10 @@ export function buildApiConfig({
   if (env.NODE_ENV === 'production' && rateLimitBackend !== 'upstash') {
     throw new Error('RATE_LIMIT_BACKEND must be upstash in production.');
   }
-  if (rateLimitBackend === 'upstash') {
+  if (
+    rateLimitBackend === 'upstash' ||
+    gameplaySchedulerBackend === 'upstash'
+  ) {
     let parsed: URL;
     try {
       parsed = new URL(upstashRedisRestUrl ?? '');
@@ -349,6 +367,8 @@ export function buildApiConfig({
     livePvpDeadlineSweepIntervalMs,
     livePvpTransientCleanupIntervalMs,
     rankedSweepIntervalMs,
+    gameplaySchedulerBackend: gameplaySchedulerBackend as 'polling' | 'upstash',
+    gameplaySchedulerNamespace,
     movementEvidenceCleanupIntervalMs,
     movementEvidenceRetentionMs,
     maxPlausibleJourneySpeedMetresPerSecond,

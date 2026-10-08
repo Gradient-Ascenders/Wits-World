@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createLivePvpNotificationListener } from '../src/matches/live-pvp-notifications.js';
@@ -11,33 +12,249 @@ const MATCH_ID = '11111111-1111-4111-8111-111111111111';
 
 type Notification = { channel: string; payload?: string; processId: number };
 
-class FakeListenerClient {
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+class FakeListenerClient extends EventEmitter {
   query = vi.fn().mockResolvedValue({ rows: [] });
   release = vi.fn();
-  private notificationHandler?: (notification: Notification) => void;
-  private errorHandler?: (error?: unknown) => void;
-
-  on(event: 'notification' | 'error', handler: (...args: never[]) => void) {
-    if (event === 'notification') {
-      this.notificationHandler = handler as unknown as (
-        notification: Notification,
-      ) => void;
-    } else {
-      this.errorHandler = handler as unknown as (error?: unknown) => void;
-    }
-    return this;
-  }
-
   emitNotification(notification: Notification): void {
-    this.notificationHandler?.(notification);
+    this.emit('notification', notification);
   }
 
   emitError(error?: unknown): void {
-    this.errorHandler?.(error);
+    this.emit('error', error);
   }
 }
 
 describe('live PvP PostgreSQL fan-out', () => {
+  it('removes old handlers before a clean session is reused on repeated startup', async () => {
+    const client = new FakeListenerClient();
+    const broadcastMatch = vi.fn().mockResolvedValue(undefined);
+    const listener = createLivePvpNotificationListener(
+      { connect: vi.fn().mockResolvedValue(client) } as unknown as Pick<
+        pg.Pool,
+        'connect'
+      >,
+      {
+        broadcastMatch,
+        broadcastPresence: vi.fn(),
+        recoverNotificationGap: vi.fn(),
+      },
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    );
+    await listener.start();
+    await listener.stop();
+    expect(client.listenerCount('notification')).toBe(0);
+    expect(client.listenerCount('error')).toBe(0);
+    await listener.start();
+    expect(client.listenerCount('notification')).toBe(1);
+    expect(client.listenerCount('error')).toBe(1);
+    client.emitNotification({
+      channel: LIVE_PVP_NOTIFY_CHANNEL,
+      payload: JSON.stringify({ matchId: MATCH_ID, version: 7 }),
+      processId: 1,
+    });
+    expect(broadcastMatch).toHaveBeenCalledExactlyOnceWith(MATCH_ID, 7);
+    client.emitError(new Error('Connection terminated'));
+    await listener.stop();
+    expect(client.release).toHaveBeenCalledTimes(2);
+    expect(client.release.mock.calls[1]).toEqual([true]);
+  });
+  it('retries acquisition failure and supports repeated start/stop without extra clients', async () => {
+    vi.useFakeTimers();
+    const first = new FakeListenerClient(),
+      second = new FakeListenerClient();
+    const connect = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error('timeout exceeded when trying to connect'),
+      )
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(second);
+    const recoverNotificationGap = vi.fn().mockResolvedValue(undefined);
+    const listener = createLivePvpNotificationListener(
+      { connect } as unknown as Pick<pg.Pool, 'connect'>,
+      {
+        broadcastMatch: vi.fn(),
+        broadcastPresence: vi.fn(),
+        recoverNotificationGap,
+      },
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    );
+    try {
+      await listener.start();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await listener.start();
+      expect(connect).toHaveBeenCalledTimes(2);
+      expect(recoverNotificationGap).toHaveBeenCalledOnce();
+      await listener.stop();
+      await listener.stop();
+      expect(first.release).toHaveBeenCalledOnce();
+      await listener.start();
+      await listener.start();
+      expect(connect).toHaveBeenCalledTimes(3);
+      await listener.stop();
+      expect(second.release).toHaveBeenCalledOnce();
+    } finally {
+      await listener.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it('destroys only once if a client fails while gap recovery is rejecting', async () => {
+    vi.useFakeTimers();
+    const first = new FakeListenerClient(),
+      second = new FakeListenerClient();
+    const recoverNotificationGap = vi.fn(async () => {
+      second.emitError(new Error('Connection terminated'));
+      throw new Error('private-marker');
+    });
+    const listener = createLivePvpNotificationListener(
+      {
+        connect: vi
+          .fn()
+          .mockResolvedValueOnce(first)
+          .mockResolvedValueOnce(second),
+      } as unknown as Pick<pg.Pool, 'connect'>,
+      {
+        broadcastMatch: vi.fn(),
+        broadcastPresence: vi.fn(),
+        recoverNotificationGap,
+      },
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    );
+    try {
+      await listener.start();
+      first.emitError(new Error('Connection terminated'));
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(second.release).toHaveBeenCalledExactlyOnceWith(true);
+    } finally {
+      await listener.stop();
+      vi.useRealTimers();
+    }
+  });
+  it.each([1, 2])(
+    'destroys instead of pooling a session when UNLISTEN %i fails',
+    async (failedUnlisten) => {
+      const client = new FakeListenerClient();
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      const listener = createLivePvpNotificationListener(
+        { connect: vi.fn().mockResolvedValue(client) } as unknown as Pick<
+          pg.Pool,
+          'connect'
+        >,
+        {
+          broadcastMatch: vi.fn(),
+          broadcastPresence: vi.fn(),
+          recoverNotificationGap: vi.fn(),
+        },
+        logger,
+      );
+      await listener.start();
+      client.query.mockImplementation(async (sql: string) => {
+        if (
+          sql ===
+          `unlisten ${failedUnlisten === 1 ? LIVE_PVP_NOTIFY_CHANNEL : LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`
+        )
+          throw new Error('private-marker');
+        return { rows: [] };
+      });
+      await expect(listener.stop()).rejects.toThrow(
+        'Live PvP notification listener cleanup failed.',
+      );
+      await listener.stop();
+      expect(client.release).toHaveBeenCalledExactlyOnceWith(true);
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'listener_destroy',
+          pool_role: 'listener',
+        }),
+        'PostgreSQL pool observation',
+      );
+      expect(JSON.stringify(logger.info.mock.calls)).not.toContain(
+        'private-marker',
+      );
+    },
+  );
+
+  it('guards concurrent startup and waits for in-flight acquisition before shutdown', async () => {
+    const client = new FakeListenerClient();
+    let resolve!: (client: FakeListenerClient) => void;
+    const connect = vi.fn(
+      () =>
+        new Promise<FakeListenerClient>((done) => {
+          resolve = done;
+        }),
+    );
+    const listener = createLivePvpNotificationListener(
+      { connect } as unknown as Pick<pg.Pool, 'connect'>,
+      {
+        broadcastMatch: vi.fn(),
+        broadcastPresence: vi.fn(),
+        recoverNotificationGap: vi.fn(),
+      },
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    );
+    const start = listener.start();
+    const secondStart = listener.start();
+    const stop = listener.stop();
+    await Promise.resolve();
+    resolve(client);
+    await Promise.all([start, secondStart, stop]);
+    expect(connect).toHaveBeenCalledOnce();
+    expect(client.query.mock.calls.map(([sql]) => sql)).toEqual([
+      `listen ${LIVE_PVP_NOTIFY_CHANNEL}`,
+      `listen ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`,
+      `unlisten ${LIVE_PVP_NOTIFY_CHANNEL}`,
+      `unlisten ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`,
+    ]);
+    expect(client.release).toHaveBeenCalledExactlyOnceWith(undefined);
+  });
+
+  it('retries failed LISTEN at the unchanged fixed delay and cancels retries on stop', async () => {
+    vi.useFakeTimers();
+    const first = new FakeListenerClient(),
+      second = new FakeListenerClient();
+    first.query.mockRejectedValue(new Error('private-marker'));
+    const connect = vi
+      .fn()
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(second);
+    const recoverNotificationGap = vi.fn().mockResolvedValue(undefined);
+    const listener = createLivePvpNotificationListener(
+      { connect } as unknown as Pick<pg.Pool, 'connect'>,
+      {
+        broadcastMatch: vi.fn(),
+        broadcastPresence: vi.fn(),
+        recoverNotificationGap,
+      },
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    );
+    try {
+      await listener.start();
+      expect(first.release).toHaveBeenCalledExactlyOnceWith(true);
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(connect).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(connect).toHaveBeenCalledTimes(2);
+      expect(recoverNotificationGap).toHaveBeenCalledOnce();
+      second.emitError(new Error('Connection terminated'));
+      await listener.stop();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(connect).toHaveBeenCalledTimes(2);
+    } finally {
+      await listener.stop();
+      vi.useRealTimers();
+    }
+  });
   it('logs allowlisted checkout, LISTEN, client-error, recovery and release events', async () => {
     vi.useFakeTimers();
     const first = new FakeListenerClient(),
@@ -282,6 +499,53 @@ describe('live PvP PostgreSQL fan-out', () => {
     }
   });
 
+  it('waits for notification-gap recovery before reporting ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const firstClient = new FakeListenerClient();
+      const recoveredClient = new FakeListenerClient();
+      const recovery = deferred<void>();
+      const recoverNotificationGap = vi
+        .fn()
+        .mockReturnValueOnce(recovery.promise);
+      const connect = vi
+        .fn()
+        .mockResolvedValueOnce(firstClient as unknown as pg.PoolClient)
+        .mockResolvedValueOnce(recoveredClient as unknown as pg.PoolClient);
+      const listener = createLivePvpNotificationListener(
+        { connect } as unknown as Pick<pg.Pool, 'connect'>,
+        {
+          broadcastMatch: vi.fn(),
+          broadcastPresence: vi.fn(),
+          recoverNotificationGap,
+        },
+        { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      );
+
+      await listener.start();
+      firstClient.emitError();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(recoveredClient.query).toHaveBeenCalledWith(
+        `listen ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`,
+      );
+      expect(recoverNotificationGap).toHaveBeenCalledOnce();
+
+      let ready = false;
+      const starting = listener.start(true).then(() => {
+        ready = true;
+      });
+      await Promise.resolve();
+      expect(ready).toBe(false);
+
+      recovery.resolve();
+      await starting;
+      expect(ready).toBe(true);
+      await listener.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('ignores malformed notification payloads', async () => {
     const client = new FakeListenerClient();
     const broadcastMatch = vi.fn();
@@ -307,5 +571,221 @@ describe('live PvP PostgreSQL fan-out', () => {
     expect(broadcastMatch).not.toHaveBeenCalled();
 
     await listener.stop();
+  });
+
+  it('makes concurrent ready callers await one listener checkout', async () => {
+    const checkout = deferred<pg.PoolClient>();
+    const client = new FakeListenerClient();
+    const connect = vi.fn(() => checkout.promise);
+    const listener = createLivePvpNotificationListener(
+      { connect } as unknown as Pick<pg.Pool, 'connect'>,
+      {
+        broadcastMatch: vi.fn(),
+        broadcastPresence: vi.fn(),
+        recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
+      },
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    );
+
+    let firstReady = false;
+    let secondReady = false;
+    const first = listener.start(true).then(() => {
+      firstReady = true;
+    });
+    const second = listener.start(true).then(() => {
+      secondReady = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(connect).toHaveBeenCalledOnce();
+    expect(firstReady).toBe(false);
+    expect(secondReady).toBe(false);
+
+    checkout.resolve(client as unknown as pg.PoolClient);
+    await Promise.all([first, second]);
+
+    expect(firstReady).toBe(true);
+    expect(secondReady).toBe(true);
+    expect(client.query).toHaveBeenCalledWith(
+      `listen ${LIVE_PVP_NOTIFY_CHANNEL}`,
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      `listen ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`,
+    );
+    await listener.stop();
+  });
+
+  it('waits for stop to release its listener before a ready start reconnects', async () => {
+    const firstClient = new FakeListenerClient();
+    const secondClient = new FakeListenerClient();
+    const connect = vi
+      .fn()
+      .mockResolvedValueOnce(firstClient as unknown as pg.PoolClient)
+      .mockResolvedValueOnce(secondClient as unknown as pg.PoolClient);
+    const listener = createLivePvpNotificationListener(
+      { connect } as unknown as Pick<pg.Pool, 'connect'>,
+      {
+        broadcastMatch: vi.fn(),
+        broadcastPresence: vi.fn(),
+        recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
+      },
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    );
+    await listener.start(true);
+
+    const unlistenStarted = deferred<void>();
+    const releaseUnlisten = deferred<{ rows: never[] }>();
+    firstClient.query.mockImplementation(async (sql: string) => {
+      if (sql === `unlisten ${LIVE_PVP_NOTIFY_CHANNEL}`) {
+        unlistenStarted.resolve();
+        return releaseUnlisten.promise;
+      }
+      return { rows: [] };
+    });
+
+    const stopping = listener.stop();
+    await unlistenStarted.promise;
+    let ready = false;
+    const starting = listener.start(true).then(() => {
+      ready = true;
+    });
+    await Promise.resolve();
+    expect(connect).toHaveBeenCalledOnce();
+    expect(ready).toBe(false);
+    expect(firstClient.release).not.toHaveBeenCalled();
+
+    releaseUnlisten.resolve({ rows: [] });
+    await stopping;
+    await starting;
+
+    expect(firstClient.release).toHaveBeenCalledOnce();
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(ready).toBe(true);
+    expect(secondClient.query).toHaveBeenCalledWith(
+      `listen ${LIVE_PVP_NOTIFY_CHANNEL}`,
+    );
+    await listener.stop();
+  });
+
+  it('rejects a failed ready subscription but preserves best-effort reconnects', async () => {
+    vi.useFakeTimers();
+    try {
+      const failureClient = new FakeListenerClient();
+      failureClient.query.mockRejectedValueOnce(
+        new Error('private subscription detail'),
+      );
+      const readyLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      const readyListener = createLivePvpNotificationListener(
+        {
+          connect: vi
+            .fn()
+            .mockResolvedValue(failureClient as unknown as pg.PoolClient),
+        } as unknown as Pick<pg.Pool, 'connect'>,
+        {
+          broadcastMatch: vi.fn(),
+          broadcastPresence: vi.fn(),
+          recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
+        },
+        readyLogger,
+      );
+
+      await expect(readyListener.start(true)).rejects.toThrow(
+        'Live PvP notification listener is unavailable.',
+      );
+      expect(failureClient.release).toHaveBeenCalledWith(true);
+      expect(JSON.stringify(readyLogger.error.mock.calls)).not.toContain(
+        'private subscription detail',
+      );
+      await readyListener.stop();
+
+      const recoveredClient = new FakeListenerClient();
+      const bestEffortLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      const connect = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('temporary database failure'))
+        .mockResolvedValueOnce(recoveredClient as unknown as pg.PoolClient);
+      const bestEffortListener = createLivePvpNotificationListener(
+        { connect } as unknown as Pick<pg.Pool, 'connect'>,
+        {
+          broadcastMatch: vi.fn(),
+          broadcastPresence: vi.fn(),
+          recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
+        },
+        bestEffortLogger,
+      );
+
+      await expect(bestEffortListener.start()).resolves.toBeUndefined();
+      expect(bestEffortLogger.error).toHaveBeenCalledWith(
+        {},
+        'Live PvP notification listener failed to start.',
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(connect).toHaveBeenCalledTimes(2);
+      expect(recoveredClient.query).toHaveBeenCalledWith(
+        `listen ${LIVE_PVP_NOTIFY_CHANNEL}`,
+      );
+      await bestEffortListener.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels a pending reconnect on stop while idle', async () => {
+    vi.useFakeTimers();
+    try {
+      const connect = vi
+        .fn()
+        .mockRejectedValue(new Error('database unavailable'));
+      const listener = createLivePvpNotificationListener(
+        { connect } as unknown as Pick<pg.Pool, 'connect'>,
+        {
+          broadcastMatch: vi.fn(),
+          broadcastPresence: vi.fn(),
+          recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
+        },
+        { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      );
+
+      await listener.start();
+      expect(connect).toHaveBeenCalledOnce();
+      await listener.stop();
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(connect).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('destroys the listener client when UNLISTEN fails', async () => {
+    const client = new FakeListenerClient();
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.startsWith('unlisten')) {
+        throw new Error('private unlisten detail');
+      }
+      return { rows: [] };
+    });
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const listener = createLivePvpNotificationListener(
+      {
+        connect: vi.fn().mockResolvedValue(client as unknown as pg.PoolClient),
+      } as unknown as Pick<pg.Pool, 'connect'>,
+      {
+        broadcastMatch: vi.fn(),
+        broadcastPresence: vi.fn(),
+        recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
+      },
+      logger,
+    );
+
+    await listener.start(true);
+    await expect(listener.stop()).rejects.toThrow(
+      'Live PvP notification listener cleanup failed.',
+    );
+    expect(client.release).toHaveBeenCalledWith(true);
+    expect(JSON.stringify(logger.info.mock.calls)).not.toContain(
+      'private unlisten detail',
+    );
   });
 });
