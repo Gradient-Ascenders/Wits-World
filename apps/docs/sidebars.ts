@@ -21,29 +21,8 @@ const category = (
   items,
 });
 
-const meetings = (sprint: number): SidebarItemConfig =>
-  category(
-    'Report and meetings',
-    [
-      doc(`planning/scrum/sprint-${sprint}/initial-planning`, 'Planning'),
-      ...[1, 2, 3, 4].map((number) =>
-        doc(
-          `planning/scrum/sprint-${sprint}/daily-scrum-0${number}`,
-          `Scrum ${number}`,
-        ),
-      ),
-      doc(
-        `planning/scrum/sprint-${sprint}/backlog-refinement`,
-        'Backlog refinement',
-      ),
-      doc(`planning/scrum/sprint-${sprint}/sprint-review`, 'Review'),
-      doc(
-        `planning/scrum/sprint-${sprint}/sprint-retrospective`,
-        'Retrospective',
-      ),
-    ],
-    `planning/scrum/sprint-${sprint}/report`,
-  );
+const sprintReport = (sprint: number): SidebarItemConfig =>
+  doc(`planning/scrum/sprint-${sprint}/report`, 'Sprint report');
 
 const sprint = (
   number: number,
@@ -163,7 +142,6 @@ const sidebars: SidebarsConfig = {
         category('Setup', [
           doc('development/getting-started', 'Getting started'),
           doc('database/neon-postgis-setup', 'Neon and PostGIS'),
-          doc('development/documentation-site', 'Documentation site'),
         ]),
         category(
           'Architecture',
@@ -325,9 +303,9 @@ const sidebars: SidebarsConfig = {
         category(
           'Sprints',
           [
-            sprint(4, [meetings(4)]),
+            sprint(4, [sprintReport(4)]),
             sprint(3, [
-              meetings(3),
+              sprintReport(3),
               doc('sprint-3-overview', 'Milestone evidence'),
               doc('requirements/sprint-3-feature-matrix', 'Features'),
               doc('testing/sprint-3-validation-status', 'Validation status'),
@@ -336,49 +314,24 @@ const sidebars: SidebarsConfig = {
               doc('planning/sprint-3-governance-and-evidence', 'Governance'),
             ]),
             sprint(2, [
-              meetings(2),
+              sprintReport(2),
               doc('sprint-2-overview', 'Milestone evidence'),
               doc('requirements/sprint-2-feature-matrix', 'Features'),
               doc('testing/sprint-2-validation-status', 'Validation status'),
               doc('testing/sprint-2-user-testing-plan', 'User testing plan'),
               doc('testing/sprint-2-user-feedback-results', 'User feedback'),
               doc('planning/sprint-2-governance-and-evidence', 'Governance'),
-              doc('planning/wits-quest-sprint-2-gitea-issues', 'Task plans'),
             ]),
             sprint(1, [
-              meetings(1),
+              sprintReport(1),
               doc('testing/sprint-1-evidence-index', 'Release evidence'),
-              doc('testing/sprint-1-deterministic-e2e', 'E2E tests'),
-              doc('testing/sprint-1-release-validation', 'Release validation'),
-              doc('testing/sprint-1-demonstration-script', 'Demo script'),
               doc('testing/sprint-1-known-limitations', 'Known limitations'),
-              category('Task plans', [
-                doc(
-                  'planning/wits-quest-sprint-1-gitea-issues',
-                  'Initial backlog',
-                ),
-                doc('planning/sprint-1-week-2-gitea-issues', 'Week 2 backlog'),
-              ]),
             ]),
           ],
           'planning/scrum/index',
         ),
         category('Verification', [
-          category('Basic release', [
-            doc('testing/basic-release-validation-167', 'Results (#167)'),
-            doc('testing/basic-tier-deterministic-e2e', 'E2E tests'),
-            doc(
-              'testing/basic-tier-release-validation',
-              'Acceptance checklist',
-            ),
-            doc('testing/basic-release-player-session', 'Player test guide'),
-            doc(
-              'testing/basic-release-accessibility-matrix',
-              'Accessibility checklist',
-            ),
-            doc('testing/basic-release-stakeholder-review', 'Review template'),
-            doc('testing/basic-release-findings', 'Findings and retests'),
-          ]),
+          doc('testing/basic-tier-release-validation', 'Acceptance checklist'),
           category('Live checks', [
             doc(
               'testing/deployed-auth-cors-privacy-review',
@@ -389,16 +342,11 @@ const sidebars: SidebarsConfig = {
               'Account lifecycle',
             ),
             doc('testing/api-battle-responsiveness', 'Battle responsiveness'),
-            doc('testing/pvp-request-phase-timing', 'PvP request timing'),
             doc(
               'requirements/location-eligibility-field-test',
               'On-campus location',
             ),
           ]),
-          doc(
-            'database/architecture-review-2026-09',
-            'Database review (Sep 2026)',
-          ),
         ]),
         category(
           'Stakeholder reviews',

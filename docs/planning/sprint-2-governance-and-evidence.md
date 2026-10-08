@@ -29,10 +29,10 @@ The formal feedback report records ten questionnaire responses, five accepted
 findings and their implementation/retest limits. It does not establish that all
 release acceptance or stakeholder follow-up has been completed.
 
-The teammate's [#167 release evidence pack](../testing/basic-release-validation-167.md)
-now supplies the 13 September local execution record and templates for remaining
-observed sessions, accessibility/device checks, stakeholder acceptance and retests.
-Its preparation snapshot predates the newer feedback documentation; both are
+The teammate's [13 September release results](../testing/sprint-2-validation-status.md#teammate-recorded-local-release-evidence--13-september)
+record local checks and their limits. The [formal user-testing plan](../testing/sprint-2-user-testing-plan.md)
+defines the remaining observed sessions, accessibility/device checks, stakeholder
+review, and retests. The execution snapshot predates the newer feedback documentation; both are
 linked without treating blank templates as completed evidence.
 
 ## Scrum record integration — 15 September 2026
@@ -61,8 +61,8 @@ Read-only Gitea inspection on 28 August 2026 found:
   `Depends on: None`.
 
 Sprint 1 is therefore administratively closed in the live milestone. Its
-[Review](./scrum/sprint-1/sprint-review.md) and
-[Retrospective](./scrum/sprint-1/sprint-retrospective.md) are conservative
+[Review](scrum/sprint-1/report.md#sprint-review) and
+[Retrospective](scrum/sprint-1/report.md#sprint-retrospective) are conservative
 reconstructions, not contemporaneous minutes. Closure does not convert their
 documented manual, stakeholder, field, accessibility, deployment, or operator
 evidence gaps into passes; those boundaries remain in the
@@ -75,11 +75,10 @@ requirements and delivering the first Intermediate systems: account lifecycle,
 a second challenge format, production content, movement checks, progression,
 duplicate economy, trails, and the asynchronous PvP contract.
 
-That milestone description and each current issue determine scope. The older
-[Sprint 2 Gitea issue plan](./wits-quest-sprint-2-gitea-issues.md) is a preserved
-snapshot of the earlier Basic implementation wave and reuses planning IDs now
-used by #159 onward. It is historical evidence, not the current Sprint 2
-backlog.
+That milestone description and each current issue determine scope. The
+[Sprint 2 report](scrum/sprint-2/report.md#planning) retains historical planning
+and ownership context. Earlier Basic implementation plans reused planning IDs
+later assigned to #159 onward; those identifiers do not define the current backlog.
 
 ## Issue readiness and live workflow
 

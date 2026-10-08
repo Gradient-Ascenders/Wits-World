@@ -96,7 +96,5 @@ site workspace, shared package metadata, Node version, or its own workflow file.
 Unrelated application-only changes do not trigger it.
 
 It builds the Docusaurus site and deploys it to Cloudflare Pages from `main`.
-The authoring and publishing process is covered in
-[Update and publish documentation](../development/documentation-site.md).
 
 AI declaration: Rewritten with assistance from Codex[GPT-6].

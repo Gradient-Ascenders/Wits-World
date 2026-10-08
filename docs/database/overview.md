@@ -126,8 +126,9 @@ restored, or monitored. Production evidence must identify the target safely,
 record the operator and time, and state the result without exposing the
 connection string.
 
-The [September database review](architecture-review-2026-09.md) is a dated
-inspection. Its table counts are not current production counts.
+The [September review summary](../testing/sprint-2-validation-status.md#database-review--4-september)
+records index cleanup and local verification. It does not establish the current
+production schema or workload.
 
 ## Known evidence gaps
 

@@ -694,62 +694,6 @@ Before the realtime gateway is released:
   failures, reconnects, version-gap repairs, action latency, deadline actions,
   and terminal reasons without player-identifying labels.
 
-## Verification matrix
-
-Later implementation issues must cover at least:
-
-### Authentication and authorization
-
-- valid, expired, reused, wrong-player, wrong-match, and wrong-role tickets;
-- participant versus spectator projections and mutation permissions;
-- account deletion or suspension after ticket creation but before redemption;
-- account deletion after spectator redemption, including cross-instance
-  revocation of the already-open socket;
-- bearer tokens and tickets absent from URLs or logs beyond the explicitly
-  redacted short-lived ticket query; and
-- participants prevented from downgrading themselves to spectator projection.
-
-### Match authority and privacy
-
-- hidden initial choices before simultaneous reveal;
-- hidden unused cards in participant and spectator projections;
-- rejection of client timeout, result, damage, deadline, presence, and winner
-  fields;
-- legal initial selection, replacement, move, Power card, and resignation;
-- spectator receipt of public transitions with no legal actions; and
-- final spectator projection followed by access termination.
-
-### Timing, reconnect, and concurrency
-
-- actions locking immediately before, exactly at, and after the deadline,
-  including an earlier gateway arrival that waits past the boundary;
-- random automatic initial and replacement choices;
-- no-action normal-turn timeout and reset after a timely action;
-- third consecutive miss producing one abandonment result;
-- reconnect before and after a deadline without extending it;
-- an old socket on another gateway attempting an action after a newer ticket
-  redemption committed its connection generation;
-- duplicate and conflicting message IDs;
-- two actions racing on one version;
-- deadline worker racing a participant action;
-- gateway restart and missed-notification recovery; and
-- two gateway instances publishing one committed transition.
-
-## Delivery gates
-
-Before issue `#253` is merged:
-
-- the API/security reviewer must approve ticket handling, participant and
-  spectator authorization, hidden-state projections, idempotency, and safe
-  errors;
-- the game-rule reviewer must approve all timeout, automatic-selection,
-  strike-reset, abandonment, and initial-reveal rules;
-- HTTP shapes must be checked against existing Fastify/OpenAPI conventions;
-- realtime examples must be checked as closed versioned schemas;
-- formatting and the documentation build must pass; and
-- the pull request must link issue `#253` and record any deferred decision as
-  follow-up work rather than silently implementing it.
-
 ## AI declaration
 
 This contract was planned, generated, edited, and reviewed with the assistance
@@ -759,3 +703,5 @@ and Codex-CLI[gpt-6-luna], based on source inspection and user direction.
 The durable activity-store and staged scheduler guidance was updated with
 assistance from Codex[GPT-5], based on user-provided implementation requirements.
 Existing-work outage behavior was clarified with assistance from Codex-CLI[gpt-6-luna].
+
+Contract presentation edited with assistance from Codex[GPT-6].

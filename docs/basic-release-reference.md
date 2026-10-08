@@ -162,7 +162,7 @@ the [deployment guide](deployment/azure-deployment-setup.md).
 
 The [Basic release acceptance checklist](testing/basic-tier-release-validation.md)
 owns the release requirements and remaining evidence gates. The
-[deterministic Basic journey](testing/basic-tier-deterministic-e2e.md) exercises
+[deterministic Basic journey](testing/automated-verification.md#basic-journey) exercises
 the core flow through a browser, API, and test database, with Auth0 and Mapbox
 controlled at their external boundaries.
 

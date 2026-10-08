@@ -127,21 +127,6 @@ npm run view
 | Interactive OpenAPI | [http://127.0.0.1:3000/documentation/](http://127.0.0.1:3000/documentation/)         |
 | OpenAPI JSON        | [http://127.0.0.1:3000/documentation/json](http://127.0.0.1:3000/documentation/json) |
 
-## Run the documentation
-
-The Docusaurus workspace runs independently of the game services:
-
-```bash
-npm run start --workspace @wits-world/docs -- --port 3001
-```
-
-Open [http://localhost:3001/docs/](http://localhost:3001/docs/).
-Markdown content lives in `docs/`; site configuration, navigation, and styling
-live in `apps/docs/`. No environment configuration is required.
-
-See [Maintaining the documentation site](documentation-site.md) for the
-publishing and navigation workflow.
-
 ## Troubleshooting
 
 | Symptom                           | Check                                                                                  |

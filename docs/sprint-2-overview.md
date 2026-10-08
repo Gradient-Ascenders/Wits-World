@@ -26,9 +26,8 @@ and Mapbox supplies map presentation. See the
 - [Live app](https://witsworld.co.za) and [public docs](https://wits-world-docs.pages.dev).
 - [Public interactive API](https://witsworld-api-a4awdtdahbbkh8g4.southafricanorth-01.azurewebsites.net/documentation/).
 - [Basic/Intermediate feature and evidence matrix](requirements/sprint-2-feature-matrix.md).
-- [Dated test, CI, deployment and limitation snapshot](testing/sprint-2-validation-status.md).
-- [#167 local release evidence and follow-up pack](testing/basic-release-validation-167.md):
-  recorded tests plus player-session, accessibility, stakeholder-review and retest templates.
+- [Dated test, CI, deployment and limitation snapshot](testing/sprint-2-validation-status.md):
+  includes the 13 September local release results and their outstanding acceptance gaps.
 
 Main revision `9a2f941` has recorded successful CI and application/docs deployments.
 The complete release acceptance remains open under #167. The status page
@@ -61,7 +60,7 @@ Also keep [AI-use declarations](planning/ai-use.md) and
 
 Read the [Sprint 2 report](planning/scrum/sprint-2/report.md) for planning,
 four Daily Scrums with meeting photos, backlog refinement, Review, and
-Retrospective in one document. It links to the detailed records introduced in
+Retrospective in one document. It incorporates the ceremony records introduced in
 [PR #248](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/248).
 
 The [sprint records index](planning/scrum/index.md) retains source and image

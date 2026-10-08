@@ -177,8 +177,6 @@ be reviewed alongside application changes.
 
 Mermaid keeps diagrams editable as text next to their supporting references.
 Local search generates its index with the site and runs queries in the browser.
-The [documentation guide](../development/documentation-site.md) covers editing,
-previewing, and publication.
 
 ## Dependency versions
 

@@ -86,7 +86,7 @@ own artifact independently, so changes to shared response formats must account
 for old browser tabs and the interval between releases.
 
 Documentation follows a separate Cloudflare Pages workflow described in
-[Documentation site](../development/documentation-site.md).
+[CI workflows](../testing/continuous-integration.md#documentation-publishing).
 
 ## Release verification
 

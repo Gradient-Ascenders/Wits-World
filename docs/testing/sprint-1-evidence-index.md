@@ -9,12 +9,6 @@ repository-wide verification.
 
 :::
 
-The [issue #20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20)
-validation run included the complete 11-file API database integration
-selection: all 106 tests passed against uniquely named temporary databases
-derived from the ignored disposable test configuration. This remains local
-evidence and does not replace operator-run production release evidence.
-
 This index supports
 [#20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20). A linked
 procedure is evidence of a method, not evidence that its unrecorded manual steps
@@ -22,8 +16,8 @@ passed.
 
 | Requirement / claim                                | Evidence                                                                                                                                                                                                             | Source                                                                                                                                                                                                                                                                                                                                                                    | Status                                           | Manual follow-up                                                                                                                                                                                                                                                           |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Release scope and checklist                        | [Release validation](sprint-1-release-validation.md) and [demonstration script](sprint-1-demonstration-script.md)                                                                                                    | [#20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20)                                                                                                                                                                                                                                                                                                     | Repository procedure                             | Link final reviewed evidence and post-merge runs from [#20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20).                                                                                                                                               |
-| Deterministic integrated journey                   | [E2E design](sprint-1-deterministic-e2e.md), `apps/web/playwright/sprint1.deterministic.spec.ts`, `npm run test:e2e:sprint1`                                                                                         | [#50](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/50), merged [PR #136](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/136)                                                                                                                                                                                                                   | Automated/local                                  | Attach two consecutive release-branch results; CI enablement remains a separate prerequisite.                                                                                                                                                                              |
+| Release scope and checklist                        | [Recorded branch validation](#recorded-branch-validation); [current acceptance procedure](basic-tier-release-validation.md)                                                                                          | [#20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20)                                                                                                                                                                                                                                                                                                     | Repository procedure                             | Link final reviewed evidence and post-merge runs from [#20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20).                                                                                                                                               |
+| Deterministic integrated journey                   | [E2E design](automated-verification.md#sprint-1-journey), `apps/web/playwright/sprint1.deterministic.spec.ts`, `npm run test:e2e:sprint1`                                                                            | [#50](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/50), merged [PR #136](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/136)                                                                                                                                                                                                                   | Automated/local                                  | Attach two consecutive release-branch results; CI enablement remains a separate prerequisite.                                                                                                                                                                              |
 | Protected API returns `401`                        | `apps/api/tests/authentication.integration.test.ts`, `events.integration.test.ts`, `cors.integration.test.ts`; public `GET /api/v1/events` smoke                                                                     | [#20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20), [#45](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/45)                                                                                                                                                                                                                              | Automated/local and public smoke                 | Repeat after merge and record timestamp/SHA.                                                                                                                                                                                                                               |
 | Event discovery and PostGIS eligibility            | `apps/api/tests/event-database.integration.test.ts`; deterministic E2E                                                                                                                                               | [#20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20), [#48](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/48), [#50](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/50)                                                                                                                                                       | Automated/local                                  | Production DB release evidence remains operator-run.                                                                                                                                                                                                                       |
 | Reachable, unreachable, denied, retry, API failure | `apps/web/tests/explore-page.test.tsx`; deterministic E2E for reachable, unreachable, denied                                                                                                                         | [#20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20), [#50](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/50)                                                                                                                                                                                                                              | Automated/local                                  | Attach deployed/manual outcomes.                                                                                                                                                                                                                                           |
@@ -55,6 +49,63 @@ Record release-specific results in
 editing historical claims into this index. Evidence must exclude credentials,
 complete tokens, connection strings, and unnecessary precise coordinates.
 
+## Recorded branch validation — August 2026 {/* #recorded-branch-validation */}
+
+The historical release procedure recorded two consecutive
+`npm run test:e2e:sprint1` runs passing, two tests each. The complete 11-file
+database selection passed 106 tests on disposable temporary databases. These
+are local results for the location/exploration slice, not the later Basic
+release or production database operations. The source does not identify the
+exact branch SHA for those local executions.
+
+The Windows formatting baseline was recorded separately: repository-wide
+`format:check` reported 276 unchanged files before the documentation edit and
+273 afterwards; changed-file Prettier checks passed. This is a historical
+baseline, not a statement about the current checkout.
+
+### Public smoke — 18 August 2026
+
+These read-only checks establish public availability at validation time; they
+are not the required post-merge release-SHA checks.
+
+| URL/path                                                 | Result               | Safe interpretation                                            |
+| -------------------------------------------------------- | -------------------- | -------------------------------------------------------------- |
+| API `/health`                                            | `200`, JSON          | API health endpoint responded.                                 |
+| API `/api/v1/`                                           | `200`, JSON          | Versioned API root responded.                                  |
+| API `/api/v1/events`, no bearer token                    | `401`, JSON          | Protected event discovery rejected an unauthenticated request. |
+| Web `/`, `/about`, `/explore`                            | `200`, HTML for each | Public SPA and direct routes were served.                      |
+| Documentation `/`                                        | `200`, HTML          | Public documentation site was available.                       |
+| Documentation `/docs/testing/sprint-1-deterministic-e2e` | `200`, HTML          | Existing Sprint 1 E2E documentation was deployed.              |
+
+### Recorded #20 acceptance outcomes
+
+| #   | Criterion                                                  | Status                     | Evidence or remaining gate                                                                                                                                                                                                                    |
+| --- | ---------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Deployed Web communicates with deployed API                | **MANUAL REQUIRED**        | Separate public Web/API availability passed, but a production Auth0 session and sanitised browser network evidence are required.                                                                                                              |
+| 2   | Authenticated player completes target journey              | **MANUAL REQUIRED**        | Follow the deployed player journey below with a safe test player.                                                                                                                                                                             |
+| 3   | Unauthenticated protected API request returns `401`        | **PASS — deployed/public** | Public `GET /api/v1/events` returned `401`; API authentication/event/CORS integration tests also cover it.                                                                                                                                    |
+| 4   | Seeded event loads from PostgreSQL/PostGIS                 | **PASS — automated/local** | `event-database.integration.test.ts` and two deterministic E2E runs exercise the disposable PostGIS database. Production seed evidence remains manual.                                                                                        |
+| 5   | Reachable and unreachable claims differ visibly            | **PASS — automated/local** | Explore component tests and deterministic E2E assert distinct text and real API/PostGIS outcomes.                                                                                                                                             |
+| 6   | Permission denial is usable                                | **PASS — automated/local** | Explore component test and deterministic E2E retain event discovery and show an explanation.                                                                                                                                                  |
+| 7   | Poor/ambiguous accuracy gives safe retry                   | **PASS — automated/local** | Explore and API event integration tests assert `location_accuracy` and stale/future retry states. Gitea #43 is closed, but its repository field-test record has no real-device results; that evidence discrepancy remains a #20 closure gate. |
+| 8   | Map has usable text fallback                               | **PASS — automated/local** | `exploration.test.tsx` keeps the event list/actions available on provider failure and timeout. Manual deployed visual evidence remains required.                                                                                              |
+| 9   | Public documentation is available                          | **PASS — deployed/public** | Root and existing deterministic-E2E route returned `200`; this new package requires post-merge deployment verification.                                                                                                                       |
+| 10  | Deterministic E2E passes                                   | **PASS — automated/local** | Two consecutive `npm run test:e2e:sprint1` runs passed, 2 tests each.                                                                                                                                                                         |
+| 11  | Main CI and deployment checks pass                         | **MANUAL REQUIRED**        | Cannot pass before merge; link exact main validation and triggered deployment runs afterward.                                                                                                                                                 |
+| 12  | No known severe defect remains open                        | **MANUAL REQUIRED**        | Confirm current Gitea has no open P0/P1/severe blocker immediately before closure.                                                                                                                                                            |
+| 13  | Four members have meaningful version-control contributions | **MANUAL REQUIRED**        | Git history shows commits under Kevin, Tyron, Uzair, and Caleb names, with multiple aliases; a team reviewer must confirm identity mapping and meaningful contribution.                                                                       |
+| 14  | Sprint evidence is organised and linked                    | **MANUAL REQUIRED**        | This package organises repository evidence, but reviewed external screenshots, recordings, meetings, dependency attachments, and final run links still need to be added to #20.                                                               |
+| 15  | AI use is attributed under course policy                   | **PASS — automated/local** | Changed submission-facing release documents name ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5]; final commit needs the matching trailer.                                                                                                          |
+
+The demonstrated scope was sign-in, event discovery through map or list, and
+server-authoritative reachable/unreachable/retry results. Challenge, cards,
+decks, battles, and Author publication were outside that Sprint 1 target.
+Public route availability did not establish an authenticated deployed journey.
+Manual acceptance, exact post-merge release/CI evidence, field outcomes, team
+identity/contribution review, and supporting attachments remained open in this
+record. Current validation uses the
+[release acceptance checklist](basic-tier-release-validation.md).
+
 ## AI declaration
 
 This document was planned and reviewed with assistance from
@@ -62,3 +113,5 @@ ChatGPT-Web[GPT-5.6 Sol] and generated and edited with assistance from
 Codex[GPT-5] and Codex-CLI[GPT-5.6 Sol].
 The historical-status notice was added with assistance from
 Codex-CLI[GPT-5].
+
+Historical release outcomes consolidated with assistance from Codex[GPT-6], retaining original ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and Codex-CLI[GPT-5] attribution and evidence boundaries.

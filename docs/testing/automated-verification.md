@@ -109,9 +109,44 @@ a child database for every suite. Use a test database without development or
 production data. Authentication is controlled by the harness, and external
 providers are excluded.
 
-The earlier Sprint 1 journey remains separately selectable through
-`npm run test:e2e:sprint1`. It covers the earlier onboarding and discovery flow;
-the current pull-request gate uses the Basic journey.
+The canonical scenario has 21 sequential `test.step` blocks, described in the
+[acceptance checklist](basic-tier-release-validation.md#the-21-step-journey).
+It uses a fixed clock, controlled reward and CPU selection, and a unique
+player/Author identity. The real HTTP, authorization, service, and database
+boundaries remain exercised. The local token verifier and Mapbox module are
+substitutes; this does not verify production Auth0, Mapbox, DNS, or deployment.
+
+The seven tests comprise one database-backed scenario and six cases whose API
+requests are intercepted in separate browser contexts. They run with four
+workers in CI and two locally. Action and navigation limits are 15 and 30
+seconds; ordinary tests have two minutes and the canonical journey eight.
+
+Standalone preparation builds the API once, then uses compiled migration and
+seed entrypoints with `--test`. CI can pass `--api-build-prepared` after preparing
+the API; a missing prepared build fails before database preparation. Test source:
+`apps/web/playwright/basic.deterministic.spec.ts`; API harness:
+`apps/api/e2e/basic-server.ts`.
+
+### Sprint 1 journey
+
+`npm run test:e2e:sprint1` retains the earlier location/exploration slice.
+It prepares `TEST_DATABASE_URL` with migrations and the idempotent Basic fixture,
+then starts Fastify and Vite. It verifies published event discovery, reachable
+and unreachable PostGIS results, denied permission, and the usable text list.
+The configured test database is used directly and must be disposable and
+separate from development and production.
+
+Browser geolocation uses controlled coordinates, and the harness fixes the
+clock and acquisition time. Auth0 verification and Mapbox are controlled;
+unexpected provider requests fail the suite. The React application, HTTP/CORS,
+local identity resolution, event services, and PostGIS remain real. The current
+PR integration gate uses the broader Basic journey.
+
+The Sprint 1 harness starts on ports 3001 and 5174 without reusing servers.
+Failure screenshots/traces are in `apps/web/playwright/test-results/`, with
+reports in `apps/web/playwright-report/`. Missing Chromium, occupied ports, or
+an unreachable PostGIS target are setup failures, not a passing test. Historical
+executions remain in the [Sprint 1 evidence](sprint-1-evidence-index.md).
 
 ## Focused browser suites
 
@@ -184,3 +219,5 @@ Record the selected suite, revision, and environment with any result. See
 and [CI workflows](continuous-integration.md) for automatic coverage.
 
 AI declaration: Rewritten and expanded with assistance from Codex[GPT-6].
+
+Integrated journey scope and setup consolidated with assistance from Codex[GPT-6], preserving the original Codex[GPT-5] and ChatGPT-Web[GPT-5.6 Sol] test-documentation attribution.

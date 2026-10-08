@@ -1,340 +1,832 @@
 ---
-title: Sprint 1 meetings
+title: Sprint 1 report
 description: Planning, daily coordination, refinement, review, and retrospective in one sprint report.
 sidebar_position: 0
 toc_max_heading_level: 2
 ---
 
-# Sprint 1 meetings
+# Sprint 1 report
 
 Historical report for the August 2026 increment. Planning and Daily Scrum dates
 are reconstructed from repository activity. The team confirmed that the Review
 and Retrospective occurred; their exact dates were not retained.
 
-## Sprint Planning — 5 August 2026 (reconstructed)
+This report combines the ceremony records, their sources, and follow-up actions.
+
+<a id="sprint-planning--5-august-2026-reconstructed" />
+
+## Sprint Planning — 5 August 2026 (reconstructed) {/* #planning */}
+
+**Date:** 5 August 2026 (reconstructed).
+
+> Historical reconstruction; exact meeting details were not retained.
 
 <figure className="sprint-meeting-photo">
-  <a href="/img/scrum/sprint-1/sprint-planning.png" aria-label="Open full-size photo: Team-call image supplied for Sprint 1 planning">
+  <a href="/img/scrum/sprint-1/sprint-planning.png" aria-label="Open full-size photo: Four-person team call image supplied for the Sprint 1 planning record">
     <img
       src="/img/scrum/sprint-1/sprint-planning.png"
-      alt="Team-call image supplied for Sprint 1 planning"
+      alt="Four-person team call image supplied for the Sprint 1 planning record"
       width="3838"
       height="2158"
       loading="lazy"
       decoding="async"
     />
   </a>
-  <figcaption>Team-call image supplied for Sprint 1 planning.</figcaption>
+  <figcaption>Supplied planning image. The image supports that a four-person call image was
+provided for this record; its date and participant identities were not derived
+from file metadata.</figcaption>
 </figure>
 
-### Sprint Goal
+### Sprint Goal {/* #planning-sprint-goal */}
 
-Build the first deployable Wits Quest journey: an authenticated player discovers
-a published campus event, submits a browser-reported location, and receives a
-server-authoritative PostGIS eligibility decision. Establish the Web, API,
-database, CI/CD, and documentation foundations needed for later gameplay.
+Deliver a deployable, mobile-friendly Wits Quest vertical slice in which an
+authenticated player can discover a published campus event, submit a
+browser-reported location, and receive a server-authoritative PostGIS eligibility
+decision. The slice should establish the separate Web/API architecture,
+repeatable quality checks, and public project documentation needed for later
+gameplay.
 
-### Agenda
+### Agenda {/* #planning-agenda */}
 
-Review the location journey, agree on application boundaries, allocate work,
-identify dependencies, and define the quality and release checks.
+Review the first campus exploration journey, confirm the location-slice goal, allocate Web, API, database, and delivery work, and agree on dependencies and release checks before gameplay expands.
 
-### Discussion Summary
+### Discussion Summary {/* #planning-discussion-summary */}
 
-- Use the first journey to connect authentication, event data, eligibility,
-  presentation, and deployment rather than build isolated screens.
-- Keep the React Web application and Fastify API independently buildable.
-- Use PostgreSQL/PostGIS for event geometry and distance checks.
-- Keep an accessible event list available when the map cannot load.
-- Treat location radius, accuracy, and freshness values as provisional until
-  field testing provides evidence.
+#### Why this increment was selected {/* #planning-why-this-increment-was-selected */}
 
-### Key Decisions
+The location journey exercises every major architectural boundary early:
 
-- Keep eligibility and other protected decisions in the API.
-- Treat browser location data as untrusted input.
-- Use short-lived branches, Gitea issues, reviewed pull requests, and CI.
-- Include relevant tests, documentation, security, and accessibility in completion.
-- Keep unperformed manual and external checks visible in the release record.
+- the React browser interface and accessibility baseline;
+- Auth0 authentication and bearer-token handling;
+- the hand-written Fastify API and controlled CORS boundary;
+- PostgreSQL/PostGIS persistence and distance calculations;
+- an external map service used for presentation only;
+- CI/CD and independent Web/API deployment; and
+- version-controlled public documentation.
 
-### Task Allocation
+Completing this thin end-to-end path was considered more useful than building
+isolated card or battle screens before authentication, data authority, and
+deployment had been proven.
 
-- **Kevin — product/Web:** campus map, event discovery, reported-location
-  submission, and eligibility presentation (#12, #21).
-- **Tyron — API/security:** authentication selection, token validation, and
-  protected event endpoints (#11, #13, #14).
-- **Uzair — data/infrastructure:** PostgreSQL/PostGIS setup, event migration and
-  seed, and authoritative eligibility (#16, #18, #19).
-- **Caleb — quality/delivery:** public documentation, CI/CD, and vertical-slice
-  release validation (#15, #17, #20).
-- **Whole team:** project and Git methodology (#10).
+#### Dependency order {/* #planning-dependency-order */}
 
-### Action Items
+1. Establish repository conventions, application boundaries, and environment
+   handling.
+2. Scaffold the independently buildable Web and API applications.
+3. Configure Auth0, database access, migrations, event data, and CI.
+4. Implement protected event discovery and PostGIS eligibility endpoints.
+5. Connect the player interface, map/list presentation, and reported-location
+   action to the HTTP API.
+6. Deploy the Web and API independently, publish documentation, and validate the
+   integrated journey.
 
-- Establish repository conventions and scaffold the Web/API applications.
-- Configure authentication, database access, event data, and CI.
-- Connect discovery and reported-location actions to protected API routes.
-- Deploy the applications independently and publish project documentation.
-- Validate the integrated journey and retain the release evidence.
+#### Initial risks and responses {/* #planning-initial-risks-and-responses */}
 
-[Detailed planning record and issue links](initial-planning.md).
+- **Browser-calculated eligibility could be manipulated:** Store event geometry in PostGIS and return the API decision
+- **Map failure could block discovery:** Maintain an accessible text event list independent of the map
+- **Authentication work could expand into unsafe custom password handling:** Select an established provider and validate its access tokens in the API
+- **Frontend and backend could become a single deployment:** Keep `apps/web` and `apps/api` independently buildable and deployed
+- **CI or deployment might arrive too late:** Establish the pipeline in the same vertical slice
+- **Numeric location thresholds were not yet validated:** Treat them as provisional and create field-test follow-up rather than claim certainty
 
-## Daily Scrum 1 — 6 August 2026 (reconstructed)
+### Key Decisions {/* #planning-key-decisions */}
+
+#### Working agreements {/* #planning-working-agreements */}
+
+The planned working agreement, reconstructed from issue #10 and the methodology
+documents, was:
+
+- use Gitea issues as the backlog and keep acceptance criteria visible;
+- work on short-lived branches rather than directly on `main`;
+- link implementation to issues and use pull requests for human review;
+- keep protected decisions in the API and treat browser data as untrusted;
+- add proportionate tests and documentation with each feature;
+- keep secrets out of Git and browser-visible environment variables; and
+- record AI assistance accurately in commits and submission-facing documents.
+
+#### Definition of Done used for planning {/* #planning-definition-of-done-used-for-planning */}
+
+A backlog item would be considered complete only when its acceptance criteria
+were implemented, relevant tests passed, CI succeeded, review findings were
+resolved, documentation and security/accessibility impacts were addressed, and
+the authorised pull request was merged. External or manual validation that had
+not happened would remain explicit rather than being marked as complete.
+
+#### Planning outcome {/* #planning-planning-outcome */}
+
+The planned increment, ownership split, and dependency order are strongly
+supported by the issue creation and subsequent commit history. Exact spoken
+agreements are not available; the outcome above is the smallest reconstruction
+consistent with the work that followed.
+
+### Task Allocation {/* #planning-task-allocation */}
+
+The list reflects the issue assignments recorded in Gitea. Issue links may
+require access to the private course Gitea instance.
+
+- **Shared methodology** — **Owner:** Whole team; **Planned issues and outcome:** [#10](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/10) establish the project and Git methodology
+- **Product and player experience** — **Owner:** Kevin; **Planned issues and outcome:** [#12](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/12) render the campus map and event; [#21](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/21) submit reported location and display eligibility
+- **API and security** — **Owner:** Tyron; **Planned issues and outcome:** [#11](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/11) select authentication; [#13](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/13) validate tokens; [#14](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/14) expose event endpoints
+- **Data and infrastructure** — **Owner:** Uzair; **Planned issues and outcome:** [#16](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/16) configure PostgreSQL/PostGIS; [#18](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/18) add the event migration and seed; [#19](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/19) implement eligibility
+- **Quality and delivery** — **Owner:** Caleb; **Planned issues and outcome:** [#15](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/15) publish documentation; [#17](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/17) establish CI and deployment; [#20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20) validate and release the slice
+
+### Action Items {/* #planning-action-items */}
+
+- Establish shared repository conventions and independently buildable Web/API apps.
+- Configure authentication, PostgreSQL/PostGIS, event data, and CI.
+- Implement protected event discovery and location eligibility.
+- Connect the map and accessible event list to the API.
+- Deploy the slice, publish documentation, and record release checks.
+
+### Record Details and Sources {/* #planning-record-details-and-sources */}
+
+:::note[Historical Sprint 1 evidence]
+
+This page preserves a reconstructed Sprint 1 planning record. It is not a
+current plan; see the [Scrum records overview](../index.md) for its evidence and
+inference boundaries.
+
+:::
+
+- **Reconstructed date:** 5 August 2026
+- **Milestone:** Sprint 1
+- **Planning horizon:** Initial vertical slice, followed by release validation before the milestone due date
+- **Team in scope:** Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy
+- **Source status:** Retrospective reconstruction from Gitea issues #10–#21, Git history, and committed planning documents
+
+> This is not a contemporaneous transcript. Exact meeting time, duration,
+> facilitator, and individual statements were not recorded in the available
+> repository evidence.
+
+<a id="daily-scrum-1--6-august-2026-reconstructed" />
+
+## Daily Scrum 1 — 6 August 2026 (reconstructed) {/* #daily-scrum-01 */}
+
+**Date:** 6 August 2026 (reconstructed).
+
+> Historical reconstruction; exact meeting details were not retained.
 
 <figure className="sprint-meeting-photo">
-  <a href="/img/scrum/sprint-1/daily-scrum-01.png" aria-label="Open full-size photo: Team-call image supplied for Sprint 1 Daily Scrum 1">
+  <a href="/img/scrum/sprint-1/daily-scrum-01.png" aria-label="Open full-size photo: Four-person team call image supplied as Daily Scrum 01 evidence">
     <img
       src="/img/scrum/sprint-1/daily-scrum-01.png"
-      alt="Team-call image supplied for Sprint 1 Daily Scrum 1"
+      alt="Four-person team call image supplied as Daily Scrum 01 evidence"
       width="1672"
       height="941"
       loading="lazy"
       decoding="async"
     />
   </a>
-  <figcaption>Team-call image supplied for Sprint 1 Daily Scrum 1.</figcaption>
+  <figcaption>Four-person team call image supplied as Daily Scrum 01 evidence.</figcaption>
 </figure>
 
-### Summary of Progress
+### Summary of Progress {/* #daily-scrum-01-summary-of-progress */}
 
-- Kevin established the monorepo conventions, React scaffold, setup documentation,
-  tests, and first map presentation components.
-- Tyron documented the architecture, application boundaries, decisions, and risks.
-- Uzair configured separate Neon development/test targets and the event schema.
-- CI remained the next shared delivery dependency; no Caleb commit is attributed
-  to the 5–6 August reporting window.
+- **Product/Web:** Kevin configured the monorepo standards, scaffolded the mobile-first React application, added tests and setup documentation, and established the first campus-map presentation components.
+- **API/architecture:** Tyron documented the architecture overview, application boundaries, roadmap, and risk register, then addressed review feedback.
+- **Data:** Uzair configured separate Neon development/test targets, added readiness and migration tests, and implemented the initial PostGIS event schema and seed.
+- **Delivery:** No delivery-stream commit is attributed to Caleb during this reporting window; CI remained the next dependency for the shared foundation.
 
-### Blockers Raised During Stand-ups
+### Blockers Raised During Stand-ups {/* #daily-scrum-01-blockers-raised-during-stand-ups */}
 
-- Authentication and the token contract had not yet landed.
-- The Fastify API and CI workflow were pending.
-- Location thresholds still needed field validation.
+- The authentication provider decision and token contract had not yet landed.
+- The Fastify API foundation and CI workflow were still pending.
+- Location radius, accuracy, and freshness values remained provisional.
 
-### Actions Taken
+### Actions Taken {/* #daily-scrum-01-actions-taken */}
 
-- Kept Web, API, and database configuration separate within the shared workspace.
-- Established that event geometry and eligibility belong to the API/database.
-- Prepared the architecture and environment examples for the next integrations.
+- The Web, API, and database must remain separately configured even though they
+  share one npm workspace.
+- Event geometry and eligibility belong to the API/database boundary; the map
+  remains a presentation component.
+- The initial architecture and environment examples must be stable enough for
+  CI and API work to consume next.
 
-[Detailed check-in and next actions](daily-scrum-01.md).
+### Next Actions {/* #daily-scrum-01-next-actions */}
 
-## Daily Scrum 2 — 10 August 2026 (reconstructed)
+- Kevin: continue the player experience and connect it to authenticated event
+  discovery.
+- Tyron: establish the Fastify API and resolve the authentication approach.
+- Uzair: implement and test server-side PostGIS eligibility.
+- Caleb: establish the Gitea Actions quality workflow.
+
+### Record Details and Sources {/* #daily-scrum-01-record-details-and-sources */}
+
+:::note[Historical Sprint 1 evidence]
+
+This page preserves a reconstructed Sprint 1 coordination record. It is not a
+current status report; see the [Scrum records overview](../index.md) for its
+evidence and inference boundaries.
+
+:::
+
+- **Reconstructed date:** 6 August 2026
+- **Reporting window:** 5–6 August 2026
+- **Sprint focus:** Establish a shared foundation that each specialist stream can build on
+- **Evidence:** Commits and merged PRs for the monorepo, Web scaffold, architecture, Neon/PostGIS setup, and event schema
+
+> This summary is reconstructed from repository activity during this reporting
+> window. It records demonstrated progress and the most likely coordination
+> needs; it does not attribute unrecorded quotations to team members.
+
+<a id="daily-scrum-2--10-august-2026-reconstructed" />
+
+## Daily Scrum 2 — 10 August 2026 (reconstructed) {/* #daily-scrum-02 */}
+
+**Date:** 10 August 2026 (reconstructed).
+
+> Historical reconstruction; exact meeting details were not retained.
 
 <figure className="sprint-meeting-photo">
-  <a href="/img/scrum/sprint-1/daily-scrum-02.png" aria-label="Open full-size photo: Team-call image supplied for Sprint 1 Daily Scrum 2">
+  <a href="/img/scrum/sprint-1/daily-scrum-02.png" aria-label="Open full-size photo: Four-person team call image supplied as Daily Scrum 02 evidence">
     <img
       src="/img/scrum/sprint-1/daily-scrum-02.png"
-      alt="Team-call image supplied for Sprint 1 Daily Scrum 2"
+      alt="Four-person team call image supplied as Daily Scrum 02 evidence"
       width="1672"
       height="941"
       loading="lazy"
       decoding="async"
     />
   </a>
-  <figcaption>Team-call image supplied for Sprint 1 Daily Scrum 2.</figcaption>
+  <figcaption>Four-person team call image supplied as Daily Scrum 02 evidence.</figcaption>
 </figure>
 
-### Summary of Progress
+### Summary of Progress {/* #daily-scrum-02-summary-of-progress */}
 
-- Kevin connected the authenticated Explore and reported-location journey.
-- Tyron established Fastify, Auth0 validation, event/eligibility routes, and CORS.
-- Uzair delivered PostGIS eligibility, migrations, and database deployment support.
-- Caleb established Gitea Actions quality jobs and the initial deployment setup.
+- **Product/Web:** Kevin completed the Auth0-aware Explore journey, connected reported-location claims to eligibility, added clear unavailable/denied states, and integrated the browser with the deployed API.
+- **API/security:** Tyron established the Fastify/Auth0 boundary, event and eligibility routes, exact-origin CORS policy, tests, and the initial Azure API deployment configuration.
+- **Data:** Uzair delivered the PostGIS eligibility service, database-backed event path, safe precision handling, migrations, and infrastructure support for the Azure deployment.
+- **Quality/delivery:** Caleb added the Gitea Actions workflow, separated quality jobs, proved the merge gate with a controlled failure/revert, and contributed the initial Azure Web/API deployment setup.
 
-### Blockers Raised During Stand-ups
+### Blockers Raised During Stand-ups {/* #daily-scrum-02-blockers-raised-during-stand-ups */}
 
-- Production database readiness and public documentation were incomplete.
-- Permission failures, responsive behaviour, and accessibility needed manual evidence.
-- The remaining gameplay work needed dependency-aware refinement.
+- The integrated slice existed, but production database readiness, public
+  documentation, and repeatable release evidence were incomplete.
+- The reported-location flow still needed manual permission-denied,
+  unavailable, responsive, and accessibility evidence.
+- Gameplay work beyond discovery was not yet sliced into a dependency-aware
+  delivery plan.
 
-### Actions Taken
+### Actions Taken {/* #daily-scrum-02-actions-taken */}
 
-- Selected Auth0 and adopted `/api/v1` as the browser-to-server boundary.
-- Kept token validation and eligibility on the server.
-- Separated formatting, lint, type-check, test, and build feedback in CI.
+- Auth0 was selected instead of implementing password authentication in the
+  project.
+- `/api/v1` became the versioned browser-to-server boundary.
+- The API validates access tokens and makes eligibility decisions; the browser
+  only submits intent and reported-location data.
+- CI separates formatting, linting, type-checking, testing, and build feedback.
 
-[Detailed check-in and next actions](daily-scrum-02.md).
+### Next Actions {/* #daily-scrum-02-next-actions */}
 
-## Daily Scrum 3 — 13 August 2026 (reconstructed)
+- Run the release checklist against the deployed discovery slice.
+- Refine release-quality issues and distinguish automated gates from manual
+  evidence.
+- Resolve gameplay dependencies before starting the Basic-tier loop.
+- Keep eligibility, challenge outcomes, rewards, and other protected state on
+  the server.
+
+### Record Details and Sources {/* #daily-scrum-02-record-details-and-sources */}
+
+:::note[Historical Sprint 1 evidence]
+
+This page preserves a reconstructed Sprint 1 coordination record. It is not a
+current status report; see the [Scrum records overview](../index.md) for its
+evidence and inference boundaries.
+
+:::
+
+- **Reconstructed date:** 10 August 2026
+- **Reporting window:** 7–10 August 2026
+- **Sprint focus:** Turn the separate foundations into an authenticated vertical slice
+- **Evidence:** Commits for Gitea Actions, Fastify, Auth0, event APIs, PostGIS eligibility, reported location, CORS, and Azure deployment
+
+> This is an evidence-based reconstruction, not a transcript. The repository
+> establishes the work completed during this reporting window but not the exact
+> order or wording of a call.
+
+<a id="daily-scrum-3--13-august-2026-reconstructed" />
+
+## Daily Scrum 3 — 13 August 2026 (reconstructed) {/* #daily-scrum-03 */}
+
+**Date:** 13 August 2026 (reconstructed).
+
+> Historical reconstruction; exact meeting details were not retained.
 
 <figure className="sprint-meeting-photo">
-  <a href="/img/scrum/sprint-1/daily-scrum-03.png" aria-label="Open full-size photo: Team-call image supplied for Sprint 1 Daily Scrum 3">
+  <a href="/img/scrum/sprint-1/daily-scrum-03.png" aria-label="Open full-size photo: Four-person team call image supplied as Daily Scrum 03 evidence">
     <img
       src="/img/scrum/sprint-1/daily-scrum-03.png"
-      alt="Team-call image supplied for Sprint 1 Daily Scrum 3"
+      alt="Four-person team call image supplied as Daily Scrum 03 evidence"
       width="1448"
       height="1086"
       loading="lazy"
       decoding="async"
     />
   </a>
-  <figcaption>Team-call image supplied for Sprint 1 Daily Scrum 3.</figcaption>
+  <figcaption>Four-person team call image supplied as Daily Scrum 03 evidence.</figcaption>
 </figure>
 
-### Summary of Progress
+### Summary of Progress {/* #daily-scrum-03-summary-of-progress */}
 
-- Kevin reviewed responsive/accessibility states, field-test plans, identity,
-  product decisions, and map-provider presentation.
-- Tyron completed the challenge-attempt API contract.
-- Uzair documented PostGIS recovery and designed challenge/reward persistence.
-- Caleb established Docusaurus and Cloudflare Pages documentation automation.
+- **Product/Web:** Kevin documented the field-test protocol, reviewed responsive and accessible states, clarified Basic-tier product decisions, established the visual identity, compared map providers, and began the Mapbox Standard migration.
+- **API/security:** Tyron completed and documented the challenge-attempt API contract so the browser could submit intent without marking challenges or awarding rewards locally.
+- **Data:** Uzair documented PostGIS recovery, designed challenge and reward persistence, and synchronised the expanded issue plan with ownership and dependency information.
+- **Quality/delivery:** Caleb established the Docusaurus site and Cloudflare Pages automation so architecture, API, testing, deployment, and process evidence could be published without requiring an account.
 
-### Blockers Raised During Stand-ups
+### Blockers Raised During Stand-ups {/* #daily-scrum-03-blockers-raised-during-stand-ups */}
 
-- The Basic workload needed smaller, ordered implementation slices.
-- Field testing, device checks, and production operations remained manual gates.
-- Account, reward, card/deck, and battle rules needed explicit contracts.
+- The refined Basic-tier workload was too large to treat as one undifferentiated
+  sprint item.
+- Location field testing, accessible-device checks, and production operator
+  evidence remained manual gates.
+- Account lifecycle, reward idempotency, card/deck rules, and battle rules
+  required explicit server-side decisions before their dependent UI could be
+  considered complete.
 
-### Actions Taken
+### Actions Taken {/* #daily-scrum-03-actions-taken */}
 
-- Kept map-provider changes independent of eligibility authority.
-- Protected marking data, deadlines, scores, rewards, and replay handling in the API contract.
-- Ordered the expanded backlog across persistence, services, client work, and validation.
+- The map-provider migration could change presentation and SDK integration, but
+  not the API's authority over eligibility.
+- The challenge-attempt contract needed to protect marking data, server
+  deadlines, scores, rewards, and replay behaviour before UI implementation.
+- Docusaurus provided the public documentation surface required for release
+  evidence.
+- The expanded backlog needed dependency order across persistence, API, Web,
+  testing, and deployment rather than parallel implementation of disconnected
+  screens.
 
-[Detailed check-in and next actions](daily-scrum-03.md).
+### Next Actions {/* #daily-scrum-03-next-actions */}
 
-## Daily Scrum 4 — 17 August 2026 (reconstructed)
+- Implement identity and account-lifecycle foundations before dependent player
+  data.
+- Land challenge, reward, collection, deck, and battle migrations before their
+  corresponding services and interfaces.
+- Follow the refined dependency order and keep protected game rules on the
+  server.
+- Keep CI, public documentation, and release validation moving alongside the
+  feature increment.
+
+### Record Details and Sources {/* #daily-scrum-03-record-details-and-sources */}
+
+:::note[Historical Sprint 1 evidence]
+
+This page preserves a reconstructed Sprint 1 coordination record. It is not a
+current status report; see the [Scrum records overview](../index.md) for its
+evidence and inference boundaries.
+
+:::
+
+- **Reconstructed date:** 13 August 2026
+- **Reporting window:** 11–13 August 2026
+- **Sprint focus:** Convert refinement decisions into public documentation, stable contracts, and dependency-aware delivery work
+- **Evidence:** Gitea refinement history and commits for responsive review, PostGIS recovery, Docusaurus, branding, Mapbox, and challenge APIs
+
+> This is an evidence-based reconstruction of activity during the reporting
+> window. It is not a verbatim transcript and does not invent attendance,
+> estimates, or quotations that were not retained.
+
+<a id="daily-scrum-4--17-august-2026-reconstructed" />
+
+## Daily Scrum 4 — 17 August 2026 (reconstructed) {/* #daily-scrum-04 */}
+
+**Date:** 17 August 2026 (reconstructed).
+
+> Historical reconstruction; exact meeting details were not retained.
 
 <figure className="sprint-meeting-photo">
-  <a href="/img/scrum/sprint-1/daily-scrum-04.png" aria-label="Open full-size photo: Team-call image supplied for Sprint 1 Daily Scrum 4">
+  <a href="/img/scrum/sprint-1/daily-scrum-04.png" aria-label="Open full-size photo: Four-person team call image supplied as Daily Scrum 04 evidence">
     <img
       src="/img/scrum/sprint-1/daily-scrum-04.png"
-      alt="Team-call image supplied for Sprint 1 Daily Scrum 4"
+      alt="Four-person team call image supplied as Daily Scrum 04 evidence"
       width="1448"
       height="1086"
       loading="lazy"
       decoding="async"
     />
   </a>
-  <figcaption>Team-call image supplied for Sprint 1 Daily Scrum 4.</figcaption>
+  <figcaption>Four-person team call image supplied as Daily Scrum 04 evidence.</figcaption>
 </figure>
 
-### Summary of Progress
+### Summary of Progress {/* #daily-scrum-04-summary-of-progress */}
 
-- Kevin integrated challenge, collection, deck, Author, and CPU battle interfaces.
-- Tyron delivered identity/account services and protected challenge, collection,
-  deck, and Author APIs.
-- Uzair added atomic rewards, catalogue data, battle persistence, and demo seeds.
-- Caleb reviewed documentation deployment while release evidence and CI work continued.
+- **Product/Web:** Kevin implemented the challenge experience, collection and deck interfaces, author console, CPU battle flow and history, then added end-to-end coverage and CI polish for the integrated player journey.
+- **API/security:** Tyron delivered identity and account deletion, challenge services, collection and deck APIs, and protected author operations while retaining authenticated, server-authoritative contracts.
+- **Data:** Uzair added challenge and reward migrations, atomic reward handling, the card catalogue, battle rules, CPU battle persistence, and demo seed data needed to exercise the vertical slice.
+- **Quality/delivery:** Caleb reviewed the public documentation deployment during this window; the broader stream continued to depend on CI stability, deployment configuration, and evidence gathered by the feature owners.
 
-### Blockers Raised During Stand-ups
+### Blockers Raised During Stand-ups {/* #daily-scrum-04-blockers-raised-during-stand-ups */}
 
-- The integrated Basic loop needed consolidated release evidence.
-- Accessibility, field behaviour, representative devices, and production
-  database/recovery checks still required recorded validation.
-- CI/deployment failures needed investigation and clear separation from product defects.
+- Feature completion still needed one deterministic deployed journey and a
+  consolidated body of release evidence.
+- Mobile accessibility, reported-location field behaviour, and representative
+  device checks remained manual gates.
+- Production database operations, privacy/security boundaries, backup/recovery,
+  and operator instructions needed explicit review.
+- Transient CI or deployment failures had to be distinguished from product
+  defects and documented rather than bypassed.
+- Known limitations and incomplete advanced-tier behaviour needed to remain
+  visible in the public documentation.
 
-### Actions Taken
+### Actions Taken {/* #daily-scrum-04-actions-taken */}
 
-- Connected discovery → challenge → reward → collection → deck → CPU battle/history.
-- Kept eligibility, marking, rewards, deck legality, and battle outcomes server-owned.
-- Prepared deterministic journey, privacy, recovery, and handover checks.
+The available history shows the Basic-tier loop moving from separate plans to
+an integrated increment:
 
-[Detailed check-in and next actions](daily-scrum-04.md).
+1. discover an event and check eligibility;
+2. start and submit a server-marked challenge;
+3. receive a persisted, idempotent reward;
+4. view cards and construct a validated deck;
+5. run a server-resolved CPU battle and inspect its history; and
+6. use protected author tools to manage the content behind the journey.
 
-## Backlog Refinement — 11–12 August 2026 (reconstructed)
+The browser continued to render authoritative state rather than deciding
+eligibility, challenge results, rewards, deck legality, or battle outcomes.
 
-### Discussion
+### Next Actions {/* #daily-scrum-04-next-actions */}
 
-Separate the implemented location slice from the work needed to validate its
-release and complete the wider Basic game loop. This section follows the
-example's ceremony grouping; refinement occurred before Daily Scrums 3 and 4.
+- Exercise the complete Basic-tier journey deterministically in the deployed
+  environment.
+- Verify authentication, CORS, privacy, database, and server-authority
+  boundaries at release scope.
+- Finish accessibility and representative-device evidence.
+- Consolidate release, testing, deployment, recovery, and known-limitation
+  documentation for the handover.
 
-### Completed or Mostly Completed Items
+### Record Details and Sources {/* #daily-scrum-04-record-details-and-sources */}
 
-- Authenticated event discovery and server-authoritative location eligibility.
-- Deployable Web/API foundations and CI.
-- A first integrated location journey ready for further release checks.
+:::note[Historical Sprint 1 evidence]
 
-### Items Needing Refinement
+This page preserves a reconstructed Sprint 1 coordination record. It is not a
+current status report; see the [Scrum records overview](../index.md) for its
+evidence and inference boundaries.
 
-- Field calibration, accessibility, authentication/CORS/privacy, database release,
-  recovery, E2E coverage, and presentation (#43–#51).
-- Identity, challenges, rewards, cards, decks, CPU battles, Author tools, and
-  demonstrable content (#62–#80).
-- Team capacity: Kevin's presentation and validation load exceeded the nominal allocation.
+:::
 
-### Backlog Decisions
+- **Reconstructed date:** 17 August 2026
+- **Reporting window:** 14–17 August 2026
+- **Sprint focus:** Integrate the Basic-tier player loop while preserving server authority and collecting release evidence
+- **Evidence:** Commits for challenges, rewards, collections, decks, authoring, CPU battles, account lifecycle, tests, documentation, and CI work
 
-- Split release quality into independently reviewable issues.
-- Keep unvalidated thresholds as field-test tasks.
-- Implement persistence and protected contracts before their dependent client work.
-- Carry non-blocking polish forward when capacity cannot support it.
-- Preserve the naming discrepancy: the committed #62–#80 plan calls itself
-  Sprint 2, while the recorded tracker metadata placed those issues in Sprint 1.
+> This summary condenses a high-volume delivery window into a representative
+> coordination record. It is based on repository evidence, not on a retained
+> transcript or invented individual quotations.
 
-[Detailed refinement, ownership, and issue links](backlog-refinement.md).
+<a id="backlog-refinement--1112-august-2026-reconstructed" />
 
-## Sprint Review — exact date not retained
+## Backlog Refinement — 11–12 August 2026 (reconstructed) {/* #backlog-refinement */}
 
-### Demoed Features
+**Date:** 11–12 August 2026 (reconstructed).
 
-The retained record establishes available Review topics, rather than an exact
-live demonstration sequence:
+> Historical reconstruction; exact meeting details were not retained.
 
-- Authentication, campus event discovery, and PostGIS eligibility.
-- Map-independent discovery and location-failure handling.
-- Independent builds, CI/CD, deployments, and public documentation.
-- Later Basic challenge, reward, collection, deck, CPU battle, and Author work.
+### Discussion {/* #backlog-refinement-discussion */}
 
-### Accepted Items
+Review the goal, dependencies, release evidence, and follow-up scope across the sprint. The record below summarises the retained sources.
 
-The team confirmed a positive overall assessment. Item-by-item acceptance was
-not retained. The formal Sprint 1 release claim remains the location slice;
-later Basic implementation does not expand that claim automatically.
+- the original Sprint 1 issues #10–#21;
+- the deployed authentication/location vertical slice;
+- release coordinator issue
+  [#20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20);
+- outstanding documentation, database-release, accessibility, privacy, and E2E
+  evidence;
+- unresolved challenge, reward, card, deck, battle, authoring, and account
+  lifecycle decisions; and
+- team ownership boundaries for product/Web, API/security, data/infrastructure,
+  and quality/delivery.
 
-### Review Notes
+### Completed or Mostly Completed Items {/* #backlog-refinement-completed-or-mostly-completed-items */}
 
-- Substantial foundations and Basic gameplay were delivered in the repository.
-- Field calibration, manual accessibility/device checks, and production operator
-  evidence remained incomplete.
-- Account/profile completeness, content enforcement, and ceremony evidence
-  needed follow-up at the sprint boundary.
+- The authenticated location slice was implemented and deployable.
+- Event discovery and PostGIS eligibility provided the first integrated journey.
+- Release-quality and remaining Basic gameplay work had been split into focused issues.
 
-### Follow-up Items
+### Items Needing Refinement {/* #backlog-refinement-items-needing-refinement */}
 
-- Complete account/profile work and remaining content constraints.
-- Run structured user testing and retain finding → issue → change → retest evidence.
-- Complete field, accessibility, deployed-provider, and recovery validation.
-- Retain later ceremony and stakeholder records when they occur.
+- Complete field, accessibility, deployment, database-release, and recovery evidence.
+- Resolve challenge, reward, ownership, deck, battle, and account rules before dependent work.
+- Keep the Basic issue-plan naming discrepancy visible rather than rewriting tracker history.
 
-[Detailed Review and release-evidence links](sprint-review.md).
+The committed artifact
+An earlier issue-writing plan called issues #62–#80 a
+Sprint 2 plan. Current Gitea metadata records those issues under the `Sprint 1`
+milestone, and their work was completed within the same August delivery period.
+This record does not silently choose one label: it treats 12 August as a major
+mid-delivery refinement while preserving the naming discrepancy for review.
 
-## Sprint Retrospective — exact date not retained
+### Backlog Decisions {/* #backlog-refinement-backlog-decisions */}
 
-### What Went Well
+#### Refinement on 11 August: release-quality backlog {/* #backlog-refinement-refinement-on-11-august-release-quality-backlog */}
 
-- The team was happy with progress and delivered the first location slice.
-- Specialist work integrated through focused issues and reviewed pull requests.
-- Basic gameplay, documentation, tests, CI/CD, and deployment foundations expanded.
-- Concrete pipeline and map issues improved the architecture and delivery process.
+The first refinement pass added focused work rather than hiding it under the
+general release issue:
 
-### What Did Not Go Well
+- **[#43](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/43)** — **Refined outcome:** Field-test and calibrate location eligibility; **Recorded owner:** Kevin
+- **[#44](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/44)** — **Refined outcome:** Validate the accessible mobile journey; **Recorded owner:** Kevin
+- **[#45](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/45)** — **Refined outcome:** Review deployed authentication, CORS, and privacy boundaries; **Recorded owner:** Uzair in current Gitea metadata; the committed plan originally described Tyron as owner, so the reassignment/history should be read from Gitea
+- **[#46](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/46)** — **Refined outcome:** Define the challenge and attempt API contract; **Recorded owner:** Tyron
+- **[#47](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/47)** — **Refined outcome:** Make database release repeatable; **Recorded owner:** Uzair
+- **[#48](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/48)** — **Refined outcome:** Rehearse PostGIS migration and recovery; **Recorded owner:** Uzair
+- **[#49](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/49)** — **Refined outcome:** Design challenge, reward, and ownership persistence; **Recorded owner:** Uzair
+- **[#50](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/50)** — **Refined outcome:** Add deterministic vertical-slice E2E coverage; **Recorded owner:** Caleb
+- **[#51](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/51)** — **Refined outcome:** Refine visual identity and frontend presentation; **Recorded owner:** Kevin
 
-- CI/CD and map UX needed remediation during delivery.
-- Some decisions and evidence were documented after implementation.
-- Ceremony and stakeholder evidence was not consistently retained.
-- Informal app sharing had not yet become a structured user test.
+##### Refinement rationale {/* #backlog-refinement-refinement-rationale */}
 
-### Lessons Learned
+- Release quality was separated into independently reviewable security,
+  accessibility, recovery, E2E, and presentation work.
+- Unvalidated numeric thresholds remained field-test tasks instead of becoming
+  undocumented requirements.
+- Challenge/reward persistence and the API contract were prepared as design
+  foundations, not silently treated as part of the already delivered location
+  slice.
+- Team load was made visible. The committed plan explicitly warned that Kevin's
+  visual and validation load exceeded the nominal week allocation and allowed
+  non-blocking polish to carry forward.
 
-- Keep increments integrated and small enough to review and validate.
-- Record decisions, feedback, and release evidence as work happens.
-- Prepare formal testing early enough to act on and retest findings.
+#### Refinement on 12 August: remaining Basic-tier decomposition {/* #backlog-refinement-refinement-on-12-august-remaining-basic-tier-decomposition */}
 
-### Action Items for Sprint 2
+The second pass decomposed the complete game loop into issues #62–#80:
 
-- Capture dated Review and Retrospective notes with participants and actions.
-- Record stakeholder feedback with evaluation, decisions, owners, and issue links.
-- Run the formal user-testing plan and retain sanitised results.
-- Continue focused vertical slices and CI reliability work.
-- Keep historical evidence dated while updating current technical references.
+1. resolve product and governance decisions;
+2. establish local player profiles, roles, and account lifecycle;
+3. add challenge, attempt, card, reward, and ownership persistence;
+4. implement authoritative challenge start, marking, timing, and atomic rewards;
+5. expose card collections and starter grants;
+6. implement saved-deck persistence and player management;
+7. implement deterministic CPU rules, persisted matches, and history;
+8. implement protected author APIs and the author console; and
+9. seed and validate the complete demonstrable Basic journey.
 
-[Detailed Retrospective and improvement evidence](sprint-retrospective.md).
+The dependency order prevented the Web client from inventing protected rules
+before API, database, and product decisions existed.
+
+#### Resulting backlog policy {/* #backlog-refinement-resulting-backlog-policy */}
+
+- A backlog item is ready when its user or system outcome, owner, dependencies,
+  acceptance criteria, security/data constraints, and evidence expectations are
+  clear enough to implement.
+- Priority follows the dependency chain and release risk, not merely visual
+  appeal or issue age.
+- Manual and external checks stay visible as checks; they are not converted into
+  automated passes.
+- New findings become focused issues instead of silently broadening the active
+  implementation branch.
+- Work that cannot fit without compromising testing, security, accessibility,
+  or documentation is carried forward explicitly.
+
+#### Refinement outcome {/* #backlog-refinement-refinement-outcome */}
+
+The refined backlog transformed one deployable location slice into two clear
+tracks: evidence needed to release that slice responsibly, and dependency-ordered
+work needed to complete the Basic game loop. Subsequent Gitea history shows that
+the resulting issues were assigned and closed, but each issue and its pull
+request remain the source of truth for completion evidence.
+
+### Record Details and Sources {/* #backlog-refinement-record-details-and-sources */}
+
+:::note[Historical Sprint 1 evidence]
+
+This page preserves a reconstructed Sprint 1 refinement record. It is not a
+current backlog; see the [Scrum records overview](../index.md) for its evidence
+and inference boundaries.
+
+:::
+
+- **Reconstructed dates:** 11–12 August 2026
+- **Trigger:** The first vertical slice was implemented and deployable, but release evidence and the remaining Basic-tier journey were not yet decomposed sufficiently
+- **Evidence:** Gitea issue creation history, the committed week-two issue plan, the Basic-tier issue plan, and subsequent implementation commits
+
+> This page records backlog changes that are visible in Gitea and Git. It does
+> not claim a single uninterrupted refinement meeting or invent exact votes,
+> estimates, or quotations that were not retained.
+
+<a id="sprint-review--exact-date-not-retained" />
+
+## Sprint Review — exact date not retained {/* #sprint-review */}
+
+**Date:** Exact date not retained.
+
+> Historical reconstruction; exact meeting details were not retained.
+
+### Demoed Features {/* #sprint-review-demoed-features */}
+
+The available evidence identifies Review topics and delivered work. It does not establish an item-by-item live demonstration.
+
+#### Sprint goal and delivered increment {/* #sprint-review-sprint-goal-and-delivered-increment */}
+
+Sprint 1 began with a location-focused vertical-slice goal: an authenticated
+player should discover a published event, submit a browser-reported location,
+and receive a server-authoritative PostgreSQL/PostGIS eligibility result. The
+repository supports the following delivered foundations by the sprint close:
+
+- independently buildable React Web, Fastify API, and Docusaurus applications;
+- Auth0 authentication and server-side bearer-token validation;
+- versioned `/api/v1` routes, safe errors, request identifiers, and generated
+  OpenAPI;
+- PostgreSQL/PostGIS migrations, seeds, readiness checks, and authoritative
+  event eligibility;
+- map-backed and map-independent event discovery with browser-location failure
+  handling;
+- Gitea CI/CD, independent Web/API deployment, and public documentation;
+- automated unit, component, route, database, and deterministic browser
+  coverage for the release slice; and
+- architecture, requirements, risk, deployment, testing, and operational
+  documentation.
+
+Repository history also shows substantial Basic functionality delivered before
+the milestone close: timed challenges and marking, retry-safe rewards,
+collection and starter cards, saved decks, CPU matches and history, and the
+protected Author console. These later features were real repository progress,
+but they were not silently added to the narrower formal Sprint 1 location-slice
+release claim.
+
+#### Repository-backed Review topics {/* #sprint-review-repository-backed-review-topics */}
+
+The following are safe reconstructions of increment topics available for Review
+from the Sprint goal and delivered work. The evidence does not prove that every
+item was live-demonstrated or establish a precise presentation sequence.
+
+1. The end-to-end location slice from authentication and event discovery to an
+   API/PostGIS eligibility result.
+2. The authority boundary: reported location is untrusted, the map is
+   presentation-only, and protected rules remain server-side.
+3. Mobile and accessible fallback behaviour when geolocation, the map provider,
+   or the API fails.
+4. Independent Web/API/docs builds, automated validation, deployment, and
+   public documentation.
+5. The broader Basic gameplay and Author increment then present in the
+   repository, while distinguishing it from the formal Sprint 1 release scope.
+
+### Accepted Items {/* #sprint-review-accepted-items */}
+
+The team confirmed a positive overall assessment. Item-by-item acceptance was not retained, and the formal location-slice release remains narrower than the later Basic implementation.
+
+### Review Notes {/* #sprint-review-review-notes */}
+
+#### Evidence boundaries {/* #sprint-review-evidence-boundaries */}
+
+- **Contemporaneous evidence:** the repository, issues, pull requests, commits,
+  workflows, deployments, and documents created during the sprint. No Review
+  minutes or recording are available.
+- **Team-confirmed recollection:** the Review occurred and the team's overall
+  assessment was positive.
+- **Repository evidence:** establishes the delivered increment and known gates,
+  but not the exact order or wording of the ceremony.
+- **Future planned evidence:** later Reviews should retain date, attendance,
+  increment demonstrated, stakeholder feedback, decisions, and follow-up work
+  at the time of the ceremony.
+
+#### Assessment and limitations {/* #sprint-review-assessment-and-limitations */}
+
+The team confirms that its assessment was positive and that it was satisfied
+with Sprint 1 progress. The repository supports substantial delivery, while
+also recording these limitations at the boundary:
+
+- completed campus field-test results were not retained in the repository, so
+  location thresholds remained provisional;
+- full manual keyboard, screen-reader, touch, contrast, reduced-motion, and
+  representative-device evidence remained incomplete;
+- signed-in production, database-release, backup/recovery, and other
+  operator-owned evidence was not fully recorded;
+- a complete player profile/account, password-reset, and account-deletion
+  journey remained future Basic work;
+- some Creature content and strict publication enforcement still required
+  reviewed remediation; and
+- meeting, ceremony, and feedback evidence had not been captured consistently
+  at the time it occurred.
+
+These limits are preserved in the [Sprint 1 evidence index](../../../testing/sprint-1-evidence-index.md),
+[known limitations](../../../testing/sprint-1-known-limitations.md), and
+[Basic-tier release validation](../../../testing/basic-tier-release-validation.md).
+
+### Follow-up Items {/* #sprint-review-follow-up-items */}
+
+Natural follow-up work included:
+
+- complete and validate the remaining account/profile capabilities;
+- conduct formal user testing and trace findings into issues and changes;
+- finish manual accessibility, responsive, field, and deployed-provider
+  evidence;
+- continue CI reliability and release-evidence improvements;
+- resolve remaining content and database-enforcement gates; and
+- preserve current-reference and historical-evidence boundaries as the product
+  evolves.
+
+### Record Details and Sources {/* #sprint-review-record-details-and-sources */}
+
+- **Ceremony:** Sprint 1 Review
+- **Occurrence:** Confirmed by the team
+- **Date:** Exact date not retained
+- **Participants:** Detailed attendance was not retained
+- **Team assessment:** Positive; the team confirms it was satisfied with the progress made
+- **Primary sources:** Team-confirmed recollection, Git/Gitea history, Sprint 1 goal, release evidence, and current-state reconciliation
+
+:::note[Reconstructed ceremony record]
+
+> This record was reconstructed after the ceremony from team recollection and
+> repository evidence because contemporaneous minutes were not retained.
+
+It is not a transcript. Exact statements, individual opinions, votes, the
+precise discussion sequence, and any unrecorded demonstration are not claimed.
+
+:::
+
+<a id="sprint-retrospective--exact-date-not-retained" />
+
+## Sprint Retrospective — exact date not retained {/* #sprint-retrospective */}
+
+**Date:** Exact date not retained.
+
+> Historical reconstruction; exact meeting details were not retained.
+
+### What Went Well {/* #sprint-retrospective-what-went-well */}
+
+- The team was generally happy with Sprint 1 progress.
+- Major project foundations were established across architecture,
+  authentication, API, database, Web, documentation, testing, CI/CD, and
+  deployment.
+- The location vertical slice was delivered, and substantial Basic challenge,
+  reward, collection, deck, CPU battle, and Author functionality was also
+  present by the sprint close.
+- CI/CD and deployment capability improved as concrete runner, artifact,
+  configuration, and deployment problems were investigated.
+- Architecture, documentation, testing, and development processes became more
+  explicit and repeatable during the sprint.
+- Small issue- and pull-request-backed changes allowed specialist work to be
+  integrated while retaining server-authority and review boundaries.
+
+### What Did Not Go Well {/* #sprint-retrospective-what-did-not-go-well */}
+
+- CI/CD issues required remediation during the sprint, showing that reliability
+  and evidence from the exact release path needed continued attention.
+- The map experience required further UX refinement after the initial vertical
+  slice.
+- Some product decisions, reconciliation, and evidence were documented after
+  implementation rather than when the decision or event occurred.
+- Client-meeting, Sprint Review, and Retrospective evidence was not retained
+  consistently; later reconstruction cannot replace contemporaneous notes.
+- Informal sharing of the application had not yet become a structured user test
+  with recorded observations, critique, prioritisation, and traced changes.
+
+These are process themes, not attributed complaints from a particular person.
+
+### Lessons Learned {/* #sprint-retrospective-lessons-learned */}
+
+- Keep a small end-to-end increment and integrate specialist work through focused reviews.
+- Capture ceremony, stakeholder, and release evidence when the work happens.
+- Prepare structured user testing early enough to evaluate and retest findings.
+
+### Action Items for Sprint 2 {/* #sprint-retrospective-action-items-for-sprint-2 */}
+
+- **Retain actual Review and Retrospective notes:** Dated record with participants, increment or themes, decisions/actions, and links created at the ceremony
+- **Capture stakeholder feedback when it happens:** Interaction record separating feedback, team evaluation, decision, owner, issue, and resulting change
+- **Run formal user testing:** Follow the [Sprint 2 user-testing plan](../../../testing/sprint-2-user-testing-plan.md) and retain sanitised observations and results
+- **Continue smaller reviewed vertical slices:** Focused issue and PR links with acceptance criteria, tests, documentation, and review evidence
+- **Continue improving CI reliability:** Named failure, measured intervention, exact workflow result, and any residual risk
+- **Preserve current/historical documentation boundaries:** Current reference updated without rewriting dated plans, decisions, or evidence records
+
+### Follow-up {/* #sprint-retrospective-follow-up */}
+
+#### Evidence boundaries {/* #sprint-retrospective-evidence-boundaries */}
+
+- **Contemporaneous evidence:** the sprint's issues, commits, pull requests,
+  CI/deployment history, and documents; no Retrospective minutes are available.
+- **Team-confirmed recollection:** the Retrospective occurred, the team was
+  generally happy with progress, and the broad themes below are accurate.
+- **Repository evidence:** supports delivery, CI/map remediation, and the timing
+  of documentation/evidence work; it does not preserve individual views.
+- **Future planned evidence:** later Retrospectives should retain participants,
+  agreed themes, selected actions, owners, and follow-up review at the time.
+
+#### Follow-up rule {/* #sprint-retrospective-follow-up-rule */}
+
+An improvement is not complete merely because it appears in this reconstructed
+record. Sprint 2 evidence must show the process being used: notes retained,
+feedback evaluated, tests run, issues created, changes reviewed, and outcomes
+linked.
+
+### Record Details and Sources {/* #sprint-retrospective-record-details-and-sources */}
+
+- **Ceremony:** Sprint 1 Retrospective
+- **Occurrence:** Confirmed by the team
+- **Date:** Exact date not retained
+- **Detailed notes:** Not retained
+- **Overall theme:** The team was generally happy with Sprint 1 progress
+- **Sources:** Team-confirmed themes and repository evidence
+
+:::note[Reconstructed ceremony record]
+
+> This record was reconstructed after the ceremony from team recollection and
+> repository evidence because contemporaneous minutes were not retained.
+
+It records conservative themes rather than invented quotations, complaints,
+individual opinions, votes, conflict, attendance, or discussion order.
+
+:::
 
 ## Sources and Record Status
 
-This report summarises the eight linked records. They retain issue/PR references,
+The eight ceremony sections retain issue/PR references,
 reporting windows, ownership, and original AI declarations. The planning and
 Daily Scrum photos follow the supplied filename order; image metadata does not
 establish dates or identities. No Review or Retrospective photo was supplied.
@@ -343,6 +835,6 @@ See the [record and image provenance](../index.md#sprint-1-image-provenance) and
 
 ## AI declaration
 
-Prepared with assistance from Codex[GPT-6], using the existing Sprint 1 records
-for content and `vitaqsprint.pdf` for layout. Historical claims and source
-attributions remain in the detailed records.
+The original ceremony narratives used repository history, project documentation, and the supplied `vitaqsprint.pdf` layout reference with assistance from Codex[GPT-5], Codex-CLI[GPT-5], Codex[GPT-6].
+
+The records were consolidated into this report with assistance from Codex[GPT-6]. This edit creates no meeting, attendance, quotation, stakeholder acceptance, or test result; original dates, photo provenance, and reconstruction limits remain in the record.

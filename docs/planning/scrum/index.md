@@ -17,8 +17,8 @@ placements are distinguished in the photo source notes.
 - [Sprint 3 report](sprint-3/report.md) — Advanced implementation and open release evidence.
 - [Sprint 4 report](sprint-4/report.md) — final-submission refinement, performance, and operations through 8 October.
 
-The reports link to the detailed records for owners, issue/PR references,
-reporting windows, and source limits. Dates retain their original meaning;
+The reports include owners, issue/PR references, reporting windows, and source
+limits alongside each ceremony. Dates retain their original meaning;
 refinement is grouped after the Daily Scrums without changing when it occurred.
 
 Gitea remains the source of truth for current work. The
@@ -29,7 +29,7 @@ workflow and evidence requirements.
 
 ## Record status
 
-The Sprint 1 planning and Daily Scrum pages were assembled on 24 August 2026,
+The Sprint 1 planning and Daily Scrum sections were assembled on 24 August 2026,
 and its Review and Retrospective records were added on 25 August. The Sprint 2
 records were completed on 15 September using the evidence retained throughout
 the sprint. The reliable sources are:
@@ -76,8 +76,8 @@ acceptance can be added when their evidence is supplied. See the
 [Sprint 3 governance page](../sprint-3-governance-and-evidence.md) for the
 current evidence boundaries and feedback workflow.
 
-Read the [Sprint 3 report](sprint-3/report.md) for the complete
-ceremony sequence and links to all eight detailed records.
+Read the [Sprint 3 report](sprint-3/report.md) for the consolidated
+ceremony sequence, action items, sources, and evidence limits.
 
 The [Sprint 3 survey report](../../testing/sprint-3-user-feedback-results.md)
 provides the new response evidence. The separate
@@ -90,13 +90,13 @@ Sprint 2 photos are not reused as Sprint 3 evidence.
 Uzair supplied five team-call screenshots in the Sprint 3 static image folder.
 They were renamed in the supplied numbered order and preserved byte-for-byte.
 
-| Supplied filename | Retained image                                               | Displayed alongside                                       |
-| ----------------- | ------------------------------------------------------------ | --------------------------------------------------------- |
-| `1.png`           | [daily-scrum-01.png](/img/scrum/sprint-3/daily-scrum-01.png) | [Planning](sprint-3/initial-planning.md#meeting-photo)    |
-| `2.png`           | [daily-scrum-02.png](/img/scrum/sprint-3/daily-scrum-02.png) | [Daily Scrum 1](sprint-3/daily-scrum-01.md#meeting-photo) |
-| `3.png`           | [daily-scrum-03.png](/img/scrum/sprint-3/daily-scrum-03.png) | [Daily Scrum 2](sprint-3/daily-scrum-02.md#meeting-photo) |
-| `4.png`           | [daily-scrum-04.png](/img/scrum/sprint-3/daily-scrum-04.png) | [Daily Scrum 3](sprint-3/daily-scrum-03.md#meeting-photo) |
-| `5.png`           | [daily-scrum-05.png](/img/scrum/sprint-3/daily-scrum-05.png) | [Daily Scrum 4](sprint-3/daily-scrum-04.md#meeting-photo) |
+| Supplied filename | Retained image                                               | Displayed alongside                                              |
+| ----------------- | ------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `1.png`           | [daily-scrum-01.png](/img/scrum/sprint-3/daily-scrum-01.png) | [Planning](sprint-3/report.md#planning-meeting-photo)            |
+| `2.png`           | [daily-scrum-02.png](/img/scrum/sprint-3/daily-scrum-02.png) | [Daily Scrum 1](sprint-3/report.md#daily-scrum-01-meeting-photo) |
+| `3.png`           | [daily-scrum-03.png](/img/scrum/sprint-3/daily-scrum-03.png) | [Daily Scrum 2](sprint-3/report.md#daily-scrum-02-meeting-photo) |
+| `4.png`           | [daily-scrum-04.png](/img/scrum/sprint-3/daily-scrum-04.png) | [Daily Scrum 3](sprint-3/report.md#daily-scrum-03-meeting-photo) |
+| `5.png`           | [daily-scrum-05.png](/img/scrum/sprint-3/daily-scrum-05.png) | [Daily Scrum 4](sprint-3/report.md#daily-scrum-04-meeting-photo) |
 
 The images are retained in commit `aca1ee5`. Their bytes and asset URLs are
 unchanged. Photo 1 appears with planning, followed by photos 2–5 with the four
@@ -110,13 +110,13 @@ attendance, or agreement.
 
 ## Sprint 2 record
 
-Read the [Sprint 2 report](sprint-2/report.md) for the complete
-ceremony sequence and links to all eight detailed records.
+Read the [Sprint 2 report](sprint-2/report.md) for the consolidated
+ceremony sequence, action items, sources, and evidence limits.
 
 ## Sprint 1 record
 
-Read the [Sprint 1 report](sprint-1/report.md) for the complete
-ceremony sequence and links to all eight detailed records.
+Read the [Sprint 1 report](sprint-1/report.md) for the consolidated
+ceremony sequence, action items, sources, and evidence limits.
 
 ## Sprint 2 meeting photos
 
@@ -124,12 +124,12 @@ Kevin supplied four images and confirmed their order for the four Daily Scrum
 records. The images were found in `apps/web/` and moved without modification
 into the documentation site's Sprint 2 image folder.
 
-| Original filename | Meeting record                                                                   | Documentation image                     |
-| ----------------- | -------------------------------------------------------------------------------- | --------------------------------------- |
-| `content.png`     | [Daily Scrum 1 — Foundations](sprint-2/daily-scrum-01.md#meeting-photo)          | `img/scrum/sprint-2/daily-scrum-01.png` |
-| `content2.png`    | [Daily Scrum 2 — Backend integration](sprint-2/daily-scrum-02.md#meeting-photo)  | `img/scrum/sprint-2/daily-scrum-02.png` |
-| `content3.png`    | [Daily Scrum 3 — Player experience](sprint-2/daily-scrum-03.md#meeting-photo)    | `img/scrum/sprint-2/daily-scrum-03.png` |
-| `content4.png`    | [Daily Scrum 4 — Testing and feedback](sprint-2/daily-scrum-04.md#meeting-photo) | `img/scrum/sprint-2/daily-scrum-04.png` |
+| Original filename | Meeting record                                                                          | Documentation image                     |
+| ----------------- | --------------------------------------------------------------------------------------- | --------------------------------------- |
+| `content.png`     | [Daily Scrum 1 — Foundations](sprint-2/report.md#daily-scrum-01-meeting-photo)          | `img/scrum/sprint-2/daily-scrum-01.png` |
+| `content2.png`    | [Daily Scrum 2 — Backend integration](sprint-2/report.md#daily-scrum-02-meeting-photo)  | `img/scrum/sprint-2/daily-scrum-02.png` |
+| `content3.png`    | [Daily Scrum 3 — Player experience](sprint-2/report.md#daily-scrum-03-meeting-photo)    | `img/scrum/sprint-2/daily-scrum-03.png` |
+| `content4.png`    | [Daily Scrum 4 — Testing and feedback](sprint-2/report.md#daily-scrum-04-meeting-photo) | `img/scrum/sprint-2/daily-scrum-04.png` |
 
 The mapping follows the supplied order, not inferred image timestamps. Checkpoint
 dates and reporting windows come from the written records; the images do not
@@ -147,7 +147,7 @@ order. Their file metadata does not establish when the calls occurred, so the
 dates on these pages come from the repository and Gitea timeline rather than
 from the images.
 
-The four Sprint 1 Daily Scrum pages are representative check-in records spread across
+The four Sprint 1 Daily Scrum sections are representative check-in records spread across
 the delivery period. Each summarises repository activity since the preceding
 record; the dates do not imply these were the team's only coordination points.
 The Sprint 1 Review and Retrospective have no associated supplied image. Their

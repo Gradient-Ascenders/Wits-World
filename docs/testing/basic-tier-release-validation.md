@@ -1,21 +1,28 @@
 ---
-title: 'Basic release acceptance checklist'
+title: 'Release acceptance checklist'
+description: The integrated Basic journey, release checks, and evidence needed to assess a release.
 ---
 
-# Basic release acceptance checklist
+# Release acceptance checklist
 
-## Scope and evidence rule
+Use this procedure to assess a named release of the Basic game. Record the
+commit, environment, date, command or task, observed result, evidence, and
+remaining limitations. The [test catalogue](automated-verification.md) describes
+suite setup; [CI workflows](continuous-integration.md) describes automated gates.
 
-This is the canonical Issue #80 evidence record. The issue text available in
-the repository calls for a “21-step” release flow but does not enumerate those
-steps, and the private Gitea issue/comments were not accessible during this
-validation. The table below is therefore a release-validation decomposition of
-confirmed repository behavior, not 21 newly invented product requirements.
-
-Automated/local checks, deployed smoke checks, manual evidence, external
-configuration, and unresolved acceptance gates are reported separately.
+Local tests, CI results, production smoke checks, participant evaluation, and
+operator checks are separate evidence. This checklist does not certify a
+release. Dated outcomes remain in the [Sprint 1 evidence](sprint-1-evidence-index.md),
+[Sprint 2 results](sprint-2-validation-status.md), and
+[Sprint 3 results](sprint-3-validation-status.md).
 
 ## The 21-step journey
+
+These are the named steps in the deterministic Basic browser scenario, originally
+used for issue #80. They decompose executable checks of repository behaviour;
+they are not 21 separately stakeholder-approved product requirements. The
+scenario uses local authentication substitutes and does not prove production
+registration, Auth0, or Mapbox operation.
 
 | Step | Playwright step and asserted outcome                                                                                                 |
 | ---: | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -60,7 +67,7 @@ account-deletion persistence, and safe errors have focused repository tests. The
 current application uses a shared sliding-window limit keyed by verified local
 player identity. It does not cover invalid-token traffic before identity
 resolution; deployment-edge rate protection remains an external evidence gap.
-Location is requested only by a user action and is not sent to Mapbox.
+Explore uses consented browser location readings; the API owns eligibility. Player location is not sent to Mapbox.
 
 The generated OpenAPI contract documents `429 RATE_LIMITED` on bearer-protected
 routes after verified local-player resolution. The safe error body is accompanied
@@ -84,69 +91,45 @@ them in the 21-step success journey.
 | Illegal or stale battle action            | Serialize competing submissions and reject the stale request.  | `apps/api/tests/cpu-match-database.integration.test.ts` — `serializes concurrent different submissions and rejects the stale request`                     |
 | Player calling an Author route            | Deny the ordinary Player with `403`.                           | `apps/api/tests/author-cards.integration.test.ts` — `rejects an ordinary Player`                                                                          |
 
-## Basic checklist status
+## Automated release checks
 
-| Item        | Repository status                                                                                                                                               | Remaining release gate                                                                                                                                                                     |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| BASIC-01–08 | Implemented: eligibility, five-question attempts, hidden active answers, scoring, atomic/retry-safe rewards, collection, starter cards, decks, and CPU history. | Execute full validation and manual UX checks.                                                                                                                                              |
-| BASIC-09–11 | Implemented rules for timers/randomness, two roles, and Author lifecycle/audit.                                                                                 | Complete normal release validation.                                                                                                                                                        |
-| BASIC-12    | Issues `#160` and `#161` implement transactional deletion/retention and the protected player-facing account, recovery, and deletion journey.                    | Validate deployed Auth0 recovery/deletion, recent authentication, cleanup, retry, and 12-month audit-retention evidence.                                                                   |
-| BASIC-13    | Mapbox Standard implemented with attribution and text fallback; confirmed as an allowed team-selected integration.                                              | Retain licensing/terms, cost/usage owner, token/CSP/privacy, deployed behaviour, attribution, and campus-data evidence. No separate named client/lecturer approval is claimed or required. |
-| BASIC-14–16 | Responsive/accessibility foundations and explicit exclusions are documented and tested where automatable.                                                       | Manual keyboard, screen-reader, contrast, touch, and representative-device evidence is required.                                                                                           |
-| BASIC-17    | Application deliberately ignores `email_verified` for ordinary authorization.                                                                                   | Operator must confirm production Auth0 verification email disabled and recovery email retained.                                                                                            |
-| BASIC-18    | Normalized global card-definition uniqueness enforced by migrations `0017`/`0018` and tests.                                                                    | None identified in repository scope.                                                                                                                                                       |
-| BASIC-19    | Draft 0–4, API fifth-move rejection, exactly-four publication, stored positions 1–4, and the migration `0041` complete release catalogue are enforced.          | Retain catalogue migration, gameplay/balance review, and deployed content evidence; the earlier 18-definition remediation is complete.                                                     |
+With dependencies installed and an isolated PostgreSQL/PostGIS test target
+configured, record the root checks and selected integration results:
 
-## BASIC-19 deployment preflight
-
-Before applying migration `0019_limit_creature_move_positions.sql` to a shared
-or production database, an authorised database operator must run this read-only
-query against the intended target:
-
-```sql
-select card_definition_id, position, name
-from public.card_moves
-where position > 4
-order by card_definition_id, position;
+```bash
+npm run format:check
+npm run lint
+npm run type-check
+npm test
+npm run build
+npm run test:database --workspace @wits-world/api
+npm run test:e2e:basic
+git diff --check
 ```
 
-The query must return zero offending rows before `0019` is applied. Any returned
-row requires Cards/Game and database-owner review and explicit remediation; it
-must not be silently deleted, truncated, or renumbered. Migration `0019` also
-fails transactionally when such rows exist, and the database integration test
-records that safety behavior. No production result is claimed here because this
-task did not query an external database.
+The [test catalogue](automated-verification.md#database-integration) explains
+database permissions and selection. Root workspace tests alone do not run
+opt-in database or browser suites. Record failed, skipped, or inconclusive
+checks and their cause; distinguish an assertion failure from unavailable
+infrastructure. Record the actual CI run and deployed identifiers separately.
 
-This preflight was separate from the 18 incomplete definitions recorded by the
-August audit. Migration `0041` later replaced that superseded ordinary roster
-with the approved complete catalogue while preserving historical match
-snapshots. A zero-row `0019` preflight remains migration-safety evidence, not
-proof that `0041` is deployed or that gameplay/balance review passed.
+## Deployed and manual acceptance
 
-## Required commands and evidence
+| Area                                    | Evidence required                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Integrated player journey               | Register/sign in through real Auth0; discover an event; obtain eligibility; complete a challenge; inspect reward and collection; save/select a legal deck; complete a CPU battle; reload history; sign out. Verify Web-to-API calls against the named release.                                                     |
+| Failure and recovery                    | Denied or inaccurate location, map unavailable, challenge/API failure, invalid deck/action, and session expiry remain understandable and recoverable.                                                                                                                                                              |
+| Accessibility and responsiveness        | Check 360/390 px mobile, 768 px tablet, and desktop; touch and keyboard; visible focus, forms, announcements, contrast, reduced motion, enlarged text/zoom, overlays, and map-independent completion. Record the screen reader and real device used.                                                               |
+| Content and gameplay                    | Confirm published events, questions, complete card definitions, rewards, and battle behaviour against the intended production content. Retain factual review and gameplay/balance review outcomes.                                                                                                                 |
+| External services and account lifecycle | Verify Auth0 origins, issuer, email/recovery policy, session rotation, recovery and deletion; Mapbox restrictions, attribution, usage ownership, and fallback. Use the [integration reference](../architecture/external-integrations.md).                                                                          |
+| Database and operations                 | Confirm production migration/content state, isolated test targets, backups/recovery, worker/cleanup operation, retention, monitoring, and deployment-edge protection using the [database release procedure](../database/database-release-procedure.md) and [Azure guide](../deployment/azure-deployment-setup.md). |
+| Feedback and sign-off                   | Evaluate genuine player/stakeholder findings, fix and retest accepted severe findings, document remaining conditions, and record reviewer acceptance for the stated release scope.                                                                                                                                 |
 
-Release validation must record exact results for targeted type checks/tests,
-the 21-step command, full lint/type-check/test/build, documentation build, and
-final Git inspection. Results belong in the Issue #80 handoff; this document
-does not pre-claim results that may change after it is written.
-
-## Manual and external checks
-
-- Test 360/390 px phones, 768 px tablet, and desktop with touch and keyboard.
-- Run a screen reader through sign-in, Explore, challenge, collection, decks,
-  battle, and Author flows; verify focus order, labels, announcements, contrast,
-  reduced motion, zoom, and map-independent completion.
-- Smoke the deployed canonical web/API/docs origins with real Auth0 and Mapbox;
-  inspect exact CORS, CSP, cookies/storage, error logging, and no secret leakage.
-- Confirm Auth0 email policy, refresh rotation, callbacks/logout/origins, custom
-  domain/DNS/certificate, and issuer mapping with operator evidence.
-- Confirm Mapbox licence/terms, token restrictions, CSP/privacy, usage alerts
-  and owner, attribution, Wits campus accuracy, and text fallback.
-- Confirm Azure/Neon backups, recovery, monitoring, deployment-edge throttling,
-  migrations, seed policy, and disposable-versus-production database isolation.
-- Obtain Cards/Game approval for the missing Creature moves and battle balance.
-- Obtain CI evidence for the new Basic E2E and database migration-safety command;
-  a local pass is not CI proof.
+Public `200` responses establish reachability, not successful authentication or
+a matching application/database release. Automated component/browser assertions
+support accessibility review but do not establish full manual conformance.
+The [formal testing plan](sprint-2-user-testing-plan.md) defines consent,
+observation, stakeholder review, disposition, and retest procedures.
 
 ## AI declaration
 
@@ -158,3 +141,5 @@ recorded command output or named human/operator evidence is treated as one.
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Current acceptance procedure consolidated with assistance from Codex[GPT-6]. Historical run results remain attached to their original revisions and dates.

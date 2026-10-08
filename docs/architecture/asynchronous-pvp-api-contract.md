@@ -750,97 +750,11 @@ A safe invitation-expired example is:
 }
 ```
 
-## Downstream verification matrix
-
-Migration `0028` and issues `#180` and `#181` must collectively turn these
-scenarios into proportionate unit, route, database, component, and integration
-tests:
-
-### Invitation and identity
-
-- nonexistent, self, null-name, deletion-pending, and deleted lookup targets;
-- absence of email, Auth0 subject, role, UUID, location, rank, and private
-  history in lookup and invitation responses;
-- same-direction and reverse-direction concurrent invitations;
-- invalid, unowned, stale, or incomplete challenger and recipient decks;
-- challenger snapshot stability after saved-deck or catalogue edits;
-- cancel versus accept, decline, expiry, and account invalidation;
-- duplicate cancellation replay, stale versions, payload conflict, and
-  participant-scoped authorization;
-- accept versus decline, accept versus expiry, and duplicate accept replay;
-- identical replay versus submission-ID/payload conflict;
-- account deletion during pending invitations; and
-- invitation filters, limit bounds, invalid/cross-viewer cursors, stable
-  tie-break ordering, and insertion between pages.
-
-### Match authority and privacy
-
-- wrong-player read, action, polling, and history access;
-- hidden initial selections and unrevealed Creature and Power cards;
-- legal reveal of active/defeated Creatures, played Power cards, and effects;
-- rejection of result fields and the `timeout` action;
-- stale legal actions after another committed transition;
-- two different actions submitted against one version;
-- coherent reads before or after, but never across, a concurrent commit;
-- mandatory replacement followed by a fresh normal-turn deadline;
-- immutable completed state and history;
-- participant-only resignation on either turn, with no client-selected result;
-- resignation replay, payload conflict, stale/completed rejection, and exact
-  deadline precedence;
-- resignation racing a legal action or account deletion with one terminal
-  result, one progression pair, and no duplicate activity;
-- anonymous completed history after account deletion; and
-- active/history page bounds, deduplication after mutable ordering, and
-  first-page refresh without automatic cursor draining.
-
-### Deadlines, restart, and progression
-
-- actions received immediately before, exactly at, and after the deadline;
-- request-driven finalization before the periodic sweep runs;
-- two deadline workers selecting the same due population;
-- processor restart and overdue catch-up;
-- rollback and retry without duplicate terminal history;
-- completion action racing a forfeit sweep;
-- exactly-once per-participant progression sources for defeat and forfeiture;
-- replay of persisted outcomes without duplicate points or achievements; and
-- safe logging when a sweep item fails.
-
-### Web behavior
-
-- bounded visible-page polling, recovery after refresh, and lost-response
-  reconciliation;
-- cancellation capability gating, repeated-click protection using the same
-  submission ID, retained terminal sent/incoming presentation, and ambiguous
-  response reconciliation;
-- confirmed resignation, focus restoration, capability gating, and
-  lost-response/stale-state recovery without automatic resubmission;
-- incoming, outgoing, accepted, declined, expired, active, forfeited, completed,
-  loading, empty, forbidden, and retry states;
-- no rendering or storage of unrevealed opponent cards; and
-- responsive, keyboard, focus, screen-reader, non-color, and deadline text
-  behavior.
-
-## Review and delivery gates
-
-Before issue `#178` is closed:
-
-- an API/security reviewer must approve identity exposure, object
-  authorization, idempotency, safe errors, hidden-state projections, and
-  deadline concurrency;
-- a game-rule reviewer must approve initial selection, first-side randomness,
-  mandatory replacement, legal actions, forfeiture, and the separation from
-  live timeout behavior;
-- the OpenAPI-ready shapes and examples must be checked against Fastify's
-  runtime-schema conventions;
-- formatting, linting, type checking, tests, and builds must pass;
-- CI and the documentation build must pass;
-- the pull request must link issue `#178`; and
-- unresolved social/privacy decisions must remain visible rather than being
-  presented as implemented protections.
-
 This document was planned, generated, edited, and reviewed with the assistance
 of Codex[GPT-6], Codex[GPT-5], Codex-CLI[GPT-5], and Codex-CLI[gpt-5.6-sol medium].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
 
 This account-deletion update was edited with assistance from Codex[GPT-6].
+
+Contract presentation edited with assistance from Codex[GPT-6].
