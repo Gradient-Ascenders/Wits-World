@@ -59,17 +59,14 @@ Also keep [AI-use declarations](planning/ai-use.md) and
 
 ## Sprint meetings and process evidence
 
-The [sprint meeting overview](planning/scrum/index.md) now includes Sprint 2
-planning, four Daily Scrum records with the supplied meeting photos, backlog
-refinement, the review and the retrospective. These records arrived through
+Read the [Sprint 2 report](planning/scrum/sprint-2/report.md) for planning,
+four Daily Scrums with meeting photos, backlog refinement, Review, and
+Retrospective in one document. It links to the detailed records introduced in
 [PR #248](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/248).
 
-Start with [Daily Scrum 1 and its photo](planning/scrum/sprint-2/daily-scrum-01.md#meeting-photo),
-the [Sprint 2 review](planning/scrum/sprint-2/sprint-review.md), and the
-[retrospective](planning/scrum/sprint-2/sprint-retrospective.md).
-The overview also retains the original Sprint 1 meetings and their photos.
-Record dates and reporting windows remain separate from image provenance and
-from the dated test/deployment evidence below.
+The [sprint records index](planning/scrum/index.md) retains source and image
+provenance across all sprints. Record dates and reporting windows remain
+separate from image provenance and dated test/deployment evidence.
 
 ## Product and player journeys
 
@@ -141,3 +138,5 @@ This reading guide was prepared with assistance from Codex-CLI[GPT-6] using
 existing repository records. It adds navigation, not new acceptance evidence.
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Sprint report links updated with assistance from Codex[GPT-6].

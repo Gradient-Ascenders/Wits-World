@@ -1,28 +1,30 @@
 ---
-title: Sprint meeting records
+title: Sprint reports
 sidebar_position: 1
+toc_max_heading_level: 2
 ---
 
-# Sprint meeting records
+# Sprint reports
 
-:::note[Scrum evidence]
+Read each sprint as one report, following the ceremony order in
+`vitaqsprint.pdf`: planning, Daily Scrums, backlog refinement, Review, and
+Retrospective. Each report uses short summaries, action lists, and the meeting
+photos already mapped to its records.
 
-These records preserve Sprint 1 and Sprint 2 summaries and add Sprint 3
-repository-backed planning, coordination, refinement, review and retrospective
-records. Gitea remains the source of truth for current work.
+- [Sprint 1 report](sprint-1/report.md) — first location slice and Basic foundations.
+- [Sprint 2 report](sprint-2/report.md) — remaining Basic work and Intermediate systems.
+- [Sprint 3 report](sprint-3/report.md) — Advanced implementation and open release evidence.
+- [Sprint 4 photos](sprint-4/index.md) — five supplied team-call images.
 
-:::
+The reports link to the detailed records for owners, issue/PR references,
+reporting windows, and source limits. Dates retain their original meaning;
+refinement is grouped after the Daily Scrums without changing when it occurred.
 
-Wits World uses a lightweight Scrum-inspired process in which Gitea issues are
-the product backlog, short-lived branches and pull requests carry the work, and
-CI plus human review provide the quality gate. The durable process is described
-in the [project and Git methodology](../project-and-git-methodology.md); this
-section records how that process was applied across the three increments.
-
-The [Sprint 2 governance and evidence](../sprint-2-governance-and-evidence.md)
-page defines issue readiness, board workflow, evidence retention, feedback
-handling, and release boundaries. These Scrum pages preserve the corresponding
-delivery checkpoints and outcomes.
+Gitea remains the source of truth for current work. The
+[project and Git methodology](../project-and-git-methodology.md),
+[Sprint 2 governance](../sprint-2-governance-and-evidence.md), and
+[Sprint 3 governance](../sprint-3-governance-and-evidence.md) describe the shared
+workflow and evidence requirements.
 
 ## Record status
 
@@ -48,7 +50,7 @@ and supplied images do not change those Sprint 1 claims.
 
 ## Sprint 3 record
 
-The Sprint 3 set uses the Sprint 2 structure with repository-backed reporting
+The Sprint 3 set follows the shared report structure with repository-backed reporting
 windows, reviewed against main `c0fd42b` on 28 September. These windows describe
 delivery activity, not inferred ceremony dates. Team roles describe coordination
 responsibilities; attendance, meeting media, stakeholder decisions and release
@@ -56,16 +58,8 @@ acceptance can be added when their evidence is supplied. See the
 [Sprint 3 governance page](../sprint-3-governance-and-evidence.md) for the
 current evidence boundaries and feedback workflow.
 
-| Record                                               | Evidence window or snapshot | Purpose                                                                         |
-| ---------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------- |
-| [Planning](sprint-3/initial-planning.md)             | 16-28 September 2026        | Define the Advanced goal, roles, dependencies and release boundaries            |
-| [Checkpoint 1](sprint-3/daily-scrum-01.md)           | 16-19 September 2026        | Establish live, trust, placement, ranked, territory and trading foundations     |
-| [Checkpoint 2](sprint-3/daily-scrum-02.md)           | 20-22 September 2026        | Integrate matchmaking, territory runtime and atomic trade persistence           |
-| [Backlog refinement](sprint-3/backlog-refinement.md) | 16-28 September 2026        | Trace policy, integration, stakeholder proposals and feedback follow-up         |
-| [Checkpoint 3](sprint-3/daily-scrum-03.md)           | 23-25 September 2026        | Integrate trading APIs, analytics, developer access and accessibility           |
-| [Checkpoint 4](sprint-3/daily-scrum-04.md)           | 26-28 September 2026        | Consolidate player/Author interfaces, performance, account purge and feedback   |
-| [Review](sprint-3/sprint-review.md)                  | 28 September 2026 snapshot  | Map implementation to the goal and retain outstanding release checks            |
-| [Retrospective](sprint-3/sprint-retrospective.md)    | 28 September 2026 snapshot  | Recommend evidence-backed improvements to dependencies, validation and feedback |
+Read the [Sprint 3 report](sprint-3/report.md) for the complete
+ceremony sequence and links to all eight detailed records.
 
 The [Sprint 3 survey report](../../testing/sprint-3-user-feedback-results.md)
 provides the new response evidence. The separate
@@ -88,35 +82,19 @@ They were renamed in the supplied numbered order and preserved byte-for-byte.
 
 The images are retained in commit `aca1ee5`. Filenames identify the supplied
 order, not verified meeting dates. Five photos were supplied for four written
-checkpoints, so the images remain linked here until their meeting-to-record
-mapping is confirmed. They do not independently establish discussion,
+checkpoints, so the images are displayed in the [Sprint 3 report gallery](sprint-3/report.md#meeting-photos)
+until their meeting-to-record mapping is confirmed. They do not independently establish discussion,
 stakeholder attendance, or agreement.
 
 ## Sprint 2 record
 
-| Ceremony or record                                           | Evidence date or window     | Purpose                                                                                              |
-| ------------------------------------------------------------ | --------------------------- | ---------------------------------------------------------------------------------------------------- |
-| [Initial sprint planning](./sprint-2/initial-planning.md)    | 26 August 2026              | Establish the remaining Basic and planned Intermediate goal, ownership, dependencies, and risks      |
-| [Daily Scrum 01](./sprint-2/daily-scrum-01.md)               | 26-28 August 2026           | Coordinate account, ordering, progression, governance, and asynchronous PvP contracts                |
-| [Daily Scrum 02](./sprint-2/daily-scrum-02.md)               | 29-30 August 2026           | Integrate trails, movement evidence, campaigns, curation, PvP services, and operational fixes        |
-| [Backlog refinement](./sprint-2/backlog-refinement.md)       | 28 August-15 September 2026 | Record rule changes, true dependency boundaries, follow-up defects, and stakeholder/user findings    |
-| [Daily Scrum 03](./sprint-2/daily-scrum-03.md)               | 31 August-5 September 2026  | Integrate account, ordering, profile, trail, PvP, campaign, and analytics experiences                |
-| [Daily Scrum 04](./sprint-2/daily-scrum-04.md)               | 6-13 September 2026         | Complete content and automated verification, then evaluate stakeholder and formal user feedback      |
-| [Sprint 2 Review](./sprint-2/sprint-review.md)               | 15 September 2026           | Compare the integrated increment and evidence with the Sprint 2 goal and retain open release gates   |
-| [Sprint 2 Retrospective](./sprint-2/sprint-retrospective.md) | 15 September 2026           | Identify evidence-based improvements for validation timing, dependencies, tracker hygiene, and scope |
+Read the [Sprint 2 report](sprint-2/report.md) for the complete
+ceremony sequence and links to all eight detailed records.
 
 ## Sprint 1 record
 
-| Ceremony or record                                           | Reconstructed date      | Purpose                                                                                          |
-| ------------------------------------------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------ |
-| [Initial sprint planning](./sprint-1/initial-planning.md)    | 5 August 2026           | Establish the first vertical-slice goal, ownership, dependencies, and Definition of Done         |
-| [Daily Scrum 01](./sprint-1/daily-scrum-01.md)               | 6 August 2026           | Coordinate the repository, architecture, web, and database foundations                           |
-| [Daily Scrum 02](./sprint-1/daily-scrum-02.md)               | 10 August 2026          | Integrate CI, Auth0, the API, PostGIS eligibility, and the first deployment                      |
-| [Backlog refinement](./sprint-1/backlog-refinement.md)       | 11–12 August 2026       | Add validation work and decompose the remaining Basic-tier journey                               |
-| [Daily Scrum 03](./sprint-1/daily-scrum-03.md)               | 13 August 2026          | Coordinate refinement outcomes, public documentation, contracts, and delivery preparation        |
-| [Daily Scrum 04](./sprint-1/daily-scrum-04.md)               | 17 August 2026          | Integrate the Basic-tier loop and identify release-readiness work                                |
-| [Sprint 1 Review](./sprint-1/sprint-review.md)               | Exact date not retained | Reconstruct the delivered increment, review topics, assessment, limitations, and carry-over work |
-| [Sprint 1 Retrospective](./sprint-1/sprint-retrospective.md) | Exact date not retained | Preserve team-confirmed improvement themes and concrete Sprint 2 process actions                 |
+Read the [Sprint 1 report](sprint-1/report.md) for the complete
+ceremony sequence and links to all eight detailed records.
 
 ## Sprint 2 meeting photos
 
@@ -168,3 +146,9 @@ and integration were updated with assistance from Codex-CLI[GPT-6].
 
 The Sprint 3 record index and photo provenance were added with assistance from
 Codex-CLI[gpt-6-sol].
+
+Sprint report layout and navigation revised with assistance from Codex[GPT-6],
+using `vitaqsprint.pdf` as the presentation reference.
+
+Image presentation, the Sprint 4 photo page, and site entry points were updated
+with assistance from Codex[GPT-6].

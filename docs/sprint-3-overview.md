@@ -19,6 +19,11 @@ feature status, use the
 results and limits, use the
 [Sprint 3 validation status](testing/sprint-3-validation-status.md).
 
+Read the [Sprint 3 report](planning/scrum/sprint-3/report.md) for planning,
+coordination snapshots, refinement, Review evidence, and Retrospective
+recommendations in one document. It preserves the dated repository evidence
+and the gaps in ceremony and acceptance records.
+
 ## Milestone 3 evidence map
 
 The source is section 3.3 of the team-supplied _COMS3011A Project Brief_,
@@ -69,3 +74,5 @@ The original rubric source was `project_briefs.pdf`, SHA-256
 This guide was generated and edited with assistance from
 Codex-CLI[gpt-6-sol] and Codex-CLI[gpt-6-luna]. It was simplified with
 assistance from Codex[GPT-5].
+
+Sprint report links updated with assistance from Codex[GPT-6].

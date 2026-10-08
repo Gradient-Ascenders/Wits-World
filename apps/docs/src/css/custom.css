@@ -174,3 +174,36 @@
   /* Mermaid supplies intrinsic dimensions; the outer region owns overflow. */
   max-width: none;
 }
+
+/* Meeting evidence stays beside its record and keeps the complete screenshot. */
+.sprint-meeting-photo {
+  margin: 1.5rem 0 2rem;
+}
+
+.sprint-meeting-photo a {
+  display: block;
+}
+
+.sprint-meeting-photo a:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 4px;
+}
+
+.sprint-meeting-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.sprint-meeting-photo figcaption {
+  margin-top: 0.75rem;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+@media print {
+  .sprint-meeting-photo {
+    break-inside: avoid;
+  }
+}

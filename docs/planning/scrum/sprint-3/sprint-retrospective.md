@@ -1,24 +1,17 @@
 ---
-title: Sprint 3 retrospective
+title: Sprint 3 Retrospective — Recommendations
 sidebar_position: 8
 ---
 
-# Sprint 3 retrospective
+# Sprint 3 Retrospective — Recommendations
 
-This is a recommended retrospective based on repository evidence available on
-28 September 2026, not a record of a team Retrospective. No attendance,
-discussion, agreement, or retrospective date was supplied.
+**Date:** 28 September 2026 evidence snapshot.
 
-## Record status
+> Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
-| Field             | Record                                                                                        |
-| ----------------- | --------------------------------------------------------------------------------------------- |
-| Evidence snapshot | 28 September 2026; baseline `c0fd42b`                                                         |
-| Participants      | Not recorded; role labels below identify coordination owners only                             |
-| Inputs            | Merge history, three planned stakeholder records, Sprint 3 feedback report                    |
-| Overall signal    | Broad implementation integration; release and feedback validation evidence remains incomplete |
+[Read the complete sprint report](report.md).
 
-## What went well in the repository evidence
+## What Went Well {/* #what-went-well-in-the-repository-evidence */}
 
 - The merge history shows policy/contract, persistence, service, and UI slices
   across live PvP, trust, placement, ranked, territories, and trading.
@@ -33,7 +26,7 @@ discussion, agreement, or retrospective date was supplied.
 These are properties of the available artifacts, not attributed statements
 from team members or meeting participants.
 
-## What could improve
+## What Did Not Go Well {/* #what-could-improve */}
 
 - Ceremony notes, dates, attendance, and decisions were not supplied, so
   retrospective claims and team consensus cannot be verified.
@@ -46,20 +39,28 @@ from team members or meeting participants.
 - Keep future work on randomized territory placement and distributed limits
   clearly separated from existing fixed geometry and process-local quotas.
 
-## Recommended improvement actions
+## Lessons Learned
 
-| Recommendation                                           | Coordination owner                                    | Evidence to collect                                                          |
-| -------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Record ceremonies contemporaneously                      | Sprint coordination role                              | Date, actual attendees, concise decisions, impediments, and linked work      |
-| Triage feedback early enough to retest                   | Product and quality coordination roles                | Reproduction steps, accepted issue, implementation link, named retest result |
-| Make release evidence traceable                          | Quality/delivery coordination role with stream owners | Revision, environment, automated checks, manual outcomes, limitations        |
-| Coordinate contracts through integration                 | Frontend, backend, and data coordination roles        | Reviewed schemas, migration compatibility, client state, and recovery checks |
-| Refine proposed cross-cutting features before scheduling | Product, backend, data, and quality roles             | Agreed requirements, owner in tracker, issue links, safety and failure tests |
+These lessons are recommendations from the artifact review, not recorded team agreement.
+
+- Separate implementation, deployment, stakeholder assessment, and participant retests.
+- Capture actionable feedback early enough to reproduce and retest it.
+- Confirm proposed features and cross-layer contracts before scheduling implementation.
+
+## Recommended Action Items for the Next Sprint {/* #recommended-improvement-actions */}
+
+- **Record ceremonies contemporaneously** — **Coordination owner:** Sprint coordination role; **Evidence to collect:** Date, actual attendees, concise decisions, impediments, and linked work
+- **Triage feedback early enough to retest** — **Coordination owner:** Product and quality coordination roles; **Evidence to collect:** Reproduction steps, accepted issue, implementation link, named retest result
+- **Make release evidence traceable** — **Coordination owner:** Quality/delivery coordination role with stream owners; **Evidence to collect:** Revision, environment, automated checks, manual outcomes, limitations
+- **Coordinate contracts through integration** — **Coordination owner:** Frontend, backend, and data coordination roles; **Evidence to collect:** Reviewed schemas, migration compatibility, client state, and recovery checks
+- **Refine proposed cross-cutting features before scheduling** — **Coordination owner:** Product, backend, data, and quality roles; **Evidence to collect:** Agreed requirements, owner in tracker, issue links, safety and failure tests
 
 Role labels are coordination context only; they do not identify who attended,
 accepted an action, or owns a live issue.
 
-## Measures for the next review
+## Follow-up
+
+### Measures for the next review
 
 - Accepted feedback findings with linked implementation and retest evidence.
 - Release checks tied to a named revision and deployment environment.
@@ -68,14 +69,27 @@ accepted an action, or owns a live issue.
 - Territory and rate-limit scope accurately labeled as proposed, active, or
   delivered in tracker and documentation.
 
-## Recommended conclusion
+### Recommended conclusion
 
 The evidence supports continued work on earlier feedback triage,
 contemporaneous process records, and explicit release validation. These are
 recommendations from artifact review; no team agreement is implied.
+
+## Record Details and Sources {/* #record-status */}
+
+- **Evidence snapshot:** 28 September 2026; baseline `c0fd42b`
+- **Participants:** Not recorded; role labels below identify coordination owners only
+- **Inputs:** Merge history, three planned stakeholder records, Sprint 3 feedback report
+- **Overall signal:** Broad implementation integration; release and feedback validation evidence remains incomplete
+
+This is a recommended retrospective based on repository evidence available on
+28 September 2026, not a record of a team Retrospective. No attendance,
+discussion, agreement, or retrospective date was supplied.
 
 ## AI declaration
 
 This retrospective recommendation was drafted with Codex-CLI[gpt-6-luna]
 assistance and reviewed and edited with Codex-CLI[gpt-6-sol], using local
 repository history and documentation. It is not a record of a team discussion.
+
+Layout and section structure revised with assistance from Codex[GPT-6], using `vitaqsprint.pdf` as the presentation reference.

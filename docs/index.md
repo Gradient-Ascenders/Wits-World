@@ -30,6 +30,10 @@ database, and deployment diagrams.
 
 ## How to read the evidence
 
+Read the [sprint reports](planning/scrum/index.md) for the team's planning,
+progress, reviews, retrospectives, and meeting photos. Each sprint is presented
+as one report, with links to its detailed records and release evidence.
+
 Current reference pages explain how the system works now. Dated sprint pages
 show what was known at a specific time. A test plan describes a procedure; it
 does not prove that the test ran. Result pages identify the revision,
@@ -40,3 +44,5 @@ environment, outcome, and remaining limits.
 This page was created and edited with assistance from Codex-CLI[GPT-5],
 Codex[GPT-5], Codex-CLI[GPT-6], and Codex-CLI[gpt-6-sol]. It was simplified
 with assistance from Codex[GPT-5].
+
+Sprint report navigation updated with assistance from Codex[GPT-6].

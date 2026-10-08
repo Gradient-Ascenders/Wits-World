@@ -149,6 +149,16 @@ function GuideDirectory(): ReactNode {
         </span>
         <ArrowIcon />
       </Link>
+
+      <Link className={styles.projectLink} to="/docs/planning/scrum">
+        <span>
+          <strong>Sprint reports</strong>
+          <small>
+            Planning, progress, reviews, retrospectives, and meeting photos
+          </small>
+        </span>
+        <ArrowIcon />
+      </Link>
     </section>
   );
 }
