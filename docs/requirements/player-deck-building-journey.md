@@ -1,160 +1,53 @@
 ---
-title: 'Building a deck'
+title: 'Collections and decks'
+description: Browse owned cards, build a saved deck, and choose it for battle.
 ---
 
-# Building a deck
+# Collections and decks
 
-## Scope and authority
+## Player journey
 
-The protected `/decks` route lets an authenticated player create, inspect,
-edit, rename, delete, and select saved decks. It prepares one active deck for
-the CPU-match journey without creating or playing a match.
+1. Open **Cards** at `/collection`. Search or filter your collection and open a
+   card to inspect it. If you have not claimed a starter, choose an affinity,
+   review its cards, and confirm the choice.
+2. Open **Decks** at `/collection/decks`, choose **New deck**, and enter a name.
+3. Use **Add cards** to choose copies from your collection. Cards with the same
+   definition are grouped; the picker shows how many you own and have used.
+   Opening card details does not add it to the draft.
+4. Review the lineup: five cards, comprising three Creatures and two Powers,
+   within ten rarity points. Remove or replace copies to resolve any warnings.
+   Searching, filtering, or changing pages keeps your chosen copies.
+5. Choose **Create deck** to save the new deck.
+6. Choose **Make active** when ready to use it. Opening or creating a deck does
+   not change the active selection. The chosen deck displays **Active**.
 
-The authoritative rules are [Wits Quest Basic Game Rules, Saved decks](./basic-game-rules.md#saved-decks).
-Persistence, HTTP operations, concurrency, and the match-snapshot boundary are
-defined by the [saved-deck persistence and API design](../database/saved-deck-persistence-design.md).
+From the active deck, **Start CPU match** opens a new battle or resumes an
+existing active CPU match. See the [CPU battle journey](player-cpu-battle-journey.md)
+for play controls.
 
-The browser presents an explanatory preflight, but it never submits or decides
-authoritative ownership, category, rarity, point totals, player identity, or
-deck validity. A successful API response is the only saved result.
+## Manage saved decks
 
-## Initial load
+| Action        | What happens                                                                                         |
+| ------------- | ---------------------------------------------------------------------------------------------------- |
+| **Edit deck** | Change the name or lineup, then choose **Save deck**.                                                |
+| **Cancel**    | Leave the editor. If the draft changed, choose **Discard changes** or **Keep editing**.              |
+| **Delete**    | Confirm deletion. Your collection cards remain; deleting the active deck leaves no active selection. |
 
-After Auth0 resolves the active player, the route requests these protected
-resources together:
+## How it works
 
-```http
-GET /api/v1/decks
-GET /api/v1/cards/collection
-```
+A deck references individual owned copies. Repeating a card in one deck requires
+separate copies; the same copy can belong to several saved decks. Saving checks
+ownership, composition, and rarity cost on the server. Copies reserved for a
+trade cannot be added to a saved deck.
 
-The saved-deck response supplies the server-saved composition and active
-selection. The collection response supplies every exact `ownedCardId` the
-picker may use. The browser does not create synthetic copies or expose an add
-action after every returned copy of a definition is already used in the draft.
+Only one saved deck is active at a time. Battle creation snapshots its cards, so
+later deck edits do not change an existing match.
 
-`GET /api/v1/decks` does not expose a per-deck invalid status. The #72 service
-runs the authoritative Basic validator while mapping every saved deck, and its
-response schema requires exactly five cards and a five-to-ten-point total. A
-persisted invariant failure therefore fails the list request instead of
-returning an individually invalid deck. The client keeps schema parsing strict;
-the invalid states handled by this journey are incomplete local drafts and
-server validation rejections during create, update, or selection.
+See [deck rules](basic-game-rules.md#saved-decks) for rarity costs and
+[saved-deck persistence and API design](../database/saved-deck-persistence-design.md)
+for implementation details.
 
-Loading, empty, expired-session, malformed-response, network, and API failure
-states are written as text. General failures provide a fresh load; an expired
-session provides an Auth0 sign-in action that returns to `/decks`.
+---
 
-## Basic deck explanation
-
-Before the editor, the route explains the confirmed Basic constraints:
-
-- exactly five owned copies;
-- three Creature cards and two Power cards;
-- at most ten rarity points;
-- Common costs one point, Rare two, Epic three, and Legendary four; and
-- using a definition twice in one deck requires two separately owned copies.
-
-The draft summary mirrors those confirmed values to explain the current count,
-composition, and point total. Save remains unavailable while the local draft is
-obviously incomplete. This is guidance only: the API re-resolves the selected
-owned copies and applies its authoritative validation on every create, update,
-and selection.
-
-## Owned-copy picker
-
-Cards retain the collection experience's name, category, affinity, rarity,
-artwork/fallback, acquisition, and duplicate presentation. Category and rarity
-are always text, not colour-only signals.
-
-Copies that share one card definition appear as one picker choice with explicit
-`Owned`, `Used`, and `Remaining` counts. `Add a copy` selects the next unused
-`ownedCardId`; `Remove a copy` returns one selected copy. When a player owns
-`N` copies, remaining reaches zero after `N` additions and the add action is
-disabled. The same exact owned copy may still be reused by another saved deck,
-as allowed by the server rules.
-
-The ordered draft lists each chosen copy and provides a normal remove button.
-Drag-and-drop is not required.
-
-## Save and management operations
-
-Creating sends only:
-
-```json
-{
-  "name": "Campus Five",
-  "ownedCardIds": ["five exact owned-copy UUIDs"]
-}
-```
-
-Editing or renaming uses the same complete name-and-composition body with
-`PUT /api/v1/decks/{deckId}`. This preserves the API's atomic replace contract;
-the frontend does not invent a separate rename operation.
-
-Delete first presents an inline confirmation. Deletion removes the saved deck,
-not collection cards. Deleting the active deck leaves no active selection, as
-defined by the database cascade.
-
-Server errors map to the closest useful feedback:
-
-| API code                   | Player-facing feedback                                      |
-| -------------------------- | ----------------------------------------------------------- |
-| `INVALID_DECK_NAME`        | deck-name feedback                                          |
-| `INVALID_DECK_CARDS`       | selected owned copies are no longer available               |
-| `DECK_SIZE_INVALID`        | exactly five copies are required                            |
-| `DECK_COPY_DUPLICATED`     | the same owned copy was submitted twice                     |
-| `DECK_COMPOSITION_INVALID` | exactly three Creature and two Power cards are required     |
-| `DECK_POINT_CAP_EXCEEDED`  | the server-calculated total exceeds ten points              |
-| `DECK_NOT_FOUND`           | stale/deleted deck explanation and an authoritative refresh |
-
-The failed-action alert receives focus so keyboard and assistive-technology
-users reach it immediately.
-
-## Active selection and CPU-match handoff
-
-`PUT /api/v1/decks/{deckId}/selection` revalidates a saved deck and makes it
-the player's one active selection. The active deck has explicit text and a
-`Selected for matches` badge; colour is supplementary.
-
-The production `/decks` route supplies the active server-returned `deckId` to
-`POST /api/v1/matches/cpu` through the typed start callback. It renders **Start
-CPU match**, reconciles an already-active match through the server lookup, and
-navigates to the authoritative match route. The match service independently
-requires the supplied deck to remain the player's active selection and creates
-immutable match-owned snapshots.
-
-## Concurrency and recovery
-
-The saved-deck API has no browser-visible version or conditional-update field.
-Concurrent updates serialize on the server and the last completed whole-deck
-update wins. The frontend therefore does not invent optimistic versions.
-
-If an edit, selection, or deletion targets a deck that no longer exists, the
-API returns `DECK_NOT_FOUND`. The route describes the stale state, closes an
-editor for that unavailable deck, and reloads both authoritative decks and
-collection. Other server validation errors keep the current draft available so
-the player can correct it.
-
-Each mutation is single-flight, obsolete loads are aborted, and responses from
-aborted requests do not replace current UI state.
-
-## Accessibility and responsive behaviour
-
-- All add, remove, save, edit, rename, select, delete, retry, and match-start
-  actions are native controls with visible focus and at least the shared touch
-  target size.
-- Important loading and success transitions use status announcements; failures
-  use alerts; editor, saved-list, and active-deck headings receive programmatic
-  focus where the context changes. Draft preflight remains live without moving
-  focus away from the card-picker control.
-- Card category, affinity, rarity, owned count, used count, remaining count,
-  active state, and validation are communicated in text.
-- The editor is one column on mobile and becomes a draft/picker comparison at
-  desktop widths. Controls remain usable at 360px, 390px, tablet, and desktop.
-
-## AI declaration
-
-This document was generated and edited with assistance from Codex[GPT-5].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
+This page was prepared and edited with assistance from Codex[GPT-5],
+Codex-CLI[GPT-6], and Codex[GPT-6].

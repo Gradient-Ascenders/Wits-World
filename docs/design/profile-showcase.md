@@ -1,33 +1,72 @@
-# Player profile showcase
+---
+title: 'Player profile'
+description: Personalise your profile, choose favourite cards, and control what other players can see.
+---
 
-Approved scope: `/profile` and player-facing `/players/:playerName`, including profile editing, custom status, four owned-card favourites, daily activity and illustrated achievements. Experience mode for visitors; Operate mode for editing. The owner controls profile publication and activity sharing. Existing player-name policy, progression rules, card identity and account lifecycle remain authoritative.
+# Player profile
 
-## Direction contract
+Your profile brings together your player identity, favourite cards, activity,
+and achievements. Open `/profile` to view your own profile, or
+`/players/:playerName` to view another player's published profile.
 
-THESIS: A personal player showcase led by four chosen cards, with identity above and activity and achievements below. Avoid turning the profile into a settings dashboard.
+## Player journey
 
-OWN-WORLD: Inherit Campus Quest Atlas navy, ivory, gold, serif headings and blue controls. Existing collectible frames carry the ornament. Achievement images read as campus enamel pins.
+1. Inspect a favourite card or select an achievement to open its details.
+   Achievement dialogs explain the requirement and show your progress if unearned.
+2. Choose **Edit profile** to change your picture, bio, degree, or year of study.
+   Academic details are optional and self-reported. Use **Choose picture** to
+   upload and crop an image, or **Remove picture** to clear it.
+3. Select the status control beside your name to add an emoji, text, or both.
+   Choose when to clear it: the end of today, in one week, or never. **Clear status
+   now** clears the draft; choose **Save changes** to persist it.
+4. Choose **Edit showcase** or an empty **Choose a card** slot to select up to four
+   owned favourites. Search your cards, inspect them, and drag selected cards to
+   reorder them. Keyboard users can reorder with arrow keys on the grips.
+5. Choose **Save changes** in each editor to apply the change, or **Cancel** to
+   leave without saving.
 
-STORY: Recognise the player, see their taste, explore a favourite card, then understand earned progress. Owners can edit personal details and curate cards without changing game rules.
+## Visibility and sharing
 
-FIRST VIEWPORT: Avatar beside name and custom status, followed by optional degree/year and bio. Desktop keeps details alongside the avatar and Edit profile at the right; mobile places details below the identity and uses a full-width edit action. Four equally sized cards without nameplates lead directly after identity in one row, with compact frames on mobile. Card artwork and rarity match the details view; accessible names remain on each inspection button. Activity and illustrated achievements follow in two desktop columns and stack on mobile. Progression stats sit beneath the activity calendar.
+Profiles and activity sharing are private by default. In **Edit profile**, choose:
 
-FORM: User-approved identity and four-card showcase composition, code-led from the confirmed schematic; no concept roll required because the structure and existing visual system are pinned.
+| Setting                                      | Effect                                                  |
+| -------------------------------------------- | ------------------------------------------------------- |
+| **Make my profile visible to other players** | Lets signed-in active players view your profile.        |
+| **Share my daily activity**                  | Adds daily completion counts to your published profile. |
 
-FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+Visitors see your identity details, selected card presentations, earned
+achievements, and progression totals. They do not see your full collection,
+owned-copy identifiers, email, location, or exact activity timestamps. Unearned
+achievement progress is visible only to you. Keeping activity private does not
+hide the profile's points, rank, or streak totals.
 
-## Behavior and boundaries
+A private, missing, or deleted profile appears unavailable to visitors. You can
+always view your own activity without sharing it.
 
-- User-written status can contain an emoji, text, or both, with optional server-timed expiry; no online presence. Clearing both fields removes the status. The empty owner status control shows a single plus icon with an accessible label.
-- The status emoji dropdown searches names and keywords. Arrow keys browse matches, Enter selects, and Escape closes the dropdown and restores trigger focus. Selecting or clearing an emoji updates the draft; Save changes persists it through the normal profile flow.
-- Degree and study year are optional self-reported fields. Names remain governed by the existing account policy.
-- Public means visible to authenticated active players. Profile publication and daily activity sharing require owner choices.
-- Publish only selected card presentation, earned achievements and aggregate daily activity; exclude provider identity, inventory, owned-copy identifiers and exact activity timestamps.
-- Loading, retry, expired authentication, empty collection, unavailable profiles, ownership changes and save conflicts have visible recovery.
-- Avatar uploads are cropped locally and decoded, resized and re-encoded by the API. Keyboard editing, focus restoration, touch targets, reduced motion and keyboard-accessible activity dates and counts are required.
-- Picture controls use a wrapping action row with space between Choose picture and Remove picture. After upload, a large circular crop window dims the image outside the saved area. Mouse and touch dragging or arrow keys reposition the image; one zoom slider, zoom buttons and Reset replace the position sliders. Crop bounds prevent empty edges. The editor header and save footer remain reachable while the form scrolls.
-- The GitHub-inspired activity calendar uses Sunday-first weeks, month and weekday labels, blue count intensity, and hover/focus/touch tooltips. Squares stay at 18px on larger screens and 12px with 2px gaps on mobile for both periods; horizontal scrolling reveals older dates, and the calendar initially shows the latest dates. Inline date captions are omitted. The calendar is the sole activity view; each date exposes its count to screen readers and supports arrow-key navigation. Scroll padding keeps edge cells and their focus outlines inside the graph.
-- Achievement badges open a focused dialog with enlarged artwork and the supplied requirement; unearned badges show actual progress. Earned badges show the player who earned them, without invented tiers, dates or history. Escape, outside click and the close button dismiss the dialog and restore focus.
-- The bio is edited in Edit profile; no separate bio prompt or owner preview link appears in the header.
+## Activity and progress
 
-The profile picture editor behavior was documented with assistance from Codex[GPT-6].
+The calendar counts completed challenges and matches by Johannesburg date.
+Choose **Last 3 months** or **Last year**, then hover, tap, or focus a day to read
+its count. Arrow keys move between dates; horizontal scrolling reveals older
+weeks. Points, all-time rank, current streak, and best streak appear below it.
+
+Status text is self-written and does not indicate online presence. **At the end
+of today** expires at the next Johannesburg midnight; **In one week** expires
+seven days after saving.
+
+## How it works
+
+The server checks profile versions and ownership when saving. Favourites refer
+to owned copies but do not reserve them: trading or consuming a selected copy
+removes it from the showcase. Profile edits do not change card rules or earned
+progression. Uploaded pictures are resized and re-encoded by the API without
+image metadata.
+
+See the [profile API contract](../architecture/player-profile-api-contract.md)
+for persistence and privacy details, and
+[progression rules](../requirements/player-progression-rules.md) for points,
+streaks, and achievements.
+
+---
+
+This page was prepared and edited with assistance from Codex[GPT-6].

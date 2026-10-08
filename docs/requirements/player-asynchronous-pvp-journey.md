@@ -1,143 +1,189 @@
 ---
-title: 'Player battles and invitations'
+title: 'Player battles'
+description: Async and live PvP, ranked seasons, progression points, and territory influence.
 ---
 
-# Player battles and invitations
+# Player battles
 
-## Purpose and authority
+Play against another player asynchronously or in a live ranked match. Both use
+[Battle rules](battle-rules.md), including the same deck requirements, moves,
+and type matchups.
 
-Issues #181, #219, and #220 provide asynchronous player-versus-player play,
-voluntary match forfeiture, and outgoing invitation cancellation alongside the existing CPU journey. The protected
-`/matches` routes continue to provide CPU play;
-`/matches/pvp` provides invitations, active asynchronous matches, and PvP
-history. The [asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md)
-remains the source of truth for privacy, identity, deck snapshots, legal
-actions, deadlines, idempotency, outcomes, and hidden information.
+## Choose a mode
 
-The browser never calculates a legal action, deadline result, forfeit, winner,
-or battle effect. It renders the viewer-relative API projection and submits
-only the exact identifiers and version returned by the server.
+| Mode                 | Where                              | Opponent                           | Timing                                                                  | What the result affects                                 |
+| -------------------- | ---------------------------------- | ---------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------- |
+| **Asynchronous PvP** | **Player Battles**, `/matches/pvp` | Challenge an exact Player Name     | 24 hours per turn or replacement; players can return at different times | Permanent progression points                            |
+| **Live ranked PvP**  | **Live Ranked**, `/matches/live`   | The ranked queue finds an opponent | Both players play together; 60 seconds per decision                     | Seasonal rating and, when eligible, territory influence |
 
-## Routes and player flow
+Async battles are unranked. Only live matches created through the ranked queue
+change seasonal rating; a live match created outside that queue is unranked.
 
-- `/matches` remains the CPU battle dashboard and links to asynchronous PvP as
-  an additional mode.
-- `/matches/pvp` loads incoming and sent invitations, active matches, completed
-  history, and saved decks. Its bounded first pages refresh only while the page
-  is visible; API-issued cursors expose explicit load-more controls without
-  automatically draining every retained page.
-- `/matches/pvp/:matchId` loads one participant-authorised, viewer-relative
-  match and polls while the opponent is expected to act.
+## Asynchronous battles
 
-Player lookup is an exact Player Name request. The client accepts only the
-closed `{ playerName, requestId }` response and rejects unexpected fields. It
-does not request, store, render, announce, or log email, provider identity,
-internal player identifiers, location, decks, activity, or private history.
+### Send a challenge
 
-Challenge creation and acceptance use one saved deck and one owned Creature
-from that deck. Saved-deck display is a selection aid, not a legality decision:
-the PvP API reloads and validates the deck and opening Creature when the intent
-is submitted. A rejected or changed deck returns safe recovery guidance.
+1. Open **Player Battles** from `/matches`, then choose **Challenge a player**.
+2. Enter the opponent's exact **Player name** and choose **Find player**.
+3. Select a saved **Deck** and a **Starting creature** from that deck. You can
+   choose any legal saved deck; it does not have to be your active deck.
+4. Choose **Send challenge**. The invitation appears under **Invitations → Sent**.
+5. Once the opponent accepts, open the battle from the accepted invitation or
+   the **Active** tab. Choose **Take your turn** when you need to act, or
+   **View battle** while waiting.
 
-## Invitations
+Create or edit decks at `/collection/decks`. Only 1 pending invitation can
+exist between the same pair of players, regardless of who sent it.
 
-Received and sent challenge groups render `pending`, `accepted`, `declined`, `cancelled`,
-`expired`, and `invalidated` states. The player can accept or decline only a pending
-incoming invitation. Accept requires a deck and opening Creature and navigates
-to the server-created match. Accepted invitations link to that persisted
-match. `invalidated` is presented as **Unavailable**, because it represents an
-account-lifecycle change rather than a user cancellation.
+### Respond to an invitation
 
-A pending sent invitation exposes **Cancel challenge** only when the version 3
-API returns `canCancel: true`. The action is never shown for incoming or
-terminal invitations, and an absent capability is treated as false during a
-mixed rollout. Cancellation is single-flight and submits only `submissionId`
-and `expectedVersion`; repeated clicks are disabled. Success replaces the item
-in place, including when it came from a later cursor page, and shows
-**Cancelled** plus “You cancelled this invitation.” The recipient sees the
-retained terminal record and “This invitation was cancelled by the opponent's
-Player Name.”
+Open **Invitations → Received**. Choose **Accept**, select your deck and starting
+Creature, then choose **Accept challenge** to enter the match. The opening
+Creature is chosen during invitation setup; there is no separate opening
+selection after acceptance. You can also choose **Decline**.
 
-An ambiguous cancellation response triggers an authoritative first-page poll
-and offers a same-submission retry only if the invitation remains pending and
-cancellable. Stale, expired, invalidated, accepted, declined, or already
-cancelled server state is rendered as terminal without inventing a second
-transition.
+To withdraw a pending invitation you sent, choose **Cancel challenge**, then
+**Confirm cancellation**. **Keep challenge** closes the dialog without
+cancelling. Cancellation is unavailable once the invitation has been accepted.
 
-## Match interaction and recovery
+Invitations expire **24 hours after being sent**. Declining, cancelling, or
+letting an invitation expire creates no battle result or loss. An invitation
+marked **Unavailable** can no longer be used.
 
-The match heading communicates **Your turn**, **Opponent's turn**, replacement,
-or completion in text. The exact server deadline is always shown alongside a
-display-only countdown. Reaching zero triggers a server refresh; it does not
-locally declare a loss. Every later API response resynchronises the countdown.
+### Play and return later
 
-Move, Power-card, and replacement controls are driven exclusively by
-`legalActions`. Non-returned choices stay disabled. A synchronous single-flight
-lock prevents repeated clicks from issuing duplicate requests. Every mutation
-contains `submissionId` and `expectedVersion`. Stale, illegal, and completed
-responses trigger a direct authoritative read. If a mutation response is
-ambiguous and the version did not advance, the UI offers an explicit retry
-using the same submission ID.
+The battlefield shows **Your turn**, **Opponent's turn**, or a required Creature
+replacement. On your turn, use **Moves**, **Power**, or **Swap** to choose an
+available action. Review the confirmed outcome in the battle log. Shared turn
+order, damage, and effects are explained in [Battle rules](battle-rules.md).
 
-Polling runs only while an active match is waiting on the opponent and the page
-is visible. It backs off after failures, preserves the last confirmed state,
-offers manual retry, stops on completion, and stops when the route unmounts.
+Each normal turn or required replacement has a **24-hour deadline**. Missing
+it loses the match. The displayed **Turn deadline** shows when you must act;
+leaving or refreshing does not pause it.
 
-The opponent projection shows only the active and defeated Creatures, legally
-played Power cards, and aggregate remaining counts supplied by the API. There
-is no placeholder array or accessibility text for unrevealed cards.
+Accepted actions are saved automatically. Return through **Player Battles** and
+open the match under **Active**. The page refreshes while you are waiting on the
+opponent and the page is visible.
 
-When the API returns `canResign: true`, either participant may open a warning
-dialog and confirm **Forfeit battle**, which records an immediate loss while the
-opponent receives the win. “Forfeit” is the player-facing term; the existing
-resign endpoint and `voluntary_resignation` completion reason remain internal
-contract details and are never rendered. This action
-is available on either player's turn and disappears as soon as the server reports
-the match terminal. The request contains only the current version and one stable
-submission ID. Ambiguous delivery is reconciled with a match read before the UI
-offers a same-ID retry, while stale or completed state is rendered without an
-automatic second forfeit request.
+To concede, choose **Forfeit**, then **Confirm forfeit**. You can forfeit on
+either player's turn. This permanently records your loss and the opponent's
+win; **Keep playing** closes the dialog without ending the match.
 
-Completed views distinguish battle defeat, missed-deadline forfeit, account
-unavailability, and voluntary forfeit using viewer-relative win/loss language.
-The player-facing copy does not reveal whether an opponent became unavailable
-because of account deletion. The client never infers availability or sends a
-forfeiting participant, winner, outcome, completion reason, or progression
-value.
+### Results and history
 
-## Accessibility and responsive behaviour
+Completed matches show **Victory** or **Defeat**, the opponent, completion time,
+and last moves. Expand **Turn history** to review recorded actions or **Cards**
+to inspect your Creatures and revealed opponent cards. The result explains
+forfeits and missed deadlines; an unavailable opponent is described without
+revealing their account details.
 
-The hub and battle are mobile-first. Native form controls, buttons, links,
-headings, lists, fieldsets, progress elements, status regions, and alerts expose
-the journey without colour alone. Phase changes focus the battle heading;
-polling and mutation status use polite announcements; errors receive focus;
-and disabled actions retain a textual reason. The shared CPU/PvP action and
-combatant presentation preserves keyboard tabs, touch targets, HP text, Power
-text, and active-effect descriptions across both modes.
+Open **History** in Player Battles to revisit results. The shared battle archive
+at `/matches/history` also includes CPU results. Use **Load more** where offered
+to view older records.
 
-Representative browser review should cover approximately 390px and 1280px,
-including no horizontal overflow, keyboard access to action tabs and legal
-controls, visible focus, the closed opponent-reserve disclosure, and no console
-or runtime errors.
+## Live ranked battles
 
-## Automated coverage
+1. Open **Live Ranked** at `/matches/live` and review your deck. **Change deck**
+   opens `/collection/decks`.
+2. Choose **Find battle**. Matchmaking looks for a nearby rating and widens its
+   search as you wait.
+3. When a match is proposed, choose **Accept** within **20 seconds**. Both players
+   must accept before the battle starts. Declining or missing acceptance adds a
+   **30-second cooldown**, without changing your rating.
+4. Select your opening Creature, then take turns using the shared battle
+   controls. Each opening selection, turn, or replacement has a **60-second
+   deadline**. Missing a normal turn skips it; missed selections are resolved
+   automatically. **3 consecutive missed decisions** lose the match.
 
-`apps/web/tests/pvp-client.test.ts` validates privacy-safe closed contracts,
-invitation states and cancellation capability fallback, versioned intent bodies, legal actions, hidden-information
-rejection, error mapping, and ambiguous-response recovery metadata.
-`apps/web/tests/pvp-pages.test.tsx` covers the hub state matrix, Player Name
-challenge flow, accept/decline/cancel/expiry handling, duplicate-click protection,
-cursor navigation, own/opponent turns, move and Power controls, polling,
-deadline refresh, cancellation terminal presentation and same-reference
-recovery, stale reconciliation, confirmed forfeit, ambiguous
-same-reference retry, capability gating, terminal outcomes, hidden opponent
-presentation, and retry. Playwright also checks single-request cancellation and
-terminal presentation, the forfeit dialog's keyboard focus, responsive
-layout, and terminal match result. Existing CPU match
-client/page tests remain the regression boundary for the shared presentation
-extraction.
+You can **Cancel search** before a match starts. After it starts, forfeiting or
+reaching the timeout limit records a rated loss. Reconnecting does not pause
+deadlines. The lobby's **Watch** tab also lets you open a live battle using its
+link or ID; watching does not affect your rating or influence.
 
-This document was generated and reviewed with assistance from
-Codex-CLI[GPT-5] and Codex[GPT-5].
+## Ratings, standings, and seasons
 
-Page title clarified with assistance from Codex-CLI[GPT-6].
+Competition uses a single seasonal leaderboard. Named leagues or divisions
+are not currently implemented.
+
+- **Starting rating:** 1000 in your first season. Elo-style rating changes depend
+  on the result and the opponent's rating: beating a stronger opponent is worth
+  more than beating a weaker one. Rating cannot fall below 100.
+- **Placements:** complete **5 ranked matches each season** to appear in public
+  standings. These first matches use larger rating adjustments; your
+  provisional rating is visible to you while placements are incomplete.
+- **Standings:** open **Standings** in Live Ranked to compare rating, rank, wins,
+  and losses. This leaderboard is separate from permanent-point rankings.
+- **Season length:** **28 days** from activation. When the season closes, new
+  searches stop while existing matches finish. Final standings are archived
+  before the next scheduled season begins.
+- **New season:** ratings move halfway back toward 1000. For example, 1240 becomes 1120. Match counts reset and everyone completes 5 placements again.
+
+Forfeits in an already-started ranked match affect rating. Cancelled searches
+and unaccepted proposals do not. Detailed calculations and rollover rules are
+in [ranked competition](ranked-competition-policy.md).
+
+## How battles connect to territories
+
+Territories connect **Explore**, **ranked battles**, and **challenge rewards**.
+Browse campus zones and their owners in **Explore → Territories**. Ownership is
+held by individual players and is decided separately from leaderboard rank.
+
+To contest a zone, enable **Contest territory** in Live Ranked and choose
+**Find territory battle**. The browser requests your location and the server
+checks that you are inside an active zone. Its location grant lasts **5 minutes**
+and must still be valid when the match starts. Ordinary ranked play works
+without territory participation or a location grant.
+
+An eligible win adds **1 influence** to your snapshotted zone. You must have
+completed 5 ranked matches **before this match starts**, so your fifth placement
+win does not contribute. Influence is capped at **5 per player per zone per
+Johannesburg calendar day**. Async, CPU, casual live, and provisional wins add
+no territory influence. The queue still pairs by rating, so your opponent can
+be contesting a different zone or none at all.
+
+Ownership is settled **hourly**. A player needs at least **3 influence in that
+hour**, then the highest qualifying total takes the zone. A current owner keeps
+it when tied for the lead; other ties favour the earliest contribution. If
+nobody qualifies, ownership stays as it is. At season closure, final territory
+results are archived and zones start the next season unowned with fresh
+influence windows.
+
+Owning a zone can also earn **1 extra Common card** from a challenge in that
+zone. You must own it when the attempt starts and score at least **3 correct
+answers**. The bonus is limited to **1 card per player per Johannesburg
+challenge-start date**, across all owned zones. It adds to ordinary challenge
+rewards and can expand your collection for future decks.
+
+See [territory rules](contested-campus-zone-policy.md) for eligibility,
+settlement, and owner bonuses, or [Explore](player-location-journey.md) for the
+map journey.
+
+## Progression points and saved state
+
+An async victory awards **25 permanent progression points**; the loser receives 0. Completed async battles count as activity for both players. These points
+feed the [all-time and monthly rankings](player-progression-rules.md) and
+[profile](../design/profile-showcase.md). Ranked live results change seasonal
+rating and may add territory influence; they do not award these permanent
+points. Rating, progression points, and influence are separate measures.
+
+The server validates and snapshots cards: the sender's deck when an async
+invitation is sent, the recipient's on acceptance, and both live decks when the
+match starts. Later deck edits or catalogue changes do not rewrite those cards.
+The server controls legal actions, deadlines, effects, and results.
+
+Async invitations and battles are private to their participants. Player lookup
+reveals the Player Name, and unrevealed opponent cards stay hidden. Live
+spectators receive a limited battle view rather than either player's private
+cards.
+
+If an async action's result is uncertain, the page checks the saved battle before
+offering a retry. Review any changed state before choosing again.
+
+Technical details are in the
+[asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md)
+and [live PvP API contract](../architecture/live-pvp-api-contract.md).
+
+---
+
+This page was prepared and edited with assistance from Codex-CLI[GPT-5],
+Codex[GPT-5], Codex-CLI[GPT-6], and Codex[GPT-6].

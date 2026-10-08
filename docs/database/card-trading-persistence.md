@@ -8,11 +8,11 @@ title: 'Card trading persistence'
 
 Migration `0055_persist_versioned_card_trades.sql` implements the durable
 persistence boundary for issue `#275`. It follows the approved
-[card-trading and anti-drain policy](../requirements/card-trading-policy.md).
+[trading policy](../requirements/card-trading-policy.md).
 Migration `0056_add_card_trade_submission_receipts.sql` extends that boundary
 with private durable command-idempotency receipts for issue `#272`. The
-authenticated HTTP routes are now implemented by `#272`; the player trading UI
-remains follow-up work in `#274`.
+authenticated HTTP routes are implemented by `#272`, and the player trading UI
+is implemented by `#274` under `/collection/trades`.
 
 The database remains authoritative for exact-copy reservations, immutable offer
 history, terminal lifecycle, and the all-or-nothing settlement record. The API

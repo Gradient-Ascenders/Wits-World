@@ -87,19 +87,20 @@ const sidebars: SidebarsConfig = {
           'Explore campus, complete challenges, collect cards, and battle.',
       },
       items: [
-        doc('requirements/player-location-journey', 'Explore campus'),
+        doc('requirements/player-location-journey', 'Explore'),
         doc('requirements/player-challenge-journey', 'Challenges'),
-        category('Cards and profile', [
+        doc('design/profile-showcase', 'Profile'),
+        category('Cards', [
           doc(
             'requirements/player-deck-building-journey',
             'Collections and decks',
           ),
           doc('requirements/card-evolution-rules', 'Evolution'),
           doc('requirements/card-trading-policy', 'Trading'),
-          doc('design/profile-showcase', 'Profile'),
           doc('design/basic-card-roster', 'Card catalogue'),
         ]),
         category('Battles', [
+          doc('requirements/battle-rules', 'Battle rules'),
           doc('requirements/player-cpu-battle-journey', 'CPU battles'),
           doc('requirements/player-asynchronous-pvp-journey', 'Player battles'),
         ]),

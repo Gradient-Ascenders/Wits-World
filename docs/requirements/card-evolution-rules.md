@@ -1,157 +1,75 @@
 ---
-title: 'Card evolution rules'
-description: Confirmed duplicate-consumption rule and the fixed evolution relationships in the complete card catalogue.
+title: 'Evolving cards'
+description: Combine duplicate cards, understand protected copies, and review evolution recipes.
 ---
 
-# Card evolution rules
+# Evolving cards
 
-**Status:** Backend transaction, API, and player collection UI implemented
+Evolution consumes **three available copies of the same card** to create
+**one copy of its defined evolved card**. The exchange cannot be undone.
 
-**Confirmed:** 6 September 2026
+## Player journey
 
-Issue #164 added the evolved definitions and their source relationships. Issue
-#174 adds the authenticated server-side evolution action. The player-facing
-confirmation experience is implemented separately under issue #175.
+1. Open **Evolutions** at `/collection/evolutions`. The list starts with **Ready**
+   recipes. Search either card name or filter by source rarity; choose **All cards**
+   to inspect recipes that are not ready.
+2. Open a recipe to compare the source and evolved card, available copies,
+   protected copies, and the target's rarity-point cost.
+3. Choose **Evolve**. Review which card will be created and how many source
+   copies will remain, then choose **Evolve** again to confirm, or **Cancel**.
+4. After success, inspect the created card and choose **Back to evolutions**.
+   The collection updates automatically. If its refresh fails, choose
+   **Refresh collection**; the evolution is already saved.
 
 ## Conversion rule
 
-- One evolution requires three total owned copies of the same source card
-  definition.
-- All three source copies are consumed.
-- One owned copy of the source's specifically authored evolved definition is
-  granted.
-- Rarity is fixed on each card definition. Owning duplicates never mutates a
-  card's rarity.
-- Source copies must belong to the authenticated player and must not be
-  referenced by a saved deck.
-- Validation, consumption, and the evolved-card grant must happen in one
-  database transaction.
-- Concurrent or repeated requests must not consume extra copies or grant extra
-  evolved cards.
-- The API, not the browser, selects the three consumed copies. It chooses the
-  newest eligible copies by acquisition time and then owned-copy identifier.
+- You need three eligible copies, not just three owned copies.
+- A copy used in **any saved deck** is protected, even if that deck is inactive.
+  Remove it from every saved deck before using it for evolution.
+- A copy reserved by an open trade is also protected. End the offer to release
+  the reservation, then check availability again.
+- The server chooses the three newest eligible copies, using the owned-copy
+  identifier to break acquisition-time ties. Players do not choose individual
+  copies to consume.
+- Both source and target must be active, published ordinary catalogue cards
+  with an available recipe. The target is a separate card definition with its
+  own fixed rarity; collecting duplicates does not change a card's rarity.
+
+The evolved card can be used in a saved deck once owned. Its rarity cost still
+counts toward the [deck point cap](basic-game-rules.md#saved-decks).
 
 ## Fixed relationships
 
-| Source   | Evolved definition | Fixed rarity |
-| -------- | ------------------ | ------------ |
-| Quillip  | Quillume           | Epic         |
-| Voltiki  | Voltadrake         | Epic         |
-| Karrik   | Karradon           | Epic         |
-| Nimbril  | Nimbrael           | Epic         |
-| Sigilisk | Sigilith           | Epic         |
-| Axiomar  | Axiomarch          | Legendary    |
-| Arcalyx  | Arcalyron          | Legendary    |
-| Basalox  | Basalorn           | Legendary    |
+The seeded catalogue contains these recipes:
 
-The evolved definitions are separate active ordinary catalogue records. They
-are valid deck cards after ownership is granted, but they are excluded from
-starter, random reward, and fixed CPU pools. Power cards do not have evolution
-relationships in this catalogue.
+| Source   | Evolved card | Target rarity |
+| -------- | ------------ | ------------- |
+| Quillip  | Quillume     | Epic          |
+| Voltiki  | Voltadrake   | Epic          |
+| Karrik   | Karradon     | Epic          |
+| Nimbril  | Nimbrael     | Epic          |
+| Sigilisk | Sigilith     | Epic          |
+| Axiomar  | Axiomarch    | Legendary     |
+| Arcalyx  | Arcalyron    | Legendary     |
+| Basalox  | Basalorn     | Legendary     |
 
-## Implemented backend contract
+These evolved cards are excluded from starter, random-reward, and fixed CPU
+pools. The seeded Power cards have no evolution recipes. Live availability is
+shown by the collection's server-provided preview.
 
-`GET /api/v1/cards/evolutions/{sourceCardDefinitionId}/preview` returns the
-fixed source and target definitions, deck point costs, owned-copy counts,
-saved-deck locks, and active-trade reservations. It does not reserve cards.
+## How it works
 
-`POST /api/v1/cards/evolutions` accepts only a client-generated UUID
-`submissionId` and the source definition UUID. The authenticated player is
-derived from the bearer token; client-selected owned-copy or target identifiers
-are rejected. A new transaction returns `201`, while a retry of the same
-submission and source returns the original result with `200`. Reusing the
-submission for a different source fails with `EVOLUTION_REPLAY_CONFLICT`.
+A preview checks eligibility without reserving copies. Confirmation rechecks
+ownership and locks, then consumes three copies and grants one card in a single
+transaction. Retrying the same submission returns its saved result without
+consuming or granting cards again. The success reveal starts after the server
+confirms the exchange.
 
-The transaction locks the active player and eligible ownership rows, records an
-immutable receipt and three consumption snapshots, deletes exactly those three
-copies, and grants one `acquisitionKind: evolution` copy. The receipt retains
-the granted copy's identifier and acquisition timestamp, so retrying the
-original submission returns the original result even if a later evolution has
-consumed that copy. Copies referenced by a saved deck are never selected.
-Evolution is not inferred merely from holding three copies; the mutation
-remains an explicit player action.
+See [collections and decks](player-deck-building-journey.md) and the
+[trading policy](card-trading-policy.md) for related copy protections.
 
-## Player collection experience
+---
 
-The collection switches between Cards and Evolutions within `/collection`.
-Normal card details retain their copy history and no longer include evolution.
-The Evolutions section checks the existing preview endpoint for each distinct
-owned definition, with at most four requests in flight. It lists available
-relationships with server-returned eligibility, total ownership, and deck locks,
-placing ready evolutions first. The web client validates both lock counts and
-shows trade-reserved copies distinctly. Failed checks can be viewed through the
-availability filter and retried.
-Definitions without an available relationship are omitted unless an owned copy
-was acquired through evolution. Those entries say that no further evolution is
-currently available; the contract does not explicitly identify final stages.
-
-The Evolutions list opens with only cards the server reports as ready to evolve.
-Players can search source or evolved card names, filter source rarity, and switch
-availability to all cards, not-ready recipes, cards without an evolution, or
-failed checks. The list shows six distinct card definitions per page, with page
-controls above and below the cards. Search and filter changes return to page one;
-clearing filters shows all cards. Browsing uses the loaded preview results without
-additional requests, and eligibility remains server-owned. An empty ready view
-offers Show all cards so players can inspect missing or protected copies.
-
-Selecting a candidate opens a focused preview with three compact source cards
-and a prominent evolved result. The mobile surface fills the screen and scrolls;
-desktop uses a wider comparison. Both reuse the normal card frame and dialog
-focus management. Confirmation controls stay below the scrolling preview, with
-safe-area spacing. The primary action is labelled "Evolve card" and explicitly
-confirms the consumption of all three source copies.
-
-The confirmation view presents the server-authored source and target, the fixed
-three-copy recipe, the number of copies remaining, any saved-deck protection,
-and the target through the normal card presentation. The browser submits only
-the source definition and a client-generated idempotency UUID. It never selects
-the consumed copies or derives the evolved definition.
-
-After a successful mutation, the UI immediately applies the authoritative
-consumed identifiers and granted card from the result, then refetches the whole
-collection. Only after server success does the completion effect merge the three
-source cards over 1.7 seconds, then reveal the granted card with gold glints and
-a metallic frame sweep. The full effect lasts 3.4 seconds. Background gold
-particles float behind the result and pause while the tab is hidden or card
-details are open. Reduced motion uses a 180 ms fade and static particles.
-Focusing or pressing the result immediately settles the reveal for inspection;
-returning to the tab or changing motion preferences does not replay it. Card
-inspection and Back to evolutions remain available throughout the effect.
-The result reports the resulting owned quantity, including
-when that evolved definition was already owned, and offers Back to evolutions.
-Insufficient-copy and saved-deck conflicts refresh both the preview
-and collection before another action is offered. Confirmation is single-flight,
-Escape and close are disabled while it is in flight, and focus moves to the
-confirmation, recoverable error, or success heading as appropriate.
-Normal card details retain their sheet handle; the focused mobile evolution
-surface uses its explicit close control. A confirmed evolution is
-distinguished from the subsequent collection refresh; a failed refresh offers a
-local retry without repeating the evolution. Stale previews explicitly state that
-no evolution completed and offer refreshed availability for another review.
-
-Coin selling remains outside this contract. Issue #193 retired the active coin
-and wallet model and explicitly deferred selling for currency; the collection
-therefore exposes no speculative selling action or client-calculated value.
-
-The [card-trading policy](card-trading-policy.md) reserves exact owned copies
-in open offers. Issue `#275` now makes evolution treat a current trade
-reservation as a server-owned lock alongside a saved-deck lock. Preview results
-mark affected copies with `lockReason: trade_reservation`, report the reserved
-copy count, and return `unavailableReason: trade_reservation` when those locks
-prevent the recipe. Execution locks candidate ownership rows and rechecks trade
-reservations before consuming any copies, so a concurrent trade cannot race an
-evolution. The public trading API and UI remain follow-up work.
-
-## AI declaration
-
-This document was updated with assistance from Codex-CLI[GPT-5.6 Sol],
-Codex[GPT-5], Codex-CLI[GPT-6], Codex[GPT-5.6 Sol], and
-ChatGPT-Web[GPT-5.6 Sol].
-
-Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
-
-Completion effect and motion behaviour updated with assistance from Codex[GPT-6].
-
-Evolution browsing guidance updated with assistance from Codex[GPT-6].
+This page was prepared and edited with assistance from Codex-CLI[GPT-5.6 Sol],
+Codex[GPT-5], Codex-CLI[GPT-6], Codex[GPT-5.6 Sol],
+ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-6].
