@@ -581,6 +581,627 @@ describe.skipIf(!runIntegrationTests)(
       });
     }, 30_000);
 
+    it('projects redeemed participant and spectator connections with live presence and committed event metadata', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const spectator = await insertPlayer(pool, 'runtime_spectator');
+      const service = createLivePvpService(pool);
+      const connect = async (
+        playerId: string,
+        role: 'participant' | 'spectator',
+      ) => {
+        const ticket = await service.mintConnectionTicket({
+          matchId: fixture.matchId,
+          playerId,
+          requestedRole: role,
+        });
+        return service.redeemConnectionTicket(ticket.ticket);
+      };
+      const playerOne = await connect(fixture.playerOne.id, 'participant');
+      const playerTwo = await connect(fixture.playerTwo.id, 'participant');
+      const observer = await connect(spectator.id, 'spectator');
+
+      await expect(service.getPresence(fixture.matchId)).resolves.toEqual({
+        playerOneConnected: true,
+        playerTwoConnected: true,
+        spectatorCount: 1,
+      });
+      const participantProjection =
+        await service.getProjectionForConnection(playerOne);
+      expect(participantProjection).toMatchObject({
+        role: 'participant',
+        status: 'active',
+        version: 0,
+        selfSide: 'playerOne',
+        legalActions: expect.arrayContaining([
+          expect.objectContaining({ type: 'select_initial_creature' }),
+        ]),
+      });
+      if (participantProjection.role !== 'participant') {
+        throw new Error('Expected participant projection.');
+      }
+      expect(participantProjection.opponent).not.toHaveProperty('creatures');
+
+      const spectatorProjection =
+        await service.getProjectionForConnection(observer);
+      expect(spectatorProjection).toMatchObject({
+        role: 'spectator',
+        version: 0,
+        presence: {
+          playerOneConnected: true,
+          playerTwoConnected: true,
+          spectatorCount: 1,
+        },
+        history: [],
+      });
+      expect(spectatorProjection.role).toBe('spectator');
+
+      const selection = participantProjection.legalActions.find(
+        (action) => action.type === 'select_initial_creature',
+      );
+      expect(selection).toBeDefined();
+      const committed = await service.submitAction({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        connectionGeneration: playerOne.participantGeneration!,
+        messageId: randomUUID(),
+        expectedVersion: 0,
+        action: selection!,
+      });
+      await expect(
+        service.getCommittedEventMeta(
+          fixture.matchId,
+          committed.acknowledgement.version,
+        ),
+      ).resolves.toMatchObject({ eventId: committed.acknowledgement.eventId });
+
+      await service.closeConnectionAccess(
+        playerTwo.accessId,
+        'transport_closed',
+      );
+      await expect(service.getPresence(fixture.matchId)).resolves.toEqual({
+        playerOneConnected: true,
+        playerTwoConnected: false,
+        spectatorCount: 1,
+      });
+      await expect(
+        service.getProjectionForConnection(playerTwo),
+      ).rejects.toMatchObject({
+        code: 'LIVE_AUTHENTICATION_REQUIRED',
+      });
+    }, 30_000);
+
+    it('accepts legal selections and moves, then hands the turn off after a creature swap', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const service = createLivePvpService(pool, { randomInt: () => 0 });
+      const connect = async (playerId: string) => {
+        const ticket = await service.mintConnectionTicket({
+          matchId: fixture.matchId,
+          playerId,
+          requestedRole: 'participant',
+        });
+        return service.redeemConnectionTicket(ticket.ticket);
+      };
+      const playerOne = await connect(fixture.playerOne.id);
+      const playerTwo = await connect(fixture.playerTwo.id);
+      const submitLegal = async (
+        connection: Awaited<ReturnType<typeof connect>>,
+        playerId: string,
+        expectedVersion: number,
+        actionType: string,
+      ) => {
+        const projection = await service.getProjectionForConnection(connection);
+        if (projection.role !== 'participant')
+          throw new Error('Expected participant projection.');
+        const action = projection.legalActions.find(
+          (candidate) => candidate.type === actionType,
+        );
+        expect(action).toBeDefined();
+        return service.submitAction({
+          matchId: fixture.matchId,
+          playerId,
+          connectionGeneration: connection.participantGeneration!,
+          messageId: randomUUID(),
+          expectedVersion,
+          action: action!,
+        });
+      };
+
+      await submitLegal(
+        playerOne,
+        fixture.playerOne.id,
+        0,
+        'select_initial_creature',
+      );
+      await submitLegal(
+        playerTwo,
+        fixture.playerTwo.id,
+        1,
+        'select_initial_creature',
+      );
+      const firstProjection =
+        await service.getProjectionForConnection(playerOne);
+      const firstActor =
+        firstProjection.currentActor === 'self' ? playerOne : playerTwo;
+      const secondActor = firstActor === playerOne ? playerTwo : playerOne;
+      const firstActorId =
+        firstActor === playerOne ? fixture.playerOne.id : fixture.playerTwo.id;
+      const secondActorId =
+        secondActor === playerOne ? fixture.playerOne.id : fixture.playerTwo.id;
+      const playerTurn = await service.getProjectionForConnection(firstActor);
+      expect(playerTurn).toMatchObject({
+        phase: 'active',
+        version: 2,
+        currentActor: 'self',
+      });
+      const playerMove =
+        playerTurn.role === 'participant'
+          ? playerTurn.legalActions.find((action) => action.type === 'use_move')
+          : undefined;
+      expect(playerMove).toBeDefined();
+      await service.submitAction({
+        matchId: fixture.matchId,
+        playerId: firstActorId,
+        connectionGeneration: firstActor.participantGeneration!,
+        messageId: randomUUID(),
+        expectedVersion: 2,
+        action: playerMove!,
+      });
+
+      const opponentTurn =
+        await service.getProjectionForConnection(secondActor);
+      expect(opponentTurn).toMatchObject({ version: 3, currentActor: 'self' });
+      const swapTarget =
+        opponentTurn.role === 'participant'
+          ? (opponentTurn.self.creatures[1] as { id: string })
+          : undefined;
+      expect(swapTarget).toBeDefined();
+      const swap =
+        opponentTurn.role === 'participant'
+          ? opponentTurn.legalActions.find(
+              (action) =>
+                action.type === 'swap_creature' &&
+                action.creatureId === swapTarget!.id,
+            )
+          : undefined;
+      expect(swap).toBeDefined();
+      const swapped = await service.submitAction({
+        matchId: fixture.matchId,
+        playerId: secondActorId,
+        connectionGeneration: secondActor.participantGeneration!,
+        messageId: randomUUID(),
+        expectedVersion: 3,
+        action: swap!,
+      });
+
+      const afterSwap = await service.getProjectionForConnection(firstActor);
+      expect(afterSwap).toMatchObject({
+        version: 4,
+        phase: 'active',
+        currentActor: 'self',
+      });
+      expect(
+        afterSwap.role === 'participant' && afterSwap.history,
+      ).toHaveLength(4);
+      expect(
+        afterSwap.role === 'participant' && afterSwap.lastAction,
+      ).toMatchObject({
+        type: 'participant_action',
+        action: swap,
+      });
+      await expect(
+        pool.query<{
+          version: number;
+          action_count: string;
+          receipt_count: string;
+        }>(
+          `select match.version,
+                  (select count(*)::text from public.live_pvp_match_actions action
+                    where action.match_id = match.id) as action_count,
+                  (select count(*)::text from private.live_pvp_submission_receipts receipt
+                    where receipt.match_id = match.id) as receipt_count
+             from public.live_pvp_matches match where match.id = $1::uuid`,
+          [fixture.matchId],
+        ),
+      ).resolves.toMatchObject({
+        rows: [{ version: 4, action_count: '4', receipt_count: '4' }],
+      });
+      expect(swapped.acknowledgement.version).toBe(4);
+    }, 30_000);
+
+    it('replays an identical action submission and rolls back conflicting message reuse', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const service = createLivePvpService(pool);
+      const ticket = await service.mintConnectionTicket({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        requestedRole: 'participant',
+      });
+      const connection = await service.redeemConnectionTicket(ticket.ticket);
+      const projection = await service.getProjectionForConnection(connection);
+      if (projection.role !== 'participant')
+        throw new Error('Expected participant projection.');
+      const first = projection.legalActions.find(
+        (action) => action.type === 'select_initial_creature',
+      )!;
+      const second = projection.legalActions.find(
+        (action) =>
+          action.type === 'select_initial_creature' &&
+          action.creatureId !== first.creatureId,
+      )!;
+      const messageId = randomUUID();
+      const input = {
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        connectionGeneration: connection.participantGeneration!,
+        messageId,
+        expectedVersion: 0,
+        action: first,
+      };
+      const committed = await service.submitAction(input);
+      const replay = await service.submitAction(input);
+      expect(committed.replayed).toBe(false);
+      expect(replay).toEqual({ ...committed, replayed: true });
+      await expect(
+        service.submitAction({ ...input, action: second }),
+      ).rejects.toMatchObject({
+        code: 'LIVE_IDEMPOTENCY_CONFLICT',
+      });
+
+      const persisted = await pool.query<{
+        version: number;
+        selection: string;
+        action_count: string;
+        receipt_count: string;
+        receipt_hash: string;
+      }>(
+        `select match.version, state.battle_state #>> '{selections,player}' as selection,
+                (select count(*)::text from public.live_pvp_match_actions action
+                  where action.match_id = match.id) as action_count,
+                (select count(*)::text from private.live_pvp_submission_receipts receipt
+                  where receipt.match_id = match.id) as receipt_count,
+                (select payload_hash from private.live_pvp_submission_receipts receipt
+                  where receipt.match_id = match.id and receipt.message_id = $2::uuid) as receipt_hash
+           from public.live_pvp_matches match
+           join private.live_pvp_match_states state on state.match_id = match.id
+          where match.id = $1::uuid`,
+        [fixture.matchId, messageId],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          version: 1,
+          selection: first.creatureId,
+          action_count: '1',
+          receipt_count: '1',
+          receipt_hash: expect.any(String),
+        },
+      ]);
+    }, 30_000);
+
+    it('rejects stale-version and illegal participant actions without persisting partial state', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const service = createLivePvpService(pool, { randomInt: () => 0 });
+      const ticket = await service.mintConnectionTicket({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        requestedRole: 'participant',
+      });
+      const connection = await service.redeemConnectionTicket(ticket.ticket);
+      const projection = await service.getProjectionForConnection(connection);
+      if (projection.role !== 'participant')
+        throw new Error('Expected participant projection.');
+      const action = projection.legalActions.find(
+        (candidate) => candidate.type === 'select_initial_creature',
+      )!;
+      await service.submitAction({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        connectionGeneration: connection.participantGeneration!,
+        messageId: randomUUID(),
+        expectedVersion: 0,
+        action,
+      });
+
+      await expect(
+        service.submitAction({
+          matchId: fixture.matchId,
+          playerId: fixture.playerOne.id,
+          connectionGeneration: connection.participantGeneration!,
+          messageId: randomUUID(),
+          expectedVersion: 0,
+          action: { type: 'select_initial_creature', creatureId: randomUUID() },
+        }),
+      ).rejects.toMatchObject({
+        code: 'LIVE_VERSION_CONFLICT',
+        retryable: true,
+      });
+      await expect(
+        service.submitAction({
+          matchId: fixture.matchId,
+          playerId: fixture.playerOne.id,
+          connectionGeneration: connection.participantGeneration!,
+          messageId: randomUUID(),
+          expectedVersion: 1,
+          action: { type: 'select_initial_creature', creatureId: randomUUID() },
+        }),
+      ).rejects.toMatchObject({ code: 'LIVE_ACTION_ILLEGAL' });
+
+      const persisted = await pool.query<{
+        version: number;
+        action_count: string;
+        receipt_count: string;
+        selection: string;
+      }>(
+        `select match.version, state.battle_state #>> '{selections,player}' as selection,
+                (select count(*)::text from public.live_pvp_match_actions action
+                  where action.match_id = match.id) as action_count,
+                (select count(*)::text from private.live_pvp_submission_receipts receipt
+                  where receipt.match_id = match.id) as receipt_count
+           from public.live_pvp_matches match
+           join private.live_pvp_match_states state on state.match_id = match.id
+          where match.id = $1::uuid`,
+        [fixture.matchId],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          version: 1,
+          selection: action.creatureId,
+          action_count: '1',
+          receipt_count: '1',
+        },
+      ]);
+    }, 30_000);
+
+    it('denies spectator, nonparticipant, and superseded connections all participant mutations', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const outsider = await insertPlayer(pool, 'mutation_spectator');
+      const service = createLivePvpService(pool);
+      const connect = async (
+        playerId: string,
+        role: 'participant' | 'spectator',
+      ) => {
+        const ticket = await service.mintConnectionTicket({
+          matchId: fixture.matchId,
+          playerId,
+          requestedRole: role,
+        });
+        return service.redeemConnectionTicket(ticket.ticket);
+      };
+      const oldParticipant = await connect(fixture.playerOne.id, 'participant');
+      const spectator = await connect(outsider.id, 'spectator');
+      const currentParticipant = await connect(
+        fixture.playerOne.id,
+        'participant',
+      );
+      const mutation = {
+        matchId: fixture.matchId,
+        messageId: randomUUID(),
+        expectedVersion: 0,
+        action: {
+          type: 'select_initial_creature',
+          creatureId: randomUUID(),
+        } as const,
+      };
+      await expect(
+        service.submitAction({
+          ...mutation,
+          playerId: fixture.playerOne.id,
+          connectionGeneration: oldParticipant.participantGeneration!,
+        }),
+      ).rejects.toMatchObject({ code: 'LIVE_CONNECTION_SUPERSEDED' });
+      await expect(
+        service.submitAction({
+          ...mutation,
+          playerId: outsider.id,
+          connectionGeneration: spectator.participantGeneration ?? 0,
+        }),
+      ).rejects.toMatchObject({ code: 'LIVE_ACTION_FORBIDDEN' });
+      await expect(
+        service.submitAction({
+          ...mutation,
+          playerId: outsider.id,
+          connectionGeneration: 1,
+        }),
+      ).rejects.toMatchObject({ code: 'LIVE_ACTION_FORBIDDEN' });
+
+      await expect(
+        pool.query<{
+          version: number;
+          action_count: string;
+          receipt_count: string;
+        }>(
+          `select match.version,
+                (select count(*)::text from public.live_pvp_match_actions action
+                  where action.match_id = match.id) as action_count,
+                (select count(*)::text from private.live_pvp_submission_receipts receipt
+                  where receipt.match_id = match.id) as receipt_count
+           from public.live_pvp_matches match where match.id = $1::uuid`,
+          [fixture.matchId],
+        ),
+      ).resolves.toMatchObject({
+        rows: [{ version: 0, action_count: '0', receipt_count: '0' }],
+      });
+      await expect(
+        service.getProjectionForConnection(currentParticipant),
+      ).resolves.toMatchObject({
+        role: 'participant',
+        version: 0,
+      });
+    }, 30_000);
+
+    it('acknowledges an expired-turn submission as late and persists only the automatic timeout transition', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const service = createLivePvpService(pool, { randomInt: () => 0 });
+      const ticket = await service.mintConnectionTicket({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        requestedRole: 'participant',
+      });
+      const connection = await service.redeemConnectionTicket(ticket.ticket);
+      const projection = await service.getProjectionForConnection(connection);
+      if (projection.role !== 'participant')
+        throw new Error('Expected participant projection.');
+      const legalSelections = projection.legalActions.filter(
+        (action) => action.type === 'select_initial_creature',
+      );
+      const legalSelection = legalSelections[1]!;
+      await expireLiveMatchDeadline(pool, fixture.matchId);
+
+      const result = await service.submitAction({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        connectionGeneration: connection.participantGeneration!,
+        messageId: randomUUID(),
+        expectedVersion: 0,
+        action: legalSelection,
+      });
+      expect(result).toMatchObject({ replayed: false, late: true });
+      expect(result.acknowledgement.version).toBe(1);
+      const persisted = await pool.query<{
+        version: number;
+        transition_kind: string;
+        actor_player_id: string | null;
+        timeout_count: number;
+        receipt_count: string;
+        selected_creature: string;
+      }>(
+        `select match.version, action.transition_kind, action.actor_player_id::text,
+                participant.consecutive_timeout_count as timeout_count,
+                state.battle_state #>> '{selections,player}' as selected_creature,
+                (select count(*)::text from private.live_pvp_submission_receipts receipt
+                  where receipt.match_id = match.id) as receipt_count
+           from public.live_pvp_matches match
+           join public.live_pvp_match_actions action
+             on action.match_id = match.id and action.committed_version = match.version
+           join public.live_pvp_match_participants participant
+             on participant.match_id = match.id and participant.player_id = $2::uuid
+           join private.live_pvp_match_states state on state.match_id = match.id
+          where match.id = $1::uuid`,
+        [fixture.matchId, fixture.playerOne.id],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          version: 1,
+          transition_kind: 'automatic_initial_selection',
+          actor_player_id: null,
+          timeout_count: 1,
+          receipt_count: '0',
+          selected_creature: expect.any(String),
+        },
+      ]);
+      expect(persisted.rows[0]!.selected_creature).not.toBe(
+        legalSelection.creatureId,
+      );
+    }, 30_000);
+
+    it('completes repeated turn timeouts with immutable public history and private completion sources', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const service = createLivePvpService(pool, { randomInt: () => 0 });
+      const connect = async (playerId: string) => {
+        const ticket = await service.mintConnectionTicket({
+          matchId: fixture.matchId,
+          playerId,
+          requestedRole: 'participant',
+        });
+        return service.redeemConnectionTicket(ticket.ticket);
+      };
+      const playerOne = await connect(fixture.playerOne.id);
+      const playerTwo = await connect(fixture.playerTwo.id);
+      for (const [connection, playerId, version] of [
+        [playerOne, fixture.playerOne.id, 0],
+        [playerTwo, fixture.playerTwo.id, 1],
+      ] as const) {
+        const projection = await service.getProjectionForConnection(connection);
+        if (projection.role !== 'participant')
+          throw new Error('Expected participant projection.');
+        const action = projection.legalActions.find(
+          (candidate) => candidate.type === 'select_initial_creature',
+        )!;
+        await service.submitAction({
+          matchId: fixture.matchId,
+          playerId,
+          connectionGeneration: connection.participantGeneration!,
+          messageId: randomUUID(),
+          expectedVersion: version,
+          action,
+        });
+      }
+
+      const transitions = [];
+      for (let strike = 0; strike < 5; strike += 1) {
+        await expireLiveMatchDeadline(pool, fixture.matchId);
+        transitions.push(await service.processOverdueMatch(fixture.matchId));
+      }
+      expect(transitions).toMatchObject([
+        { transitioned: true, version: 3, completed: false },
+        { transitioned: true, version: 4, completed: false },
+        { transitioned: true, version: 5, completed: false },
+        { transitioned: true, version: 6, completed: false },
+        { transitioned: true, version: 7, completed: true },
+      ]);
+
+      const finalProjection =
+        await service.getProjectionForConnection(playerOne);
+      expect(finalProjection).toMatchObject({
+        role: 'participant',
+        status: 'completed',
+        version: 7,
+        phase: 'completed',
+        outcome: 'loss',
+        completionReason: 'abandonment_forfeit',
+        completedAt: expect.any(String),
+        legalActions: [],
+      });
+      expect(
+        finalProjection.role === 'participant' && finalProjection.history,
+      ).toHaveLength(7);
+      expect(
+        finalProjection.role === 'participant' && finalProjection.lastAction,
+      ).toMatchObject({
+        type: 'abandonment_forfeit',
+        loser: 'playerOne',
+        winner: 'playerTwo',
+      });
+      const terminal = await pool.query<{
+        status: string;
+        completion_reason: string;
+        source_count: string;
+        action_count: string;
+        timeout_count: number;
+        winner: string;
+      }>(
+        `select match.status, match.completion_reason,
+                (select count(*)::text from private.live_pvp_completion_sources source
+                  where source.match_id = match.id) as source_count,
+                (select count(*)::text from public.live_pvp_match_actions action
+                  where action.match_id = match.id) as action_count,
+                (select consecutive_timeout_count from public.live_pvp_match_participants participant
+                  where participant.match_id = match.id and participant.player_id = $2::uuid) as timeout_count,
+                match.winner_player_id::text as winner
+           from public.live_pvp_matches match where match.id = $1::uuid`,
+        [fixture.matchId, fixture.playerOne.id],
+      );
+      expect(terminal.rows).toEqual([
+        {
+          status: 'completed',
+          completion_reason: 'abandonment_forfeit',
+          source_count: '2',
+          action_count: '7',
+          timeout_count: 3,
+          winner: fixture.playerTwo.id,
+        },
+      ]);
+      await expect(
+        service.submitAction({
+          matchId: fixture.matchId,
+          playerId: fixture.playerOne.id,
+          connectionGeneration: playerOne.participantGeneration!,
+          messageId: randomUUID(),
+          expectedVersion: 7,
+          action: { type: 'select_initial_creature', creatureId: randomUUID() },
+        }),
+      ).rejects.toMatchObject({ code: 'LIVE_MATCH_COMPLETED' });
+    }, 30_000);
+
     it('pins spectator history to the already-loaded authoritative match version', async () => {
       const fixture = await createLiveMatch(pool, cardDefinitions);
       const spectator = await insertPlayer(
@@ -1293,6 +1914,68 @@ describe.skipIf(!runIntegrationTests)(
         await reopenedPool.end();
       }
     }, 30_000);
+
+    it('keeps missing-match guards and idle deadline maintenance side-effect free', async () => {
+      const service = createLivePvpService(pool, { randomInt: () => 0 });
+      const missingMatchId = randomUUID();
+
+      await expect(
+        service.getProjection({
+          matchId: missingMatchId,
+          playerId: randomUUID(),
+        }),
+      ).rejects.toMatchObject({ code: 'LIVE_MATCH_NOT_FOUND' });
+      await expect(
+        service.redeemConnectionTicket('not-a-valid-ticket'),
+      ).rejects.toMatchObject({ code: 'LIVE_AUTHENTICATION_REQUIRED' });
+      await expect(
+        service.getCommittedEventMeta(missingMatchId, 1),
+      ).resolves.toBeNull();
+      await expect(
+        service.processOverdueMatch(missingMatchId),
+      ).resolves.toEqual({ transitioned: false, matchId: missingMatchId });
+
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const freshTicket = await service.mintConnectionTicket({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        requestedRole: 'participant',
+      });
+      const before = await pool.query<{
+        version: number;
+        action_count: number;
+      }>(
+        `select match.version,
+                (select count(*)::integer from public.live_pvp_match_actions action
+                  where action.match_id = match.id) action_count
+           from public.live_pvp_matches match
+          where match.id = $1::uuid`,
+        [fixture.matchId],
+      );
+      expect(await service.processOverdueMatch(fixture.matchId)).toMatchObject({
+        transitioned: false,
+        matchId: fixture.matchId,
+      });
+      await service.processOverdueUntilCurrent(fixture.matchId);
+      expect(await service.listDueMatchIds(0)).not.toContain(fixture.matchId);
+      await service.purgeTransientAccess();
+      await expect(
+        service.redeemConnectionTicket(freshTicket.ticket),
+      ).resolves.toMatchObject({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        role: 'participant',
+      });
+      const after = await pool.query(
+        `select match.version,
+                (select count(*)::integer from public.live_pvp_match_actions action
+                  where action.match_id = match.id) action_count
+           from public.live_pvp_matches match
+          where match.id = $1::uuid`,
+        [fixture.matchId],
+      );
+      expect(after.rows).toEqual(before.rows);
+    }, 30_000);
   },
 );
 
@@ -1477,6 +2160,31 @@ async function createLiveMatch(
   };
 }
 
+async function expireLiveMatchDeadline(
+  database: Pick<pg.Pool, 'connect'>,
+  matchId: string,
+): Promise<void> {
+  const client = await database.connect();
+  try {
+    await client.query('begin');
+    // Age only fixture timestamps; service transitions run after triggers are restored.
+    await client.query("set local session_replication_role = 'replica'");
+    await client.query(
+      `update public.live_pvp_matches
+          set decision_started_at = transaction_timestamp() - interval '61 seconds',
+              turn_deadline = transaction_timestamp() - interval '1 second'
+        where id = $1::uuid`,
+      [matchId],
+    );
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function insertDeckSnapshot(
   client: pg.PoolClient,
   input: {
@@ -1521,19 +2229,34 @@ async function insertDeckSnapshot(
 
 function createProjectionReadyBattleState() {
   const participantState = () => ({
-    creatures: [0, 1, 2].map(() => ({
-      card: {
-        id: randomUUID(),
-        affinity: 'wit',
-        maxHp: 10,
-        maxPower: 10,
-        moves: [],
-      },
-      currentHp: 10,
-      remainingPower: 10,
-      defeated: false,
-      modifiers: [],
-    })),
+    creatures: [0, 1, 2].map(() => {
+      const creatureId = randomUUID();
+      return {
+        card: {
+          id: creatureId,
+          affinity: 'wit',
+          maxHp: 10,
+          maxPower: 10,
+          moves: [0, 1, 2, 3].map((moveIndex) => ({
+            id: `${creatureId}-move-${moveIndex}`,
+            name: `Move ${moveIndex}`,
+            moveType: 'basic',
+            powerCost: 1,
+            effects: [
+              {
+                id: `${creatureId}-effect-${moveIndex}`,
+                effectType: 'damage',
+                effectValue: 1,
+              },
+            ],
+          })),
+        },
+        currentHp: 10,
+        remainingPower: 10,
+        defeated: false,
+        modifiers: [],
+      };
+    }),
     powerCards: [0, 1].map(() => ({
       id: randomUUID(),
       affinity: null,

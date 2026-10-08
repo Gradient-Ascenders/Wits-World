@@ -27,6 +27,7 @@ const eventIds = [
   '26210000-0000-4000-8000-000000000002',
   '26210000-0000-4000-8000-000000000003',
 ];
+const draftChallengeEventId = '26210000-0000-4000-8000-000000000004';
 
 describe.skipIf(!runIntegrationTests)('placement service integration', () => {
   let administrationConfig: DatabaseConfig;
@@ -58,7 +59,10 @@ describe.skipIf(!runIntegrationTests)('placement service integration', () => {
                'placement_tester','author')`,
       [authorId],
     );
-    for (const [index, eventId] of eventIds.entries()) {
+    for (const [index, eventId] of [
+      ...eventIds,
+      draftChallengeEventId,
+    ].entries()) {
       const challengeId = randomUUID();
       await pool.query(
         `insert into public.events
@@ -112,6 +116,7 @@ describe.skipIf(!runIntegrationTests)('placement service integration', () => {
           where challenge_id=$1`,
         [challengeId],
       );
+      if (eventId === draftChallengeEventId) continue;
       await pool.query(
         `update public.event_challenges
             set status='published',version=version+1,
@@ -315,5 +320,208 @@ describe.skipIf(!runIntegrationTests)('placement service integration', () => {
           )::date`,
     );
     expect(committed.rows[0]?.count).toBe(1);
+  }, 120_000);
+
+  it('keeps stale and ineligible lifecycle requests atomic when a zone cannot be served', async () => {
+    const service = createPlacementService(pool);
+    const initial = await service.state();
+    expect(await service.nextBoundaryDelayMs()).toBeGreaterThan(0);
+
+    const activeSite = initial.sites.find((site) => site.status === 'active')!;
+    await expect(
+      service.changeSite(
+        authorId,
+        activeSite.id,
+        'active',
+        initial.stateVersion,
+        'Duplicate activation',
+      ),
+    ).rejects.toMatchObject({ code: 'PLACEMENT_SITE_UNAVAILABLE' });
+    await expect(
+      service.changeZone(
+        authorId,
+        initial.zones.find((zone) => zone.status === 'active')!.id,
+        'suspended',
+        initial.stateVersion - 1,
+        'Stale zone change',
+      ),
+    ).rejects.toMatchObject({ code: 'STALE_PLACEMENT_STATE' });
+    const draftChallenge = await pool.query<{
+      status: string;
+      publication_provenance: string | null;
+      published_question_count: number;
+    }>(
+      `select challenge.status, challenge.publication_provenance,
+              (select count(*)::int from public.challenge_questions question
+                where question.challenge_id=challenge.id
+                  and question.status='published') published_question_count
+         from public.event_challenges challenge
+        where challenge.event_id=$1`,
+      [draftChallengeEventId],
+    );
+    expect(draftChallenge.rows).toEqual([
+      {
+        status: 'draft',
+        publication_provenance: null,
+        published_question_count: 5,
+      },
+    ]);
+    await expect(
+      service.approvePortability(
+        authorId,
+        draftChallengeEventId,
+        initial.stateVersion,
+        'Published challenge is required',
+      ),
+    ).rejects.toMatchObject({ code: 'EVENT_NOT_PORTABLE_READY' });
+    const rejectedApproval = await pool.query<{ count: number }>(
+      `select count(*)::int as count from public.event_placement_portability
+        where event_id=$1`,
+      [draftChallengeEventId],
+    );
+    expect(rejectedApproval.rows).toEqual([{ count: 0 }]);
+    expect((await service.state()).stateVersion).toBe(initial.stateVersion);
+
+    const zoneId = activeSite.zoneId;
+    const zoneSites = initial.sites.filter(
+      (site) => site.zoneId === zoneId && site.status === 'active',
+    );
+    expect(zoneSites.length).toBeGreaterThan(0);
+    let stateVersion = initial.stateVersion;
+    for (const site of zoneSites.slice(0, -1)) {
+      const changed = await service.changeSite(
+        authorId,
+        site.id,
+        'suspended',
+        stateVersion,
+        'Disable zone placement capacity',
+      );
+      stateVersion = changed.stateVersion;
+    }
+    const lastSite = zoneSites.at(-1)!;
+    await expect(
+      service.changeSite(
+        authorId,
+        lastSite.id,
+        'suspended',
+        stateVersion,
+        'Cannot remove the last site',
+      ),
+    ).rejects.toThrow('Active placement zone requires an active reviewed site');
+    expect((await service.state()).stateVersion).toBe(stateVersion);
+    expect(
+      (await service.state()).sites.find((site) => site.id === lastSite.id)
+        ?.status,
+    ).toBe('active');
+    for (const site of zoneSites.slice(0, -1)) {
+      const restored = await service.changeSite(
+        authorId,
+        site.id,
+        'active',
+        stateVersion,
+        'Restore site availability',
+      );
+      stateVersion = restored.stateVersion;
+    }
+
+    const portable = await pool.query<{ event_id: string }>(
+      `select event_id::text from public.event_placement_portability where ended_at is null order by event_id`,
+    );
+    expect(portable.rows.length).toBeGreaterThan(0);
+    for (const { event_id: eventId } of portable.rows) {
+      const ended = await service.endPortability(
+        authorId,
+        eventId,
+        stateVersion,
+        'Withdraw portable content for review',
+      );
+      stateVersion = ended.stateVersion;
+    }
+
+    const unserved = await service.preview(authorId);
+    expect(unserved.status).toBe('unserved');
+    expect(unserved.entries).toHaveLength(0);
+    await expect(
+      service.apply(
+        authorId,
+        unserved.planId,
+        unserved.stateVersion,
+        'Reject unserved plan',
+      ),
+    ).rejects.toMatchObject({ code: 'PLACEMENT_ZONE_UNSERVED' });
+
+    const rolledBack = await pool.query<{
+      status: string;
+      version: string;
+    }>(
+      `select plan.status,state.version::text
+         from public.event_placement_plans plan
+         cross join public.event_placement_state state
+        where plan.id=$1::uuid and state.singleton=true`,
+      [unserved.planId],
+    );
+    expect(rolledBack.rows[0]).toEqual({
+      status: 'preview',
+      version: String(stateVersion),
+    });
+
+    for (const { event_id: eventId } of portable.rows) {
+      const changed = await service.approvePortability(
+        authorId,
+        eventId,
+        stateVersion,
+        'Restore reviewed portable content',
+      );
+      stateVersion = changed.stateVersion;
+    }
+    await expect(
+      service.apply(
+        authorId,
+        unserved.planId,
+        unserved.stateVersion,
+        'Reject stale plan',
+      ),
+    ).rejects.toMatchObject({ code: 'STALE_PLACEMENT_STATE' });
+    expect((await service.state()).stateVersion).toBe(stateVersion);
+
+    const zone = (await service.state()).zones.find(
+      (item) => item.id === zoneId,
+    )!;
+    const suspended = await service.changeZone(
+      authorId,
+      zone.id,
+      'suspended',
+      stateVersion,
+      'Suspend zone for maintenance',
+    );
+    stateVersion = suspended.stateVersion;
+    expect(
+      (await service.state()).zones.find((item) => item.id === zone.id)?.status,
+    ).toBe('suspended');
+    const reactivated = await service.changeZone(
+      authorId,
+      zone.id,
+      'active',
+      stateVersion,
+      'Reopen zone after maintenance',
+    );
+    expect(reactivated.stateVersion).toBe(suspended.stateVersion + 1);
+    stateVersion = reactivated.stateVersion;
+    expect(
+      (await service.state()).zones.find((item) => item.id === zone.id)?.status,
+    ).toBe('active');
+    expect((await service.state()).stateVersion).toBe(stateVersion);
+
+    const history = await service.history();
+    expect(history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          planId: unserved.planId,
+          status: 'preview',
+          trigger: 'manual',
+          assignmentCount: 0,
+        }),
+      ]),
+    );
   }, 120_000);
 });

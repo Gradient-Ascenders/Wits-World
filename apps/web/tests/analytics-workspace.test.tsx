@@ -36,6 +36,120 @@ function renderWorkspace(path = '/author/analytics') {
 }
 
 describe('desktop analytics workspace', () => {
+  it('uses UTC boundaries for preset periods across month ends and clears custom dates', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-08T23:30:00.000Z'));
+    try {
+      const user = userEvent.setup();
+      const fetchMock = installApi();
+      renderWorkspace();
+      await screen.findByRole('region', { name: 'Event attention results' });
+
+      for (const [period, fromDate] of [
+        ['7', '2026-10-02'],
+        ['30', '2026-09-09'],
+      ]) {
+        await selectOption(
+          user,
+          screen.getByLabelText('Reporting period'),
+          period!,
+        );
+        await waitFor(() => {
+          const latest = new URL(String(fetchMock.mock.calls.at(-1)![0]));
+          expect(latest.searchParams.get('fromDate')).toBe(fromDate);
+          expect(latest.searchParams.get('toDate')).toBe('2026-10-09');
+        });
+      }
+
+      await selectOption(
+        user,
+        screen.getByLabelText('Reporting period'),
+        'custom',
+      );
+      expect(screen.getByLabelText('Start date')).toHaveValue('2026-09-09');
+      await user.click(screen.getByRole('button', { name: 'Clear period' }));
+      await waitFor(() => {
+        const latest = new URL(String(fetchMock.mock.calls.at(-1)![0]));
+        expect(latest.searchParams.has('fromDate')).toBe(false);
+        expect(latest.searchParams.has('toDate')).toBe(false);
+      });
+      expect(screen.queryByLabelText('Start date')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Reporting period')).toHaveTextContent(
+        'All time',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries an initial report failure without presenting unavailable data as an empty report', async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    installApi({
+      handleRequest(url) {
+        if (url.pathname.endsWith('/analytics/attention') && ++attempts === 1) {
+          return problemResponse(
+            503,
+            'ANALYTICS_UNAVAILABLE',
+            'Report unavailable.',
+          );
+        }
+        return undefined;
+      },
+    });
+    renderWorkspace();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'load this report',
+    );
+    expect(screen.queryByText('No attention signals')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(
+      await screen.findByRole('region', { name: 'Event attention results' }),
+    ).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  it('keeps aggregate questions available when filter dependencies fail', async () => {
+    const user = userEvent.setup();
+    let failEvents = true;
+    installApi({
+      handleRequest(url) {
+        if (url.pathname.endsWith('/author/events') && failEvents) {
+          return problemResponse(
+            503,
+            'EVENTS_UNAVAILABLE',
+            'Event filters unavailable.',
+          );
+        }
+        if (url.pathname.endsWith(`/author/events/${eventId}/challenges`)) {
+          return problemResponse(
+            503,
+            'CHALLENGES_UNAVAILABLE',
+            'Challenge filters unavailable.',
+          );
+        }
+        return undefined;
+      },
+    });
+    const view = renderWorkspace('/author/analytics/questions');
+    expect(await screen.findByText(/load event filters/)).toBeVisible();
+    expect(
+      await screen.findByRole('region', { name: 'Question analytics results' }),
+    ).toBeVisible();
+    view.unmount();
+    failEvents = false;
+    renderWorkspace('/author/analytics/questions');
+    await screen.findByRole('region', { name: 'Question analytics results' });
+    await selectOption(user, screen.getByLabelText('Event'), eventId);
+    expect(await screen.findByText(/load challenges/)).toBeVisible();
+    expect(
+      screen.getByRole('region', { name: 'Question analytics results' }),
+    ).toBeVisible();
+    await selectOption(user, screen.getByLabelText('Event'), '');
+    expect(screen.queryByText(/load challenges/)).not.toBeInTheDocument();
+  });
+
   it('opens on server-grouped attention signals and loads other reports only when visited', async () => {
     const user = userEvent.setup();
     const fetchMock = installApi();

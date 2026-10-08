@@ -144,8 +144,10 @@ typically spent about 2 minutes 15 seconds in setup and another 2 minutes 17
 seconds in the post-job path, even when the actual validation command took only
 seconds.
 
-Removing the cache inputs reduced normal PR/main validation from roughly 6
-minutes 50 seconds to approximately 2 minutes 20 seconds. The workflows retain
+In earlier workflow measurements, removing the cache inputs reduced PR/main
+validation from roughly 6 minutes 50 seconds to approximately 2 minutes 20
+seconds. These measurements predate the integrated API coverage profile; its
+current C220 duration has not been measured. The workflows retain
 `npm ci --prefer-offline`, but do not cache `node_modules` or ask `setup-node` to
 restore/save npm's content cache. Keep caching disabled unless the Gitea cache
 infrastructure is repaired and a controlled restore/save test proves it
@@ -154,7 +156,16 @@ reliable.
 ## Coverage artifacts and badge
 
 The API, Web, documentation, account-policy, and game-rules test steps collect
-V8 coverage during the test run. Each workspace enforces thresholds suited to
+V8 coverage during the test run. The API step includes unit and database
+integration tests against an isolated PostGIS service, using
+`npm run validate:api:coverage:full`. It refuses remote database targets and does
+not load a Neon target from an environment file. The database-free
+`npm run coverage` command remains available for fast local iteration;
+`npm run coverage:full` reproduces the CI coverage scope with an explicitly
+configured local PostGIS target. See [Coverage profiles](./testing-strategy.md#coverage-profiles)
+for the measured baseline and boundaries.
+
+Each workspace enforces thresholds suited to
 its current production surface instead of inheriting one misleading monorepo
 number:
 
@@ -314,3 +325,6 @@ Page title clarified with assistance from Codex-CLI[GPT-6].
 Manual deployment recovery documented with assistance from Codex[GPT-5].
 
 Workspace coverage gates documented with assistance from Codex-CLI[GPT-5].
+
+Integrated coverage configuration and its measurement boundary were edited with
+assistance from Codex[GPT-5].

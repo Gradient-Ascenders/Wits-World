@@ -65,6 +65,19 @@ jobs:
     name: Test applications with coverage
     runs-on: wits-world-ci
 
+    services:
+      postgres:
+        image: docker.io/postgis/postgis:17-3.5
+        env:
+          POSTGRES_DB: wits_world_test
+          POSTGRES_USER: wits_world_ci
+          POSTGRES_PASSWORD: wits_world_ci
+        options: >-
+          --health-cmd "pg_isready -U wits_world_ci -d wits_world_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
     steps:
       - name: Check out repository
         uses: https://github.com/actions/checkout@v4
@@ -88,8 +101,10 @@ jobs:
       - name: Test web application with coverage
         run: time npm run test:coverage --workspace @wits-world/web
 
-      - name: Test API application with coverage
-        run: time npm run validate:api:coverage
+      - name: Test API application and isolated database paths with coverage
+        env:
+          TEST_DATABASE_URL: postgresql://wits_world_ci:wits_world_ci@postgres:5432/wits_world_test
+        run: time npm run validate:api:coverage:full
 
       - name: Test documentation application with coverage
         run: time npm run test:coverage --workspace @wits-world/docs

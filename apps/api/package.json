@@ -22,6 +22,7 @@
     "lint": "eslint e2e scripts src tests --max-warnings=0",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:coverage:full": "vitest run --coverage --config vitest.postgis.config.ts",
     "test:database": "node scripts/run-database-tests.mjs",
     "type-check": "tsc --project tsconfig.json --noEmit"
   },

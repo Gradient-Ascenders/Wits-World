@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   buildDatabaseConfig,
@@ -137,6 +137,23 @@ describe.skipIf(!enabled)('ranked service integration', () => {
       ),
     );
   }, 30_000);
+
+  afterEach(async () => {
+    if (!pool) return;
+    // Pairing scans the whole test database, including queues left by failures.
+    const active = await pool.query<{ player_id: string }>(
+      `select player_id::text from private.ranked_queue_entries
+        where status in ('searching', 'proposed')
+        order by player_id`,
+    );
+    const service = createRankedService(
+      pool,
+      createTrustRestrictionService(pool),
+    );
+    for (const { player_id: playerId } of active.rows) {
+      await service.cancel(playerId);
+    }
+  });
 
   it('closes an expired season and seeds the due season once', async () => {
     const seasons = await pool.query<{ id: string; status: string }>(
@@ -281,6 +298,142 @@ describe.skipIf(!enabled)('ranked service integration', () => {
       [fresh.rows[0]!.id],
     );
     expect(retained.rows[0]?.count).toBe('1');
+  }, 60_000);
+
+  it('keeps a lone queue searching on heartbeat and expires its persisted lease', async () => {
+    const player = await createPlayerWithDeck(pool, cards);
+    const service = createRankedService(
+      pool,
+      createTrustRestrictionService(pool),
+    );
+
+    const joined = await service.join(player.playerId, player.deckId);
+    expect(await service.pairOnce()).toBe(false);
+    const heartbeat = await service.heartbeat(player.playerId);
+    expect(heartbeat).toMatchObject({
+      status: 'searching',
+      queueEntryId: joined.queueEntryId,
+    });
+    expect(Date.parse(heartbeat.leaseExpiresAt!)).toBeGreaterThan(
+      Date.parse(joined.leaseExpiresAt!),
+    );
+
+    await ageRankedQueueLease(pool, joined.queueEntryId!);
+    expect(await service.expireQueueEntries()).toBe(1);
+    expect((await service.status(player.playerId)).status).toBe('expired');
+    const persisted = await pool.query<{
+      status: string;
+      lease_expires_at: Date | null;
+      terminal_at: Date | null;
+    }>(
+      `select status, lease_expires_at, terminal_at
+         from private.ranked_queue_entries where id = $1::uuid`,
+      [joined.queueEntryId],
+    );
+    expect(persisted.rows[0]).toMatchObject({
+      status: 'expired',
+      lease_expires_at: null,
+    });
+    expect(persisted.rows[0]?.terminal_at).toBeInstanceOf(Date);
+    expect(await service.expireQueueEntries()).toBe(0);
+  }, 60_000);
+
+  it('paginates standings without leaking identities across current or archive cursors', async () => {
+    const players = await Promise.all(
+      Array.from({ length: 3 }, () => createPlayerWithDeck(pool, cards)),
+    );
+    const snapshotId = randomUUID();
+    await pool.query(
+      `insert into private.ranked_standings_snapshots (
+         id, season_id, viewer_player_id, created_at, expires_at
+       ) values (
+         $1::uuid, $2::uuid, $3::uuid, now(), now() + interval '10 minutes'
+       )`,
+      [snapshotId, seasonId, players[0]!.playerId],
+    );
+    for (const [index, player] of players.entries()) {
+      await pool.query(
+        `insert into private.ranked_standings_snapshot_rows (
+           snapshot_id, ordinal, player_id, rank, rating, wins, losses,
+           settled_match_count
+         ) values ($1::uuid, $2, $3::uuid, $4, $5, 5, 0, 5)`,
+        [snapshotId, index + 1, player.playerId, index + 1, 1200 - index * 100],
+      );
+    }
+    const cursorCodec = createSignedCursorCodec(
+      'ranked-test-signing-key-longer-than-32-bytes',
+    );
+    const reads = createRankedReadService(pool, cursorCodec);
+
+    const currentFirst = await reads.currentStandings(
+      players[0]!.playerId,
+      2,
+      cursorCodec.encode(players[0]!.playerId, {
+        kind: 'ranked-current',
+        snapshotId,
+        afterOrdinal: 0,
+      }),
+    );
+    expect(currentFirst.entries.map((entry) => entry.playerName)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^ranked_/u),
+        expect.stringMatching(/^ranked_/u),
+      ]),
+    );
+    expect(currentFirst.nextCursor).not.toBeNull();
+    const snapshotRows = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from private.ranked_standings_snapshot_rows
+        where snapshot_id = $1::uuid`,
+      [snapshotId],
+    );
+    expect(snapshotRows.rows[0]?.count).toBe('3');
+    await expect(
+      reads.currentStandings(players[1]!.playerId, 2, currentFirst.nextCursor!),
+    ).rejects.toMatchObject({ name: 'InvalidCursorError' });
+
+    await pool.query(
+      `update public.players
+          set lifecycle_status = 'deleted', player_name = null,
+              auth_issuer = null, auth_subject = null, role = null
+        where id = $1::uuid`,
+      [players[2]!.playerId],
+    );
+    const currentSecond = await reads.currentStandings(
+      players[0]!.playerId,
+      2,
+      currentFirst.nextCursor!,
+    );
+    expect(currentSecond.entries).toEqual([]);
+    expect(currentSecond.nextCursor).toBeNull();
+    const retainedSnapshot = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from private.ranked_standings_snapshot_rows
+        where snapshot_id = $1::uuid`,
+      [snapshotId],
+    );
+    expect(retainedSnapshot.rows[0]?.count).toBe('3');
+
+    const archiveCursor = cursorCodec.encode(players[0]!.playerId, {
+      kind: 'ranked-archive',
+      seasonId: previousSeasonId,
+      afterOrdinal: 0,
+    });
+    const archivePage = await reads.archivedStandings(
+      players[0]!.playerId,
+      previousSeasonId,
+      2,
+      archiveCursor,
+    );
+    expect(archivePage.entries).toEqual([]);
+    await expect(
+      reads.archivedStandings(
+        players[1]!.playerId,
+        previousSeasonId,
+        2,
+        archiveCursor,
+      ),
+    ).rejects.toMatchObject({ name: 'InvalidCursorError' });
   }, 60_000);
 
   it('claims one pair under concurrent workers and settles an accepted live result once', async () => {
@@ -572,7 +725,116 @@ describe.skipIf(!enabled)('ranked service integration', () => {
     expect((await service.status(first.playerId)).status).toBe('invalid_deck');
     expect((await service.status(second.playerId)).status).toBe('cancelled');
   }, 60_000);
+
+  it('expires a stale proposal as a system cancellation after its season transitions', async () => {
+    const first = await createPlayerWithDeck(pool, cards);
+    const second = await createPlayerWithDeck(pool, cards);
+    const service = createRankedService(
+      pool,
+      createTrustRestrictionService(pool),
+    );
+    await service.join(first.playerId, first.deckId);
+    await service.join(second.playerId, second.deckId);
+    expect(await service.pairOnce()).toBe(true);
+    const proposalId = (await service.status(first.playerId)).proposalId!;
+    expect((await service.accept(first.playerId, proposalId)).accepted).toBe(
+      true,
+    );
+    await pool.query(
+      `select pg_sleep(greatest(0, extract(epoch from (
+         $1::timestamptz - clock_timestamp())) + 0.1))`,
+      [(await service.status(first.playerId)).acceptanceDeadline],
+    );
+    await pool.query(
+      `update public.ranked_seasons
+          set status = 'closing', closing_at = active_ends_at,
+              version = version + 1, updated_at = now()
+        where id = $1::uuid`,
+      [seasonId],
+    );
+
+    expect(await service.expireProposals()).toBe(1);
+    expect(await service.expireProposals()).toBe(0);
+    expect((await service.status(first.playerId)).status).toBe('cancelled');
+    expect((await service.status(second.playerId)).status).toBe('cancelled');
+    expect((await service.cancel(first.playerId)).status).toBe('cancelled');
+    expect((await service.accept(first.playerId, proposalId)).status).toBe(
+      'cancelled',
+    );
+
+    const persisted = await pool.query<{
+      proposal_status: string;
+      acceptance_status: string;
+      queue_status: string;
+      cooldown_until: Date | null;
+    }>(
+      `select proposal.status as proposal_status,
+              participant.acceptance_status, queue.status as queue_status,
+              participant.cooldown_until
+         from private.ranked_matchmaking_proposals proposal
+         join private.ranked_matchmaking_proposal_participants participant
+           on participant.proposal_id = proposal.id
+         join private.ranked_queue_entries queue
+           on queue.id = participant.queue_entry_id
+        where proposal.id = $1::uuid
+        order by participant.player_id`,
+      [proposalId],
+    );
+    expect(persisted.rows).toHaveLength(2);
+    expect(persisted.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          proposal_status: 'cancelled',
+          acceptance_status: 'accepted',
+          queue_status: 'cancelled',
+          cooldown_until: null,
+        }),
+        expect.objectContaining({
+          proposal_status: 'cancelled',
+          acceptance_status: 'system_cancelled',
+          queue_status: 'cancelled',
+          cooldown_until: null,
+        }),
+      ]),
+    );
+    const receipts = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from private.ranked_matchmaking_receipts
+        where proposal_id = $1::uuid`,
+      [proposalId],
+    );
+    expect(receipts.rows[0]?.count).toBe('0');
+  }, 60_000);
 });
+
+async function ageRankedQueueLease(
+  database: Pick<pg.Pool, 'connect'>,
+  queueEntryId: string,
+): Promise<void> {
+  const client = await database.connect();
+  try {
+    await client.query('begin');
+    // Age only fixture metadata; CHECK constraints still enforce its shape.
+    await client.query("set local session_replication_role = 'replica'");
+    const aged = await client.query(
+      `update private.ranked_queue_entries
+          set created_at = created_at - interval '32 seconds',
+              original_joined_at = original_joined_at - interval '32 seconds',
+              updated_at = updated_at - interval '32 seconds',
+              lease_expires_at = lease_expires_at - interval '32 seconds'
+        where id = $1::uuid and status = 'searching'`,
+      [queueEntryId],
+    );
+    expect(aged.rowCount).toBe(1);
+    await client.query("set local session_replication_role = 'origin'");
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
 async function createPlayerWithDeck(
   pool: pg.Pool,

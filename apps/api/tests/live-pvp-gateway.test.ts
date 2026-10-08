@@ -190,6 +190,53 @@ describe('live PvP WebSocket gateway', () => {
     );
   });
 
+  it('bounds client intent queued while notification setup is pending', async () => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 1,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+    let resumeSetup!: () => void;
+    const { gateway, connect } = await registerGateway(service, {
+      prepareConnection: () =>
+        new Promise<void>((resolve) => {
+          resumeSetup = resolve;
+        }),
+    });
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+
+    for (let index = 0; index < 17; index += 1) {
+      socket.emitMessage({
+        protocolVersion: 1,
+        type: 'resign.submit',
+        matchId: MATCH_ID,
+        messageId: MESSAGE_ID,
+        expectedVersion: 7,
+      });
+    }
+
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'LIVE_ACTION_FORBIDDEN',
+        detail: 'Too many messages arrived before connection setup completed.',
+      }),
+    );
+    expect(socket.closeCode).toBe(4400);
+    expect(service.resign).not.toHaveBeenCalled();
+    resumeSetup();
+    await flushAsyncWork();
+    expect(service.resign).not.toHaveBeenCalled();
+    expect(gateway.connectionCount()).toBe(0);
+  });
+
   it('releases sockets after a terminal notification was missed instead of keeping idle work alive', async () => {
     const service = createService();
     service.redeemConnectionTicket.mockResolvedValue({
@@ -840,6 +887,559 @@ describe('live PvP WebSocket gateway', () => {
     );
     expect(socket.closeCode).toBe(4409);
   });
+
+  it.each([
+    {
+      ticket: undefined,
+      error: null,
+      code: 'LIVE_AUTHENTICATION_REQUIRED',
+      closeCode: 4401,
+    },
+    {
+      ticket: 123,
+      error: null,
+      code: 'LIVE_AUTHENTICATION_REQUIRED',
+      closeCode: 4401,
+    },
+    {
+      ticket: 'x'.repeat(513),
+      error: null,
+      code: 'LIVE_AUTHENTICATION_REQUIRED',
+      closeCode: 4401,
+    },
+    {
+      ticket: 'expired-ticket',
+      error: new LivePvpError('LIVE_TICKET_EXPIRED', 'Ticket expired.'),
+      code: 'LIVE_TICKET_EXPIRED',
+      closeCode: 4401,
+    },
+    {
+      ticket: 'used-ticket',
+      error: new LivePvpError(
+        'LIVE_TICKET_ALREADY_USED',
+        'Ticket was already used.',
+      ),
+      code: 'LIVE_TICKET_ALREADY_USED',
+      closeCode: 4401,
+    },
+    {
+      ticket: 'superseded-ticket',
+      error: new LivePvpError(
+        'LIVE_CONNECTION_SUPERSEDED',
+        'A newer participant connection is authoritative for this match.',
+      ),
+      code: 'LIVE_CONNECTION_SUPERSEDED',
+      closeCode: 4409,
+    },
+  ])(
+    'rejects missing, invalid, or superseded connection tickets: $code',
+    async (variant) => {
+      const service = createService();
+      if (variant.error)
+        service.redeemConnectionTicket.mockRejectedValue(variant.error);
+      const { gateway, connect } = await registerGateway(service);
+      openGateways.push(gateway);
+      const socket = new FakeSocket();
+      connect(socket, {
+        query: { ticket: variant.ticket },
+      } as unknown as FastifyRequest);
+      await flushAsyncWork();
+
+      expect(messages(socket)).toContainEqual(
+        expect.objectContaining({ type: 'error', code: variant.code }),
+      );
+      expect(socket.closeCode).toBe(variant.closeCode);
+      expect(service.redeemConnectionTicket).toHaveBeenCalledTimes(
+        typeof variant.ticket === 'string' && variant.ticket.length <= 512
+          ? 1
+          : 0,
+      );
+      expect(service.processOverdueUntilCurrent).not.toHaveBeenCalled();
+      expect(service.getProjectionForConnection).not.toHaveBeenCalled();
+      expect(service.closeConnectionAccess).not.toHaveBeenCalled();
+      expect(gateway.connectionCount()).toBe(0);
+    },
+  );
+
+  it('cleans up redeemed access after transport closure during redemption', async () => {
+    const service = createService();
+    let resolveRedemption!: (value: {
+      accessId: string;
+      matchId: string;
+      playerId: string;
+      role: 'participant';
+      participantGeneration: number;
+    }) => void;
+    service.redeemConnectionTicket.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRedemption = resolve;
+      }),
+    );
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    socket.finishClose();
+    resolveRedemption({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    await flushAsyncWork();
+
+    expect(service.processOverdueUntilCurrent).toHaveBeenCalledWith(MATCH_ID);
+    expect(service.closeConnectionAccess).toHaveBeenCalledWith(
+      '55555555-5555-4555-8555-555555555555',
+      'transport_closed',
+    );
+    expect(service.getProjectionForConnection).not.toHaveBeenCalled();
+    expect(gateway.connectionCount()).toBe(0);
+  });
+
+  it('cleans up an authorized connection when its initial projection fails', async () => {
+    const service = createService();
+    const accessId = '55555555-5555-4555-8555-555555555555';
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId,
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection.mockRejectedValue(
+      new Error('projection store unavailable'),
+    );
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'LIVE_AUTHENTICATION_REQUIRED',
+      }),
+    );
+    expect(socket.closeCode).toBe(4401);
+    expect(service.closeConnectionAccess).toHaveBeenCalledWith(
+      accessId,
+      'transport_closed',
+    );
+    expect(gateway.connectionCount()).toBe(0);
+  });
+
+  it('routes resign and reports late actions without acknowledging them', async () => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection
+      .mockResolvedValueOnce(participantProjection)
+      .mockResolvedValueOnce(participantProjection)
+      .mockResolvedValueOnce(participantProjection);
+    service.resign.mockResolvedValue({
+      acknowledgement: {
+        protocolVersion: 1,
+        type: 'resign.acknowledged',
+        messageId: MESSAGE_ID,
+        eventId: '66666666-6666-4666-8666-666666666666',
+        version: 8,
+        serverTime: '2026-09-17T22:00:40.000Z',
+      },
+      replayed: false,
+      late: false,
+    });
+    const lateMessageId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    service.submitAction.mockResolvedValue({
+      acknowledgement: {
+        protocolVersion: 1,
+        type: 'action.acknowledged',
+        messageId: lateMessageId,
+        eventId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        version: 8,
+        serverTime: '2026-09-17T22:00:40.000Z',
+      },
+      replayed: false,
+      late: true,
+    });
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+
+    socket.emitMessage({
+      protocolVersion: 1,
+      type: 'resign.submit',
+      matchId: MATCH_ID,
+      messageId: MESSAGE_ID,
+      expectedVersion: 7,
+    });
+    await flushAsyncWork();
+    expect(service.resign).toHaveBeenCalledWith({
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      connectionGeneration: 3,
+      messageId: MESSAGE_ID,
+      expectedVersion: 7,
+    });
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({
+        type: 'resign.acknowledged',
+        messageId: MESSAGE_ID,
+      }),
+    );
+
+    socket.emitMessage({
+      protocolVersion: 1,
+      type: 'action.submit',
+      matchId: MATCH_ID,
+      messageId: lateMessageId,
+      expectedVersion: 7,
+      action: { type: 'use_move', moveId: MOVE_ID },
+    });
+    await flushAsyncWork();
+
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'LIVE_ACTION_LATE',
+        messageId: lateMessageId,
+        retryable: true,
+      }),
+    );
+    expect(
+      messages(socket).some(
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          'type' in message &&
+          message.type === 'action.acknowledged',
+      ),
+    ).toBe(false);
+    expect(
+      messages(socket).some(
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          'type' in message &&
+          message.type === 'match.snapshot',
+      ),
+    ).toBe(true);
+    expect(gateway.connectionCount()).toBe(1);
+  });
+
+  it.each([
+    { label: 'invalid JSON', raw: '{', binary: false },
+    {
+      label: 'binary payload',
+      raw: JSON.stringify({ protocolVersion: 1 }),
+      binary: true,
+    },
+  ])('rejects $label and revokes the active access', async (variant) => {
+    const service = createService();
+    const accessId = '55555555-5555-4555-8555-555555555555';
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId,
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+    socket.emitRawMessage(variant.raw, variant.binary);
+    await flushAsyncWork();
+
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'LIVE_ACTION_FORBIDDEN',
+        retryable: false,
+      }),
+    );
+    expect(socket.closeCode).toBe(4400);
+    expect(service.submitAction).not.toHaveBeenCalled();
+    expect(service.resign).not.toHaveBeenCalled();
+    expect(service.closeConnectionAccess).toHaveBeenCalledWith(
+      accessId,
+      'transport_closed',
+    );
+    expect(gateway.connectionCount()).toBe(0);
+  });
+
+  it.each([
+    {
+      label: 'oversized frame',
+      payload: 'x'.repeat(16_385),
+    },
+    {
+      label: 'unsupported message type',
+      payload: JSON.stringify({
+        protocolVersion: 1,
+        type: 'action.cancel',
+        matchId: MATCH_ID,
+        messageId: MESSAGE_ID,
+        expectedVersion: 7,
+      }),
+    },
+    {
+      label: 'missing action field',
+      payload: JSON.stringify({
+        protocolVersion: 1,
+        type: 'action.submit',
+        matchId: MATCH_ID,
+        messageId: MESSAGE_ID,
+        expectedVersion: 7,
+      }),
+    },
+    {
+      label: 'invalid move identifier',
+      payload: JSON.stringify({
+        protocolVersion: 1,
+        type: 'action.submit',
+        matchId: MATCH_ID,
+        messageId: MESSAGE_ID,
+        expectedVersion: 7,
+        action: { type: 'use_move', moveId: 'not-a-uuid' },
+      }),
+    },
+    {
+      label: 'client-authored result action',
+      payload: JSON.stringify({
+        protocolVersion: 1,
+        type: 'action.submit',
+        matchId: MATCH_ID,
+        messageId: MESSAGE_ID,
+        expectedVersion: 7,
+        action: { type: 'submit_result' },
+      }),
+    },
+  ])('closes the connection for $label', async ({ payload }) => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+    socket.emitRawMessage(payload);
+    await flushAsyncWork();
+
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'LIVE_ACTION_FORBIDDEN',
+        retryable: false,
+      }),
+    );
+    expect(socket.closeCode).toBe(4400);
+    expect(service.submitAction).not.toHaveBeenCalled();
+    expect(service.closeConnectionAccess).toHaveBeenCalledWith(
+      '55555555-5555-4555-8555-555555555555',
+      'transport_closed',
+    );
+    expect(gateway.connectionCount()).toBe(0);
+  });
+
+  it('returns a snapshot for replayed or conflicted mutations and revokes unauthorized actions', async () => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+    service.submitAction
+      .mockResolvedValueOnce({
+        acknowledgement: {
+          protocolVersion: 1,
+          type: 'action.acknowledged',
+          messageId: MESSAGE_ID,
+          eventId: '66666666-6666-4666-8666-666666666666',
+          version: 8,
+          serverTime: '2026-09-17T22:00:40.000Z',
+        },
+        replayed: true,
+        late: false,
+      })
+      .mockRejectedValueOnce(
+        new LivePvpError('LIVE_VERSION_CONFLICT', 'Version changed.', true),
+      )
+      .mockRejectedValueOnce(
+        new LivePvpError('LIVE_AUTHENTICATION_REQUIRED', 'Access revoked.'),
+      );
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+
+    const action = (messageId: string) => ({
+      protocolVersion: 1,
+      type: 'action.submit',
+      matchId: MATCH_ID,
+      messageId,
+      expectedVersion: 7,
+      action: { type: 'use_move', moveId: MOVE_ID },
+    });
+    socket.emitMessage(action(MESSAGE_ID));
+    await flushAsyncWork();
+    socket.emitMessage(action('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'));
+    await flushAsyncWork();
+
+    expect(
+      messages(socket).filter(
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          'type' in message &&
+          message.type === 'match.snapshot',
+      ),
+    ).toHaveLength(2);
+    expect(gateway.connectionCount()).toBe(1);
+
+    socket.emitMessage(action('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'));
+    await flushAsyncWork();
+    expect(socket.closeCode).toBe(4401);
+    expect(gateway.connectionCount()).toBe(0);
+  });
+
+  it('treats presence lookup failures as advisory and closes revoked fan-out connections', async () => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+
+    service.getPresence.mockRejectedValueOnce(
+      new Error('presence unavailable'),
+    );
+    await gateway.broadcastPresence(MATCH_ID);
+    expect(gateway.connectionCount()).toBe(1);
+    expect(socket.closeCode).toBeUndefined();
+
+    service.getCommittedEventMeta.mockResolvedValue(null);
+    service.getProjectionForConnection.mockRejectedValueOnce(
+      new LivePvpError('LIVE_AUTHENTICATION_REQUIRED', 'Access revoked.'),
+    );
+    await gateway.broadcastMatch(MATCH_ID, 8);
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'LIVE_AUTHENTICATION_REQUIRED',
+      }),
+    );
+    expect(socket.closeCode).toBe(4401);
+  });
+
+  it('replaces a local participant socket and cleans up the superseded access', async () => {
+    const service = createService();
+    service.redeemConnectionTicket
+      .mockResolvedValueOnce({
+        accessId: '55555555-5555-4555-8555-555555555555',
+        matchId: MATCH_ID,
+        playerId: PLAYER_ID,
+        role: 'participant',
+        participantGeneration: 1,
+      })
+      .mockResolvedValueOnce({
+        accessId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        matchId: MATCH_ID,
+        playerId: PLAYER_ID,
+        role: 'participant',
+        participantGeneration: 2,
+      });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const olderSocket = new FakeSocket();
+    const newerSocket = new FakeSocket();
+    connect(olderSocket, ticketRequest());
+    await flushAsyncWork();
+    connect(newerSocket, ticketRequest());
+    await flushAsyncWork();
+
+    expect(messages(olderSocket)).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'LIVE_CONNECTION_SUPERSEDED',
+      }),
+    );
+    expect(olderSocket.closeCode).toBe(4409);
+    expect(messages(newerSocket)).toContainEqual(
+      expect.objectContaining({ type: 'connection.ready' }),
+    );
+    expect(service.closeConnectionAccess).toHaveBeenCalledWith(
+      '55555555-5555-4555-8555-555555555555',
+      'transport_closed',
+    );
+    expect(gateway.connectionCount()).toBe(1);
+  });
+
+  it('keeps connections available after a retryable non-authorization broadcast error', async () => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+    service.getCommittedEventMeta.mockResolvedValue(null);
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+
+    service.getProjectionForConnection.mockRejectedValueOnce(
+      new LivePvpError(
+        'LIVE_VERSION_CONFLICT',
+        'Projection changed during fan-out.',
+        true,
+      ),
+    );
+    await gateway.broadcastMatch(MATCH_ID, 8);
+    expect(gateway.connectionCount()).toBe(1);
+    expect(socket.closeCode).toBeUndefined();
+    expect(service.closeConnectionAccess).not.toHaveBeenCalled();
+    await gateway.broadcastPresence(MATCH_ID);
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({ type: 'presence.changed' }),
+    );
+    expect(gateway.connectionCount()).toBe(1);
+  });
 });
 
 type ServiceMock = {
@@ -951,8 +1551,12 @@ class FakeSocket {
   }
 
   emitMessage(payload: unknown): void {
-    const raw = Buffer.from(JSON.stringify(payload));
-    this.emit('message', raw as unknown as RawData, false);
+    this.emitRawMessage(JSON.stringify(payload));
+  }
+
+  emitRawMessage(payload: string, isBinary = false): void {
+    const raw = Buffer.from(payload);
+    this.emit('message', raw as unknown as RawData, isBinary);
   }
 
   private emit(event: string, ...args: unknown[]): void {

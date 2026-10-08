@@ -5,9 +5,12 @@ import { buildApp } from '../src/app.js';
 import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import {
+  AuthorChallengeEventNotFoundError,
   AuthorChallengeNotFoundError,
   AuthorContentNotReadyError,
   AuthorContentStateConflictError,
+  AuthorQuestionNotFoundError,
+  InvalidAuthorQuestionError,
   type AuthorChallenge,
   type AuthorChallengeQuestion,
   type AuthorChallengeService,
@@ -169,6 +172,132 @@ afterEach(async () => {
 });
 
 describe('author challenge API', () => {
+  it('maps missing parent records and invalid question data at CRUD boundaries', async () => {
+    service.listChallenges.mockRejectedValueOnce(
+      new AuthorChallengeEventNotFoundError(),
+    );
+    const missingEvent = await authenticatedRequest({
+      method: 'GET',
+      url: `/api/v1/author/events/${EVENT_ID}/challenges`,
+    });
+    expect(missingEvent.statusCode).toBe(404);
+    expect(missingEvent.json()).toMatchObject({ code: 'EVENT_NOT_FOUND' });
+
+    service.createChallenge.mockRejectedValueOnce(
+      new AuthorChallengeEventNotFoundError(),
+    );
+    const createUnderMissingEvent = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/challenges`,
+      payload: {},
+    });
+    expect(createUnderMissingEvent.statusCode).toBe(404);
+    expect(createUnderMissingEvent.json()).toMatchObject({
+      code: 'EVENT_NOT_FOUND',
+    });
+
+    service.createQuestion.mockRejectedValueOnce(
+      new InvalidAuthorQuestionError(
+        'Question format does not match its challenge.',
+      ),
+    );
+    const invalidQuestion = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/challenges/${CHALLENGE_ID}/questions`,
+      payload: validQuestionBody(),
+    });
+    expect(invalidQuestion.statusCode).toBe(400);
+    expect(invalidQuestion.json()).toMatchObject({ code: 'INVALID_QUESTION' });
+
+    service.updateQuestion.mockRejectedValueOnce(
+      new AuthorQuestionNotFoundError(),
+    );
+    const missingQuestion = await authenticatedRequest({
+      method: 'PUT',
+      url: `/api/v1/author/questions/${QUESTION_ID}`,
+      payload: { ...validQuestionBody(), expectedVersion: 0 },
+    });
+    expect(missingQuestion.statusCode).toBe(404);
+    expect(missingQuestion.json()).toMatchObject({
+      code: 'QUESTION_NOT_FOUND',
+    });
+  });
+
+  it('passes lifecycle versions and notes through submit, approve, and return routes', async () => {
+    const transitions = [
+      [
+        'submit',
+        service.submitQuestion,
+        { expectedVersion: 3, note: 'Ready for review' },
+        { expectedVersion: 3, note: 'Ready for review' },
+      ],
+      [
+        'approve',
+        service.approveQuestion,
+        { expectedVersion: 4 },
+        { expectedVersion: 4, note: undefined },
+      ],
+      [
+        'return',
+        service.returnQuestion,
+        { expectedVersion: 5, reason: 'Clarify the source.' },
+        { expectedVersion: 5, note: 'Clarify the source.' },
+      ],
+    ] as const;
+
+    for (const [action, transition, payload, forwarded] of transitions) {
+      const response = await authenticatedRequest({
+        method: 'POST',
+        url: `/api/v1/author/questions/${QUESTION_ID}/${action}`,
+        payload,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(transition).toHaveBeenCalledWith({
+        actorPlayerId: AUTHOR_ID,
+        questionId: QUESTION_ID,
+        ...forwarded,
+      });
+    }
+  });
+
+  it('forwards challenge lifecycle decisions with the authenticated Author identity', async () => {
+    const transitions = [
+      [
+        'submit',
+        service.submitChallenge,
+        { expectedVersion: 6, note: 'Challenge package complete' },
+        { expectedVersion: 6, note: 'Challenge package complete' },
+      ],
+      [
+        'approve',
+        service.approveChallenge,
+        { expectedVersion: 7 },
+        { expectedVersion: 7, note: undefined },
+      ],
+      [
+        'return',
+        service.returnChallenge,
+        { expectedVersion: 8, reason: 'Add another question.' },
+        { expectedVersion: 8, note: 'Add another question.' },
+      ],
+    ] as const;
+
+    for (const [action, transition, payload, forwarded] of transitions) {
+      const response = await authenticatedRequest({
+        method: 'POST',
+        url: `/api/v1/author/challenges/${CHALLENGE_ID}/${action}`,
+        payload,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(transition).toHaveBeenCalledWith({
+        actorPlayerId: AUTHOR_ID,
+        challengeId: CHALLENGE_ID,
+        ...forwarded,
+      });
+    }
+  });
+
   it('requires authentication', async () => {
     const response = await app.inject({
       method: 'GET',
