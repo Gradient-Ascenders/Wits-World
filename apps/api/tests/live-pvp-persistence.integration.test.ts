@@ -1126,6 +1126,26 @@ describe.skipIf(!runIntegrationTests)(
         });
       }
 
+      // Manual selections use secure randomness for the opening turn. The
+      // first actor receives the third timeout strike, regardless of side.
+      const openingProjection =
+        await service.getProjectionForConnection(playerOne);
+      expect(openingProjection).toMatchObject({
+        role: 'participant',
+        phase: 'active',
+        version: 2,
+        currentActor: expect.stringMatching(/^(self|opponent)$/),
+      });
+      const playerOneStarts = openingProjection.currentActor === 'self';
+      const loser = playerOneStarts ? playerOne : playerTwo;
+      const winner = playerOneStarts ? playerTwo : playerOne;
+      const loserId = playerOneStarts
+        ? fixture.playerOne.id
+        : fixture.playerTwo.id;
+      const winnerId = playerOneStarts
+        ? fixture.playerTwo.id
+        : fixture.playerOne.id;
+
       const transitions = [];
       for (let strike = 0; strike < 5; strike += 1) {
         await expireLiveMatchDeadline(pool, fixture.matchId);
@@ -1139,8 +1159,7 @@ describe.skipIf(!runIntegrationTests)(
         { transitioned: true, version: 7, completed: true },
       ]);
 
-      const finalProjection =
-        await service.getProjectionForConnection(playerOne);
+      const finalProjection = await service.getProjectionForConnection(loser);
       expect(finalProjection).toMatchObject({
         role: 'participant',
         status: 'completed',
@@ -1158,8 +1177,16 @@ describe.skipIf(!runIntegrationTests)(
         finalProjection.role === 'participant' && finalProjection.lastAction,
       ).toMatchObject({
         type: 'abandonment_forfeit',
-        loser: 'playerOne',
-        winner: 'playerTwo',
+        loser: playerOneStarts ? 'playerOne' : 'playerTwo',
+        winner: playerOneStarts ? 'playerTwo' : 'playerOne',
+      });
+      expect(await service.getProjectionForConnection(winner)).toMatchObject({
+        role: 'participant',
+        status: 'completed',
+        version: 7,
+        outcome: 'win',
+        completionReason: 'abandonment_forfeit',
+        legalActions: [],
       });
       const terminal = await pool.query<{
         status: string;
@@ -1178,7 +1205,7 @@ describe.skipIf(!runIntegrationTests)(
                   where participant.match_id = match.id and participant.player_id = $2::uuid) as timeout_count,
                 match.winner_player_id::text as winner
            from public.live_pvp_matches match where match.id = $1::uuid`,
-        [fixture.matchId, fixture.playerOne.id],
+        [fixture.matchId, loserId],
       );
       expect(terminal.rows).toEqual([
         {
@@ -1187,14 +1214,14 @@ describe.skipIf(!runIntegrationTests)(
           source_count: '2',
           action_count: '7',
           timeout_count: 3,
-          winner: fixture.playerTwo.id,
+          winner: winnerId,
         },
       ]);
       await expect(
         service.submitAction({
           matchId: fixture.matchId,
-          playerId: fixture.playerOne.id,
-          connectionGeneration: playerOne.participantGeneration!,
+          playerId: loserId,
+          connectionGeneration: loser.participantGeneration!,
           messageId: randomUUID(),
           expectedVersion: 7,
           action: { type: 'select_initial_creature', creatureId: randomUUID() },
