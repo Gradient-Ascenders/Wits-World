@@ -247,6 +247,47 @@ packaging, artifact contents, or deployment logic, so it must conservatively
 require fresh artifacts and deployments. If comparison data is unavailable,
 both paths require artifact production and deployment.
 
+### API-first Battles contract gate
+
+`deploy-web` depends on successful completion of `deploy-api`. The API job exports
+`published_sha` only after its actual Azure ZIP publication succeeds, and exports
+`api_origin` only after successful production health verification. A successful
+job that skipped publication has no publication output and cannot authorize a
+required web release.
+
+Before publishing the web ZIP, `scripts/verify-battles-summary-contract.mjs`
+requires same-commit API publication and a frontend API base using the published
+App Service origin with `/api/v1`. It verifies public OpenAPI schemas for both
+compact Battles response profiles, then anonymously requests
+`/api/v1/matches/cpu/entry?view=summary` and
+`/api/v1/matches/history?view=summary&limit=5`. Both must return
+`401 UNAUTHORIZED`: query validation precedes authentication, so the old API
+rejects these parameters with 400. Requests omit credentials, follow no redirects,
+and perform no gameplay or identity database reads. The guard uses at most three
+attempts, ten seconds per request and five seconds between attempts. Failures
+block publication without logging response bodies or upstream error details.
+The current-main check still runs after the contract gate, immediately before
+Azure web mutation.
+
+API artifact creation and deployment both include all existing web release
+inputs. Normal web-only pushes thus build and publish the same-commit API ZIP
+before automatic web publication, even when the API source is unchanged. These
+releases incur the normal API recycle and retain all existing database release
+protections, including production host/database confirmation, tracked migrations,
+no seed flags and current-main checks. API-only pushes still skip unnecessary web
+artifacts and publication. Unexpected API skips still block required web
+publication. The existing manual main workflow dispatch retains its normal
+both-artifact release behavior. Web filters and other release steps are unchanged.
+Custom frontend API aliases fail closed; this gate does not establish that an
+alias points to the published App Service. Publication outputs and public
+contracts do not prove the running process SHA or account-specific database
+correctness; retain authenticated post-deployment functional verification.
+
+Both main and PR coverage jobs run `npm run test:deployment`, including gate and
+workflow-order regressions. A focused API integration also checks the guard
+against actual OpenAPI responses and anonymous route handling without accessing
+gameplay state.
+
 ## Configuration and credential boundaries
 
 Configuration is stored according to when and where it is consumed:
@@ -328,3 +369,6 @@ Workspace coverage gates documented with assistance from Codex-CLI[GPT-5].
 
 Integrated coverage configuration and its measurement boundary were edited with
 assistance from Codex[GPT-5].
+
+The API-first Battles release gate and its verification boundaries were documented
+with assistance from Codex[GPT-6].

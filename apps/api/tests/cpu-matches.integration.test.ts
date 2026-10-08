@@ -115,6 +115,37 @@ afterEach(async () => {
 });
 
 describe('CPU match API', () => {
+  it('verifies the release gate against real public schemas and auth boundaries without gameplay reads', async () => {
+    const { verifyBattlesRelease } = await import(
+      new URL(
+        '../../../scripts/verify-battles-summary-contract.mjs',
+        import.meta.url,
+      ).href
+    );
+    await verifyBattlesRelease(
+      {
+        DEPLOY_SHA: 'a'.repeat(40),
+        API_PUBLISHED_SHA: 'a'.repeat(40),
+        API_ORIGIN: 'https://api.example.test',
+        WEB_API_BASE_URL: 'https://api.example.test/api/v1',
+      },
+      {
+        attempts: 1,
+        fetchFn: async (url: string) => {
+          const target = new URL(url);
+          const response = await app.inject({
+            method: 'GET',
+            url: target.pathname + target.search,
+          });
+          return new Response(response.body, { status: response.statusCode });
+        },
+      },
+    );
+    expect(service.getBattleEntrySummary).not.toHaveBeenCalled();
+    expect(service.listHistorySummaries).not.toHaveBeenCalled();
+    expect(service.listHistory).not.toHaveBeenCalled();
+  });
+
   it('scopes compact entry and bounded history to the authenticated player', async () => {
     const entry = await app.inject({
       method: 'GET',

@@ -297,11 +297,36 @@ tables in the authorized disposable test database, with rollback cleanup. They
 verify ownership, state changes, deterministic SQL limiting and fresh history;
 they do not benchmark the full migrated schema.
 
-Publish the API supporting these additive profiles before the frontend. An older
-API rejects the new query parameters; the UI reports section errors rather than
-silently falling back to expensive requests. Compare representative account
-sizes after deployment, checking request bodies, query counts/holds, section
-readiness, auth, start/resume, archive/detail navigation and state freshness.
+The main release workflow makes web deployment depend on successful API
+deployment. API publication emits its commit SHA only after Azure accepts the
+verified artifact; a separate successful health check supplies the API origin.
+Immediately before web publication, the release guard requires that SHA to match
+the web artifact's selected commit and that the frontend API base addresses that
+same API. It checks the public OpenAPI compact response schemas and both summary
+queries anonymously. The deployed routes must accept the new query parameters
+and return `401 UNAUTHORIZED`; the older API returns a validation error. This
+uses no credentials, player records or database queries. Missing publication
+outputs, API failure, incompatible contracts and exhausted bounded retries block
+web publication. Health alone cannot pass this guard.
+
+Both API artifact and deployment filters include the web application's existing
+release inputs. A web-only push therefore produces and publishes a fresh API
+artifact for the same commit before automatically publishing the frontend. The
+normal API database-release protections remain in place, with no seed flags;
+web-only releases also incur the normal API recycle. API-only changes still skip
+unnecessary web publication. An unexpectedly skipped API publication blocks a
+required web publication. The existing main `workflow_dispatch` continues to
+force both artifacts through normal validation and release steps.
+Custom API aliases are not accepted by this guard: the configured frontend API
+base must use the published App Service origin with `/api/v1`.
+
+These release checks establish contract availability and authentication
+boundaries, not successful account-specific database reads or running-process
+revision identity. Authenticated post-deployment verification remains necessary.
+Compare representative account sizes, checking request bodies, query counts/holds,
+section readiness, auth, start/resume, archive/detail navigation and state
+freshness. An older API rejects the new parameters; the UI reports section errors
+rather than silently falling back to expensive requests.
 
 The existing dashboard Playwright heading-focus assertion fails on both the
 unchanged frozen main build and this branch: direct entry does not focus its
