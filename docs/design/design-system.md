@@ -884,6 +884,44 @@ Decoration must never compete with controls, content, or readability.
 
 Do not add decorative elements merely to fill empty regions.
 
+### Responsive campus and achievement artwork
+
+Preserve the existing artwork, transparency and aspect ratios. Regenerate the
+packaged WebP variants with `node scripts/generate-game-artwork.mjs`; source
+hashes, dimensions, encoder settings and output hashes are recorded in
+`artwork/game-artwork-manifest.json`. The original PNGs and achievement
+provenance remain unchanged. RGB encoding uses quality 90, while alpha encoding
+is lossless; this is format conversion and resizing, not new artwork generation.
+
+The homepage campus preview uses 480/768/1152/1448-pixel variants, explicit
+1448 × 1086 intrinsic dimensions and native lazy loading. Its `sizes` attribute
+uses the rendered width where supported, with layout-based fallbacks. The
+existing Great Hall hero retains its prioritized responsive delivery.
+
+Achievement artwork retains the six-cell, three-column/two-row atlas. A clipped
+square wrapper displays one cell from a responsive image, preserving its
+position, grayscale state and accessible button label. List cells remain at
+most 7rem; the dialog remains 12rem. The 384/768/1152/1536-pixel atlas variants
+support device density and enlarged text up to the original 512-pixel cell
+resolution. List artwork is lazy; dialog artwork loads when opened. Native
+[`sizes="auto"`](https://html.spec.whatwg.org/dev/images.html) uses the rendered
+atlas width for lazy images, with a 21rem fallback; the eager dialog uses 36rem.
+Both source-size hints incorporate the existing accessibility text scale so
+enlarged artwork receives a sufficiently dense variant.
+
+The campus replacement files are narrowly allowlisted in the existing precache
+because the previous PNG was available offline. Achievement WebP artwork retains
+its previous exclusion from the precache. No worker strategy or offline storage
+policy changes. Browser cache reuse does not guarantee achievement availability
+after offline reopening; do not describe it as prepared offline content.
+The achievement dialog immediately paints an available decoded list badge into
+a transient canvas while its larger responsive image loads and decodes. The
+preview remains on failure, including after losing connectivity. If no loaded
+badge is available, a decorative medal provides a stable placeholder. The
+larger image is shown only after successful decoding. Replacement or dismissal
+clears the canvas backing buffer; dismissal also clears the thumbnail reference.
+This adds no network request or offline preparation policy.
+
 ---
 
 ## 14. Branding
@@ -1078,3 +1116,6 @@ The shared feedback guidance was added with assistance from Codex-CLI[GPT-6].
 The collectible-frame guidance was added with assistance from Codex-CLI[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+The responsive campus and achievement artwork guidance was added with assistance
+from Codex[GPT-6].
