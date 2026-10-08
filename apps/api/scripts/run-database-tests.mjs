@@ -49,6 +49,7 @@ const testFiles = [
   'tests/question-performance-database.integration.test.ts',
   'tests/advanced-analytics-database.integration.test.ts',
   'tests/verified-events-content.integration.test.ts',
+  'tests/content-cleanup.integration.test.ts',
   'tests/event-placement-persistence.integration.test.ts',
   'tests/card-trade-selection-persistence.integration.test.ts',
   'tests/card-trading-persistence.integration.test.ts',

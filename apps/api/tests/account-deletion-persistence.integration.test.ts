@@ -2731,8 +2731,8 @@ async function seedMatches(
       insert into public.cpu_match_rounds (
         id, match_id, round_number, state_before, state_after, result
       ) values
-        ($1, $3, 1, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb),
-        ($2, $4, 1, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb)
+        ($1, $3, 1, '{}'::jsonb, '{}'::jsonb, '[]'::jsonb),
+        ($2, $4, 1, '{}'::jsonb, '{}'::jsonb, '[]'::jsonb)
     `,
     [activeRoundId, completedRoundId, ACTIVE_MATCH_ID, COMPLETED_MATCH_ID],
   );
