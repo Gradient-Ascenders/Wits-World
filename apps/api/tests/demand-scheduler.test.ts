@@ -238,4 +238,40 @@ describe('demand scheduler', () => {
     expect(run).toHaveBeenCalledTimes(2);
     await scheduler.stop();
   });
+
+  it('counts coalesced wakes without changing follow-up execution, even if observation throws', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const run = vi
+      .fn<() => Promise<boolean>>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = () => resolve(false);
+          }),
+      )
+      .mockResolvedValue(false);
+    const observed = vi.fn(() => {
+      throw new Error('telemetry failure');
+    });
+    const scheduler = createDemandScheduler({
+      activeIntervalMs: ACTIVE_INTERVAL_MS,
+      idleIntervalMs: IDLE_INTERVAL_MS,
+      run,
+      onError: vi.fn(),
+      onCoalesced: observed,
+    });
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(0);
+    scheduler.wake();
+    scheduler.wake();
+    expect(observed).toHaveBeenCalledTimes(2);
+    expect(run).toHaveBeenCalledOnce();
+    finish();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(run).toHaveBeenCalledTimes(2);
+    await scheduler.stop();
+    await vi.advanceTimersByTimeAsync(IDLE_INTERVAL_MS * 2);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
 });

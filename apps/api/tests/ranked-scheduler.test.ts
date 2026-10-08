@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RankedDatabase } from '../src/matches/ranked-database.js';
 import type { RankedReadService } from '../src/matches/ranked-read-service.js';
 import type { RankedService } from '../src/matches/ranked-service.js';
+import { instrumentPool } from '../src/database/pool-observability.js';
+import { EventEmitter } from 'node:events';
+import type pg from 'pg';
 import { GameplayCoordinationUnavailable } from '../src/matches/gameplay-coordination.js';
 
 const maintenance = vi.hoisted(() => ({
@@ -48,6 +51,59 @@ afterEach(() => {
 });
 
 describe('ranked scheduler', () => {
+  it('keeps discovery separate from nested maintenance database acquisitions', async () => {
+    vi.useFakeTimers();
+    const logger = { info: vi.fn(), error: vi.fn() };
+    const pool = Object.assign(new EventEmitter(), {
+      options: { max: 4 },
+      totalCount: 0,
+      idleCount: 0,
+      waitingCount: 0,
+      connect: async () => ({ release: vi.fn() }),
+      end: async () => undefined,
+    }) as unknown as pg.Pool;
+    instrumentPool(pool, logger);
+    const acquire = async () => {
+      await Promise.resolve();
+      const client = await pool.connect();
+      client.release();
+      return 0;
+    };
+    const scheduler = createRankedScheduler(
+      pool,
+      {
+        expireQueueEntries: acquire,
+        expireProposals: acquire,
+        pairOnce: async () => {
+          await acquire();
+          return false;
+        },
+      } as unknown as RankedService,
+      { cleanupExpiredSnapshots: acquire } as unknown as RankedReadService,
+      logger,
+      1000,
+      {
+        nextSweep: async () => {
+          await acquire();
+          return false;
+        },
+      },
+    );
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await scheduler.stop();
+    await pool.end();
+    const rows = logger.info.mock.calls
+      .map(([fields]) => fields)
+      .filter((fields) => fields.event === 'operation_summary');
+    expect(
+      rows.find((fields) => fields.category === 'ranked_probe'),
+    ).toMatchObject({ acquisitions_count: 1, holds_completed_count: 1 });
+    expect(
+      rows.find((fields) => fields.category === 'ranked_maintenance'),
+    ).toMatchObject({ acquisitions_count: 4, holds_completed_count: 4 });
+    expect(rows.some((fields) => fields.category === 'other')).toBe(false);
+  });
   function setup(
     nextSweep = vi.fn().mockResolvedValue(1_800_000),
     coordinatedIdle = false,

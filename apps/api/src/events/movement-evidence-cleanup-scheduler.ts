@@ -1,3 +1,4 @@
+import { createPoolRunObserver } from '../database/pool-observability.js';
 import type { MovementEvidenceService } from './movement-evidence.js';
 
 // Node timers use a signed 32-bit millisecond delay. Larger values are reduced
@@ -17,7 +18,7 @@ export interface MovementEvidenceCleanupScheduler {
 }
 
 export interface MovementEvidenceCleanupLogger {
-  info(context: { deleted: number }, message: string): void;
+  info(context: Record<string, unknown>, message: string): void;
   error(context: Record<string, never>, message: string): void;
 }
 
@@ -38,15 +39,17 @@ export function createMovementEvidenceCleanupScheduler(
 
   let timer: NodeJS.Timeout | undefined;
   let activeRun: Promise<void> | undefined;
+  const observation = createPoolRunObserver('movement_retention', logger);
 
   async function runSweep(): Promise<void> {
     if (activeRun) {
+      observation.skipped();
       return;
     }
 
     activeRun = (async () => {
       try {
-        const deleted = await service.purgeExpired();
+        const deleted = await observation.run(() => service.purgeExpired());
         logger.info(
           { deleted },
           'Expired movement evidence cleanup completed.',
@@ -83,6 +86,7 @@ export function createMovementEvidenceCleanupScheduler(
       if (activeRun) {
         await activeRun;
       }
+      observation.flush();
     },
   };
 }
