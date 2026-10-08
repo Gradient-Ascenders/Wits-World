@@ -69,12 +69,17 @@ bodies, status codes, and response schemas. Use the narrative contracts for
 rules that need more explanation:
 
 - [Challenge attempts](challenge-attempt-api-contract.md)
-- [Author content review](author-curation-api-contract.md)
+- [Events and questions](author-curation-api-contract.md)
+- [Author cards](../design/author-cards.md)
+- [Author trail operations](../database/ordered-trails-persistence.md#author-operations)
+- [Content review and publication](diagrams/content-review.md#versions-and-history)
+- [Campaign scheduling](campaign-scheduling-api-contract.md)
+- [Event placement](automatic-event-placement-service.md)
 - [Asynchronous PvP](asynchronous-pvp-api-contract.md)
 - [Live PvP and WebSocket messages](live-pvp-api-contract.md)
 - [Ranked matchmaking](ranked-matchmaking-api-contract.md)
 - [Card trading](card-trading-api-contract.md)
-- [Advanced analytics](advanced-analytics-api-contract.md)
+- [Author analytics](advanced-analytics-api-contract.md)
 - [External developer API](developer-api.md)
 
 ## Realtime boundary

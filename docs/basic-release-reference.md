@@ -101,7 +101,7 @@ moves before publication.
 
 Edits and lifecycle changes are versioned and audited. Retirement stops future
 discovery or selection while preserving existing owned cards and historical
-game records. See the [content authoring contract](architecture/author-curation-api-contract.md)
+game records. See [Review and publish](architecture/diagrams/content-review.md)
 for review, publication, and dependency rules.
 
 ## Features beyond Basic
@@ -121,7 +121,7 @@ extend the core game and have their own rules and validation requirements.
 | [Player profiles](architecture/player-profile-api-contract.md)                                                                        | Choose whether to publish a profile, share activity, and showcase owned cards.                        |
 | [Campus territories](requirements/contested-campus-zone-policy.md)                                                                    | Contribute eligible gameplay outcomes toward contested campus zones.                                  |
 | [Event placement](requirements/automatic-event-placement-policy.md) and [campaigns](architecture/campaign-scheduling-api-contract.md) | Preview and apply event distribution plans and schedule content availability.                         |
-| [Trust review](requirements/longitudinal-trust-policy.md) and [analytics](architecture/advanced-analytics-api-contract.md)            | Review gameplay evidence and inspect protected Author reports.                                        |
+| [Trust review](requirements/longitudinal-trust-policy.md) and [analytics](design/author-analytics.md)                                 | Review gameplay evidence and inspect protected Author reports.                                        |
 | [Developer API](architecture/developer-api.md)                                                                                        | Access supported resources through scoped developer credentials.                                      |
 
 The [Sprint 2 overview](sprint-2-overview.md) and

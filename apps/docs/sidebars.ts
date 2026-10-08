@@ -23,7 +23,7 @@ const category = (
 
 const meetings = (sprint: number): SidebarItemConfig =>
   category(
-    'Meetings',
+    'Report and meetings',
     [
       doc(`planning/scrum/sprint-${sprint}/initial-planning`, 'Planning'),
       ...[1, 2, 3, 4].map((number) =>
@@ -69,7 +69,6 @@ const sidebars: SidebarsConfig = {
       'Start here',
       [
         doc('basic-release-reference', 'About the game'),
-        doc('development/getting-started', 'Getting started'),
         doc('requirements/basic-game-rules', 'Game basics'),
         doc('architecture/diagrams/index', 'Visual guide'),
       ],
@@ -89,15 +88,16 @@ const sidebars: SidebarsConfig = {
       items: [
         doc('requirements/player-location-journey', 'Explore'),
         doc('requirements/player-challenge-journey', 'Challenges'),
+        doc('requirements/ordered-trails-rules', 'Trails'),
         doc('design/profile-showcase', 'Profile'),
         category('Cards', [
           doc(
             'requirements/player-deck-building-journey',
             'Collections and decks',
           ),
+          doc('design/basic-card-roster', 'Card catalogue'),
           doc('requirements/card-evolution-rules', 'Evolution'),
           doc('requirements/card-trading-policy', 'Trading'),
-          doc('design/basic-card-roster', 'Card catalogue'),
         ]),
         category('Battles', [
           doc('requirements/battle-rules', 'Battle rules'),
@@ -111,7 +111,6 @@ const sidebars: SidebarsConfig = {
           ),
           doc('requirements/ranked-competition-policy', 'Rankings'),
           doc('requirements/contested-campus-zone-policy', 'Territories'),
-          doc('requirements/ordered-trails-rules', 'Trails'),
         ]),
       ],
     },
@@ -120,34 +119,34 @@ const sidebars: SidebarsConfig = {
       label: 'Authors',
       collapsed: true,
       link: {
-        type: 'generated-index',
-        slug: '/author-guide',
-        title: 'Author Guide',
-        description: 'Create, publish, moderate, and evaluate game content.',
+        type: 'doc',
+        id: 'design/author-guide',
       },
       items: [
-        category('Content', [
-          doc('architecture/diagrams/content-review', 'Review and publish'),
-          doc(
-            'architecture/author-curation-api-contract',
-            'Events and questions',
-          ),
-          doc('architecture/campaign-scheduling-api-contract', 'Campaigns'),
-          doc(
-            'architecture/automatic-event-placement-service',
-            'Event placement',
-          ),
-          doc(
-            'requirements/automatic-event-placement-policy',
-            'Placement rules',
-          ),
-        ]),
+        category(
+          'Content',
+          [
+            doc(
+              'architecture/author-curation-api-contract',
+              'Events and questions',
+            ),
+            doc('design/author-cards', 'Cards'),
+            doc('design/author-trails', 'Trails'),
+            doc('architecture/campaign-scheduling-api-contract', 'Campaigns'),
+            doc(
+              'architecture/automatic-event-placement-service',
+              'Event placement',
+            ),
+            doc(
+              'requirements/automatic-event-placement-policy',
+              'Placement rules',
+            ),
+          ],
+          'architecture/diagrams/content-review',
+        ),
         doc('requirements/longitudinal-trust-policy', 'Moderation and trust'),
-        category('Analytics', [
-          doc('architecture/advanced-analytics-api-contract', 'API'),
-          doc('database/question-performance-analytics', 'Question reports'),
-          doc('database/advanced-analytics', 'Storage and privacy'),
-        ]),
+        doc('design/author-analytics', 'Analytics'),
+        doc('database/question-performance-analytics', 'Question reports'),
       ],
     },
     {
@@ -162,6 +161,7 @@ const sidebars: SidebarsConfig = {
       },
       items: [
         category('Setup', [
+          doc('development/getting-started', 'Getting started'),
           doc('database/neon-postgis-setup', 'Neon and PostGIS'),
           doc('database/basic-demo-seed', 'Demo data'),
           doc('development/documentation-site', 'Documentation site'),
@@ -207,10 +207,14 @@ const sidebars: SidebarsConfig = {
           [
             category('Events', [
               doc('database/event-schema', 'Schema'),
+              doc('database/verified-event-content', 'Questions and sources'),
               doc('database/event-eligibility', 'Eligibility'),
               doc('database/movement-evidence', 'Movement checks'),
               doc('database/ordered-trails-persistence', 'Trails'),
-              doc('database/verified-event-content', 'Questions and sources'),
+              doc(
+                'database/automatic-event-placement-persistence',
+                'Event placement',
+              ),
             ]),
             category('Players', [
               doc('database/player-schema', 'Accounts'),
@@ -240,51 +244,14 @@ const sidebars: SidebarsConfig = {
                 'Territories',
               ),
             ]),
-            category('Campaigns', [
-              doc('database/campaign-scheduling-persistence', 'Schedules'),
-              doc(
-                'database/automatic-event-placement-persistence',
-                'Event placement',
-              ),
+            doc('database/campaign-scheduling-persistence', 'Campaigns'),
+            category('Analytics', [
+              doc('database/advanced-analytics', 'Storage and privacy'),
+              doc('database/question-performance-query', 'Question queries'),
             ]),
-            doc('database/architecture-review-2026-09', 'Review (Sep 2026)'),
           ],
           'database/overview',
         ),
-        category('Decisions', [
-          category(
-            'Architecture records',
-            [
-              doc('architecture/decisions/ADR-001-monorepo', '001: Monorepo'),
-              doc(
-                'architecture/decisions/ADR-002-separate-web-api',
-                '002: Separate web and API',
-              ),
-              doc(
-                'architecture/decisions/ADR-003-postgresql-postgis',
-                '003: PostgreSQL/PostGIS',
-              ),
-              doc(
-                'architecture/decisions/ADR-004-map-provider-boundary',
-                '004: Map boundary',
-              ),
-              doc(
-                'architecture/decisions/ADR-005-auth0-authentication',
-                '005: Auth0',
-              ),
-              doc(
-                'architecture/decisions/ADR-006-poor-gps-presence-fallback',
-                '006: Poor GPS (proposed)',
-              ),
-            ],
-            'architecture/decisions/README',
-          ),
-          doc(
-            'architecture/authentication-provider-comparison',
-            'Auth providers',
-          ),
-          doc('architecture/map-provider-evaluation', 'Map providers'),
-        ]),
         category('Interface', [
           doc('design/design-system', 'Design and accessibility'),
           doc('design/state-review', 'Feedback states'),
@@ -303,6 +270,38 @@ const sidebars: SidebarsConfig = {
           doc('deployment/mapbox-operations', 'Mapbox'),
           doc('deployment/ranked-operations', 'Ranked competition'),
         ]),
+        category(
+          'Decisions',
+          [
+            doc('architecture/decisions/ADR-001-monorepo', '001: Monorepo'),
+            doc(
+              'architecture/decisions/ADR-002-separate-web-api',
+              '002: Separate web and API',
+            ),
+            doc(
+              'architecture/decisions/ADR-003-postgresql-postgis',
+              '003: PostgreSQL/PostGIS',
+            ),
+            doc(
+              'architecture/decisions/ADR-004-map-provider-boundary',
+              '004: Map boundary',
+            ),
+            doc(
+              'architecture/decisions/ADR-005-auth0-authentication',
+              '005: Auth0',
+            ),
+            doc(
+              'architecture/decisions/ADR-006-poor-gps-presence-fallback',
+              '006: Poor GPS (proposed)',
+            ),
+            doc(
+              'architecture/authentication-provider-comparison',
+              'Auth comparison',
+            ),
+            doc('architecture/map-provider-evaluation', 'Map comparison'),
+          ],
+          'architecture/decisions/README',
+        ),
       ],
     },
     {
@@ -316,11 +315,13 @@ const sidebars: SidebarsConfig = {
         description: 'HTTP endpoints, authentication, and feature contracts.',
       },
       items: [
-        doc('architecture/api-overview', 'OpenAPI'),
-        doc('architecture/developer-api', 'Developer API'),
+        doc('architecture/api-overview', 'Overview'),
         doc('architecture/rate-limiting', 'Rate limits'),
-        category('Players and challenges', [
+        category('Players and cards', [
           doc('architecture/player-profile-api-contract', 'Profiles'),
+          doc('architecture/card-trading-api-contract', 'Trading'),
+        ]),
+        category('Challenges', [
           doc(
             'architecture/challenge-attempt-api-contract',
             'Challenges and answers',
@@ -339,7 +340,8 @@ const sidebars: SidebarsConfig = {
             'Territories',
           ),
         ]),
-        doc('architecture/card-trading-api-contract', 'Trading'),
+        doc('architecture/advanced-analytics-api-contract', 'Author analytics'),
+        doc('architecture/developer-api', 'External developer API'),
       ],
     },
     {
@@ -360,40 +362,48 @@ const sidebars: SidebarsConfig = {
           doc('planning/delivery-roadmap', 'Roadmap'),
           doc('planning/risk-register', 'Risks'),
           doc('planning/ai-use', 'AI use'),
-          doc('planning/scrum/index', 'Sprint reports'),
         ]),
-        sprint(1, [
-          meetings(1),
-          doc('testing/sprint-1-evidence-index', 'Release evidence'),
-          doc('testing/sprint-1-deterministic-e2e', 'E2E tests'),
-          doc('testing/sprint-1-release-validation', 'Release validation'),
-          doc('testing/sprint-1-demonstration-script', 'Demo script'),
-          doc('testing/sprint-1-known-limitations', 'Known limitations'),
-          category('Task plans', [
-            doc('planning/wits-quest-sprint-1-gitea-issues', 'Initial backlog'),
-            doc('planning/sprint-1-week-2-gitea-issues', 'Week 2 backlog'),
-          ]),
-        ]),
-        sprint(2, [
-          meetings(2),
-          doc('sprint-2-overview', 'Milestone evidence'),
-          doc('requirements/sprint-2-feature-matrix', 'Features'),
-          doc('testing/sprint-2-validation-status', 'Validation status'),
-          doc('testing/sprint-2-user-testing-plan', 'User testing plan'),
-          doc('testing/sprint-2-user-feedback-results', 'User feedback'),
-          doc('planning/sprint-2-governance-and-evidence', 'Governance'),
-          doc('planning/wits-quest-sprint-2-gitea-issues', 'Task plans'),
-        ]),
-        sprint(3, [
-          meetings(3),
-          doc('sprint-3-overview', 'Milestone evidence'),
-          doc('requirements/sprint-3-feature-matrix', 'Features'),
-          doc('testing/sprint-3-validation-status', 'Validation status'),
-          doc('testing/sprint-3-user-testing-plan', 'User testing plan'),
-          doc('testing/sprint-3-user-feedback-results', 'User feedback'),
-          doc('planning/sprint-3-governance-and-evidence', 'Governance'),
-        ]),
-        sprint(4, [meetings(4)]),
+        category(
+          'Sprints',
+          [
+            sprint(4, [meetings(4)]),
+            sprint(3, [
+              meetings(3),
+              doc('sprint-3-overview', 'Milestone evidence'),
+              doc('requirements/sprint-3-feature-matrix', 'Features'),
+              doc('testing/sprint-3-validation-status', 'Validation status'),
+              doc('testing/sprint-3-user-testing-plan', 'User testing plan'),
+              doc('testing/sprint-3-user-feedback-results', 'User feedback'),
+              doc('planning/sprint-3-governance-and-evidence', 'Governance'),
+            ]),
+            sprint(2, [
+              meetings(2),
+              doc('sprint-2-overview', 'Milestone evidence'),
+              doc('requirements/sprint-2-feature-matrix', 'Features'),
+              doc('testing/sprint-2-validation-status', 'Validation status'),
+              doc('testing/sprint-2-user-testing-plan', 'User testing plan'),
+              doc('testing/sprint-2-user-feedback-results', 'User feedback'),
+              doc('planning/sprint-2-governance-and-evidence', 'Governance'),
+              doc('planning/wits-quest-sprint-2-gitea-issues', 'Task plans'),
+            ]),
+            sprint(1, [
+              meetings(1),
+              doc('testing/sprint-1-evidence-index', 'Release evidence'),
+              doc('testing/sprint-1-deterministic-e2e', 'E2E tests'),
+              doc('testing/sprint-1-release-validation', 'Release validation'),
+              doc('testing/sprint-1-demonstration-script', 'Demo script'),
+              doc('testing/sprint-1-known-limitations', 'Known limitations'),
+              category('Task plans', [
+                doc(
+                  'planning/wits-quest-sprint-1-gitea-issues',
+                  'Initial backlog',
+                ),
+                doc('planning/sprint-1-week-2-gitea-issues', 'Week 2 backlog'),
+              ]),
+            ]),
+          ],
+          'planning/scrum/index',
+        ),
         category('Verification', [
           category('Basic release', [
             doc('testing/basic-release-validation-167', 'Results (#167)'),
@@ -426,6 +436,10 @@ const sidebars: SidebarsConfig = {
               'On-campus location',
             ),
           ]),
+          doc(
+            'database/architecture-review-2026-09',
+            'Database review (Sep 2026)',
+          ),
         ]),
         category(
           'Stakeholder reviews',

@@ -319,7 +319,7 @@ before retirement.
 
 Authors do not choose progression awards, reward rarity rolls, or the cards
 awarded to a player. See the
-[content authoring contract](../architecture/author-curation-api-contract.md)
+[review and publication guide](../architecture/diagrams/content-review.md)
 for the full dependency and audit rules.
 
 ### Account deletion and re-registration

@@ -66,6 +66,24 @@ CONTENT_NOT_READY` response, then the trigger repeats the critical check inside
 the same transaction. Create, edit, publish, and retire operations also append
 an immutable `author_content_audit` row with entity type `trail`.
 
+## Author operations
+
+Author trail management is API-only; the console does not provide a trail editor. See [Author trails](../design/author-trails.md) for the workflow and publication rules.
+
+All routes below use `/api/v1` and require authentication, an active account with a Player Name, and the Author role.
+
+| Operation                        | Route                                  |
+| -------------------------------- | -------------------------------------- |
+| List all trail states            | `GET /author/trails`                   |
+| Create a draft                   | `POST /author/trails`                  |
+| Replace draft metadata and order | `PUT /author/trails/:trailId`          |
+| Publish                          | `POST /author/trails/:trailId/publish` |
+| Retire                           | `POST /author/trails/:trailId/retire`  |
+
+Create/update bodies contain `title`, optional `description`, and an ordered `eventIds` array. Publish/retire bodies are empty objects. Additional fields are rejected.
+
+Updates and transitions lock the trail row. All mutations save membership/state plus audit records in one transaction. This contract has no `expectedVersion`, submit/approve/return actions, or shared review-queue entry. Concurrent draft replacements are serialised by the lock rather than rejected through optimistic version checks.
+
 ## Derived progress
 
 There is deliberately no `player_trail_progress` table. Player progress is
@@ -181,3 +199,5 @@ and development-fixture claims were checked against migration `0027` and the
 implemented trail modules.
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Author-operation documentation was added and checked with assistance from Codex[GPT-6].
