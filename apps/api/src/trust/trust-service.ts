@@ -164,6 +164,11 @@ interface OneSidedRow extends pg.QueryResultRow {
   matching_forfeits: number;
 }
 
+interface OpponentHistoryRow extends PairCountRow {
+  aggregate_type: 'concentration' | 'one_sided';
+  matching_forfeits: number;
+}
+
 interface DatabaseNowRow extends pg.QueryResultRow {
   now: Date;
 }
@@ -627,7 +632,11 @@ export function createTrustService(
       const pairKey = [context.player_low_id, context.player_high_id].sort();
       if (!(await bothPlayersAreActive(client, pairKey))) return;
 
-      const counts = await loadThirtyDayPairCounts(client, pairKey, now);
+      const { counts, oneSided } = await loadOpponentHistory(
+        client,
+        pairKey,
+        now,
+      );
       const eligible =
         counts.length === 2 &&
         counts.every((row) => {
@@ -667,8 +676,7 @@ export function createTrustService(
         }
       }
 
-      const oneSided = await loadSevenDayOneSidedCounts(client, pairKey, now);
-      const repeatedWinner = oneSided.rows.find(
+      const repeatedWinner = oneSided.find(
         (row) => Number(row.matching_forfeits) >= 4,
       );
       if (repeatedWinner) {
@@ -1025,17 +1033,21 @@ async function bothPlayersAreActive(
   return (result.rows[0]?.count ?? 0) === 2;
 }
 
-async function loadThirtyDayPairCounts(
+async function loadOpponentHistory(
   client: TrustQueryable,
   pair: readonly string[],
   now: Date,
-): Promise<PairCountRow[]> {
-  const result = await client.query<PairCountRow>(
+): Promise<{ counts: PairCountRow[]; oneSided: OneSidedRow[] }> {
+  // Both rules observe one completed-history snapshot. Signal/case writes below
+  // do not change this history; concurrent commits are picked up on later runs.
+  const result = await client.query<OpponentHistoryRow>(
     `
       with completed as (
         select 'async:' || match.id::text as match_id,
                match.completed_at,
-               participant.player_id::text
+               participant.player_id::text,
+               match.winner_player_id::text as winner_player_id,
+               match.completion_reason in ('turn_forfeit', 'voluntary_resignation') as qualifying_forfeit
           from public.async_pvp_matches match
           join public.async_pvp_match_participants participant on participant.match_id = match.id
          where match.status = 'completed'
@@ -1044,7 +1056,9 @@ async function loadThirtyDayPairCounts(
         union all
         select 'live:' || match.id::text,
                match.completed_at,
-               participant.player_id::text
+               participant.player_id::text,
+               match.winner_player_id::text,
+               match.completion_reason in ('abandonment_forfeit', 'voluntary_resignation')
           from public.live_pvp_matches match
           join public.live_pvp_match_participants participant on participant.match_id = match.id
          where match.status = 'completed'
@@ -1053,59 +1067,47 @@ async function loadThirtyDayPairCounts(
       ), matches as (
         select match_id,
                max(completed_at) as completed_at,
-               array_agg(player_id order by player_id) as players
+               array_agg(player_id order by player_id) as players,
+               max(winner_player_id) as winner_player_id,
+               bool_or(qualifying_forfeit) as qualifying_forfeit
           from completed
          group by match_id
         having count(*) = 2
       )
-      select player.player_id,
+      select 'concentration' as aggregate_type,
+             player.player_id,
              count(*)::integer as total_matches,
-             count(*) filter (where matches.players = array[$1::text, $2::text])::integer as pair_matches
+             count(*) filter (where matches.players = array[$1::text, $2::text])::integer as pair_matches,
+             0::integer as matching_forfeits
         from (values ($1::text), ($2::text)) player(player_id)
         join matches on player.player_id = any(matches.players)
        group by player.player_id
-    `,
-    [pair[0], pair[1], now],
-  );
-  return result.rows;
-}
-
-async function loadSevenDayOneSidedCounts(
-  client: TrustQueryable,
-  pair: readonly string[],
-  now: Date,
-): Promise<{ rows: OneSidedRow[] }> {
-  return client.query<OneSidedRow>(
-    `
-      with outcomes as (
-        select match.winner_player_id::text as winner_player_id,
-               array_agg(participant.player_id::text order by participant.player_id::text) as players
-          from public.async_pvp_matches match
-          join public.async_pvp_match_participants participant on participant.match_id = match.id
-         where match.status = 'completed'
-           and match.completed_at > $3::timestamptz - interval '7 days'
-           and match.completed_at <= $3::timestamptz
-           and match.completion_reason in ('turn_forfeit', 'voluntary_resignation')
-         group by match.id
-        union all
-        select match.winner_player_id::text,
-               array_agg(participant.player_id::text order by participant.player_id::text)
-          from public.live_pvp_matches match
-          join public.live_pvp_match_participants participant on participant.match_id = match.id
-         where match.status = 'completed'
-           and match.completed_at > $3::timestamptz - interval '7 days'
-           and match.completed_at <= $3::timestamptz
-           and match.completion_reason in ('abandonment_forfeit', 'voluntary_resignation')
-         group by match.id
-      )
-      select winner_player_id,
-             count(*)::integer as matching_forfeits
-        from outcomes
+      union all
+      select 'one_sided', winner_player_id, 0::integer, 0::integer,
+             count(*)::integer
+        from matches
        where players = array[$1::text, $2::text]
+         and completed_at > $3::timestamptz - interval '7 days'
+         and qualifying_forfeit
        group by winner_player_id
     `,
     [pair[0], pair[1], now],
   );
+  return {
+    counts: result.rows
+      .filter((row) => row.aggregate_type === 'concentration')
+      .map(({ player_id, total_matches, pair_matches }) => ({
+        player_id,
+        total_matches,
+        pair_matches,
+      })),
+    oneSided: result.rows
+      .filter((row) => row.aggregate_type === 'one_sided')
+      .map(({ player_id, matching_forfeits }) => ({
+        winner_player_id: player_id,
+        matching_forfeits,
+      })),
+  };
 }
 
 function utcWeekKey(value: Date): string {
