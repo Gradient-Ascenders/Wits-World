@@ -240,6 +240,54 @@ export function noActiveResponse() {
   return problemResponse('CPU_MATCH_NOT_FOUND', 404);
 }
 
+export function entrySummaryResponse(
+  active: CpuMatch | null = null,
+  selectedDeck: { deckId: string; name: string } | null = null,
+) {
+  return new Response(
+    JSON.stringify({
+      activeMatch: active
+        ? {
+            matchId: active.matchId,
+            status: 'active',
+            startedAt: active.startedAt,
+            state: {
+              phase: active.state.phase,
+              turnNumber: active.state.turnNumber,
+              currentSide: active.state.currentSide,
+            },
+          }
+        : null,
+      selectedDeck:
+        active || !selectedDeck
+          ? null
+          : { deckId: selectedDeck.deckId, name: selectedDeck.name },
+      requestId: 'entry-summary',
+    }),
+    { headers: { 'Content-Type': 'application/json' } },
+  );
+}
+
+export function historySummaryResponse(matches: CpuMatchHistoryItem[]) {
+  return new Response(
+    JSON.stringify({
+      matches: [...matches]
+        .sort(
+          (a, b) =>
+            Date.parse(b.completedAt) - Date.parse(a.completedAt) ||
+            b.matchId.localeCompare(a.matchId),
+        )
+        .slice(0, 5)
+        .map(({ rounds, ...match }) => ({
+          ...match,
+          roundCount: rounds.length,
+        })),
+      requestId: 'history-summary',
+    }),
+    { headers: { 'Content-Type': 'application/json' } },
+  );
+}
+
 export function problemResponse(code: string, status: number) {
   return new Response(
     JSON.stringify({

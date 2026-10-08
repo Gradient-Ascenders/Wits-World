@@ -24,7 +24,7 @@ import {
   resetAccessibilityPreferences,
   updateAccessibilityPreferences,
 } from '../src/accessibility/preferences';
-import { deckListResponse, buildSavedDeck } from './fixtures/decks';
+import { buildSavedDeck } from './fixtures/decks';
 import {
   actionResult,
   activeMatch,
@@ -33,6 +33,8 @@ import {
   completedMatch,
   historyItem,
   historyResponse,
+  historySummaryResponse,
+  entrySummaryResponse,
   MATCH_ID,
   matchResponse,
   noActiveResponse,
@@ -105,8 +107,8 @@ describe('CPU match entry and history', () => {
     const user = userEvent.setup();
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(matchResponse(activeMatch(3)))
-      .mockResolvedValueOnce(historyResponse([]));
+      .mockResolvedValueOnce(entrySummaryResponse(activeMatch(3)))
+      .mockResolvedValueOnce(historySummaryResponse([]));
     vi.stubGlobal('fetch', withPvpDefaults(fetchMock));
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
@@ -152,9 +154,8 @@ describe('CPU match entry and history', () => {
     const match = activePvpSummary();
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(noActiveResponse())
-      .mockResolvedValueOnce(historyResponse([]))
-      .mockResolvedValueOnce(deckListResponse([]));
+      .mockResolvedValueOnce(entrySummaryResponse(null, null))
+      .mockResolvedValueOnce(historySummaryResponse([]));
     vi.stubGlobal('fetch', withPvpDefaults(fetchMock, { active: [match] }));
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
@@ -177,7 +178,7 @@ describe('CPU match entry and history', () => {
       withPvpDefaults(
         vi
           .fn()
-          .mockResolvedValueOnce(matchResponse(activeMatch(3)))
+          .mockResolvedValueOnce(entrySummaryResponse(activeMatch(3)))
           .mockResolvedValueOnce(
             problemResponse('CPU_MATCH_HISTORY_UNAVAILABLE', 503),
           ),
@@ -196,7 +197,7 @@ describe('CPU match entry and history', () => {
     const unresolvedHistory = new Promise<Response>(() => undefined);
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(matchResponse(activeMatch(3)))
+      .mockResolvedValueOnce(entrySummaryResponse(activeMatch(3)))
       .mockReturnValueOnce(unresolvedHistory);
     vi.stubGlobal('fetch', withPvpDefaults(fetchMock));
 
@@ -225,9 +226,8 @@ describe('CPU match entry and history', () => {
       withPvpDefaults(
         vi
           .fn()
-          .mockResolvedValueOnce(noActiveResponse())
-          .mockReturnValueOnce(unresolvedHistory)
-          .mockResolvedValueOnce(deckListResponse([selected])),
+          .mockResolvedValueOnce(entrySummaryResponse(null, selected))
+          .mockReturnValueOnce(unresolvedHistory),
       ),
     );
 
@@ -244,9 +244,9 @@ describe('CPU match entry and history', () => {
     const selected = buildSavedDeck({ isSelected: true });
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(noActiveResponse())
-      .mockResolvedValueOnce(historyResponse([]))
-      .mockResolvedValueOnce(deckListResponse([selected]))
+      .mockResolvedValueOnce(entrySummaryResponse(null, selected))
+      .mockResolvedValueOnce(historySummaryResponse([]))
+
       .mockResolvedValueOnce(noActiveResponse())
       .mockResolvedValueOnce(matchResponse(buildMatch(), 201));
     vi.stubGlobal('fetch', withPvpDefaults(fetchMock));
@@ -266,7 +266,7 @@ describe('CPU match entry and history', () => {
     await waitFor(() =>
       expect(window.location.pathname).toBe(`/matches/${MATCH_ID}`),
     );
-    expect(JSON.parse(String(fetchMock.mock.calls[4]![1]!.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[3]![1]!.body))).toEqual({
       deckId: selected.deckId,
     });
   });
@@ -280,9 +280,9 @@ describe('CPU match entry and history', () => {
     });
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(noActiveResponse())
-      .mockResolvedValueOnce(historyResponse([]))
-      .mockResolvedValueOnce(deckListResponse([selected]))
+      .mockResolvedValueOnce(entrySummaryResponse(null, selected))
+      .mockResolvedValueOnce(historySummaryResponse([]))
+
       .mockReturnValueOnce(oldRequest);
     vi.stubGlobal('fetch', withPvpDefaults(fetchMock));
 
@@ -293,13 +293,13 @@ describe('CPU match entry and history', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Start CPU battle' }),
     );
-    const oldSignal = fetchMock.mock.calls[3]![1]!.signal as AbortSignal;
+    const oldSignal = fetchMock.mock.calls[2]![1]!.signal as AbortSignal;
 
     view.unmount();
     expect(oldSignal.aborted).toBe(true);
 
     await act(async () => {
-      resolveOldRequest(matchResponse(activeMatch(3)));
+      resolveOldRequest(entrySummaryResponse(activeMatch(3)));
       await oldRequest;
     });
 
@@ -315,9 +315,8 @@ describe('CPU match entry and history', () => {
       withPvpDefaults(
         vi
           .fn()
-          .mockResolvedValueOnce(noActiveResponse())
-          .mockResolvedValueOnce(historyResponse([]))
-          .mockResolvedValueOnce(deckListResponse([])),
+          .mockResolvedValueOnce(entrySummaryResponse(null, null))
+          .mockResolvedValueOnce(historySummaryResponse([])),
       ),
     );
 
@@ -349,8 +348,8 @@ describe('CPU match entry and history', () => {
     const fetchMock = vi
       .fn()
       .mockRejectedValueOnce(new TypeError('connection lost'))
-      .mockResolvedValueOnce(historyResponse([]))
-      .mockResolvedValueOnce(matchResponse(activeMatch(4)));
+      .mockResolvedValueOnce(historySummaryResponse([]))
+      .mockResolvedValueOnce(entrySummaryResponse(activeMatch(4)));
     vi.stubGlobal('fetch', withPvpDefaults(fetchMock));
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
@@ -368,7 +367,7 @@ describe('CPU match entry and history', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it.each(['token', 'active match', 'response body', 'selected deck'])(
+  it.each(['token', 'entry summary', 'response body'])(
     'keeps other modes usable and bounds a stalled %s read',
     async (stage) => {
       vi.useFakeTimers();
@@ -376,16 +375,16 @@ describe('CPU match entry and history', () => {
       const fetchMock = vi.fn((input: RequestInfo | URL) => {
         const path = new URL(String(input)).pathname;
         if (path.endsWith('/matches/cpu/entry')) {
-          if (stage === 'active match') return never;
+          if (stage === 'entry summary') return never;
           if (stage === 'response body') {
             const response = new Response();
             vi.spyOn(response, 'json').mockReturnValue(never);
             return Promise.resolve(response);
           }
-          return Promise.resolve(noActiveResponse());
+          return Promise.resolve(entrySummaryResponse());
         }
         if (path.endsWith('/decks')) return never;
-        return Promise.resolve(historyResponse([]));
+        return Promise.resolve(historySummaryResponse([]));
       });
       vi.stubGlobal('fetch', withPvpDefaults(fetchMock));
       renderRoute(
@@ -427,9 +426,8 @@ describe('CPU match entry and history', () => {
     const cpuFetch = vi
       .fn()
       .mockReturnValueOnce(old)
-      .mockResolvedValueOnce(historyResponse([]))
-      .mockResolvedValueOnce(noActiveResponse())
-      .mockResolvedValueOnce(deckListResponse([]));
+      .mockResolvedValueOnce(historySummaryResponse([]))
+      .mockResolvedValueOnce(entrySummaryResponse(null, null));
     const fetchMock = withPvpDefaults(cpuFetch, {
       active: [activePvpSummary()],
     });
@@ -444,7 +442,7 @@ describe('CPU match entry and history', () => {
     await act(async () => vi.advanceTimersByTimeAsync(0));
     expect(screen.getByText('No deck selected')).toBeVisible();
     await act(async () => {
-      resolveOld(matchResponse(activeMatch(3)));
+      resolveOld(entrySummaryResponse(activeMatch(3)));
       await old;
     });
     expect(
@@ -471,9 +469,9 @@ describe('CPU match entry and history', () => {
       withPvpDefaults(
         vi
           .fn()
-          .mockResolvedValueOnce(noActiveResponse())
-          .mockResolvedValueOnce(historyResponse([]))
-          .mockResolvedValueOnce(deckListResponse([selected]))
+          .mockResolvedValueOnce(entrySummaryResponse(null, selected))
+          .mockResolvedValueOnce(historySummaryResponse([]))
+
           .mockResolvedValueOnce(noActiveResponse())
           .mockResolvedValueOnce(problemResponse('INVALID_MATCH_DECK', 400)),
       ),
@@ -631,9 +629,8 @@ describe('CPU match entry and history', () => {
       withPvpDefaults(
         vi
           .fn()
-          .mockResolvedValueOnce(noActiveResponse())
-          .mockResolvedValueOnce(historyResponse(matches))
-          .mockResolvedValueOnce(deckListResponse([])),
+          .mockResolvedValueOnce(entrySummaryResponse(null, null))
+          .mockResolvedValueOnce(historySummaryResponse(matches)),
         {
           history: [
             pvpHistorySummary(

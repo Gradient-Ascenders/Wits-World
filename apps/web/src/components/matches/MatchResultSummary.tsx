@@ -2,15 +2,18 @@ import { createAppDateTimeFormatter } from '../../date-time';
 import { Link } from 'wouter';
 import type { MouseEvent } from 'react';
 
-import type { CpuMatchHistoryItem } from '../../api/matches';
+import type {
+  CpuMatchHistoryItem,
+  CpuMatchHistorySummary,
+} from '../../api/matches';
 import type { PvpHistorySummary } from '../../api/pvp';
 
 export type BattleHistoryItem =
-  | { kind: 'cpu'; match: CpuMatchHistoryItem }
+  | { kind: 'cpu'; match: CpuMatchHistoryItem | CpuMatchHistorySummary }
   | { kind: 'player'; match: PvpHistorySummary };
 
 export function mergeBattleHistory(
-  cpuMatches: CpuMatchHistoryItem[],
+  cpuMatches: (CpuMatchHistoryItem | CpuMatchHistorySummary)[],
   playerMatches: PvpHistorySummary[],
 ) {
   return [
@@ -22,7 +25,9 @@ export function mergeBattleHistory(
   ].sort(
     (left, right) =>
       new Date(right.match.completedAt).getTime() -
-      new Date(left.match.completedAt).getTime(),
+        new Date(left.match.completedAt).getTime() ||
+      right.match.matchId.localeCompare(left.match.matchId) ||
+      left.kind.localeCompare(right.kind),
   );
 }
 
@@ -82,9 +87,15 @@ function BattleResultSummary({
       : battle.match.outcome === 'win';
   const opponent =
     battle.kind === 'cpu' ? 'CPU' : battle.match.opponent.playerName;
+  const roundCount =
+    battle.kind === 'cpu'
+      ? 'roundCount' in battle.match
+        ? battle.match.roundCount
+        : battle.match.rounds.length
+      : 0;
   const detail =
     battle.kind === 'cpu'
-      ? `${battle.match.rounds.length} ${battle.match.rounds.length === 1 ? 'round' : 'rounds'}`
+      ? `${roundCount} ${roundCount === 1 ? 'round' : 'rounds'}`
       : completionReasonLabel(
           battle.match.completionReason,
           battle.match.outcome,

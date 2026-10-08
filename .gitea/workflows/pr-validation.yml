@@ -95,6 +95,9 @@ jobs:
       - name: Install dependencies
         run: time npm ci --prefer-offline --no-audit --fund=false
 
+      - name: Test deployment release guards
+        run: time npm run test:deployment
+
       - name: Test shared account policy package
         run: time npm run test:coverage --workspace @wits-world/account-policy
 

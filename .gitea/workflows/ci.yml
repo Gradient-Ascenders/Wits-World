@@ -92,6 +92,9 @@ jobs:
         env:
           NPM_CONFIG_CACHE: /opt/wits-world/npm-cache
 
+      - name: Test deployment release guards
+        run: time npm run test:deployment
+
       - name: Test shared account policy package
         run: time npm run test:coverage --workspace @wits-world/account-policy
 
@@ -352,6 +355,7 @@ jobs:
             package-lock.json \
             tsconfig.base.json \
             apps/api \
+            apps/web \
             packages/account-policy \
             packages/game-rules \
             scripts/confirm-current-main.sh \
@@ -362,11 +366,11 @@ jobs:
 
           case "$DIFF_STATUS" in
             0)
-              echo "No API, database, or shared runtime changes detected; no production API artifact is required."
+              echo "No API, web, database, or shared runtime changes detected; no production API artifact is required."
               echo "required=false" >> "$GITHUB_OUTPUT"
               ;;
             1)
-              echo "API, database, or shared runtime changes detected; a production API artifact is required."
+              echo "API, web, database, or shared runtime changes detected; a production API artifact is required."
               echo "required=true" >> "$GITHUB_OUTPUT"
               ;;
             *)
@@ -630,6 +634,10 @@ jobs:
     if: ${{ gitea.ref == 'refs/heads/main' && (gitea.event_name == 'push' || gitea.event_name == 'workflow_dispatch') }}
     runs-on: azure-deploy
 
+    outputs:
+      published_sha: ${{ steps.api_publication.outputs.published_sha }}
+      api_origin: ${{ steps.api_health.outputs.api_origin }}
+
     env:
       DEPLOY_SHA: ${{ gitea.sha }}
       PREVIOUS_SHA: ${{ gitea.event.before }}
@@ -733,16 +741,17 @@ jobs:
             package-lock.json \
             tsconfig.base.json \
             apps/api \
+            apps/web \
             packages/account-policy \
             packages/game-rules \
             scripts/confirm-current-main.sh \
             scripts/prepare-api.mjs \
             database
           then
-            echo "No API, database, or shared runtime changes detected; API deployment will be skipped."
+            echo "No API, web, database, or shared runtime changes detected; API deployment will be skipped."
             echo "required=false" >> "$GITHUB_OUTPUT"
           else
-            echo "API, database, or shared runtime changes detected; API deployment is required."
+            echo "API, web, database, or shared runtime changes detected; API deployment is required."
             touch "$DEPLOY_MARKER"
             echo "required=true" >> "$GITHUB_OUTPUT"
           fi
@@ -1059,6 +1068,7 @@ jobs:
 
           echo "Production database release completed successfully."
       - name: Deploy API to Azure
+        id: api_publication
         run: |
           set -euo pipefail
 
@@ -1090,7 +1100,10 @@ jobs:
             --track-status false \
             --output none
 
+          printf 'published_sha=%s\n' "$DEPLOY_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Verify production health
+        id: api_health
         run: |
           set -euo pipefail
 
@@ -1126,6 +1139,7 @@ jobs:
               echo "Production API is healthy:"
               cat "$HEALTH_BODY"
               rm -f "$HEALTH_BODY"
+              printf 'api_origin=https://%s\n' "$API_HOST" >> "$GITHUB_OUTPUT"
               exit 0
             fi
 
@@ -1164,11 +1178,15 @@ jobs:
     name: Deploy Web to Azure
     needs:
       - validation
-    if: ${{ gitea.ref == 'refs/heads/main' && (gitea.event_name == 'push' || gitea.event_name == 'workflow_dispatch') }}
+      - deploy-api
+    if: ${{ needs.deploy-api.result == 'success' && gitea.ref == 'refs/heads/main' && (gitea.event_name == 'push' || gitea.event_name == 'workflow_dispatch') }}
     runs-on: azure-deploy
 
     env:
       DEPLOY_SHA: ${{ gitea.sha }}
+      API_PUBLISHED_SHA: ${{ needs.deploy-api.outputs.published_sha }}
+      API_ORIGIN: ${{ needs.deploy-api.outputs.api_origin }}
+      WEB_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
       PREVIOUS_SHA: ${{ gitea.event.before }}
       GITEA_JOB_TOKEN: ${{ gitea.token }}
       REPOSITORY_URL: https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
@@ -1360,6 +1378,8 @@ jobs:
             echo "Skipping the web deployment."
             exit 0
           fi
+
+          node "$DEPLOY_ROOT/repository/scripts/verify-battles-summary-contract.mjs"
 
           bash \
             "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \

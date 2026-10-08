@@ -5,8 +5,10 @@ import {
   forfeitCpuMatch,
   getActiveCpuMatch,
   getActiveCpuMatchEntry,
+  getCpuBattleEntrySummary,
   getCpuMatch,
   listCpuMatchHistory,
+  listRecentCpuMatchHistory,
   MatchApiError,
   recoverOrCreateCpuMatch,
   submitCpuMatchAction,
@@ -18,6 +20,8 @@ import {
   DECK_ID,
   historyItem,
   historyResponse,
+  historySummaryResponse,
+  entrySummaryResponse,
   MATCH_ID,
   matchResponse,
   noActiveResponse,
@@ -669,5 +673,85 @@ describe('CPU match API client', () => {
         getAccessToken: vi.fn().mockRejectedValue(new Error('token detail')),
       }),
     ).rejects.toBeInstanceOf(MatchApiError);
+  });
+});
+
+describe('compact Battles client contracts', () => {
+  it('loads only active-match or selected-deck metadata', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        entrySummaryResponse(null, { deckId: DECK_ID, name: 'Campus Five' }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(getCpuBattleEntrySummary(options())).resolves.toEqual({
+      activeMatch: null,
+      selectedDeck: { deckId: DECK_ID, name: 'Campus Five' },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      apiBaseUrl + '/matches/cpu/entry?view=summary',
+    );
+  });
+  it('requests exactly five compact CPU results', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(historySummaryResponse([historyItem()]));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(listRecentCpuMatchHistory(options())).resolves.toMatchObject([
+      { roundCount: 1 },
+    ]);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      apiBaseUrl + '/matches/history?view=summary&limit=5',
+    );
+  });
+  it.each([
+    {
+      activeMatch: null,
+      selectedDeck: { deckId: 'bad', name: 'Deck' },
+      requestId: 'fixture',
+    },
+    {
+      activeMatch: null,
+      selectedDeck: null,
+      requestId: 'fixture',
+      playerId: MATCH_ID,
+    },
+  ])(
+    'rejects malformed summary projections without fallback requests',
+    async (payload) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify(payload)));
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(getCpuBattleEntrySummary(options())).rejects.toBeInstanceOf(
+        MatchApiError,
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+  it('rejects oversized or detailed history responses', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(historyResponse([historyItem()]));
+    const { rounds, ...summary } = historyItem();
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          matches: Array.from({ length: 6 }, () => ({
+            ...summary,
+            roundCount: rounds.length,
+          })),
+          requestId: 'fixture',
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(listRecentCpuMatchHistory(options())).rejects.toBeInstanceOf(
+      MatchApiError,
+    );
+    await expect(listRecentCpuMatchHistory(options())).rejects.toBeInstanceOf(
+      MatchApiError,
+    );
   });
 });

@@ -29,7 +29,7 @@
     "generate:collection-artwork": "node scripts/generate-collection-card-artwork.mjs",
     "coverage:badge": "node scripts/generate-coverage-badge.mjs",
     "test": "npm run test:deployment && npm run prepare:api && npm run test --workspaces --if-present",
-    "test:deployment": "node --test scripts/confirm-current-main.test.mjs",
+    "test:deployment": "node --test scripts/confirm-current-main.test.mjs scripts/verify-battles-summary-contract.test.mjs",
     "test:e2e:sprint1": "node apps/web/playwright/run-sprint1-e2e.mjs",
     "test:e2e:basic": "node apps/web/playwright/run-basic-e2e.mjs",
     "test:e2e:experience-regressions": "npm run test:e2e:experience-regressions --workspace @wits-world/web",
