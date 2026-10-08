@@ -111,9 +111,8 @@ host/name checks. An authorised operator can also run the release manually.
 Content seeding remains a separate decision; deployment does not install event
 packs by default. Runtime and migration credentials are currently coupled.
 
-See [Neon/PostGIS setup](neon-postgis-setup.md),
-[database release](database-release-procedure.md), and
-[recovery rehearsal](postgis-recovery-rehearsal.md).
+See [Neon/PostGIS setup](neon-postgis-setup.md) and
+[database releases and recovery](database-release-procedure.md).
 
 ## Testing and evidence
 

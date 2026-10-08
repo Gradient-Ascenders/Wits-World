@@ -247,55 +247,20 @@ const sidebars: SidebarsConfig = {
           'database/overview',
         ),
         category('Interface', [
-          doc('design/design-system', 'Design and accessibility'),
-          doc('design/state-review', 'Feedback states'),
-          doc('design/references/card-frames/README', 'Card frames'),
-          doc('loading-policy', 'Loading'),
+          doc('design/ui-ux-design', 'UI/UX design'),
+          doc('design/design-system', 'Accessibility'),
+          doc('design/state-review', 'Interaction states'),
         ]),
         category('Testing', [
           doc('testing/testing-strategy', 'Strategy'),
-          doc('testing/automated-verification', 'Database and E2E checks'),
+          doc('testing/automated-verification', 'Test suites'),
           doc('testing/continuous-integration', 'CI workflows'),
         ]),
         category('Operations', [
           doc('deployment/azure-deployment-setup', 'Azure deployment'),
-          doc('database/database-release-procedure', 'Database migrations'),
-          doc('database/postgis-recovery-rehearsal', 'Database recovery'),
-          doc('deployment/mapbox-operations', 'Mapbox'),
-          doc('deployment/ranked-operations', 'Ranked competition'),
+          doc('database/database-release-procedure', 'Database releases'),
+          doc('deployment/ranked-operations', 'Gameplay workers'),
         ]),
-        category(
-          'Decisions',
-          [
-            doc('architecture/decisions/ADR-001-monorepo', '001: Monorepo'),
-            doc(
-              'architecture/decisions/ADR-002-separate-web-api',
-              '002: Separate web and API',
-            ),
-            doc(
-              'architecture/decisions/ADR-003-postgresql-postgis',
-              '003: PostgreSQL/PostGIS',
-            ),
-            doc(
-              'architecture/decisions/ADR-004-map-provider-boundary',
-              '004: Map boundary',
-            ),
-            doc(
-              'architecture/decisions/ADR-005-auth0-authentication',
-              '005: Auth0',
-            ),
-            doc(
-              'architecture/decisions/ADR-006-poor-gps-presence-fallback',
-              '006: Poor GPS (proposed)',
-            ),
-            doc(
-              'architecture/authentication-provider-comparison',
-              'Auth comparison',
-            ),
-            doc('architecture/map-provider-evaluation', 'Map comparison'),
-          ],
-          'architecture/decisions/README',
-        ),
       ],
     },
     {

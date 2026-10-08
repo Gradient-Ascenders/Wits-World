@@ -153,11 +153,10 @@ one-time card issuance. Run the offline database suite via the existing
 `npm run test:database --workspace @wits-world/api` command.
 
 Offline PvP, battles, decks, authoring, trails and poor-GPS alternative proof are
-outside this feature. Issue #170 remains responsible for the alternative proof
-decision; [ADR-006](./decisions/ADR-006-poor-gps-presence-fallback.md) records
-the engineering recommendation and explicitly defers implementation until the
-required stakeholder and permission decisions are confirmed. Issue #186 must not claim full Intermediate completion until its
-remaining requirements and field evidence are satisfied.
+outside this feature. Poor-GPS alternative proof remains unimplemented and
+requires stakeholder and permission confirmation before development. Issue #186
+must not claim full Intermediate completion until its remaining requirements
+and field evidence are satisfied.
 
 This document was generated with assistance from Codex[GPT-6].
 

@@ -131,8 +131,9 @@ any defects are recorded, and Uzair has reviewed the geospatial interpretation.
 
 Issue #167 reuses this protocol for real-campus evidence; it does not create a
 second eligibility rule or treat browser geolocation as proof of physical
-presence. ADR-006 remains Proposed and deferred pending stakeholder/group
-confirmation. Do not test or claim a QR fallback as part of this protocol.
+presence. Poor-GPS alternative proof remains unimplemented and requires
+stakeholder/group confirmation. Do not test or claim a QR fallback as part of
+this protocol.
 
 Use anonymised run IDs such as `GEO-01`. In addition to F1–F6, deliberately
 classify these safe conditions when they can genuinely be observed: fresh

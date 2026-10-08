@@ -75,7 +75,7 @@ Deploy migrations `0047`, `0050`, `0051`, and `0052` before an API version that 
 routes and the ranked worker. The worker is safe to run on every API instance;
 database locks serialize claims and season changes. No season is created by
 deployment. An operator schedules seasons as described in
-[ranked operations](../deployment/ranked-operations.md).
+[Gameplay workers](../deployment/ranked-operations.md).
 
 With shared gameplay coordination configured, ranked API mutations publish a
 durable activity intent before database writes. If publication or intent

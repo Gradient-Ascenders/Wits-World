@@ -48,6 +48,14 @@ local cleanup with external identity removal and records pending work for retry;
 the [deletion contract](../database/account-deletion-retention.md) defines that
 lifecycle.
 
+### Auth0 email policy
+
+Wits World does not require email verification for account access. The tenant
+configuration should disable automatic signup verification and verification
+emails while retaining password-recovery delivery. The repository does not
+manage these tenant settings; an authorised administrator configures them and
+checks signup, sign-in, and password recovery with a test account.
+
 ## Mapbox
 
 Explore and Author maps use a shared rendering adapter. Desktop Explore,
@@ -67,8 +75,25 @@ remains available alongside the map.
 
 Buildings come from the basemap; a project-owned campus dataset is not currently
 configured. See [location privacy](trust-boundaries.md#location-and-privacy) for
-device readings and retention, and [Mapbox operations](../deployment/mapbox-operations.md)
-for tokens and deployment configuration.
+device readings and retention.
+
+### Mapbox configuration
+
+The Web build reads `VITE_MAPBOX_ACCESS_TOKEN`. Use a dedicated public `pk.`
+token with `styles:read` and `fonts:read`, restricted to the intended Web
+origins. Use separate development and production tokens; a default public
+token cannot have URL restrictions. Never embed a secret token in the browser.
+See [Mapbox token guidance](https://docs.mapbox.com/accounts/guides/tokens/)
+for scopes, restrictions, and rotation.
+
+Check the deployed browser's Content Security Policy against the selected
+style, tile and font requests, and GL JS worker requirements. Confirm that maps
+load from each intended origin and that the event list remains usable when
+rendering fails. Token changes require a new Web build.
+
+The adapter updates event overlays without recreating the map. Monitor
+map-load usage in the provider account and review current service
+terms before changing usage or enabling additional Mapbox APIs.
 
 ## Neon
 
@@ -106,7 +131,7 @@ before a database write. PostgreSQL remains the authoritative game-state store.
 The gameplay scheduler defaults to polling PostgreSQL. Its optional Upstash
 mode uses shared activity records to wake workers and reduce database probes
 while idle. [Rate limits](rate-limiting.md) defines quotas and availability
-policies; [ranked operations](../deployment/ranked-operations.md) covers
+policies; [Gameplay workers](../deployment/ranked-operations.md) covers
 scheduler configuration and recovery.
 
 ## Hosting and delivery

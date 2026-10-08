@@ -143,9 +143,7 @@ function GuideDirectory(): ReactNode {
       <Link className={styles.projectLink} to="/docs/project">
         <span>
           <strong>Project evidence</strong>
-          <small>
-            Testing, decisions, stakeholder reviews, and sprint history
-          </small>
+          <small>Testing, stakeholder reviews, and sprint history</small>
         </span>
         <ArrowIcon />
       </Link>

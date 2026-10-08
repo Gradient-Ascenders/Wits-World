@@ -272,7 +272,7 @@ token, an active local account, the required role, and object permissions.
 The configured email policy disables automatic verification emails while
 retaining password recovery. Actual tenant configuration and delivery require
 operator verification; see the
-[Auth0 decision record](../architecture/decisions/ADR-005-auth0-authentication.md#email-verification).
+[Auth0 email policy](../architecture/external-integrations.md#auth0-email-policy).
 
 ### Roles and authoring
 

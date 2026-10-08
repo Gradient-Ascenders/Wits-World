@@ -605,7 +605,7 @@ fallback, fast PostgreSQL scans preserve recovery. The probe policy
 does not disable, pause, extend, or reset persisted decision deadlines. Full
 deadline processing uses persisted deadlines and database-clock serialization,
 catching up elapsed decisions without resetting their clocks. See the
-[ranked operations guide](../deployment/ranked-operations.md) for staged
+[Gameplay workers](../deployment/ranked-operations.md) for staged
 activation and rollback; all producers of new persisted work must participate
 in durable coordination before Upstash mode is enabled.
 

@@ -28,7 +28,7 @@ sidebar_position: 2
 ## Summary of Progress {/* #progress-since-planning */}
 
 - **Product/Web:** Kevin configured the monorepo standards, scaffolded the mobile-first React application, added tests and setup documentation, and established the first campus-map presentation components.
-- **API/architecture:** Tyron documented the architecture overview, application boundaries, ADRs, roadmap, and risk register, then addressed review feedback.
+- **API/architecture:** Tyron documented the architecture overview, application boundaries, roadmap, and risk register, then addressed review feedback.
 - **Data:** Uzair configured separate Neon development/test targets, added readiness and migration tests, and implemented the initial PostGIS event schema and seed.
 - **Delivery:** No delivery-stream commit is attributed to Caleb during this reporting window; CI remained the next dependency for the shared foundation.
 

@@ -102,7 +102,6 @@ An authenticated player:
 - document the initial system architecture;
 - record trust boundaries and data flow;
 - motivate the technology stack;
-- create initial architecture decision records;
 - publish the first version of the documentation website;
 - record the initial delivery roadmap and risk register.
 

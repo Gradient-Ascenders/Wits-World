@@ -61,8 +61,7 @@ Mapbox GL JS provides the interactive map renderer and 3D basemap support.
 A shared adapter lets Explore and Author maps reuse the same rendering code.
 
 [Mapbox integration](external-integrations.md#mapbox) covers styles, overlays,
-and provider behaviour; [ADR-004](decisions/ADR-004-map-provider-boundary.md)
-records the decision.
+and provider behaviour.
 
 #### Offline storage and service worker
 
@@ -105,8 +104,7 @@ metre-based rules in the API.
 
 The `pg` driver gives services direct control over parameterised SQL,
 connection pools, and transaction boundaries. Schema changes use versioned
-SQL migrations. [ADR-003](decisions/ADR-003-postgresql-postgis.md) records the
-database choice; the [database overview](../database/overview.md) links the
+SQL migrations. The [database overview](../database/overview.md) links the
 domain designs.
 
 #### Sharp
@@ -128,8 +126,7 @@ this code focused on Wits World account and permission rules.
 
 [Auth0 integration](external-integrations.md#auth0) covers authentication flows,
 client configuration, and account-management requests; [Security](trust-boundaries.md)
-covers validation and permissions. The provider decision is recorded in
-[ADR-005](decisions/ADR-005-auth0-authentication.md).
+covers validation and permissions.
 
 #### Upstash Redis
 

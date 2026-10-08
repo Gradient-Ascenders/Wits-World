@@ -77,7 +77,7 @@ gameplay coordination; monitoring failures force fast database scans. The HTTP
 limiter's open/closed policy itself is unchanged, including the closed
 `live-ticket` policy. Include
 the scheduler's snapshot reads and Lua commands in the same Redis quota.
-See [ranked operations](../deployment/ranked-operations.md) for staged rollout,
+See [Gameplay workers](../deployment/ranked-operations.md) for staged rollout,
 recovery, and command budgeting.
 
 ---

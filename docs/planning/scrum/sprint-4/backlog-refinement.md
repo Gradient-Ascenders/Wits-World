@@ -48,7 +48,7 @@ Refine final-submission work around the most visible player friction and the ope
 - **Snapshot:** local `origin/main` at [`a9dca04`](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/a9dca04b509eb06a91c3370e7245779d501eb69f).
 - **Dates:** reporting points and windows chosen for this reconstruction, shown in Africa/Johannesburg time.
 - **Attendance and original minutes:** not supplied.
-- **Evidence:** [Merge register](report.md#merge-register), [loading policy](../../../loading-policy.md), [ranked operations](../../../deployment/ranked-operations.md), and [PvP timing guide](../../../testing/pvp-request-phase-timing.md).
+- **Evidence:** [Merge register](report.md#merge-register), [loading policy](../../../design/state-review.md#loading), [Gameplay workers](../../../deployment/ranked-operations.md), and [PvP timing guide](../../../testing/pvp-request-phase-timing.md).
 
 ## AI declaration
 
