@@ -59,7 +59,7 @@ hosted Neon project.
 
 **Evidence:** Merged
 [#212](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/212), the
-[Neon/PostGIS setup](../../database/neon-postgis-setup.md#serverless-compute-usage),
+[Neon/PostGIS setup](../../database/neon-postgis-setup.md),
 and the [continuous integration guide](../../testing/continuous-integration.md).
 
 **Decision:** Accepted and handled. Request-time deadline and expiry checks

@@ -150,7 +150,7 @@ performs spatial checks. Mapbox provides map presentation.
 
 Read the [system architecture](architecture/overview.md),
 [trust boundaries](architecture/trust-boundaries.md), and
-[third-party services](architecture/third-party-software-and-services.md)
+[third-party services](architecture/technology-stack.md#application-stack)
 for the component responsibilities and external dependencies.
 
 ## Setup and release validation

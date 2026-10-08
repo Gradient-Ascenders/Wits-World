@@ -173,11 +173,6 @@ const sidebars: SidebarsConfig = {
             doc('architecture/data-flow', 'Data flow'),
             doc('architecture/trust-boundaries', 'Security'),
             doc('architecture/external-integrations', 'Integrations'),
-            doc(
-              'architecture/third-party-software-and-services',
-              'Third-party tools',
-            ),
-            doc('architecture/mapbox-standard-migration', 'Mapbox integration'),
             category('Diagrams', [
               doc('architecture/diagrams/system-context', 'System context'),
               doc(

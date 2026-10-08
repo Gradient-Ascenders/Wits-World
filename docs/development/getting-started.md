@@ -96,12 +96,14 @@ From the repository root:
 
 ```bash
 npm run prepare:api
-npm run db
+npm run db:migrate --workspace @wits-world/api
+npm run db:check --workspace @wits-world/api
+npm run db:seed --workspace @wits-world/api
 ```
 
-`prepare:api` builds the shared packages consumed by the API. `db` builds the
-API, checks the development connection, applies migrations, and runs seeds.
-Verify the development target in `DATABASE_URL` before executing it.
+`prepare:api` builds the shared packages consumed by the API. Apply migrations
+before checking a new database so PostGIS is available, then load reference data.
+Verify the development target in `DATABASE_URL` before running these commands.
 Database integration tests use the separate disposable test target.
 
 ## Start the game services

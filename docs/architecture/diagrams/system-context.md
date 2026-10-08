@@ -1,87 +1,79 @@
 ---
-title: 'System and external services diagram'
+title: 'System context'
 ---
 
-# System and external services diagram
+# System context
 
-This diagram shows Wits Quest, its users, and its principal external systems.
+Wits Quest connects Players, Authors, and external developer applications to
+the game and its supporting services. This view shows those external
+relationships; the [application diagram](application-containers.md) shows the
+components inside the game.
 
-<div className="diagram-scroll" role="region" aria-label="System and external services diagram — diagram 1" tabIndex={0}>
+<div className="diagram-scroll" role="region" aria-label="Wits Quest users and external services" tabIndex={0}>
 
 ```mermaid
-flowchart TB
-    accTitle: Wits World and its external services
-    accDescr: Players and authors use the web app, while external developer applications use a separate read-only API-key boundary. The API owns protected decisions and database access; Auth0 authenticates players, Mapbox presents maps, and Docusaurus publishes documentation.
-    Player["Player"]
-    Author["Author"]
-    Developer["External Developer Application"]
+flowchart LR
+    accTitle: Wits Quest in its external environment
+    accDescr: Players and Authors use the game. External applications access a read-only developer API. Auth0 supplies identity, Mapbox supplies map resources, Neon stores application data, and Upstash shares limits and coordination. Public documentation is a separate site.
 
-    Web["Wits Quest Web Application<br/>React, Vite and TypeScript<br/>Azure App Service"]
-    API["Wits Quest Hand-Written API<br/>Fastify and TypeScript<br/>Azure App Service"]
-    DB[("Neon PostgreSQL and PostGIS")]
-    Auth["Auth0<br/>Authentication Provider"]
-    Map["Mapbox GL JS / Mapbox Standard<br/>Presentation Provider"]
-    Docs["Docusaurus Documentation<br/>Cloudflare Pages"]
+    subgraph Users["Users and clients"]
+        direction TB
+        Player["Player"]
+        Author["Author"]
+        Developer["External application"]
+    end
 
-    Location["Browser-Reported Location<br/>Untrusted Claim"]
+    Game["Wits Quest<br/>Web application and API"]
 
-    Player -->|"Explores campus and plays"| Web
-    Author -->|"Manages game content"| Web
+    subgraph Services["External services"]
+        direction TB
+        Auth["Auth0<br/>Authentication"]
+        Map["Mapbox<br/>Map resources"]
+        DB[("Neon<br/>PostgreSQL / PostGIS")]
+        Redis[("Upstash Redis<br/>Limits and coordination")]
+    end
 
-    Web -->|"HTTPS and JSON"| API
-    Developer -->|"HTTPS GET + X-API-Key"| API
+    Docs["Public documentation<br/>Docusaurus"]
 
-    Web -->|"Authentication flow"| Auth
-    API -->|"Validates access tokens"| Auth
+    Player -->|"Play"| Game
+    Author -->|"Manage content"| Game
+    Developer -->|"Read-only API key"| Game
+    Game <-->|"Sign-in and identity"| Auth
+    Game -->|"Map requests"| Map
+    Game <-->|"Stored game data"| DB
+    Game <-->|"Shared activity records"| Redis
+    Users -.->|"Read guidance"| Docs
 
-    API -->|"Parameterised SQL"| DB
-    DB -->|"Events and geospatial results"| API
-
-    Web -->|"Requests tiles and styles"| Map
-    Location -.->|"Latitude, longitude, accuracy and timestamp"| Web
-
-    Player -->|"Reads player guidance"| Docs
-    Author -->|"Reads technical guidance"| Docs
-
-    API -->|"Authoritative eligibility and protected rules"| Web
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class Game authority;
 ```
 
 </div>
 
-## Interpretation
+## Users and access
 
-- The web application and API are separate applications.
-- Browser-reported location is untrusted input.
-- The API is authoritative for authenticated operations and eligibility.
-- PostgreSQL/PostGIS is authoritative for stored event locations and distance
-  calculations.
-- The authentication provider authenticates users.
-- The API validates tokens before trusting player identity.
-- External developer applications use a separate API-key boundary and receive
-  only read-only public event, card-catalogue, and leaderboard projections.
-- The map provider is used for presentation only.
-- The public documentation site is separate from the runtime game applications.
+Players explore events, complete challenges, manage cards, and play battles.
+Authors use the same Web application with additional content, placement,
+moderation, and reporting permissions.
 
-## Current providers and remaining decisions
+External applications use the Developer API with a separate API key. They can
+read its public event, card-catalogue, and progression-leaderboard projections.
+That key cannot perform gameplay actions or grant Author access.
 
-Auth0 is selected under ADR-005. The Web and API are deployed independently to
-Azure App Service, production PostgreSQL/PostGIS is hosted by Neon, and the
-Docusaurus documentation site is deployed to Cloudflare Pages.
+## Service boundaries
 
-The current map implementation uses Mapbox GL JS with Mapbox Standard through
-the provider-neutral presentation boundary. It is a confirmed team-selected
-integration within the project's implementation discretion; this does not
-claim an explicit client or lecturer approval by name. Licensing/terms,
-production-token/CSP/privacy, usage/cost ownership, and campus-data evidence
-remain review items. Mapbox remains presentation-only and never determines
-event eligibility; the API and PostgreSQL/PostGIS retain that authority.
+Auth0 supplies authentication; the API resolves local accounts and permissions.
+Mapbox supplies map presentation; the API and PostGIS determine location
+eligibility. Neon stores durable application records, while Redis supports
+shared request limits and gameplay coordination.
 
----
+The documentation site runs separately from the game. Its readers do not need
+a game session.
 
-The preceding document was planned and generated with the assistance of
-ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
-edited for Sprint 1 release validation with assistance from
-ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+See [Integrations](../external-integrations.md) for connections and data sharing,
+[Security](../trust-boundaries.md) for access rules, and
+[Deployment](deployment.md) for hosting and release delivery.
 
-Page title and diagram updated against the current repository with assistance
-from Codex-CLI[GPT-6].
+**AI declaration:** Prepared and updated with assistance from
+ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex-CLI[GPT-5],
+Codex[GPT-5], Codex-CLI[GPT-6], and Codex[GPT-6].

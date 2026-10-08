@@ -1,143 +1,87 @@
 ---
-title: 'Frontend, API and database diagram'
+title: 'Web, API, and database'
 ---
 
-# Frontend, API and database diagram
+# Web, API, and database
 
-This diagram shows the major deployable applications, external services, and
-data store.
+The Web presents the game, the API applies its rules, and PostgreSQL stores
+the resulting state. Feature services and background workers run within the
+API application; they are not separate deployed services.
 
-<div className="diagram-scroll" role="region" aria-label="Frontend, API and database diagram — diagram 1" tabIndex={0}>
+<div className="diagram-scroll" role="region" aria-label="Web application, API components, and database" tabIndex={0}>
 
 ```mermaid
 flowchart TB
-    accTitle: Frontend, API and database responsibilities
-    accDescr: The browser sends authenticated requests to Fastify. Only the API accesses PostgreSQL and PostGIS. Authentication, maps and documentation are separate integrations.
-    subgraph Device["Player or Author Device"]
-        Browser["Web Browser"]
-        Geo["Browser Geolocation API"]
-        Web["apps/web<br/>React, Vite and TypeScript"]
+    accTitle: How the Web, API and database work together
+    accDescr: The Web sends HTTP requests and live WebSocket messages to Fastify. Both transports reach game services, which use shared battle rules and PostgreSQL transactions. Background workers process due work. PostgreSQL notifications prompt live connections to reload committed state.
 
-        Browser --> Web
-        Geo -->|"Untrusted location claim"| Web
+    Web["Web application<br/>Player and Author screens"]
+
+    subgraph API["Fastify API"]
+        HTTP["HTTP routes<br/>Identity and request checks"]
+        Live["Live WebSocket gateway<br/>Ticket and role checks"]
+        Services["Game services<br/>Rules and transactions"]
+        Engine["Shared battle engine<br/>packages/game-rules"]
+        Workers["Background workers<br/>Deadlines and maintenance"]
     end
 
-    subgraph Applications["Wits World Applications"]
-        API["apps/api<br/>Fastify and TypeScript<br/>Hand-Written HTTP API"]
-        Docs["apps/docs<br/>Public Documentation Application"]
-    end
+    DB[("PostgreSQL / PostGIS<br/>Durable state and spatial queries")]
 
-    DB[("PostgreSQL and PostGIS<br/>Authoritative Application Data")]
-    Auth["Auth0<br/>Authentication Provider"]
-    Map["Mapbox GL JS / Mapbox Standard<br/>Presentation Provider"]
+    Web <-->|"HTTPS requests and responses"| HTTP
+    Web <-->|"Live messages and safe views"| Live
+    HTTP --> Services
+    Live --> Services
+    Workers --> Services
+    Services --> Engine
+    Services <-->|"SQL transactions"| DB
+    DB -.->|"Committed-change notifications"| Live
 
-    Web -->|"HTTPS JSON requests<br/>Bearer access token"| API
-    API -->|"Safe JSON responses"| Web
-
-    Web -->|"Login and token acquisition"| Auth
-    API -->|"Token signature, issuer and audience validation"| Auth
-
-    API -->|"Parameterised SQL and transactions"| DB
-    DB -->|"Event records and distance results"| API
-
-    Web -->|"Tiles, styles and attribution"| Map
-
-    Browser -->|"Public access"| Docs
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class Services,DB authority;
 ```
 
 </div>
 
-## Container responsibilities
+## Web application
 
-### `apps/web`
+`apps/web` contains the Player and Author interfaces, navigation, maps, and
+browser interactions. It sends requested actions and displays API responses.
+Browser location readings are inputs for server checks.
 
-The web application:
+Issued offline packs and pending attempts live in IndexedDB. They become
+accepted game results only after API reconciliation.
 
-- renders the mobile-first player and author interface;
-- obtains reported location through browser permission and the live watcher;
-- submits untrusted location claims to the API;
-- displays API decisions;
-- integrates map presentation;
-- handles authentication loading and failure states; and
-- provides accessible loading, error, and fallback interfaces.
+## API application
 
-The web application is not authoritative for protected decisions.
+`apps/api` provides HTTP routes, live battle connections, feature services,
+and background workers. It validates credentials and requests, checks access,
+and performs database transactions.
 
-### `apps/api`
+The shared `packages/game-rules` engine resolves CPU, asynchronous, and live
+battle transitions. Services supply validated inputs and persist the outcome.
+`packages/account-policy` supplies Player Name validation to both Web and API.
 
-The API:
+Workers handle due battle decisions, ranked and territory work, and cleanup.
+Their scheduling can use Redis coordination; the database remains authoritative.
 
-- validates access tokens;
-- derives authenticated identity;
-- validates request data;
-- enforces role and object-level authorisation;
-- coordinates event and eligibility operations;
-- accesses PostgreSQL/PostGIS;
-- enforces protected game rules;
-- returns structured safe errors; and
-- publishes OpenAPI documentation.
+## Database and live delivery
 
-### PostgreSQL/PostGIS
+PostgreSQL stores accounts, content, ownership, attempts, matches, and history.
+PostGIS performs spatial queries. Constraints, locks, and transactions keep
+related changes consistent.
 
-The database:
+Ordinary queries use the application connection pool. PostgreSQL notifications
+use a separate direct connection. A notification prompts the receiving API
+process to reload committed state and send the appropriate live view.
+Reconnection also restores saved state; socket memory does not replace it.
 
-- stores authoritative event data;
-- stores authoritative geospatial points;
-- performs distance calculations;
-- applies constraints and indexes;
-- supports transactional integrity; and
-- stores attempts, rewards, cards, decks, and matches.
+## Related views
 
-### Auth0 authentication provider
+- [System context](system-context.md): users and external services.
+- [Advanced systems](advanced-systems.md): relationships between feature services.
+- [Data flow](../data-flow.md): how individual requests become saved results.
+- [Stack](../technology-stack.md): libraries and technology choices.
 
-The authentication provider:
-
-- supports registration;
-- supports sign-in;
-- provides password-reset email for supported database accounts;
-- issues tokens; and
-- provides the Management API used by the account-deletion workflow.
-
-Password reset and account deletion are implemented. The API coordinates local
-account cleanup with external Auth0 deletion and retry handling. Live provider
-configuration and delivery still need the evidence described in
-[account lifecycle validation](../../testing/player-account-lifecycle-validation.md).
-
-Auth0 is the selected provider under ADR-005. The API validates its access
-tokens and derives the local player identity and role from validated claims.
-
-### Map provider
-
-The current implementation uses Mapbox GL JS and Mapbox Standard through the
-provider-neutral map adapter. It is a confirmed team technology choice within
-the project's implementation discretion, without claiming an explicit
-client/lecturer approval by name. Licensing/terms, production token and privacy
-controls, usage/cost ownership, and any licensed project-owned campus layer
-remain operational evidence needs.
-
-The map provider:
-
-- supplies map tiles;
-- supplies map styles;
-- displays required attribution; and
-- supports visual map presentation.
-
-It does not decide whether an event is reachable.
-
-### `apps/docs`
-
-The documentation application:
-
-- publishes version-controlled project documentation;
-- explains setup, architecture, methodology, testing, and deployment; and
-- contains no runtime authority over players or game operations.
-
----
-
-The preceding document was planned and generated with the assistance of
-ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
-edited for Sprint 1 release validation with assistance from
-ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
-
-Page title and diagram updated against the current repository with assistance
-from Codex-CLI[GPT-6].
+**AI declaration:** Prepared and updated with assistance from
+ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex-CLI[GPT-5],
+Codex[GPT-5], Codex-CLI[GPT-6], and Codex[GPT-6].

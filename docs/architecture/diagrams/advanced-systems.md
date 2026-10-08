@@ -1,90 +1,117 @@
 ---
-title: Advanced systems and authority flow
+title: 'Advanced systems'
 ---
 
-# Advanced systems and authority flow
+# Advanced systems
 
-This diagram extends the [application containers](application-containers.md)
-with the implemented Sprint 3 services at main `c0fd42b`. Read it alongside
-the [feature matrix](../../requirements/sprint-3-feature-matrix.md), not as
-evidence that a deployed multi-client session has passed.
+Live competition, territories, trading, placement, moderation, and analytics
+use services inside the Fastify API. These views show how their responsibilities
+connect through shared game state and saved results.
 
-<div className="diagram-scroll" role="region" aria-label="Advanced applications and authoritative services diagram" tabIndex={0}>
+## Live, ranked, and territory flow
+
+<div className="diagram-scroll" role="region" aria-label="Ranked matchmaking, live battles, and territory influence" tabIndex={0}>
 
 ```mermaid
 flowchart TB
-    accTitle: Advanced Wits World services and authority
-    accDescr: Players and Authors use HTTPS and authenticated live WebSockets. Fastify validates intent, uses the shared battle engine, and commits authoritative data in PostgreSQL. Notifications deliver committed state. External developers have a separate read-only API-key boundary.
-    Web["Player and Author browser<br/>React and Mapbox presentation"]
-    Auth["Auth0<br/>Validated identity"]
-    Dev["External developer<br/>X-API-Key"]
-    subgraph API["Fastify API"]
-        HTTP["HTTP authentication<br/>Role and object guards"]
-        Live["Live gateway<br/>One-use tickets and reconnect generations"]
-        Ranked["Ranked queue<br/>Rating and season settlement"]
-        Territory["Zone grants<br/>Influence and ownership settlement"]
-        Trade["Trade offers<br/>Reservations and atomic exchange"]
-        Trust["Trust evidence and scores<br/>Human review and restrictions"]
-        Placement["Walkable-site plans<br/>Preview, apply and rotation"]
-        Analytics["Author analytics<br/>Bounded aggregate projections"]
-        Public["Read-only developer API<br/>Revocation and per-key limits"]
-        Engine["Shared game-rules package<br/>Legal actions and deterministic resolution"]
-    end
-    DB[("PostgreSQL and PostGIS<br/>Versions, constraints, locks and transactions")]
-    Web -->|"HTTPS intent"| HTTP
-    Web <-->|"WSS public/player-safe state"| Live
-    Auth -->|"Validated claims"| HTTP
-    HTTP -->|"Mint bounded access ticket"| Live
-    HTTP --> Ranked & Territory & Trade & Trust & Placement & Analytics
-    Live --> Engine
-    Live -->|"Persist action and deadline"| DB
-    DB -->|"Post-commit notification<br/>Reload canonical state"| Live
-    Ranked & Territory & Trade & Trust & Placement & Analytics --> DB
-    Dev --> Public --> DB
+    accTitle: Ranked play connects live battles to ratings and territories
+    accDescr: Ranked queue entries form proposals. When both players accept and server checks pass, the API creates a live match with deck and rating snapshots. The committed result feeds rating settlement and eligible territory influence. Territory access is captured before the battle.
+
+    Queue["Ranked queue<br/>Player, deck, and renewable lease"]
+    Proposal["Match proposal<br/>Both players accept"]
+    Match["Live match<br/>Deck and rating snapshots"]
+    Access["Territory access<br/>Eligible zone grant snapshot"]
+    Battle["Battle service<br/>Shared engine and server deadlines"]
+    Result[("Committed match result")]
+    Rating["Ranked settlement<br/>Rating inputs and ledger"]
+    Territory["Territory contribution<br/>Eligible winner and zone"]
+    Ownership["Zone settlement<br/>Influence and ownership"]
+
+    Queue --> Proposal
+    Proposal -->|"Recheck players and decks"| Match
+    Access -->|"Captured at match creation"| Match
+    Match --> Battle --> Result
+    Result --> Rating
+    Rating -->|"Eligible ranked win"| Territory
+    Territory --> Ownership
+
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class Result authority;
 ```
 
 </div>
 
-## How to read the boundaries
+Ranked competition creates live matches after proposal acceptance. Rating
+settlement uses the saved inputs and terminal result; casual live matches do
+not receive ranked rating changes.
 
-- **Live transport:** Socket memory is not battle authority. PostgreSQL retains
-  match state, versions, connection generations, receipts and deadlines.
-  Notifications wake receivers, which load the canonical committed projection.
-- **Ranked and territory:** Ratings and influence consume eligible committed
-  match outcomes. The browser cannot submit an authoritative winner, rating
-  delta, zone membership, contribution or owner.
-- **Trading:** Both sides negotiate versioned offers. Settlement rechecks
-  ownership, reservations and policy limits inside the transaction; it cannot
-  transfer one side while leaving the other unchanged.
-- **Placement:** Reviewed sites and PostGIS distances constrain distribution.
-  Preview is separate from apply. Versioned assignments retain history when
-  events rotate; this is not randomized territory geometry.
-- **Trust and analytics:** Trust uses bounded evidence and proportionate
-  decisions. Operational analytics publish aggregate/suppressed results rather
-  than raw player location or identity trails.
-- **Developer access:** API keys cannot impersonate player/Author sessions.
-  The current limiter is process-local; Upstash is a proposed extension, not
-  part of this implemented diagram.
+Territory influence additionally requires eligible zone access captured for
+the match and an eligible ranked win. Owning a zone can provide a separate
+challenge-card bonus. Season standings, territory ownership, and permanent
+progression are distinct records.
+
+## Other feature services
+
+<div className="diagram-scroll" role="region" aria-label="Shared API entry point for trading and Author services" tabIndex={0}>
+
+```mermaid
+flowchart TB
+    accTitle: Trading and Author tools share the API and database
+    accDescr: Player and Author requests pass account, role, ownership, and resource checks before reaching trading, placement, trust review, or analytics services. Each uses PostgreSQL, and placement uses PostGIS. Reads return selected views; writes use transactions.
+
+    Request["Player or Author request"]
+    Guard["API access checks<br/>Account, role, and resource"]
+    Trade["Trading<br/>Versioned offers and reservations"]
+    Placement["Placement<br/>Reviewed sites and assignment history"]
+    Trust["Moderation<br/>Evidence, cases, and decisions"]
+    Analytics["Analytics<br/>Content aggregates"]
+    DB[("PostgreSQL / PostGIS")]
+
+    Request --> Guard
+    Guard --> Trade & Placement & Trust & Analytics
+    Trade & Placement & Trust & Analytics --> DB
+
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class Guard,DB authority;
+```
+
+</div>
+
+Trading settles both sides of an exchange in one transaction after rechecking
+ownership and reservations. Placement previews a plan before applying it and
+retains assignment history when events rotate.
+
+Trust signals support human review and explicit restriction decisions.
+Author reports use aggregate projections; advanced analytics suppress small
+samples, while the separate question-curation report has its own reporting
+rules. Neither interface exposes raw player-location trails.
+
+## Delivery and coordination
+
+Live WebSockets deliver participant- or spectator-safe views. The API commits
+an action before distributing it; PostgreSQL notifications prompt other API
+instances to reload the same state. Tickets and connection generations govern
+access and reconnects independently of gameplay versions.
+
+Upstash Redis supplies shared HTTP limits and gameplay activity coordination.
+Scheduling defaults to polling; optional coordinated idle scheduling changes
+worker discovery, not battle rules or database authority. See
+[Integrations](../external-integrations.md#upstash-redis) for that boundary.
 
 ## Detailed references
 
-| Boundary        | API/policy                                                      | Database                                                                                    |
-| --------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Live PvP        | [Live contract](../live-pvp-api-contract.md)                    | [Match and connection persistence](../../database/live-pvp-persistence.md)                  |
-| Ranked          | [Matchmaking API](../ranked-matchmaking-api-contract.md)        | [Ratings, seasons and history](../../database/ranked-competition-persistence.md)            |
-| Territory       | [Territory API](../contested-campus-territory-api-contract.md)  | [Zone and settlement persistence](../../database/contested-campus-territory-persistence.md) |
-| Trade           | [Trading API](../card-trading-api-contract.md)                  | [Atomic ownership exchange](../../database/card-trading-persistence.md)                     |
-| Trust           | [Trust policy](../../requirements/longitudinal-trust-policy.md) | [Evidence, cases and decisions](../../database/trust-persistence.md)                        |
-| Placement       | [Placement service](../automatic-event-placement-service.md)    | [Plans and assignments](../../database/automatic-event-placement-persistence.md)            |
-| Analytics       | [Analytics API](../advanced-analytics-api-contract.md)          | [Aggregate data](../../database/advanced-analytics.md)                                      |
-| External access | [Developer API](../developer-api.md)                            | [Key verifiers](../../database/developer-api-keys.md)                                       |
+| System             | API or policy                                                   | Storage                                                                                      |
+| ------------------ | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Live battles       | [Live PvP](../live-pvp-api-contract.md)                         | [Matches and connections](../../database/live-pvp-persistence.md)                            |
+| Ranked competition | [Matchmaking](../ranked-matchmaking-api-contract.md)            | [Seasons and rating history](../../database/ranked-competition-persistence.md)               |
+| Territories        | [Territory API](../contested-campus-territory-api-contract.md)  | [Grants, influence, and ownership](../../database/contested-campus-territory-persistence.md) |
+| Trading            | [Trading API](../card-trading-api-contract.md)                  | [Offers and exchange](../../database/card-trading-persistence.md)                            |
+| Placement          | [Placement service](../automatic-event-placement-service.md)    | [Plans and assignments](../../database/automatic-event-placement-persistence.md)             |
+| Moderation         | [Trust policy](../../requirements/longitudinal-trust-policy.md) | [Evidence and decisions](../../database/trust-persistence.md)                                |
+| Analytics          | [Reporting API](../advanced-analytics-api-contract.md)          | [Aggregates and privacy](../../database/advanced-analytics.md)                               |
 
-See [third-party motivations](../third-party-software-and-services.md) for the
-WebSocket and service dependencies, and the
-[validation snapshot](../../testing/sprint-3-validation-status.md) for recorded
-checks and outstanding deployment evidence.
+External developer access is a separate read-only boundary, described in
+[System context](system-context.md) and [Developer API](../developer-api.md).
 
-## AI declaration
-
-This diagram and its explanations were generated and edited with assistance
-from Codex-CLI[gpt-6-sol] using the current contracts and persistence documents.
+**AI declaration:** Prepared and updated with assistance from
+Codex-CLI[gpt-6-sol] and Codex[GPT-6].
