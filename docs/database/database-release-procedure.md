@@ -12,6 +12,20 @@ deployment must not be treated as ready when the database release fails.
 
 ## Authority and ownership
 
+The migration runner checks the complete recorded history before applying
+pending SQL. A changed applied checksum or an applied filename absent from the
+release fails before any pending migration is executed. Use the matching
+complete release; do not delete migration records or edit applied files to
+bypass this guard.
+
+Migration `0065_constrain_cpu_match_json_shapes.sql` validates existing CPU JSON
+outer shapes without rewriting history. Run the read-only `db:audit` command
+before release and inspect `structure.cpuJsonShapes` for incompatible rows.
+An incompatible row makes the migration fail transactionally; investigate its
+origin instead of automatically coercing historical state. See
+[production data and database quality](./data-quality-and-structure.md) for
+data-origin evidence and the separate runtime/migration credential cutover.
+
 The Data and Infrastructure Lead executes manual procedures and owns the
 guarded Gitea deployment configuration. The API and Security Lead approves
 production database writes and reviews secret handling. A second explicit
@@ -45,7 +59,8 @@ running.
 
 The verified issue `#165` pack requires a separate production-content decision
 and cannot be combined with the Basic demo flag. Its guarded verification
-requires exactly ten events and one hundred questions. See
+requires eleven current events, one hundred ten question rows and three published
+trails; their shared campaign expires at the start of December 2026. See
 [Verified Wits event content](./verified-event-content.md) for source coverage,
 repeatability, and the outstanding manual-review gate.
 

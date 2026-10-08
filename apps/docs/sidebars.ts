@@ -205,6 +205,7 @@ const sidebars: SidebarsConfig = {
         category(
           'Database',
           [
+            doc('database/data-quality-and-structure', 'Data quality'),
             category('Events', [
               doc('database/event-schema', 'Schema'),
               doc('database/verified-event-content', 'Questions and sources'),

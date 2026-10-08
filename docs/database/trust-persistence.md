@@ -107,6 +107,29 @@ records rather than stored as a repeatedly mutable status field. An appeal
 resolution may also be the immutable provenance for a reviewed-false-positive
 signal adjustment; its effective time must equal the appeal-resolution time.
 
+## Completed-match history evaluation
+
+Opponent concentration and one-sided outcomes use one completed-history SQL
+statement for each eligible match. It returns both the 30-day participant/pair
+totals and the 7-day qualifying-forfeit counts, using strict lower and inclusive
+upper bounds at that match's completion time. Async and Live identities remain
+separate, and each rule retains its completion-reason eligibility and thresholds.
+
+Both aggregates therefore observe one coherent PostgreSQL statement snapshot.
+A completion or historical backfill committed after that snapshot is eligible
+for a subsequent evaluation; it cannot enter only the second rule halfway
+through the current evaluation. Score calculation still uses current database
+time, independently of the history cutoff. Per-match transactions, player
+advisory locks, case row locks, immutable signals/evidence and conflict handling
+are unchanged. The maintenance batch still acquires separate clients for its
+selection, each candidate and each match, and processes them sequentially.
+
+This removes one client SQL round trip when both history rules are reached; it
+does not establish a production latency improvement. Verification includes old
+query parity, cutoff/mode fixtures, concurrent history visibility, replay and
+statement counts in `trust-history.integration.test.ts` and
+`trust-history.test.ts`.
+
 ## Retention
 
 Migration `0046` provides `private.purge_expired_trust_data(as_of)` as an
@@ -270,3 +293,6 @@ This persistence design and implementation guide was generated, edited, and
 reviewed with the assistance of ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
 
 This account-deletion update was edited with assistance from Codex[GPT-6].
+
+The completed-history evaluation section was edited with assistance from
+Codex[GPT-6].

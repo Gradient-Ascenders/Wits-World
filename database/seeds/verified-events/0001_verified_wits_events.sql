@@ -701,16 +701,28 @@ begin
         or stored.radius_metres is distinct from fixture.radius_metres
         or stored.starts_at is distinct from fixture.starts_at
         or stored.ends_at is distinct from fixture.ends_at
-        or stored.is_published is distinct from fixture.is_published
-        or stored.authoring_status is distinct from case
-          when fixture.is_published then 'published'
-          else 'draft'
-        end
-        or stored.version is distinct from 0
-        or stored.publication_provenance is distinct from case
-          when fixture.is_published then 'controlled_seed'
-          else null
-        end
+        or not (
+          (
+            stored.is_published is not distinct from fixture.is_published
+            and stored.authoring_status is not distinct from case
+              when fixture.is_published then 'published'
+              else 'draft'
+            end
+            and stored.version = 0
+            and stored.publication_provenance is not distinct from case
+              when fixture.is_published then 'controlled_seed'
+              else null
+            end
+          )
+          or (
+            fixture.is_published
+            and stored.is_published = false
+            and stored.authoring_status = 'retired'
+            and stored.retired_at is not null
+            and stored.version = 1
+            and stored.publication_provenance = 'controlled_seed'
+          )
+        )
         or stored.source_urls is distinct from fixture.source_urls)
     +
     (select count(*)

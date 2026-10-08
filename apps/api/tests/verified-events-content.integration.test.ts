@@ -15,6 +15,43 @@ import { selectChallengeQuestions } from '../src/challenges/challenge-selection.
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
+const ACTIVE_CAMPUS_EVENT_KEYS = [
+  'great-hall-foundations',
+  'cullen-library-heritage',
+  'origins-centre-discoveries',
+  'school-of-arts-culture',
+  'matrix-campus-life',
+  'digital-dome-early-years',
+  'science-stadium-milestones',
+  'art-museum-timeline',
+  'wits-club-public-life',
+  'amphitheatre-modern-century',
+  'msl-science-challenge',
+];
+const ACTIVE_CAMPUS_ORDERING_KEYS = [
+  'digital-dome-early-years',
+  'science-stadium-milestones',
+  'art-museum-timeline',
+  'wits-club-public-life',
+  'amphitheatre-modern-century',
+];
+const ACTIVE_CAMPUS_TRAIL_KEYS = [
+  'east-campus-essentials',
+  'west-campus-discovery',
+  'arts-and-community',
+];
+const ORIGINAL_VERIFIED_EVENT_KEYS = [
+  'foundations',
+  'heritage',
+  'discovery',
+  'arts',
+  'civic',
+  'early-order',
+  'science-order',
+  'culture-order',
+  'public-order',
+  'modern-order',
+];
 
 describe.skipIf(!runIntegrationTests)(
   'verified event content integration',
@@ -41,6 +78,25 @@ describe.skipIf(!runIntegrationTests)(
       };
 
       await runMigrations(temporaryConfig);
+      await withDatabaseClient(temporaryConfig, (client) =>
+        client.query(`
+        insert into public.events (id,title,description,location,radius_metres,starts_at,ends_at,
+          is_published,authoring_status,publication_provenance,version,retired_at)
+        values (md5('wits-world-campus-event-v2:great-hall-foundations')::uuid,
+          'Great Hall Beginnings','Retired v2 content must stay unchanged.',
+          st_setsrid(st_makepoint(28.030375,-26.1920468),4326)::geography,60,
+          '2026-09-01T00:00:00+02:00','2099-12-31T23:59:59+02:00',false,'retired','controlled_seed',1,now())
+        ;insert into public.event_challenges (id,event_id,format,status) values (
+          md5('wits-world-campus-challenge-v2:great-hall-foundations')::uuid,
+          md5('wits-world-campus-event-v2:great-hall-foundations')::uuid,'multiple_choice','draft');
+        insert into public.challenge_questions (id,challenge_id,prompt,difficulty,status) values (
+          md5('wits-world-campus-question-v2:great-hall-foundations:'||md5('wits-world-verified-question:foundations:1')::uuid::text)::uuid,
+          md5('wits-world-campus-challenge-v2:great-hall-foundations')::uuid,'Legacy question',1,'draft');
+        insert into public.challenge_choices (id,question_id,authoring_position,choice_text) values (
+          md5('wits-world-campus-choice-v2:great-hall-foundations:'||md5('wits-world-verified-choice:foundations:1:1')::uuid::text)::uuid,
+          md5('wits-world-campus-question-v2:great-hall-foundations:'||md5('wits-world-verified-question:foundations:1')::uuid::text)::uuid,1,'Legacy choice')
+      `),
+      );
       await runVerifiedEventSeeds(temporaryConfig);
       await runVerifiedEventSeeds(temporaryConfig);
       pool = createDatabasePool(temporaryConfig);
@@ -57,13 +113,14 @@ describe.skipIf(!runIntegrationTests)(
       });
     }, 30_000);
 
-    it('seeds exactly ten events, five challenges per format, and one hundred questions', async () => {
+    it('seeds exactly eleven events with six MCQ challenges, five ordering challenges, and one hundred ten questions', async () => {
       const result = await pool.query<{
         event_count: string;
         mcq_count: string;
         ordering_count: string;
         question_count: string;
-      }>(`
+      }>(
+        `
       select
         count(distinct event.id)::text as event_count,
         count(distinct challenge.id) filter (where challenge.format = 'multiple_choice')::text as mcq_count,
@@ -72,26 +129,19 @@ describe.skipIf(!runIntegrationTests)(
       from public.events event
       join public.event_challenges challenge on challenge.event_id = event.id
       join public.challenge_questions question on question.challenge_id = challenge.id
-      where event.id::text = md5('wits-world-verified-event:' ||
-        case event.title
-          when 'Wits Foundations Quest' then 'foundations'
-          when 'Wits Campus Heritage Quest' then 'heritage'
-          when 'Wits Discovery Quest' then 'discovery'
-          when 'Wits Arts and Culture Quest' then 'arts'
-          when 'Wits Civic and Alumni Quest' then 'civic'
-          when 'Ordering Wits: Early Years' then 'early-order'
-          when 'Ordering Wits: Science and Discovery' then 'science-order'
-          when 'Ordering Wits: Campus Culture' then 'culture-order'
-          when 'Ordering Wits: Public Life' then 'public-order'
-          when 'Ordering Wits: Modern Century' then 'modern-order'
-        end)::uuid::text
-    `);
+      where event.id in (
+        select md5('wits-world-campus-event-v3:' || event_key)::uuid
+        from unnest($1::text[]) event_key
+      )
+    `,
+        [ACTIVE_CAMPUS_EVENT_KEYS],
+      );
 
       expect(result.rows[0]).toEqual({
-        event_count: '10',
-        mcq_count: '5',
+        event_count: '11',
+        mcq_count: '6',
         ordering_count: '5',
-        question_count: '100',
+        question_count: '110',
       });
     });
 
@@ -102,7 +152,8 @@ describe.skipIf(!runIntegrationTests)(
         distinct_prompt_count: string;
         invalid_question_count: string;
         invalid_item_count: string;
-      }>(`
+      }>(
+        `
       select
         event.title as event_title,
         count(distinct question.id)::text as question_count,
@@ -132,13 +183,17 @@ describe.skipIf(!runIntegrationTests)(
         from public.challenge_ordering_items item
         where item.question_id = question.id
       ) ordering_counts on true
-      where event.title like 'Wits % Quest'
-         or event.title like 'Ordering Wits:%'
+      where event.id in (
+        select md5('wits-world-campus-event-v3:' || event_key)::uuid
+        from unnest($1::text[]) event_key
+      )
       group by event.id, event.title
       order by event.title
-    `);
+    `,
+        [ACTIVE_CAMPUS_EVENT_KEYS],
+      );
 
-      expect(result.rows).toHaveLength(10);
+      expect(result.rows).toHaveLength(11);
       for (const row of result.rows) {
         expect(row).toMatchObject({
           question_count: '10',
@@ -149,14 +204,15 @@ describe.skipIf(!runIntegrationTests)(
       }
     });
 
-    it('keeps all one hundred questions and all ordering item sets globally distinct', async () => {
+    it('preserves one hundred unique source questions while cloning the science pool for MSL', async () => {
       const result = await pool.query<{
         distinct_ordering_sets: string;
         distinct_prompts: string;
         distinct_semantic_content: string;
         ordering_questions: string;
         total_questions: string;
-      }>(`
+      }>(
+        `
       with question_content as (
         select
           question.id,
@@ -181,12 +237,8 @@ describe.skipIf(!runIntegrationTests)(
           where item.question_id = question.id
         ) ordering_items on true
         where challenge.id in (
-          select md5('wits-world-verified-challenge:' || event_key)::uuid
-          from unnest(array[
-            'foundations', 'heritage', 'discovery', 'arts', 'civic',
-            'early-order', 'science-order', 'culture-order',
-            'public-order', 'modern-order'
-          ]) event_key
+          select md5('wits-world-campus-challenge-v3:' || event_key)::uuid
+          from unnest($1::text[]) event_key
         )
       )
       select
@@ -196,14 +248,16 @@ describe.skipIf(!runIntegrationTests)(
         count(*) filter (where format = 'ordering')::text as ordering_questions,
         count(distinct ordering_set_signature) filter (where format = 'ordering')::text as distinct_ordering_sets
       from question_content
-    `);
+    `,
+        [ACTIVE_CAMPUS_EVENT_KEYS],
+      );
 
       expect(result.rows[0]).toEqual({
         distinct_ordering_sets: '50',
         distinct_prompts: '100',
         distinct_semantic_content: '100',
         ordering_questions: '50',
-        total_questions: '100',
+        total_questions: '110',
       });
     });
 
@@ -211,7 +265,8 @@ describe.skipIf(!runIntegrationTests)(
       const questions = await pool.query<{
         explanation: string;
         item_texts: string[];
-      }>(`
+      }>(
+        `
       select
         question.explanation,
         array_agg(item.item_text order by answer.correct_position) as item_texts
@@ -223,15 +278,14 @@ describe.skipIf(!runIntegrationTests)(
        and answer.item_id = item.id
       where challenge.format = 'ordering'
         and challenge.id in (
-          select md5('wits-world-verified-challenge:' || event_key)::uuid
-          from unnest(array[
-            'early-order', 'science-order', 'culture-order',
-            'public-order', 'modern-order'
-          ]) event_key
+          select md5('wits-world-campus-challenge-v3:' || event_key)::uuid
+          from unnest($1::text[]) event_key
         )
       group by question.id
       order by question.id
-    `);
+    `,
+        [ACTIVE_CAMPUS_ORDERING_KEYS],
+      );
 
       expect(questions.rows).toHaveLength(50);
       const allItems = questions.rows.flatMap((row) => row.item_texts);
@@ -260,7 +314,8 @@ describe.skipIf(!runIntegrationTests)(
         mcq_keys: string;
         ordering_keys: string;
         public_answer_columns: string;
-      }>(`
+      }>(
+        `
       select
         (select count(*)::text
            from private.challenge_answer_keys answer
@@ -268,84 +323,176 @@ describe.skipIf(!runIntegrationTests)(
            join public.event_challenges challenge on challenge.id = question.challenge_id
            join public.events event on event.id = challenge.event_id
           where challenge.format = 'multiple_choice'
-            and event.title like 'Wits % Quest') as mcq_keys,
+            and event.id in (
+              select md5('wits-world-campus-event-v3:' || event_key)::uuid
+              from unnest($1::text[]) event_key
+            )) as mcq_keys,
         (select count(*)::text
            from private.challenge_ordering_answer_keys answer
            join public.challenge_questions question on question.id = answer.question_id
           where question.challenge_id in (
             select id from public.event_challenges where format = 'ordering'
           ) and question.challenge_id in (
-            select md5('wits-world-verified-challenge:' || event_key)::uuid
-            from unnest(array[
-              'early-order', 'science-order', 'culture-order',
-              'public-order', 'modern-order'
-            ]) event_key
+            select md5('wits-world-campus-challenge-v3:' || event_key)::uuid
+            from unnest($2::text[]) event_key
           )) as ordering_keys,
         (select count(*)::text
            from information_schema.columns
           where table_schema = 'public'
             and table_name = 'challenge_questions'
             and column_name in ('accepted_choice_id', 'correct_position')) as public_answer_columns
-    `);
+    `,
+        [ACTIVE_CAMPUS_EVENT_KEYS, ACTIVE_CAMPUS_ORDERING_KEYS],
+      );
 
       expect(result.rows[0]).toEqual({
-        mcq_keys: '50',
+        mcq_keys: '60',
         ordering_keys: '200',
         public_answer_columns: '0',
       });
     });
 
-    it('demonstrates active, upcoming, passed, and unavailable states at ten distinct sourced locations', async () => {
-      const result = await pool.query<{ state: string; count: string }>(`
-      select state, count(*)::text
-      from (
-        select case
-          when not is_published then 'unavailable'
-          when ends_at <= '2026-09-10T00:00:00+02:00'::timestamptz then 'passed'
-          when starts_at > '2026-09-10T00:00:00+02:00'::timestamptz then 'upcoming'
-          else 'active'
-        end as state
-        from public.events
-        where title like 'Wits % Quest'
-           or title like 'Ordering Wits:%'
-      ) states
-      group by state
-      order by state
-    `);
-      expect(result.rows).toEqual([
-        { state: 'active', count: '4' },
-        { state: 'passed', count: '2' },
-        { state: 'unavailable', count: '2' },
-        { state: 'upcoming', count: '2' },
-      ]);
+    it('publishes eleven active replacement locations and archives the original map set', async () => {
+      const visible = await pool.query<{
+        active_count: string;
+        distinct_location_count: string;
+      }>(
+        `select
+           count(*)::text as active_count,
+           count(distinct st_asewkb(location::geometry))::text as distinct_location_count
+         from public.events
+         where id in (
+           select md5('wits-world-campus-event-v3:' || event_key)::uuid
+           from unnest($1::text[]) event_key
+         )
+           and is_published = true
+           and authoring_status = 'published'
+           and retired_at is null
+           and starts_at <= '2026-09-10T00:00:00+02:00'::timestamptz
+           and ends_at > '2026-09-10T00:00:00+02:00'::timestamptz`,
+        [ACTIVE_CAMPUS_EVENT_KEYS],
+      );
+      expect(visible.rows[0]).toEqual({
+        active_count: '11',
+        distinct_location_count: '11',
+      });
 
-      const invalidLocations = await pool.query<{ count: string }>(`
+      const originalVisible = await pool.query<{ count: string }>(
+        `select count(*)::text as count
+         from public.events
+         where id in (
+           select md5('wits-world-verified-event:' || event_key)::uuid
+           from unnest($1::text[]) event_key
+         )
+           and is_published = true`,
+        [ORIGINAL_VERIFIED_EVENT_KEYS],
+      );
+      expect(originalVisible.rows[0]?.count).toBe('0');
+
+      const invalidLocations = await pool.query<{ count: string }>(
+        `
       select count(*)::text as count
       from public.events
-      where (title like 'Wits % Quest' or title like 'Ordering Wits:%')
+      where id in (
+          select md5('wits-world-campus-event-v3:' || event_key)::uuid
+          from unnest($1::text[]) event_key
+        )
         and (
           st_isempty(location::geometry)
           or radius_metres <= 0
           or cardinality(source_urls) < 2
         )
-      `);
+      `,
+        [ACTIVE_CAMPUS_EVENT_KEYS],
+      );
       expect(invalidLocations.rows[0]?.count).toBe('0');
-
-      const distinctLocations = await pool.query<{
-        distinct_location_count: string;
-        event_count: string;
-      }>(`
-      select
-        count(*)::text as event_count,
-        count(distinct st_asewkb(location::geometry))::text as distinct_location_count
-      from public.events
-      where title like 'Wits % Quest'
-         or title like 'Ordering Wits:%'
-    `);
-      expect(distinctLocations.rows[0]).toEqual({
-        distinct_location_count: '10',
-        event_count: '10',
+      const historical =
+        await pool.query(`select authoring_status,version,description from public.events
+        where id=md5('wits-world-campus-event-v2:great-hall-foundations')::uuid`);
+      expect(historical.rows[0]).toEqual({
+        authoring_status: 'retired',
+        version: 1,
+        description: 'Retired v2 content must stay unchanged.',
       });
+    });
+
+    it('publishes three ordered trails covering every replacement event once', async () => {
+      const trails = await pool.query<{
+        event_count: string;
+        positions: number[];
+        title: string;
+      }>(
+        `select
+           trail.title,
+           count(step.event_id)::text as event_count,
+           array_agg(step.position order by step.position) as positions
+         from public.trails trail
+         join public.trail_events step on step.trail_id = trail.id
+         where trail.id in (
+           select md5('wits-world-campus-trail-v3:' || trail_key)::uuid
+           from unnest($1::text[]) trail_key
+         )
+           and trail.status = 'published'
+         group by trail.id, trail.title
+         order by trail.title`,
+        [ACTIVE_CAMPUS_TRAIL_KEYS],
+      );
+
+      expect(trails.rows).toEqual([
+        {
+          event_count: '3',
+          positions: [1, 2, 3],
+          title: 'Arts and Community',
+        },
+        {
+          event_count: '4',
+          positions: [1, 2, 3, 4],
+          title: 'East Campus Essentials',
+        },
+        {
+          event_count: '4',
+          positions: [1, 2, 3, 4],
+          title: 'West Campus Discovery',
+        },
+      ]);
+
+      const coverage = await pool.query<{ count: string }>(
+        `select count(distinct step.event_id)::text as count
+         from public.trail_events step
+         where step.trail_id in (
+           select md5('wits-world-campus-trail-v3:' || trail_key)::uuid
+           from unnest($1::text[]) trail_key
+         )`,
+        [ACTIVE_CAMPUS_TRAIL_KEYS],
+      );
+      expect(coverage.rows[0]?.count).toBe('11');
+    });
+
+    it('keeps all event and trail windows active through November and ends them at the South African December boundary', async () => {
+      for (const [at, expected] of [
+        ['2026-11-30T23:59:59+02:00', 'active'],
+        ['2026-12-01T00:00:00+02:00', 'ended'],
+      ]) {
+        const events = await pool.query<{ availability: string }>(
+          `select effective.availability from public.events e
+           cross join lateral public.resolve_event_availability(e.id,$2::timestamptz) effective
+           where e.id in (select md5('wits-world-campus-event-v3:'||k)::uuid from unnest($1::text[]) k)`,
+          [ACTIVE_CAMPUS_EVENT_KEYS, at],
+        );
+        const trails = await pool.query<{ availability: string }>(
+          `select effective.availability from public.trails t
+           cross join lateral public.resolve_trail_availability(t.id,$2::timestamptz) effective
+           where t.id in (select md5('wits-world-campus-trail-v3:'||k)::uuid from unnest($1::text[]) k)`,
+          [ACTIVE_CAMPUS_TRAIL_KEYS, at],
+        );
+        expect(events.rows).toHaveLength(11);
+        expect(trails.rows).toHaveLength(3);
+        expect(
+          [...events.rows, ...trails.rows].every(
+            (row) => row.availability === expected,
+          ),
+        ).toBe(true);
+      }
     });
 
     it('uses separate Nobel and Wits evidence for every Sydney Brenner question', async () => {
@@ -371,7 +518,8 @@ describe.skipIf(!runIntegrationTests)(
         challenge_id: string;
         difficulty: number;
         question_ids: string[];
-      }>(`
+      }>(
+        `
       select
         challenge.id::text as challenge_id,
         min(question.difficulty)::integer as difficulty,
@@ -379,10 +527,14 @@ describe.skipIf(!runIntegrationTests)(
       from public.event_challenges challenge
       join public.events event on event.id = challenge.event_id
       join public.challenge_questions question on question.challenge_id = challenge.id
-      where event.title like 'Wits % Quest'
-         or event.title like 'Ordering Wits:%'
+      where event.id in (
+        select md5('wits-world-campus-event-v3:' || event_key)::uuid
+        from unnest($1::text[]) event_key
+      )
       group by challenge.id
-    `);
+    `,
+        [ACTIVE_CAMPUS_EVENT_KEYS],
+      );
 
       expect(new Set(challenges.rows.map((row) => row.difficulty))).toEqual(
         new Set([1, 2, 3]),
@@ -543,30 +695,20 @@ describe.skipIf(!runIntegrationTests)(
 
         await collisionPool.query(`
           delete from public.event_challenges
-          where id = md5('wits-world-verified-challenge:foundations')::uuid
-        `);
-        await collisionPool.query(`
+          where id = md5('wits-world-verified-challenge:foundations')::uuid;
           alter table public.event_challenges
-            disable trigger event_challenges_publication_integrity
-        `);
-        await collisionPool.query(`
+            disable trigger event_challenges_publication_integrity;
           insert into public.event_challenges (
             id, event_id, format, status, version, publication_provenance
           ) values (
             md5('wits-world-verified-challenge:foundations')::uuid,
             md5('wits-world-verified-event:foundations')::uuid,
             'multiple_choice', 'published', 1, 'controlled_seed'
-          )
-        `);
-        await collisionPool.query(`
+          );
           alter table public.event_challenges
-            enable trigger event_challenges_publication_integrity
-        `);
-        await collisionPool.query(`
+            enable trigger event_challenges_publication_integrity;
           alter table public.challenge_questions
-            disable trigger challenge_questions_publication_integrity
-        `);
-        await collisionPool.query(`
+            disable trigger challenge_questions_publication_integrity;
           insert into public.challenge_questions (
             id, challenge_id, prompt, difficulty, explanation, status,
             publication_provenance, source_urls
@@ -576,9 +718,7 @@ describe.skipIf(!runIntegrationTests)(
             'In which city did the institution that became Wits begin in 1896?',
             1, 'Wits began as a school in Kimberley in 1896.', 'draft', null,
             array['https://wits100.wits.ac.za/']::text[]
-          )
-        `);
-        await collisionPool.query(`
+          );
           alter table public.challenge_questions
             enable trigger challenge_questions_publication_integrity
         `);
@@ -629,33 +769,19 @@ describe.skipIf(!runIntegrationTests)(
 
         await collisionPool.query(`
           alter table public.challenge_questions
-            disable trigger challenge_questions_publication_integrity
-        `);
-        await collisionPool.query(`
+            disable trigger challenge_questions_publication_integrity;
           delete from public.challenge_questions
-          where id = md5('wits-world-verified-question:foundations:1')::uuid
-        `);
-        await collisionPool.query(`
+          where id = md5('wits-world-verified-question:foundations:1')::uuid;
           alter table public.challenge_questions
-            enable trigger challenge_questions_publication_integrity
-        `);
-        await collisionPool.query(`
+            enable trigger challenge_questions_publication_integrity;
           alter table public.event_challenges
-            disable trigger event_challenges_lifecycle_immutability
-        `);
-        await collisionPool.query(`
+            disable trigger event_challenges_lifecycle_immutability;
           alter table public.event_challenges
-            disable trigger event_challenges_publication_integrity
-        `);
-        await collisionPool.query(`
+            disable trigger event_challenges_publication_integrity;
           delete from public.event_challenges
-          where id = md5('wits-world-verified-challenge:foundations')::uuid
-        `);
-        await collisionPool.query(`
+          where id = md5('wits-world-verified-challenge:foundations')::uuid;
           alter table public.event_challenges
-            enable trigger event_challenges_publication_integrity
-        `);
-        await collisionPool.query(`
+            enable trigger event_challenges_publication_integrity;
           alter table public.event_challenges
             enable trigger event_challenges_lifecycle_immutability
         `);

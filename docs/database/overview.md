@@ -68,7 +68,7 @@ migration runner:
 Applied migrations are immutable. A correction must use a new migration. It
 must not edit an applied file or rewrite migration history.
 
-The current chain reaches `0064_create_player_profile_showcase.sql`. Important
+The current chain reaches `0065_constrain_cpu_match_json_shapes.sql`. Important
 groups are:
 
 | Range         | Main change                                                                                     |
@@ -79,6 +79,7 @@ groups are:
 | `0046`–`0054` | Trust, ranked play, and contested territories                                                   |
 | `0055`–`0058` | Trading, analytics, and developer API access                                                    |
 | `0059`–`0064` | Event-editor placement, portable events, trust evidence, account cleanup, and profile showcases |
+| `0065`        | CPU match JSON shape constraints                                                                |
 
 This table is a guide, not a replacement for the migration files or the
 [database release procedure](database-release-procedure.md).
@@ -104,9 +105,11 @@ documented independent factual and presentation review. See
 Connection strings are secrets. Keep them out of the browser bundle, Git,
 screenshots, and reports.
 
-Application deployment does not migrate production automatically. An authorised
-operator runs the guarded database release, confirms the target database,
-checks PostGIS and migration results, and decides whether to seed data.
+Main-branch API deployment runs the guarded database release before deploying
+the application, using the configured production database and expected Neon
+host/name checks. An authorised operator can also run the release manually.
+Content seeding remains a separate decision; deployment does not install event
+packs by default. Runtime and migration credentials are currently coupled.
 
 See [Neon/PostGIS setup](neon-postgis-setup.md),
 [database release](database-release-procedure.md), and
@@ -129,6 +132,13 @@ inspection. Its table counts are not current production counts.
 
 ## Known evidence gaps
 
+The [data quality reference](data-quality-and-structure.md) records the dated
+Milestone 4 inspection, content and schema releases, the read-only `db:audit`
+command, and remaining provenance and credential-separation work. Migration
+`0065` adds CPU JSON shape checks without rewriting historical snapshots.
+The migration runner validates all applied names and checksums before applying
+pending SQL, including refusing applied files missing from the source tree.
+
 The repository documents the schema, migration process, release controls, and
 test approach. Final provider backup guarantees, a completed production restore,
 production query benchmarks, and current retention and monitoring results need
@@ -138,5 +148,5 @@ separate dated records.
 
 This page was generated and edited with assistance from Codex, Codex-CLI, and
 ChatGPT-Web models listed in its earlier revision. It was rewritten in simpler
-language with assistance from Codex[GPT-5] and checked against migrations
-through `0064`.
+language with assistance from Codex[GPT-5]. Merge guidance was updated with
+assistance from Codex[GPT-6] and checked against migrations through `0065`.

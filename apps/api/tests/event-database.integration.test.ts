@@ -1,4 +1,4 @@
-import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -212,6 +212,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0062_detach_deleted_player_history.sql',
         '0063_purge_deleted_player_progression.sql',
         '0064_create_player_profile_showcase.sql',
+        '0065_constrain_cpu_match_json_shapes.sql',
       ],
       skipped: [],
     });
@@ -283,6 +284,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0062_detach_deleted_player_history.sql',
         '0063_purge_deleted_player_progression.sql',
         '0064_create_player_profile_showcase.sql',
+        '0065_constrain_cpu_match_json_shapes.sql',
       ],
     });
     expect(readiness).toMatchObject({
@@ -844,7 +846,7 @@ select * from public.rehearsal_missing_relation;
 
       await expect(
         runMigrations(temporaryConfig, migrationDirectory),
-      ).rejects.toThrow();
+      ).rejects.toThrow('rehearsal_missing_relation');
 
       await withDatabaseClient(temporaryConfig, async (client) => {
         const failedState = await client.query<{
@@ -872,12 +874,7 @@ select * from public.rehearsal_missing_relation;
         runMigrations(temporaryConfig, migrationDirectory),
       ).resolves.toEqual({
         applied: ['9999_rehearsal_recovery.sql'],
-        skipped: [
-          '0001_enable_postgis.sql',
-          '0002_create_events.sql',
-          '0003_create_players.sql',
-          '0004_create_account_deletion_requests.sql',
-        ],
+        skipped: migrationResult.applied,
       });
       await runBasicDemoSeeds(temporaryConfig);
 
@@ -912,14 +909,12 @@ select * from public.rehearsal_missing_relation;
 async function createRecoveryMigrationDirectory() {
   const directory = await mkdtemp(join(tmpdir(), 'wits-world-recovery-'));
   const migrationsDirectory = getMigrationsDirectory();
+  const migrationNames = (await readdir(migrationsDirectory)).filter((name) =>
+    name.endsWith('.sql'),
+  );
 
   await Promise.all(
-    [
-      '0001_enable_postgis.sql',
-      '0002_create_events.sql',
-      '0003_create_players.sql',
-      '0004_create_account_deletion_requests.sql',
-    ].map((name) =>
+    migrationNames.map((name) =>
       copyFile(join(migrationsDirectory, name), join(directory, name)),
     ),
   );

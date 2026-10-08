@@ -4,13 +4,16 @@ title: 'Campus events, questions and sources'
 
 # Campus events, questions and sources
 
-Issue `#165` supplies a production-shaped, independently reviewable Wits Quest
-content pack. It contains exactly ten campus events and one hundred questions:
-five multiple-choice challenges and five ordering challenges, with ten questions
-and four choices/items per challenge.
+Issue `#165` supplies the sourced reference catalogue for Wits Quest. The current
+forward-only v3 refresh publishes eleven campus events with one hundred ten
+question rows: six multiple-choice challenges and five ordering challenges,
+with ten questions and four choices/items per challenge. MSL and Origins Centre
+reuse a discovery pool, so these represent one hundred distinct question
+definitions rather than one hundred ten independent definitions.
 
 The pack is separate from the Basic demonstration fixtures. It does not create
-cards, campaigns, players, attempts, completions, or trails. Rewards continue to
+players, attempts, completions or matches. It publishes three ordered trails and
+one scheduled campaign; rewards continue to
 use the canonical published card catalogue and the server-owned score/rarity
 policy.
 
@@ -43,8 +46,8 @@ npm run db:release --workspace @wits-world/api -- \
 `--seed-verified-events` cannot be combined with `--seed-basic-demo`. Normal
 catalogue seeding does not install this event pack.
 
-The pack is repeatable. Stable IDs are derived from fixed content keys, and the
-entire content file runs in one seed transaction. Transaction-local tables
+The pack is repeatable. Stable IDs are derived from versioned content keys, and
+both content files run in one seed transaction. Transaction-local tables
 capture challenge and question IDs returned by each `INSERT`. Only those rows
 created by the current seed invocation can receive choices/items, private answer
 relationships, controlled-seed provenance, version increments, or publication
@@ -61,9 +64,10 @@ The final readiness comparison repeats the whole-pack canonical check before
 commit. Re-running an unchanged canonical installation remains idempotent and
 does not duplicate rows or relationships.
 
-The final readiness assertion additionally requires all ten events, all ten
-format-correct published challenges, all one hundred structurally complete
-published questions, sourced locations, private answer keys, and at least one
+The final readiness assertion additionally requires all eleven current events,
+eleven format-correct published challenges, one hundred ten structurally complete
+published questions, three trails with eleven ordered stops, a canonical campaign,
+sourced locations, private answer keys, and at least one
 Common card satisfying the runtime reward-candidate predicate. The predicate is
 the same one used by the challenge-completion finalizer: `is_active = true`,
 `authoring_status = 'published'`, and `reward_eligible = true`. The pack does not
@@ -71,24 +75,42 @@ create or alter card definitions or add a separate event-to-card relationship.
 
 ## Structure and availability
 
-The configured availability mix is evaluated against the issue implementation
-review date, 10 September 2026. Active rows run until the end of 2099, upcoming
-rows begin in 2100, passed rows ended in 2025, and unavailable rows retain valid
-schedules but remain unpublished drafts. Campaign scheduling is deliberately
-not added.
+All v3 events and their campaign run from 1 September 2026 until
+`2026-12-01T00:00:00+02:00` (exclusive), keeping them available throughout
+30 November in South African time. The campaign gives the trails an explicit
+expiry too: standalone trails otherwise have no end date. These are game-content
+windows, not evidence of historical participation or guarantees about building
+opening hours.
 
-| Event                                | Format   | Difficulty / selected time limit | State       | Location evidence                  |
-| ------------------------------------ | -------- | -------------------------------- | ----------- | ---------------------------------- |
-| Wits Foundations Quest               | MCQ      | 1 / 90 s                         | Active      | Great Hall                         |
-| Wits Campus Heritage Quest           | MCQ      | 1 / 90 s                         | Active      | William Cullen Library             |
-| Wits Discovery Quest                 | MCQ      | 2 / 120 s                        | Active      | Origins Centre                     |
-| Wits Arts and Culture Quest          | MCQ      | 2 / 120 s                        | Upcoming    | Wits Art Museum                    |
-| Wits Civic and Alumni Quest          | MCQ      | 3 / 150 s                        | Upcoming    | Facilities and Services Building   |
-| Ordering Wits: Early Years           | Ordering | 1 / 90 s                         | Passed      | Wits Anglo American Digital Dome   |
-| Ordering Wits: Science and Discovery | Ordering | 1 / 90 s                         | Passed      | Oppenheimer Life Sciences entrance |
-| Ordering Wits: Campus Culture        | Ordering | 2 / 120 s                        | Active      | Wits Theatre                       |
-| Ordering Wits: Public Life           | Ordering | 2 / 120 s                        | Unavailable | Adler Museum of Medicine           |
-| Ordering Wits: Modern Century        | Ordering | 3 / 150 s                        | Unavailable | Wits Business School               |
+Earlier v1 and v2 events/trails remain archived rather than being republished or
+having their immutable dates changed. The v1 questions stay as a canonical source
+catalogue for repeatable cloning; a published source question attached to an
+unavailable parent event is not a player-available question. All new timeline
+questions retain their original sources and add the checked
+[official timeline mirror](https://giving.wits.ac.za/centenary-campaign/) where
+their source catalogue previously pointed only to the centenary site.
+
+| Event                       | Format   | Difficulty / selected time limit | State  | Location evidence                |
+| --------------------------- | -------- | -------------------------------- | ------ | -------------------------------- |
+| Great Hall Beginnings       | MCQ      | 1 / 90 s                         | Active | Great Hall                       |
+| Cullen Library Heritage     | MCQ      | 1 / 90 s                         | Active | William Cullen Library           |
+| Origins Centre Discoveries  | MCQ      | 2 / 120 s                        | Active | Origins Centre                   |
+| School of Arts Culture      | MCQ      | 2 / 120 s                        | Active | Wits School of Arts              |
+| Matrix Campus Life          | MCQ      | 3 / 150 s                        | Active | The Matrix                       |
+| Digital Dome Early Years    | Ordering | 1 / 90 s                         | Active | Wits Anglo American Digital Dome |
+| Science Stadium Milestones  | Ordering | 1 / 90 s                         | Active | Wits Science Stadium             |
+| Art Museum Timeline         | Ordering | 2 / 120 s                        | Active | Wits Art Museum                  |
+| Wits Club Public Life       | Ordering | 2 / 120 s                        | Active | Wits Club                        |
+| Amphitheatre Modern Century | Ordering | 3 / 150 s                        | Active | Amphitheatre                     |
+| MSL Science Challenge       | MCQ      | 2 / 120 s                        | Active | Mathematical Sciences Laboratory |
+
+East Campus Essentials has four stops; West Campus Discovery has four, including
+MSL; Arts and Community has three. Together they cover all eleven events once.
+The campaign is `Campus Discovery: Spring 2026`. The targeted demo cleanup is an
+operator-only maintenance file, not part of routine content seeding. It retires
+protected fixture definitions and deletes unused drafts without deleting player
+accounts, attempts, completions or rewards. See the
+[production quality report](./data-quality-and-structure.md).
 
 Every question in a challenge has the same difficulty. Therefore any random
 five-question selection for that challenge deterministically exercises the
@@ -128,7 +150,8 @@ launch of the Centre of Excellence in Mathematical and Statistical Sciences.
 Ordering explanations retain the four exact evidence years used for each
 answer sequence.
 
-Each event uses a distinct point and records at least two review sources:
+The original v1 source catalogue used ten distinct points and recorded at least
+two review sources per event. Those archived locations were:
 
 - Great Hall: official Braamfontein campus map plus its building record;
 - William Cullen Library: official Wits Library listing plus its building
@@ -148,10 +171,12 @@ Each event uses a distinct point and records at least two review sources:
 - Wits Business School: a Wits-hosted programme brochure containing its GPS
   coordinates plus the official Parktown map.
 
-The source arrays are review evidence, not a claim that links will remain
-unchanged forever. Before an approved production run, another team member must
+The current v3 locations are the eleven entries in the availability table above,
+with their review URLs stored in the pack. The source arrays are review evidence,
+not a claim that links will remain unchanged forever. For final acceptance,
+another team member must
 open every cited page, confirm the wording and full ordering evidence, verify
-the ten configured map points/radii on site or against an approved geospatial
+the eleven current map points/radii on site or against an approved geospatial
 reference, and review player-facing presentation. Automated checks establish
 shape, integrity, privacy boundaries, repeatability, and catalogue compatibility;
 they do not complete this factual or presentation review.
@@ -162,7 +187,7 @@ they do not complete this factual or presentation review.
 applies every migration, runs the pack twice, and verifies the required counts,
 formats, four-item definitions, one hundred global semantic signatures, fifty
 unique ordering sets, exact-year ordering explanations, explanations, HTTPS
-source metadata, ten distinct locations, availability states, private answer
+source metadata, eleven distinct locations, availability states, private answer
 keys, difficulty coverage, five-question non-repeating selection, and the
 runtime-compatible reward catalogue. It also corrupts deterministic source
 metadata and proves the rerun fails explicitly without changing unrelated
@@ -171,7 +196,17 @@ before installation and proves they receive no publication, child, or private-ke
 mutations; and proves active/published but non-reward-eligible Common cards cannot
 satisfy verified-event readiness.
 
+It additionally verifies coverage by three ordered trails, campaign expiry at
+the November/December boundary, and safe installation alongside retired v2
+content with existing nested choice IDs. The targeted fixture-cleanup integration
+suite verifies repeatable retirement/deletion without disabling history guards.
+Executed local and Neon results are recorded in the
+[production quality report](./data-quality-and-structure.md).
+
 The preceding document and content pack were researched, generated, and edited
 with the assistance of Codex[GPT-5].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+The v3 refresh and cleanup documentation were edited with assistance from
+Codex[GPT-5]; content/cleanup safety was reviewed with Codex-CLI[gpt-6-luna].
