@@ -1,11 +1,11 @@
 ---
-title: Sprint 2
+title: Sprint 2 meetings
 description: Planning, daily coordination, refinement, review, and retrospective in one sprint report.
 sidebar_position: 0
 toc_max_heading_level: 2
 ---
 
-# Sprint 2
+# Sprint 2 meetings
 
 Historical report for 26 August–15 September 2026. Status statements describe
 the retained Sprint 2 evidence, including the release gates still open at its close.

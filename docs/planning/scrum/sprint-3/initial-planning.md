@@ -11,6 +11,26 @@ sidebar_position: 1
 
 [Read the complete sprint report](report.md).
 
+## Meeting photo
+
+<figure className="sprint-meeting-photo">
+  <a href="/img/scrum/sprint-3/daily-scrum-01.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 1">
+    <img
+      src="/img/scrum/sprint-3/daily-scrum-01.png"
+      alt="Sprint 3 supplied team-call photo 1"
+      width="1672"
+      height="941"
+      loading="lazy"
+      decoding="async"
+    />
+  </a>
+  <figcaption>Supplied Sprint 3 photo 1, displayed with planning.</figcaption>
+</figure>
+
+Photo placement follows the supplied order for presentation; its meeting date
+and association with this record are unconfirmed. See the
+[photo provenance and layout](../index.md#sprint-3-photo-provenance).
+
 ## Sprint Goal
 
 Extend Wits World's multiplayer and competitive foundation: live PvP, trust

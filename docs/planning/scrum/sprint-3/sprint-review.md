@@ -1,9 +1,9 @@
 ---
-title: Sprint 3 Review — Release-readiness Snapshot
+title: Sprint 3 Review
 sidebar_position: 7
 ---
 
-# Sprint 3 Review — Release-readiness Snapshot
+# Sprint 3 Review
 
 **Date:** 28 September 2026 snapshot.
 

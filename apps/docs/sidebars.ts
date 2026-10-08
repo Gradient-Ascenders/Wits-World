@@ -22,34 +22,44 @@ const category = (
 });
 
 const meetings = (sprint: number): SidebarItemConfig =>
-  category('Detailed records', [
-    doc(`planning/scrum/sprint-${sprint}/initial-planning`, 'Planning'),
-    doc(
-      `planning/scrum/sprint-${sprint}/daily-scrum-01`,
-      sprint === 3 ? 'Snapshot 1' : 'Scrum 1',
-    ),
-    doc(
-      `planning/scrum/sprint-${sprint}/daily-scrum-02`,
-      sprint === 3 ? 'Snapshot 2' : 'Scrum 2',
-    ),
-    doc(
-      `planning/scrum/sprint-${sprint}/daily-scrum-03`,
-      sprint === 3 ? 'Snapshot 3' : 'Scrum 3',
-    ),
-    doc(
-      `planning/scrum/sprint-${sprint}/daily-scrum-04`,
-      sprint === 3 ? 'Snapshot 4' : 'Scrum 4',
-    ),
-    doc(
-      `planning/scrum/sprint-${sprint}/backlog-refinement`,
-      'Backlog refinement',
-    ),
-    doc(`planning/scrum/sprint-${sprint}/sprint-review`, 'Review'),
-    doc(
-      `planning/scrum/sprint-${sprint}/sprint-retrospective`,
-      'Retrospective',
-    ),
-  ]);
+  category(
+    'Meetings',
+    [
+      doc(`planning/scrum/sprint-${sprint}/initial-planning`, 'Planning'),
+      ...[1, 2, 3, 4].map((number) =>
+        doc(
+          `planning/scrum/sprint-${sprint}/daily-scrum-0${number}`,
+          `Scrum ${number}`,
+        ),
+      ),
+      doc(
+        `planning/scrum/sprint-${sprint}/backlog-refinement`,
+        'Backlog refinement',
+      ),
+      doc(`planning/scrum/sprint-${sprint}/sprint-review`, 'Review'),
+      doc(
+        `planning/scrum/sprint-${sprint}/sprint-retrospective`,
+        'Retrospective',
+      ),
+    ],
+    `planning/scrum/sprint-${sprint}/report`,
+  );
+
+const sprint = (
+  number: number,
+  items: SidebarItemConfig[],
+): SidebarItemConfig => ({
+  type: 'category',
+  label: `Sprint ${number}`,
+  collapsed: true,
+  link: {
+    type: 'generated-index',
+    slug: `/project/sprint-${number}`,
+    title: `Sprint ${number}`,
+    description: `Meetings and related Sprint ${number} material.`,
+  },
+  items,
+});
 
 // Small topic groups keep technical references and dated evidence findable
 // without turning any expanded section into an inventory of every page.
@@ -352,20 +362,38 @@ const sidebars: SidebarsConfig = {
           doc('planning/ai-use', 'AI use'),
           doc('planning/scrum/index', 'Sprint reports'),
         ]),
-        doc('planning/scrum/sprint-4/index', 'Sprint 4 photos'),
-        category(
-          'Sprint 3',
-          [
-            meetings(3),
-            doc('sprint-3-overview', 'Milestone evidence'),
-            doc('requirements/sprint-3-feature-matrix', 'Features'),
-            doc('testing/sprint-3-validation-status', 'Validation status'),
-            doc('testing/sprint-3-user-testing-plan', 'User testing plan'),
-            doc('testing/sprint-3-user-feedback-results', 'User feedback'),
-            doc('planning/sprint-3-governance-and-evidence', 'Governance'),
-          ],
-          'planning/scrum/sprint-3/report',
-        ),
+        sprint(1, [
+          meetings(1),
+          doc('testing/sprint-1-evidence-index', 'Release evidence'),
+          doc('testing/sprint-1-deterministic-e2e', 'E2E tests'),
+          doc('testing/sprint-1-release-validation', 'Release validation'),
+          doc('testing/sprint-1-demonstration-script', 'Demo script'),
+          doc('testing/sprint-1-known-limitations', 'Known limitations'),
+          category('Task plans', [
+            doc('planning/wits-quest-sprint-1-gitea-issues', 'Initial backlog'),
+            doc('planning/sprint-1-week-2-gitea-issues', 'Week 2 backlog'),
+          ]),
+        ]),
+        sprint(2, [
+          meetings(2),
+          doc('sprint-2-overview', 'Milestone evidence'),
+          doc('requirements/sprint-2-feature-matrix', 'Features'),
+          doc('testing/sprint-2-validation-status', 'Validation status'),
+          doc('testing/sprint-2-user-testing-plan', 'User testing plan'),
+          doc('testing/sprint-2-user-feedback-results', 'User feedback'),
+          doc('planning/sprint-2-governance-and-evidence', 'Governance'),
+          doc('planning/wits-quest-sprint-2-gitea-issues', 'Task plans'),
+        ]),
+        sprint(3, [
+          meetings(3),
+          doc('sprint-3-overview', 'Milestone evidence'),
+          doc('requirements/sprint-3-feature-matrix', 'Features'),
+          doc('testing/sprint-3-validation-status', 'Validation status'),
+          doc('testing/sprint-3-user-testing-plan', 'User testing plan'),
+          doc('testing/sprint-3-user-feedback-results', 'User feedback'),
+          doc('planning/sprint-3-governance-and-evidence', 'Governance'),
+        ]),
+        sprint(4, [meetings(4)]),
         category('Verification', [
           category('Basic release', [
             doc('testing/basic-release-validation-167', 'Results (#167)'),
@@ -433,41 +461,6 @@ const sidebars: SidebarsConfig = {
           ],
           'planning/stakeholder-interactions/index',
         ),
-        category('Archive', [
-          category(
-            'Sprint 2',
-            [
-              meetings(2),
-              doc('sprint-2-overview', 'Milestone evidence'),
-              doc('requirements/sprint-2-feature-matrix', 'Features'),
-              doc('testing/sprint-2-validation-status', 'Validation status'),
-              doc('testing/sprint-2-user-testing-plan', 'User testing plan'),
-              doc('testing/sprint-2-user-feedback-results', 'User feedback'),
-              doc('planning/sprint-2-governance-and-evidence', 'Governance'),
-              doc('planning/wits-quest-sprint-2-gitea-issues', 'Task plans'),
-            ],
-            'planning/scrum/sprint-2/report',
-          ),
-          category(
-            'Sprint 1',
-            [
-              meetings(1),
-              doc('testing/sprint-1-evidence-index', 'Release evidence'),
-              doc('testing/sprint-1-deterministic-e2e', 'E2E tests'),
-              doc('testing/sprint-1-release-validation', 'Release validation'),
-              doc('testing/sprint-1-demonstration-script', 'Demo script'),
-              doc('testing/sprint-1-known-limitations', 'Known limitations'),
-              category('Task plans', [
-                doc(
-                  'planning/wits-quest-sprint-1-gitea-issues',
-                  'Initial backlog',
-                ),
-                doc('planning/sprint-1-week-2-gitea-issues', 'Week 2 backlog'),
-              ]),
-            ],
-            'planning/scrum/sprint-1/report',
-          ),
-        ]),
       ],
     },
   ],

@@ -9,12 +9,13 @@ toc_max_heading_level: 2
 Read each sprint as one report, following the ceremony order in
 `vitaqsprint.pdf`: planning, Daily Scrums, backlog refinement, Review, and
 Retrospective. Each report uses short summaries, action lists, and the meeting
-photos already mapped to its records.
+photos retained with its records. Confirmed mappings and presentation-only
+placements are distinguished in the photo source notes.
 
 - [Sprint 1 report](sprint-1/report.md) — first location slice and Basic foundations.
 - [Sprint 2 report](sprint-2/report.md) — remaining Basic work and Intermediate systems.
 - [Sprint 3 report](sprint-3/report.md) — Advanced implementation and open release evidence.
-- [Sprint 4 photos](sprint-4/index.md) — five supplied team-call images.
+- [Sprint 4 report](sprint-4/report.md) — final-submission refinement, performance, and operations through 8 October.
 
 The reports link to the detailed records for owners, issue/PR references,
 reporting windows, and source limits. Dates retain their original meaning;
@@ -48,6 +49,23 @@ meeting transcripts. Their source limits, labelled inferences, and missing exact
 meeting times remain part of the historical record. The new Sprint 2 records
 and supplied images do not change those Sprint 1 claims.
 
+## Sprint 4 record
+
+Read the [Sprint 4 Meetings page](sprint-4/report.md) for reconstructed planning,
+four Daily Scrums, refinement, Review, and Retrospective. The
+[Sprint 4 source register](sprint-4/report.md#merge-register) links all 27 selected merged PRs
+and their immutable merge commits through `a9dca04` on 8 October.
+
+The reporting windows group final-submission work from 29 September to
+8 October, with dates shown in Africa/Johannesburg time. Meeting discussion and
+actions are inferred from repository history; original minutes, attendance, and
+ceremony dates were not supplied. The 11 October submission target remains
+outside this interim snapshot.
+
+Five [supplied Sprint 4 photos](sprint-4/report.md#image-provenance) appear beside
+planning and Daily Scrums 1–4 in numbered order. Placement follows the earlier
+sprint layout, without establishing meeting dates or a confirmed photo mapping.
+
 ## Sprint 3 record
 
 The Sprint 3 set follows the shared report structure with repository-backed reporting
@@ -72,19 +90,23 @@ Sprint 2 photos are not reused as Sprint 3 evidence.
 Uzair supplied five team-call screenshots in the Sprint 3 static image folder.
 They were renamed in the supplied numbered order and preserved byte-for-byte.
 
-| Supplied filename | Retained image                                               |
-| ----------------- | ------------------------------------------------------------ |
-| `1.png`           | [daily-scrum-01.png](/img/scrum/sprint-3/daily-scrum-01.png) |
-| `2.png`           | [daily-scrum-02.png](/img/scrum/sprint-3/daily-scrum-02.png) |
-| `3.png`           | [daily-scrum-03.png](/img/scrum/sprint-3/daily-scrum-03.png) |
-| `4.png`           | [daily-scrum-04.png](/img/scrum/sprint-3/daily-scrum-04.png) |
-| `5.png`           | [daily-scrum-05.png](/img/scrum/sprint-3/daily-scrum-05.png) |
+| Supplied filename | Retained image                                               | Displayed alongside                                       |
+| ----------------- | ------------------------------------------------------------ | --------------------------------------------------------- |
+| `1.png`           | [daily-scrum-01.png](/img/scrum/sprint-3/daily-scrum-01.png) | [Planning](sprint-3/initial-planning.md#meeting-photo)    |
+| `2.png`           | [daily-scrum-02.png](/img/scrum/sprint-3/daily-scrum-02.png) | [Daily Scrum 1](sprint-3/daily-scrum-01.md#meeting-photo) |
+| `3.png`           | [daily-scrum-03.png](/img/scrum/sprint-3/daily-scrum-03.png) | [Daily Scrum 2](sprint-3/daily-scrum-02.md#meeting-photo) |
+| `4.png`           | [daily-scrum-04.png](/img/scrum/sprint-3/daily-scrum-04.png) | [Daily Scrum 3](sprint-3/daily-scrum-03.md#meeting-photo) |
+| `5.png`           | [daily-scrum-05.png](/img/scrum/sprint-3/daily-scrum-05.png) | [Daily Scrum 4](sprint-3/daily-scrum-04.md#meeting-photo) |
 
-The images are retained in commit `aca1ee5`. Filenames identify the supplied
-order, not verified meeting dates. Five photos were supplied for four written
-checkpoints, so the images are displayed in the [Sprint 3 report gallery](sprint-3/report.md#meeting-photos)
-until their meeting-to-record mapping is confirmed. They do not independently establish discussion,
-stakeholder attendance, or agreement.
+The images are retained in commit `aca1ee5`. Their bytes and asset URLs are
+unchanged. Photo 1 appears with planning, followed by photos 2–5 with the four
+Daily Scrum records, to match the earlier sprint layout. This is a presentation
+order, not a confirmed meeting-to-photo mapping.
+
+The [Sprint 3 Meetings page](sprint-3/report.md) uses the same placement. The
+[photo notes](sprint-3/report.md#meeting-photos) retain the source limits:
+filenames identify supplied order, not verified dates, discussion, stakeholder
+attendance, or agreement.
 
 ## Sprint 2 record
 
@@ -152,3 +174,5 @@ using `vitaqsprint.pdf` as the presentation reference.
 
 Image presentation, the Sprint 4 photo page, and site entry points were updated
 with assistance from Codex[GPT-6].
+
+Sprint 4 reconstructed records and merge register prepared with assistance from Codex[GPT-6].

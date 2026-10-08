@@ -1,15 +1,35 @@
 ---
-title: Sprint 3 Daily Scrum 3 — Coordination Snapshot
+title: Sprint 3 Daily Scrum 3
 sidebar_position: 4
 ---
 
-# Sprint 3 Daily Scrum 3 — Coordination Snapshot
+# Sprint 3 Daily Scrum 3
 
 **Date:** 23–25 September 2026 reporting window.
 
 > Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
 [Read the complete sprint report](report.md).
+
+## Meeting photo
+
+<figure className="sprint-meeting-photo">
+  <a href="/img/scrum/sprint-3/daily-scrum-04.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 4">
+    <img
+      src="/img/scrum/sprint-3/daily-scrum-04.png"
+      alt="Sprint 3 supplied team-call photo 4"
+      width="1672"
+      height="941"
+      loading="lazy"
+      decoding="async"
+    />
+  </a>
+  <figcaption>Supplied Sprint 3 photo 4, displayed with Daily Scrum 3.</figcaption>
+</figure>
+
+Photo placement follows the supplied order for presentation; its meeting date
+and association with this record are unconfirmed. See the
+[photo provenance and layout](../index.md#sprint-3-photo-provenance).
 
 ## Summary of Progress
 

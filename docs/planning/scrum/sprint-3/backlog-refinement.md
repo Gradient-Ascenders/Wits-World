@@ -1,9 +1,9 @@
 ---
-title: Sprint 3 Backlog Refinement — Repository Snapshot
+title: Sprint 3 Backlog Refinement
 sidebar_position: 6
 ---
 
-# Sprint 3 Backlog Refinement — Repository Snapshot
+# Sprint 3 Backlog Refinement
 
 **Date:** 16–28 September 2026 evidence window.
 

@@ -1,11 +1,11 @@
 ---
-title: Sprint 1
+title: Sprint 1 meetings
 description: Planning, daily coordination, refinement, review, and retrospective in one sprint report.
 sidebar_position: 0
 toc_max_heading_level: 2
 ---
 
-# Sprint 1
+# Sprint 1 meetings
 
 Historical report for the August 2026 increment. Planning and Daily Scrum dates
 are reconstructed from repository activity. The team confirmed that the Review

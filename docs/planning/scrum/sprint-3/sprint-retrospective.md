@@ -1,9 +1,9 @@
 ---
-title: Sprint 3 Retrospective — Recommendations
+title: Sprint 3 Retrospective
 sidebar_position: 8
 ---
 
-# Sprint 3 Retrospective — Recommendations
+# Sprint 3 Retrospective
 
 **Date:** 28 September 2026 evidence snapshot.
 

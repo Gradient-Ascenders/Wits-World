@@ -1,11 +1,11 @@
 ---
-title: Sprint 3
-description: Advanced planning, coordination snapshots, refinement, review evidence, and retrospective recommendations in one report.
+title: Sprint 3 meetings
+description: Planning, daily coordination, refinement, review, and retrospective in one sprint report.
 sidebar_position: 0
 toc_max_heading_level: 2
 ---
 
-# Sprint 3
+# Sprint 3 meetings
 
 Repository-backed report for 16–28 September 2026, using `main` at `c0fd42b`.
 The records are planning and coordination snapshots, a release-readiness view,
@@ -13,6 +13,20 @@ and retrospective recommendations. Ceremony dates, attendance, demonstration,
 acceptance, and team agreement were not supplied.
 
 ## Sprint Planning — 28 September 2026 snapshot
+
+<figure className="sprint-meeting-photo">
+  <a href="/img/scrum/sprint-3/daily-scrum-01.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 1">
+    <img
+      src="/img/scrum/sprint-3/daily-scrum-01.png"
+      alt="Sprint 3 supplied team-call photo 1"
+      width="1672"
+      height="941"
+      loading="lazy"
+      decoding="async"
+    />
+  </a>
+  <figcaption>Supplied Sprint 3 photo 1, displayed with planning.</figcaption>
+</figure>
 
 ### Sprint Goal
 
@@ -59,9 +73,23 @@ The retained roles provide coordination context, not individual PR assignment:
 - Link feedback reproduction, accepted issue, implementation, and retest.
 - Refine proposed territory rotation and shared quotas before implementation.
 
-[Detailed planning snapshot and merge references](initial-planning.md).
+[Detailed planning record and merge references](initial-planning.md).
 
-## Daily Scrum 1 — 16–19 September 2026 coordination snapshot
+## Daily Scrum 1 — 16–19 September 2026 reporting window
+
+<figure className="sprint-meeting-photo">
+  <a href="/img/scrum/sprint-3/daily-scrum-02.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 2">
+    <img
+      src="/img/scrum/sprint-3/daily-scrum-02.png"
+      alt="Sprint 3 supplied team-call photo 2"
+      width="2330"
+      height="1312"
+      loading="lazy"
+      decoding="async"
+    />
+  </a>
+  <figcaption>Supplied Sprint 3 photo 2, displayed with Daily Scrum 1.</figcaption>
+</figure>
 
 ### Summary of Progress
 
@@ -72,7 +100,6 @@ The retained roles provide coordination context, not individual PR assignment:
 
 ### Blockers and Open Questions
 
-- Supplied team-call photos were not mapped to this reporting window.
 - Merge history did not establish an integrated demonstration or stakeholder review.
 - Reconnect, deadline, authorization, migration, and public-projection behaviour needed release evidence.
 
@@ -82,9 +109,30 @@ The retained roles provide coordination context, not individual PR assignment:
 - Kept policy intent, merged implementation, and deployment outcomes distinct.
 - Identified concurrent state, retries, ownership, and deadline checks for follow-up.
 
-[Detailed coordination snapshot and next actions](daily-scrum-01.md).
+### Next Actions
 
-## Daily Scrum 2 — 20–22 September 2026 coordination snapshot
+- Complete service and UI slices against the merged contracts.
+- Keep concurrency, idempotency, ownership, and deadline behaviour covered by
+  focused tests and PR review.
+- Capture actual demonstration and release evidence when it exists.
+
+[Detailed Daily Scrum record and next actions](daily-scrum-01.md).
+
+## Daily Scrum 2 — 20–22 September 2026 reporting window
+
+<figure className="sprint-meeting-photo">
+  <a href="/img/scrum/sprint-3/daily-scrum-03.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 3">
+    <img
+      src="/img/scrum/sprint-3/daily-scrum-03.png"
+      alt="Sprint 3 supplied team-call photo 3"
+      width="1672"
+      height="941"
+      loading="lazy"
+      decoding="async"
+    />
+  </a>
+  <figcaption>Supplied Sprint 3 photo 3, displayed with Daily Scrum 2.</figcaption>
+</figure>
 
 ### Summary of Progress
 
@@ -106,9 +154,31 @@ The retained roles provide coordination context, not individual PR assignment:
   and safe public-data boundaries as integration requirements.
 - Kept database benchmarks separate from end-to-end response-time evidence.
 
-[Detailed coordination snapshot and stakeholder plan](daily-scrum-02.md).
+### Next Actions
 
-## Daily Scrum 3 — 23–25 September 2026 coordination snapshot
+- Integrate client views against final response contracts and exercise
+  conflict, retry, and recovery states.
+- Record environment, revision, and measured outcomes for any performance
+  demonstration; distinguish database benchmarks from user-visible latency.
+- Retain independent PR and automated-check evidence for each capability.
+
+[Detailed Daily Scrum record and stakeholder plan](daily-scrum-02.md).
+
+## Daily Scrum 3 — 23–25 September 2026 reporting window
+
+<figure className="sprint-meeting-photo">
+  <a href="/img/scrum/sprint-3/daily-scrum-04.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 4">
+    <img
+      src="/img/scrum/sprint-3/daily-scrum-04.png"
+      alt="Sprint 3 supplied team-call photo 4"
+      width="1672"
+      height="941"
+      loading="lazy"
+      decoding="async"
+    />
+  </a>
+  <figcaption>Supplied Sprint 3 photo 4, displayed with Daily Scrum 3.</figcaption>
+</figure>
 
 ### Summary of Progress
 
@@ -130,9 +200,31 @@ The retained roles provide coordination context, not individual PR assignment:
 - Retained lifecycle and trade-reservation constraints during integration.
 - Distinguished stakeholder proposals from existing implemented capabilities.
 
-[Detailed coordination snapshot and next actions](daily-scrum-03.md).
+### Next Actions
 
-## Daily Scrum 4 — 26–28 September 2026 coordination snapshot
+- Validate account deletion and fresh registration using a dedicated test
+  account, recording environment and safe evidence.
+- Keep territory randomization and shared rate limiting in follow-up scope until
+  implementation and multi-instance verification are recorded.
+- Triage feedback into reproducible tasks without declaring related PRs fixes.
+
+[Detailed Daily Scrum record and next actions](daily-scrum-03.md).
+
+## Daily Scrum 4 — 26–28 September 2026 reporting window
+
+<figure className="sprint-meeting-photo">
+  <a href="/img/scrum/sprint-3/daily-scrum-05.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 5">
+    <img
+      src="/img/scrum/sprint-3/daily-scrum-05.png"
+      alt="Sprint 3 supplied team-call photo 5"
+      width="1672"
+      height="941"
+      loading="lazy"
+      decoding="async"
+    />
+  </a>
+  <figcaption>Supplied Sprint 3 photo 5, displayed with Daily Scrum 4.</figcaption>
+</figure>
 
 ### Summary of Progress
 
@@ -155,7 +247,17 @@ The retained roles provide coordination context, not individual PR assignment:
 - Preserved feedback as triage input, without treating nearby PRs as verified fixes.
 - Kept local checks/benchmarks separate from named-deployment outcomes.
 
-[Detailed coordination snapshot and feedback evidence](daily-scrum-04.md).
+### Next Actions
+
+- Create or link focused feedback issues only after useful reproduction details
+  are captured; retain explicit retest status.
+- Run release-like checks against a named revision/environment and publish the
+  exact evidence and known limitations.
+- Verify mobile, accessibility, account lifecycle, multiplayer recovery, and
+  rate-limit behavior through the appropriate existing automated policies and
+  recorded manual checks.
+
+[Detailed Daily Scrum record and feedback evidence](daily-scrum-04.md).
 
 ## Backlog Refinement — 16–28 September 2026 evidence window
 
@@ -190,7 +292,7 @@ tracker assignments are inferred:
 - Keep randomized territories and shared limits outside delivered scope until verified.
 - Link accepted findings to a change and focused retest before calling them resolved.
 
-[Detailed refinement snapshot and implementation references](backlog-refinement.md).
+[Detailed refinement record and implementation references](backlog-refinement.md).
 
 ## Sprint Review — 28 September 2026 release-readiness snapshot
 
@@ -221,7 +323,7 @@ establish a live demonstration, passed release criteria, or stakeholder sign-off
 - Reproduce findings, link accepted work, and record focused retests.
 - Confirm proposed features separately before adding them to delivered scope.
 
-[Detailed Review snapshot and merge inventory](sprint-review.md).
+[Detailed Review record and merge inventory](sprint-review.md).
 
 ## Sprint Retrospective — recommendations from the 28 September snapshot
 
@@ -260,84 +362,17 @@ These are artifact-review recommendations, not attributed team statements:
 
 ## Meeting Photos
 
-Five supplied Sprint 3 photos, retained in their numbered order. Their mapping
-to planning or the four coordination records has not been confirmed.
-
-<figure className="sprint-meeting-photo">
-  <a href="/img/scrum/sprint-3/daily-scrum-01.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 1">
-    <img
-      src="/img/scrum/sprint-3/daily-scrum-01.png"
-      alt="Sprint 3 supplied team-call photo 1"
-      width="1672"
-      height="941"
-      loading="lazy"
-      decoding="async"
-    />
-  </a>
-  <figcaption>Sprint 3 — supplied photo 1.</figcaption>
-</figure>
-
-<figure className="sprint-meeting-photo">
-  <a href="/img/scrum/sprint-3/daily-scrum-02.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 2">
-    <img
-      src="/img/scrum/sprint-3/daily-scrum-02.png"
-      alt="Sprint 3 supplied team-call photo 2"
-      width="2330"
-      height="1312"
-      loading="lazy"
-      decoding="async"
-    />
-  </a>
-  <figcaption>Sprint 3 — supplied photo 2.</figcaption>
-</figure>
-
-<figure className="sprint-meeting-photo">
-  <a href="/img/scrum/sprint-3/daily-scrum-03.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 3">
-    <img
-      src="/img/scrum/sprint-3/daily-scrum-03.png"
-      alt="Sprint 3 supplied team-call photo 3"
-      width="1672"
-      height="941"
-      loading="lazy"
-      decoding="async"
-    />
-  </a>
-  <figcaption>Sprint 3 — supplied photo 3.</figcaption>
-</figure>
-
-<figure className="sprint-meeting-photo">
-  <a href="/img/scrum/sprint-3/daily-scrum-04.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 4">
-    <img
-      src="/img/scrum/sprint-3/daily-scrum-04.png"
-      alt="Sprint 3 supplied team-call photo 4"
-      width="1672"
-      height="941"
-      loading="lazy"
-      decoding="async"
-    />
-  </a>
-  <figcaption>Sprint 3 — supplied photo 4.</figcaption>
-</figure>
-
-<figure className="sprint-meeting-photo">
-  <a href="/img/scrum/sprint-3/daily-scrum-05.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 5">
-    <img
-      src="/img/scrum/sprint-3/daily-scrum-05.png"
-      alt="Sprint 3 supplied team-call photo 5"
-      width="1672"
-      height="941"
-      loading="lazy"
-      decoding="async"
-    />
-  </a>
-  <figcaption>Sprint 3 — supplied photo 5.</figcaption>
-</figure>
+The five supplied photos appear alongside planning and Daily Scrums 1–4 above,
+following their supplied order. This placement matches the earlier sprint layout;
+meeting dates and photo-to-record associations remain unconfirmed.
 
 ## Photos, Sources, and Record Status
 
 Five Sprint 3 team-call photos supplied by Uzair are retained in the
 [photo index](../index.md#sprint-3-photo-provenance). Their dates and mapping to
-the four written checkpoints are unconfirmed, so the gallery preserves supplied order without assigning ceremony dates. Earlier-sprint photos are not reused.
+planning and the four written checkpoints are unconfirmed. Photos are placed in
+supplied order for presentation, without assigning ceremony dates. Earlier-sprint
+photos are not reused.
 
 The linked records retain merge references, coordination-role limits, and
 original AI declarations. See the

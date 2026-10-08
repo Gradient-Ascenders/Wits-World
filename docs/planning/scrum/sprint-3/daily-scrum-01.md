@@ -1,15 +1,35 @@
 ---
-title: Sprint 3 Daily Scrum 1 — Coordination Snapshot
+title: Sprint 3 Daily Scrum 1
 sidebar_position: 2
 ---
 
-# Sprint 3 Daily Scrum 1 — Coordination Snapshot
+# Sprint 3 Daily Scrum 1
 
 **Date:** 16–19 September 2026 reporting window.
 
 > Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
 [Read the complete sprint report](report.md).
+
+## Meeting photo
+
+<figure className="sprint-meeting-photo">
+  <a href="/img/scrum/sprint-3/daily-scrum-02.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 2">
+    <img
+      src="/img/scrum/sprint-3/daily-scrum-02.png"
+      alt="Sprint 3 supplied team-call photo 2"
+      width="2330"
+      height="1312"
+      loading="lazy"
+      decoding="async"
+    />
+  </a>
+  <figcaption>Supplied Sprint 3 photo 2, displayed with Daily Scrum 1.</figcaption>
+</figure>
+
+Photo placement follows the supplied order for presentation; its meeting date
+and association with this record are unconfirmed. See the
+[photo provenance and layout](../index.md#sprint-3-photo-provenance).
 
 ## Summary of Progress
 
@@ -36,8 +56,6 @@ trading while preserving server authority and data integrity.
 
 ## Blockers and Open Questions {/* #impediments-and-uncertainty */}
 
-- Five team-call photos are retained in the [photo index](../index.md#sprint-3-photo-provenance).
-  Their dates and mapping to this window remain to be confirmed.
 - The merge log does not establish whether any integrated deployment was
   demonstrated or whether stakeholders reviewed it.
 - Later work still needs cross-layer verification of reconnect, deadlines,
