@@ -17,7 +17,12 @@ export default defineConfig(({ mode }) => ({
       injectRegister: false,
       registerType: 'prompt',
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globPatterns: [
+          '**/*.{js,css,html,svg,png,woff2}',
+          // Preserve the campus PNG's offline availability after format conversion.
+          // Other WebP artwork retains its existing cache policy.
+          'assets/campus-transparent-*.webp',
+        ],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       manifest: {
