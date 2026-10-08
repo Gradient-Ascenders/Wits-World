@@ -21,6 +21,7 @@ import {
   withDatabaseClient,
 } from '../src/database/connection.js';
 import { runMigrations } from '../src/database/migrations.js';
+import { auditDatabaseQuality } from '../src/database/quality-audit.js';
 import { runSeeds } from '../src/database/seeds.js';
 import {
   createCpuMatchService,
@@ -924,6 +925,170 @@ describe.skipIf(!runIntegrationTests)(
         }),
       ).rejects.toBeInstanceOf(CpuMatchSubmissionConflictError);
       expect(recordSubmissionConflict).toHaveBeenCalledOnce();
+    });
+
+    it('rejects malformed CPU JSON while preserving array results and nullable legacy receipts', async () => {
+      const battle = activeBattle(315, { playerDamage: 1, cpuDamage: 1 });
+      const legacyState = withLegacyTwoMoveCreatures(battle.state);
+      const fixture = await insertActionMatch(pool, legacyState);
+      await insertLegacySnapshotCards(pool, fixture.matchId, legacyState);
+      const client = await pool.connect();
+      try {
+        await client.query('begin');
+        const round = await client.query<{ id: string }>(
+          `insert into public.cpu_match_rounds (match_id, round_number, state_before, state_after, result)
+           select id, 1, state, state, '[]'::jsonb from public.cpu_matches where id=$1 returning id::text`,
+          [fixture.matchId],
+        );
+        const action = await client.query<{ id: string }>(
+          `insert into public.cpu_match_actions (match_id, round_id, sequence, side, submission_id, action, result)
+           values ($1, $2, 1, 'player', $3, '{}'::jsonb, '{}'::jsonb) returning id::text`,
+          [fixture.matchId, round.rows[0]?.id, integrationUuid(315_999)],
+        );
+        const checks = [
+          [
+            'public.cpu_matches',
+            'state',
+            fixture.matchId,
+            'cpu_matches_state_object_check',
+            '[]',
+          ],
+          [
+            'public.cpu_match_rounds',
+            'state_before',
+            round.rows[0]?.id,
+            'cpu_match_rounds_state_before_object_check',
+            'null',
+          ],
+          [
+            'public.cpu_match_rounds',
+            'state_after',
+            round.rows[0]?.id,
+            'cpu_match_rounds_state_after_object_check',
+            '[]',
+          ],
+          [
+            'public.cpu_match_rounds',
+            'result',
+            round.rows[0]?.id,
+            'cpu_match_rounds_result_array_check',
+            '{}',
+          ],
+          [
+            'public.cpu_match_actions',
+            'action',
+            action.rows[0]?.id,
+            'cpu_match_actions_action_object_check',
+            'null',
+          ],
+          [
+            'public.cpu_match_actions',
+            'result',
+            action.rows[0]?.id,
+            'cpu_match_actions_result_object_check',
+            '[]',
+          ],
+          [
+            'public.cpu_match_actions',
+            'response',
+            action.rows[0]?.id,
+            'cpu_match_actions_response_object_check',
+            'null',
+          ],
+          [
+            'public.cpu_match_actions',
+            'submitted_intent',
+            action.rows[0]?.id,
+            'cpu_match_actions_submitted_intent_object_check',
+            '[]',
+          ],
+        ];
+        for (const [table, field, id, constraint, json] of checks) {
+          await client.query('savepoint invalid_shape');
+          await expect(
+            client.query(`update ${table} set ${field}=$1::jsonb where id=$2`, [
+              json,
+              id,
+            ]),
+          ).rejects.toMatchObject({ code: '23514', constraint });
+          await client.query('rollback to savepoint invalid_shape');
+        }
+        await client.query('savepoint invalid_shape');
+        await expect(
+          client.query(
+            `update public.cpu_match_cards set snapshot='[]'::jsonb where match_id=$1`,
+            [fixture.matchId],
+          ),
+        ).rejects.toMatchObject({
+          code: '23514',
+          constraint: 'cpu_match_cards_snapshot_object_check',
+        });
+        await client.query('rollback to savepoint invalid_shape');
+
+        const shapes = await client.query<{ convalidated: boolean }>(
+          `select convalidated from pg_constraint where conname=any($1::text[])`,
+          [
+            [
+              ...checks.map((check) => check[3]),
+              'cpu_match_cards_snapshot_object_check',
+            ],
+          ],
+        );
+        expect(shapes.rows).toHaveLength(9);
+        expect(shapes.rows.every((row) => row.convalidated)).toBe(true);
+      } finally {
+        await client.query('rollback');
+        client.release();
+      }
+    });
+
+    it('audits real aggregates read-only and keeps unreviewed gameplay unknown without exposing identities', async () => {
+      const before = await pool.query<{ rows: string }>(
+        'select count(*)::text as rows from public.cpu_matches',
+      );
+      const unclassified = await auditDatabaseQuality(temporaryConfig);
+      expect(unclassified.migrations).toMatchObject({
+        changed: [],
+        unexpected: [],
+        pending: [],
+      });
+      expect(
+        unclassified.structure.cpuJsonShapes.every(
+          (shape) => shape.invalid === 0,
+        ),
+      ).toBe(true);
+      const players = unclassified.playerData.byEntity.find(
+        (row) => row.entity === 'players',
+      );
+      expect(players?.total).toBeGreaterThan(0);
+      expect(players).toMatchObject({
+        confirmedTest: 0,
+        confirmedProduction: 0,
+        unknown: players?.total,
+      });
+
+      const classified = await auditDatabaseQuality(temporaryConfig, {
+        classifications: {
+          reviewedAt: '2020-01-01',
+          testPlayerIds: [PLAYER_ID],
+          productionPlayerIds: [],
+        },
+      });
+      expect(
+        classified.playerData.byEntity.find((row) => row.entity === 'players'),
+      ).toMatchObject({
+        confirmedTest: 1,
+        confirmedProduction: 0,
+        unknown: (players?.total ?? 0) - 1,
+      });
+      const serialized = JSON.stringify(classified);
+      expect(serialized).not.toContain(PLAYER_ID);
+      expect(serialized).not.toContain('cpu-match-player');
+      expect(serialized).not.toContain('issuer.example');
+      const after = await pool.query<{ rows: string }>(
+        'select count(*)::text as rows from public.cpu_matches',
+      );
+      expect(after.rows).toEqual(before.rows);
     });
 
     it('hides an uncommitted creation and recovers that exact match after commit', async () => {

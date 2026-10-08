@@ -395,6 +395,47 @@ describe('migration execution', () => {
     expect(statements).not.toContain('commit');
     expect(statements.at(-1)).toBe('select pg_advisory_unlock($1)');
   });
+
+  it('rejects unknown applied history before executing any pending SQL', async () => {
+    const directory = await createTemporaryMigrationDirectory();
+    await writeFile(join(directory, '0001_pending.sql'), 'select 1;');
+    const query = createMigrationQuery([
+      { checksum: 'previous-release', name: '0002_missing.sql' },
+    ]);
+
+    await expect(
+      runMigrations(databaseConfig, directory, createClientRunner(query)),
+    ).rejects.toThrow(
+      'Applied migrations are missing from this release: 0002_missing.sql.',
+    );
+    expect(query).not.toHaveBeenCalledWith('begin');
+    expect(query).not.toHaveBeenCalledWith('select 1;');
+    expect(query).toHaveBeenLastCalledWith(
+      'select pg_advisory_unlock($1)',
+      [9_160_001],
+    );
+  });
+
+  it('checks later applied checksums before applying an earlier pending file', async () => {
+    const directory = await createTemporaryMigrationDirectory();
+    await writeFile(join(directory, '0001_pending.sql'), 'select 1;');
+    await writeFile(join(directory, '0002_changed.sql'), 'select 2;');
+    const query = createMigrationQuery([
+      { checksum: 'old-checksum', name: '0002_changed.sql' },
+    ]);
+
+    await expect(
+      runMigrations(databaseConfig, directory, createClientRunner(query)),
+    ).rejects.toThrow(
+      'Migration 0002_changed.sql has changed after being applied.',
+    );
+    expect(query).not.toHaveBeenCalledWith('begin');
+    expect(query).not.toHaveBeenCalledWith('select 1;');
+    expect(query).toHaveBeenLastCalledWith(
+      'select pg_advisory_unlock($1)',
+      [9_160_001],
+    );
+  });
 });
 
 async function createTemporaryMigrationDirectory() {

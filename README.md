@@ -142,7 +142,7 @@ Codex-CLI[gpt-6-sol], and Codex-CLI[gpt-6-luna].
 
 This repository uses AI code review: Codex-CLI[gpt-5.6-sol medium],
 Codex-CLI[GPT-5], Codex[GPT-5], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-6], Codex-CLI[GPT-6],
-and Codex-CLI[gpt-6-sol].
+Codex-CLI[gpt-6-sol], and Codex-CLI[gpt-6-luna].
 
 Sprint 3 documentation was generated, reviewed, and edited with assistance from
 Codex-CLI[gpt-6-sol] and Codex-CLI[gpt-6-luna]. The Luna subagents contributed

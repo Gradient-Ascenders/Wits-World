@@ -22,6 +22,35 @@ export interface MigrationResult {
   skipped: string[];
 }
 
+export interface MigrationHistoryInspection {
+  changed: string[];
+  pending: string[];
+  unexpected: string[];
+}
+
+export function inspectMigrationHistory(
+  migrationFiles: readonly MigrationFile[],
+  appliedMigrations: ReadonlyMap<string, string>,
+): MigrationHistoryInspection {
+  const sourceNames = new Set(migrationFiles.map(({ name }) => name));
+
+  return {
+    changed: migrationFiles
+      .filter(
+        ({ name, checksum }) =>
+          appliedMigrations.has(name) &&
+          appliedMigrations.get(name) !== checksum,
+      )
+      .map(({ name }) => name),
+    pending: migrationFiles
+      .filter(({ name }) => !appliedMigrations.has(name))
+      .map(({ name }) => name),
+    unexpected: [...appliedMigrations.keys()]
+      .filter((name) => !sourceNames.has(name))
+      .sort(),
+  };
+}
+
 export async function runMigrations(
   databaseConfig: DatabaseConfig,
   migrationsDirectory = getMigrationsDirectory(),
@@ -36,6 +65,23 @@ export async function runMigrations(
       await ensureMigrationTable(client);
 
       const appliedMigrations = await loadAppliedMigrations(client);
+      const history = inspectMigrationHistory(
+        migrationFiles,
+        appliedMigrations,
+      );
+
+      if (history.unexpected.length > 0) {
+        throw new Error(
+          `Applied migrations are missing from this release: ${history.unexpected.join(', ')}.`,
+        );
+      }
+
+      if (history.changed.length > 0) {
+        throw new Error(
+          `Migration ${history.changed[0]} has changed after being applied.`,
+        );
+      }
+
       const result: MigrationResult = {
         applied: [],
         skipped: [],
@@ -45,12 +91,6 @@ export async function runMigrations(
         const appliedChecksum = appliedMigrations.get(migrationFile.name);
 
         if (appliedChecksum) {
-          if (appliedChecksum !== migrationFile.checksum) {
-            throw new Error(
-              `Migration ${migrationFile.name} has changed after being applied.`,
-            );
-          }
-
           result.skipped.push(migrationFile.name);
           continue;
         }

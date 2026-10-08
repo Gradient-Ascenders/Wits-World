@@ -38,6 +38,14 @@ sequence, and status columns remain queryable and constrained by PostgreSQL.
 The source deck reference is nullable on deletion so removing a saved deck
 does not remove or invalidate a match snapshot.
 
+Migration `0065_constrain_cpu_match_json_shapes.sql` validates the outer JSON
+shapes: states, card snapshots and per-action inputs/results are objects; round
+results are arrays; response and submitted-intent objects remain SQL-nullable.
+JSON `null`, scalar values and mismatched object/array types are rejected.
+Existing legacy keys and two-move snapshots remain valid. The migration checks
+retained rows without replacing them; the shared rules engine still validates
+the actual battle semantics.
+
 ## Transaction and concurrency boundary
 
 Every player action runs in a transaction:
@@ -191,3 +199,5 @@ This document was generated and edited with assistance from
 ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and Codex-CLI[gpt-5.6-sol].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+CPU JSON-shape guidance updated with assistance from Codex[GPT-5].
