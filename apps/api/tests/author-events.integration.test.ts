@@ -5,8 +5,10 @@ import { buildApp } from '../src/app.js';
 import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import {
+  AuthorEventNotFoundError,
   AuthorEventNotReadyError,
   AuthorEventStateConflictError,
+  InvalidAuthorEventError,
   type AuthorEvent,
   type AuthorEventService,
 } from '../src/events/author-event-service.js';
@@ -75,6 +77,9 @@ let updateEvent: ReturnType<typeof createUpdateEventMock>;
 let playerResolve: ReturnType<typeof createPlayerResolveMock>;
 let publishEvent: ReturnType<typeof createPublishEventMock>;
 let retireEvent: ReturnType<typeof createRetireEventMock>;
+let submitEvent: ReturnType<typeof createLifecycleEventMock>;
+let approveEvent: ReturnType<typeof createLifecycleEventMock>;
+let returnEvent: ReturnType<typeof createLifecycleEventMock>;
 let transitionReviewPackage: ReturnType<
   typeof vi.fn<AuthorEventService['transitionReviewPackage']>
 >;
@@ -86,6 +91,9 @@ beforeEach(async () => {
   playerResolve = createPlayerResolveMock();
   publishEvent = createPublishEventMock();
   retireEvent = createRetireEventMock();
+  submitEvent = createLifecycleEventMock();
+  approveEvent = createLifecycleEventMock();
+  returnEvent = createLifecycleEventMock();
   transitionReviewPackage = vi
     .fn<AuthorEventService['transitionReviewPackage']>()
     .mockResolvedValue(authoredEvent);
@@ -98,9 +106,9 @@ beforeEach(async () => {
     listEvents,
     createEvent,
     updateEvent,
-    submitEvent: vi.fn().mockResolvedValue(authoredEvent),
-    approveEvent: vi.fn().mockResolvedValue(authoredEvent),
-    returnEvent: vi.fn().mockResolvedValue(authoredEvent),
+    submitEvent,
+    approveEvent,
+    returnEvent,
     publishEvent,
     retireEvent,
     transitionReviewPackage,
@@ -124,6 +132,83 @@ afterEach(async () => {
 });
 
 describe('author event API', () => {
+  it('maps invalid create data and missing event CRUD results to API errors', async () => {
+    createEvent.mockRejectedValueOnce(
+      new InvalidAuthorEventError('Event coordinates are incomplete.'),
+    );
+    const invalid = await authenticatedRequest({
+      method: 'POST',
+      url: '/api/v1/author/events',
+      payload: validEventBody(),
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ code: 'INVALID_EVENT' });
+
+    updateEvent.mockRejectedValueOnce(new AuthorEventNotFoundError());
+    const missingUpdate = await authenticatedRequest({
+      method: 'PUT',
+      url: `/api/v1/author/events/${EVENT_ID}`,
+      payload: { ...validEventBody(), expectedVersion: 0 },
+    });
+    expect(missingUpdate.statusCode).toBe(404);
+    expect(missingUpdate.json()).toMatchObject({ code: 'EVENT_NOT_FOUND' });
+  });
+
+  it('forwards actor, versions, notes, and rollback reason across event transitions', async () => {
+    const submitResponse = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/submit`,
+      payload: { expectedVersion: 2, note: 'Evidence attached' },
+    });
+    expect(submitResponse.statusCode).toBe(200);
+    expect(submitEvent).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      eventId: EVENT_ID,
+      expectedVersion: 2,
+      note: 'Evidence attached',
+    });
+
+    const approveResponse = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/approve`,
+      payload: { expectedVersion: 3 },
+    });
+    expect(approveResponse.statusCode).toBe(200);
+    expect(approveEvent).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      eventId: EVENT_ID,
+      expectedVersion: 3,
+      note: undefined,
+    });
+
+    const returnResponse = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/return`,
+      payload: { expectedVersion: 4, reason: 'Add a source URL.' },
+    });
+    expect(returnResponse.statusCode).toBe(200);
+    expect(returnEvent).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      eventId: EVENT_ID,
+      expectedVersion: 4,
+      note: 'Add a source URL.',
+    });
+
+    const packageReturn = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/package/return`,
+      payload: { expectedVersion: 5, reason: 'Return the complete package.' },
+    });
+    expect(packageReturn.statusCode).toBe(200);
+    expect(transitionReviewPackage).toHaveBeenCalledWith({
+      action: 'return',
+      actorPlayerId: AUTHOR_ID,
+      eventId: EVENT_ID,
+      expectedVersion: 5,
+      note: 'Return the complete package.',
+    });
+  });
+
   it('protects package submission and derives its actor from authentication', async () => {
     const url = `/api/v1/author/events/${EVENT_ID}/package/submit`;
     const missingToken = await app.inject({
@@ -605,4 +690,10 @@ function createRetireEventMock() {
     authoringStatus: 'retired',
     retiredAt: '2026-08-16T00:00:00.000Z',
   }));
+}
+
+function createLifecycleEventMock() {
+  return vi
+    .fn<AuthorEventService['submitEvent']>()
+    .mockResolvedValue(authoredEvent);
 }

@@ -143,6 +143,71 @@ describe('live battle API client', () => {
     ).toThrow(LiveApiError);
   });
 
+  it('rejects malformed, unsupported, and open-shape websocket messages', () => {
+    const participant = participantProjection();
+    const ready = readyMessage(participant);
+    expect(() => parseLiveServerMessage('{not json')).toThrow(LiveApiError);
+    expect(() =>
+      parseLiveServerMessage(JSON.stringify({ ...ready, protocolVersion: 2 })),
+    ).toThrow(LiveApiError);
+    expect(() =>
+      parseLiveServerMessage(
+        JSON.stringify({ ...ready, unrecognized: 'must not be ignored' }),
+      ),
+    ).toThrow(LiveApiError);
+  });
+
+  it('rejects a ticket that is validly shaped but bound to another role', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ticket: 'opaque-ticket-value-with-enough-random-characters',
+            role: 'spectator',
+            protocolVersion: 1,
+            expiresAt: '2026-09-25T12:01:00.000Z',
+            webSocketUrl: 'wss://api.example.test/api/v1/realtime/live',
+            requestId: 'request-ticket-1',
+          }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+
+    await expect(
+      createLiveConnectionTicket({
+        ...options(),
+        matchId: LIVE_MATCH_ID,
+        role: 'participant',
+      }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
+  });
+
+  it('rejects invalid standings page sizes locally and preserves aborts from fetch', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      listRankedStandings({ ...options(), limit: 0 }),
+    ).rejects.toMatchObject({ failure: 'validation' });
+    await expect(
+      listRankedStandings({ ...options(), limit: 101 }),
+    ).rejects.toMatchObject({ failure: 'validation' });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const controller = new AbortController();
+    controller.abort();
+    const abort = new DOMException('The request was aborted.', 'AbortError');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort));
+    await expect(
+      getLiveProjection({
+        ...options(),
+        signal: controller.signal,
+        matchId: LIVE_MATCH_ID,
+      }),
+    ).rejects.toBe(abort);
+  });
+
   it('submits only the selected deck identifier to the ranked queue', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

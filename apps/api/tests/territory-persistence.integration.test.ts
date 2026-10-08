@@ -22,13 +22,22 @@ import {
   getSeedsDirectory,
 } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
+import { createTerritoryOwnerBonusService } from '../src/territory/territory-owner-bonus.js';
+import {
+  assertTerritoryQueueGrantAvailable,
+  createTerritoryQueueGrant,
+  TerritoryGrantUnavailableError,
+} from '../src/territory/territory-grants.js';
 import {
   rankedTransaction,
   type RankedClient,
   type RankedDatabase,
 } from '../src/matches/ranked-database.js';
 import { settleTerritoryWindow } from '../src/territory/territory-settlement.js';
-import { createTerritoryReadService } from '../src/territory/territory-read-service.js';
+import {
+  createTerritoryReadService,
+  TerritoryZoneNotFoundError,
+} from '../src/territory/territory-read-service.js';
 
 const MIGRATION_NAME = '0053_persist_contested_territory.sql';
 const RUNTIME_MIGRATION_NAME = '0054_implement_contested_territory_runtime.sql';
@@ -323,27 +332,238 @@ describe.skipIf(!runIntegrationTests)(
       );
     });
 
-    it('reads current territory standings with PostgreSQL-safe query aliases', async () => {
-      const zoneId = zones.get('arts_and_community');
-      if (!zoneId)
-        throw new Error('Arts & Community territory was not seeded.');
-
-      const standings = await createTerritoryReadService(pool).standings(
-        randomUUID(),
-        zoneId,
+    it('reads owned zones, standings, and public ownership history without exposing player IDs', async () => {
+      const zoneId = await createTerritoryTestZone(
+        pool,
+        requireZone(zones, 'arts_and_community'),
       );
+      const owner = await createPlayer(pool, seasonId);
+      const contributor = await createPlayer(pool, seasonId);
+      const windows = await pool.query<{
+        window_start: Date;
+        window_end: Date;
+      }>(
+        `select
+           (date_trunc('hour', now() at time zone 'Africa/Johannesburg')
+             - interval '1 hour') at time zone 'Africa/Johannesburg' window_start,
+           date_trunc('hour', now() at time zone 'Africa/Johannesburg')
+             at time zone 'Africa/Johannesburg' window_end`,
+      );
+      const window = windows.rows[0]!;
+      await insertSettlement(pool, {
+        zoneId,
+        seasonId,
+        windowStart: window.window_start,
+        windowEnd: window.window_end,
+        expectedStateVersion: 0,
+        ownerBeforePlayerId: null,
+        ownerAfterPlayerId: owner.id,
+        digestCharacter: 'e',
+      });
 
-      expect(standings).toEqual(
+      const pair = await createAcceptedPair(pool, seasonId, contributor, owner);
+      const matchId = await createRankedMatch(pool, pair, cards);
+      await completeRankedMatch(pool, seasonId, matchId, contributor, owner);
+      await recordAcceptedContribution(pool, {
+        matchId,
+        seasonId,
+        playerId: contributor.id,
+        zoneId,
+      });
+
+      const service = createTerritoryReadService(pool);
+      const listed = await service.listZones(randomUUID());
+      const summary = listed.zones.find((zone) => zone.zoneId === zoneId);
+      expect(summary).toEqual(
         expect.objectContaining({
-          activity: expect.objectContaining({
-            contributors: expect.any(Number),
-            influence: expect.any(Number),
-          }),
+          owner: { playerName: expect.stringMatching(/^territory_/u) },
           seasonId,
+          status: 'active',
           zoneId,
+          windowStart: expect.any(String),
+          windowEnd: expect.any(String),
         }),
       );
-    });
+      expect(summary?.owner).not.toHaveProperty('playerId');
+
+      const detail = await service.getZone(randomUUID(), zoneId);
+      expect(detail).toEqual(
+        expect.objectContaining({
+          lifecycleVersion: expect.any(Number),
+          lastSettledAt: expect.any(String),
+          owner: summary?.owner,
+        }),
+      );
+      await expect(service.getZone(randomUUID(), randomUUID())).rejects.toThrow(
+        TerritoryZoneNotFoundError,
+      );
+
+      const standings = await service.standings(contributor.id, zoneId);
+      expect(standings).toEqual({
+        zoneId,
+        seasonId,
+        top: [{ rank: 1, influence: 1 }],
+        activity: { influence: 1, contributors: 1 },
+        viewer: {
+          influence: 1,
+          todayInfluence: 1,
+          dailyCap: 5,
+          remainingDailyInfluence: 4,
+        },
+      });
+
+      const history = await service.history(randomUUID(), zoneId);
+      expect(history.zoneId).toBe(zoneId);
+      expect(history.entries).toHaveLength(2);
+      expect(history.entries[0]).toEqual(
+        expect.objectContaining({
+          seasonId,
+          owner: { playerName: summary!.owner!.playerName },
+          transitionKind: 'settlement',
+          effectiveAt: expect.any(String),
+        }),
+      );
+      expect(history.entries[1]).toEqual(
+        expect.objectContaining({
+          owner: null,
+          transitionKind: 'activated',
+          effectiveAt: expect.any(String),
+        }),
+      );
+      expect(history.entries[0]?.owner).not.toHaveProperty('playerId');
+    }, 60_000);
+
+    it('awards an owner bonus only to the snapshotted owner and rejects expired or foreign grants', async () => {
+      const zoneId = await createTerritoryTestZone(
+        pool,
+        requireZone(zones, 'west_campus'),
+      );
+      const owner = await createPlayer(pool, seasonId);
+      const nonOwner = await createPlayer(pool, seasonId);
+      const windows = await pool.query<{
+        window_start: Date;
+        window_end: Date;
+      }>(
+        `select
+           (date_trunc('hour', now() at time zone 'Africa/Johannesburg')
+             - interval '1 hour') at time zone 'Africa/Johannesburg' window_start,
+           date_trunc('hour', now() at time zone 'Africa/Johannesburg')
+             at time zone 'Africa/Johannesburg' window_end`,
+      );
+      const window = windows.rows[0]!;
+      await insertSettlement(pool, {
+        zoneId,
+        seasonId,
+        windowStart: window.window_start,
+        windowEnd: window.window_end,
+        expectedStateVersion: 0,
+        ownerBeforePlayerId: null,
+        ownerAfterPlayerId: owner.id,
+        digestCharacter: 'f',
+      });
+
+      const location = await pool.query<{
+        latitude: number;
+        longitude: number;
+      }>(
+        `select st_y(point.geometry) latitude, st_x(point.geometry) longitude
+           from public.territory_zones zone
+           cross join lateral (
+             select st_pointonsurface(zone.area) geometry
+           ) point
+          where zone.id = $1::uuid`,
+        [zoneId],
+      );
+      const point = location.rows[0]!;
+      const bonus = createTerritoryOwnerBonusService(() => 0);
+      const ownerFixture = await completeBonusAttempt(
+        pool,
+        bonus,
+        owner.id,
+        point,
+        3,
+      );
+      const nonOwnerFixture = await completeBonusAttempt(
+        pool,
+        bonus,
+        nonOwner.id,
+        point,
+        5,
+      );
+
+      const bonusEffects = await pool.query<{
+        card_count: number;
+        nonowner_outcome: string;
+        owner_outcome: string;
+        owner_card_count: number;
+      }>(
+        `select
+           (select outcome from private.territory_owner_bonus_decisions
+             where attempt_id = $1::uuid) owner_outcome,
+           (select count(*)::int from public.player_cards
+             where source_completion_id = $2::uuid
+               and source_territory_bonus_id is not null) owner_card_count,
+           (select outcome from private.territory_owner_bonus_decisions
+             where attempt_id = $3::uuid) nonowner_outcome,
+           (select count(*)::int from public.player_cards
+             where source_completion_id = $4::uuid
+               and source_territory_bonus_id is not null) card_count`,
+        [
+          ownerFixture.attemptId,
+          ownerFixture.completionId,
+          nonOwnerFixture.attemptId,
+          nonOwnerFixture.completionId,
+        ],
+      );
+      expect(bonusEffects.rows).toEqual([
+        {
+          owner_outcome: 'awarded',
+          owner_card_count: 1,
+          nonowner_outcome: 'not_eligible',
+          card_count: 0,
+        },
+      ]);
+
+      const queueEntryId = await enqueue(pool, seasonId, owner, true);
+      const grantNow = new Date();
+      const grant = await createTerritoryQueueGrant(pool, {
+        queueEntryId,
+        seasonId,
+        playerId: owner.id,
+        claim: {
+          zoneId,
+          latitude: point.latitude,
+          longitude: point.longitude,
+          accuracyMetres: 0,
+          acquiredAt: grantNow.toISOString(),
+        },
+        now: grantNow,
+      });
+      await expect(
+        assertTerritoryQueueGrantAvailable(pool, {
+          queueEntryId,
+          playerId: nonOwner.id,
+          territoryContender: true,
+          now: new Date(),
+        }),
+      ).rejects.toThrow(TerritoryGrantUnavailableError);
+      await expect(
+        assertTerritoryQueueGrantAvailable(pool, {
+          queueEntryId,
+          playerId: owner.id,
+          territoryContender: true,
+          now: new Date(grant.expires_at.getTime() + 1),
+        }),
+      ).rejects.toThrow(TerritoryGrantUnavailableError);
+      await expect(
+        assertTerritoryQueueGrantAvailable(pool, {
+          queueEntryId,
+          playerId: owner.id,
+          territoryContender: true,
+          now: grantNow,
+        }),
+      ).resolves.toEqual(expect.objectContaining({ id: grant.id }));
+    }, 60_000);
 
     it('upgrades a seeded placement database and bootstraps territory without rewriting placement state', async () => {
       const upgradeDatabaseName = `wits_quest_territory_upgrade_${Date.now()}_${process.pid}`;
@@ -677,6 +897,15 @@ describe.skipIf(!runIntegrationTests)(
         }),
       ).rejects.toThrow(/stale/u);
 
+      const expectedOwnership = await pool.query<{
+        zone_id: string;
+        ownership_version_id: string;
+      }>(
+        `select distinct on (version.zone_id)
+                version.zone_id::text, version.id::text ownership_version_id
+           from private.territory_ownership_versions version
+          order by version.zone_id, version.state_version desc`,
+      );
       const rebuildClient = await pool.connect();
       let rebuiltCount: number | undefined;
       try {
@@ -695,7 +924,16 @@ describe.skipIf(!runIntegrationTests)(
       } finally {
         rebuildClient.release();
       }
-      expect(rebuiltCount).toBe(3);
+      expect(rebuiltCount).toBe(expectedOwnership.rows.length);
+      const rebuiltOwnership = await pool.query<{
+        zone_id: string;
+        ownership_version_id: string;
+      }>(
+        `select zone_id::text, ownership_version_id::text
+           from private.territory_current_ownership
+          order by zone_id`,
+      );
+      expect(rebuiltOwnership.rows).toEqual(expectedOwnership.rows);
 
       const rebuilt = await loadCurrentOwner(pool, westZoneId);
       expect(rebuilt).toEqual({
@@ -1099,17 +1337,201 @@ async function createPlayer(
   return { id, deckId };
 }
 
+async function createTerritoryTestZone(
+  database: Pick<pg.Pool, 'query'>,
+  sourceZoneId: string,
+): Promise<string> {
+  const inserted = await database.query<{ id: string }>(
+    `insert into public.territory_zones (
+       policy_version, zone_key, definition_version, name, area,
+       status, source_urls, review_provenance, reviewed_at, activated_at,
+       created_at, updated_at
+     ) select $1, $2, 1, 'Territory runtime integration fixture',
+              st_translate(area, 0.5, 0), 'active', source_urls,
+              'controlled_policy', now(), now(), now(), now()
+         from public.territory_zones
+        where id = $3::uuid
+     returning id::text`,
+    [
+      TERRITORY_POLICY,
+      `runtime_${randomUUID().replaceAll('-', '')}`,
+      sourceZoneId,
+    ],
+  );
+  const zoneId = inserted.rows[0]?.id;
+  if (!zoneId) throw new Error('Expected a territory runtime fixture zone.');
+  return zoneId;
+}
+
+async function completeBonusAttempt(
+  database: Pick<pg.Pool, 'connect'>,
+  bonus: ReturnType<typeof createTerritoryOwnerBonusService>,
+  playerId: string,
+  point: { latitude: number; longitude: number },
+  scoreCorrect: number,
+): Promise<{ attemptId: string; completionId: string }> {
+  const client = await database.connect();
+  const eventId = randomUUID();
+  const challengeId = randomUUID();
+  const attemptId = randomUUID();
+  const startedAt = new Date(Date.now() - 60_000);
+
+  try {
+    await client.query('begin');
+    await client.query(
+      `insert into public.events (
+         id, title, location, radius_metres, starts_at, ends_at,
+         is_published, authoring_status, publication_provenance
+       ) values (
+         $1::uuid, 'Territory bonus integration event',
+         st_setsrid(st_makepoint($2, $3), 4326)::geography,
+         10, $4::timestamptz, $4::timestamptz + interval '1 day',
+         true, 'published', 'controlled_seed'
+       )`,
+      [eventId, point.longitude, point.latitude, startedAt],
+    );
+    await client.query(
+      `insert into public.event_challenges (id, event_id, status)
+       values ($1::uuid, $2::uuid, 'draft')`,
+      [challengeId, eventId],
+    );
+    await client.query(
+      `insert into public.challenge_attempts (
+         id, player_id, event_id, challenge_id, status, started_at, deadline,
+         time_limit_seconds, average_difficulty
+       ) values (
+         $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'in_progress', $5,
+         $5::timestamptz + interval '90 seconds', 90, 1
+      )`,
+      [attemptId, playerId, eventId, challengeId, startedAt],
+    );
+    for (let position = 1; position <= 5; position += 1) {
+      const sourceQuestionId = randomUUID();
+      const snapshotQuestionId = randomUUID();
+      await client.query(
+        `insert into public.challenge_questions (
+           id, challenge_id, prompt, difficulty, status
+         ) values ($1::uuid, $2::uuid, $3, 1, 'draft')`,
+        [sourceQuestionId, challengeId, `Territory bonus question ${position}`],
+      );
+      await client.query(
+        `insert into public.attempt_questions (
+           id, attempt_id, source_question_id, position,
+           prompt_snapshot, difficulty_snapshot
+         ) values ($1::uuid, $2::uuid, $3::uuid, $4, $5, 1)`,
+        [
+          snapshotQuestionId,
+          attemptId,
+          sourceQuestionId,
+          position,
+          `Territory bonus question ${position}`,
+        ],
+      );
+      for (let choicePosition = 1; choicePosition <= 4; choicePosition += 1) {
+        const sourceChoiceId = randomUUID();
+        await client.query(
+          `insert into public.challenge_choices (
+             id, question_id, authoring_position, choice_text
+           ) values ($1::uuid, $2::uuid, $3, $4)`,
+          [
+            sourceChoiceId,
+            sourceQuestionId,
+            choicePosition,
+            `Option ${choicePosition}`,
+          ],
+        );
+        await client.query(
+          `insert into public.attempt_question_choices (
+             attempt_question_id, source_question_id, source_choice_id,
+             display_position, choice_text_snapshot
+           ) values ($1::uuid, $2::uuid, $3::uuid, $4, $5)`,
+          [
+            snapshotQuestionId,
+            sourceQuestionId,
+            sourceChoiceId,
+            choicePosition,
+            `Option ${choicePosition}`,
+          ],
+        );
+        if (choicePosition === 1) {
+          await client.query(
+            `insert into private.challenge_answer_keys (
+               question_id, accepted_choice_id
+             ) values ($1::uuid, $2::uuid)`,
+            [sourceQuestionId, sourceChoiceId],
+          );
+        }
+      }
+    }
+    await client.query(
+      `update public.challenge_questions
+          set status = 'published', version = version + 1,
+              publication_provenance = 'controlled_seed', updated_at = now()
+        where challenge_id = $1::uuid`,
+      [challengeId],
+    );
+    await client.query(
+      `update public.event_challenges
+          set status = 'published', version = version + 1,
+              publication_provenance = 'controlled_seed', updated_at = now()
+        where id = $1::uuid`,
+      [challengeId],
+    );
+    await bonus.snapshotAttempt(client, {
+      attemptId,
+      playerId,
+      eventId,
+      startedAt,
+    });
+    const completedAt = new Date();
+    await client.query(
+      `update public.challenge_attempts
+          set status = 'completed', completed_at = $2::timestamptz,
+              completion_reason = 'answered', score_correct = $3,
+              updated_at = $2::timestamptz
+        where id = $1::uuid`,
+      [attemptId, completedAt, scoreCorrect],
+    );
+    const completion = await client.query<{ id: string }>(
+      `insert into public.event_completions (
+         attempt_id, player_id, event_id, score_correct,
+         average_difficulty, reward_policy_version, completed_at
+       ) values ($1::uuid, $2::uuid, $3::uuid, $4, 1, 'territory-test-v1', $5)
+       returning id::text`,
+      [attemptId, playerId, eventId, scoreCorrect, completedAt],
+    );
+    const completionId = completion.rows[0]?.id;
+    if (!completionId) throw new Error('Expected a challenge completion ID.');
+
+    await bonus.finalizeAttempt(client, {
+      attemptId,
+      playerId,
+      completionId,
+      scoreCorrect,
+      completedAt,
+    });
+    await client.query('commit');
+    return { attemptId, completionId };
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function enqueue(
   database: Pick<pg.Pool, 'query'>,
   seasonId: string,
   player: RankedPlayer,
+  territoryContender = false,
 ): Promise<string> {
   const id = randomUUID();
   await database.query(
     `insert into private.ranked_queue_entries (
-       id, season_id, player_id, selected_deck_id
-     ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid)`,
-    [id, seasonId, player.id, player.deckId],
+       id, season_id, player_id, selected_deck_id, territory_contender
+     ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5)`,
+    [id, seasonId, player.id, player.deckId, territoryContender],
   );
   return id;
 }
