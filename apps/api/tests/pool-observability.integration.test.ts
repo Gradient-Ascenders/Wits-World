@@ -13,6 +13,59 @@ import {
 describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
   'real disposable PostgreSQL pool observations',
   () => {
+    it('counts native promise/callback queries and delegated client work once under background ownership', async () => {
+      loadApiEnvironment();
+      const config = buildDatabaseConfig({ target: 'test' });
+      const info = vi.fn();
+      const pool = createDatabasePool(config, {
+        logger: { info, error: vi.fn() },
+      });
+      try {
+        await withPoolObservation('movement_retention', async () => {
+          await pool.query('select 1');
+          await new Promise<void>((resolve, reject) => {
+            pool.query('select 1', (error) =>
+              error ? reject(error) : resolve(),
+            );
+          });
+        });
+        await withPoolObservation('placement_boundary', async () => {
+          const client = await pool.connect();
+          try {
+            await client.query('begin');
+            await client.query('select 1');
+            await client.query('rollback');
+          } finally {
+            client.release();
+          }
+        });
+      } finally {
+        await pool.end();
+      }
+      const rows = info.mock.calls
+        .map(([fields]) => fields)
+        .filter((fields) => fields.event === 'operation_summary');
+      for (const [category, count] of [
+        ['movement_retention', 2],
+        ['placement_boundary', 1],
+      ] as const) {
+        const totals = rows.filter((row) => row.category === category);
+        expect(
+          totals.reduce((sum, row) => sum + row.acquisition_attempts_count, 0),
+        ).toBe(count);
+        expect(
+          totals.reduce((sum, row) => sum + row.acquisitions_count, 0),
+        ).toBe(count);
+        expect(
+          totals.reduce((sum, row) => sum + row.holds_completed_count, 0),
+        ).toBe(count);
+        expect(totals.at(-1)).toMatchObject({
+          active_holds_count: 0,
+          pending_count: 0,
+        });
+      }
+    }, 30_000);
+
     it('observes checkout saturation, native query/callback recovery and release', async () => {
       loadApiEnvironment();
       const config = buildDatabaseConfig({ target: 'test' });

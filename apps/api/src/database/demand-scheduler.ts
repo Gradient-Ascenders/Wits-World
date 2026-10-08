@@ -5,6 +5,7 @@ export interface DemandSchedulerOptions {
   idleIntervalMs: number;
   run: () => Promise<boolean | number>;
   onError: (error: unknown) => void;
+  onCoalesced?: () => void;
 }
 
 export interface DemandScheduler {
@@ -23,6 +24,14 @@ export function createDemandScheduler(
   let executing = false;
   let wakePending = false;
   let wakeGeneration: number | undefined;
+
+  function observeCoalesced(): void {
+    try {
+      options.onCoalesced?.();
+    } catch {
+      /* Observation cannot affect scheduling. */
+    }
+  }
 
   function clearTimer(): void {
     if (timer !== undefined) {
@@ -48,6 +57,7 @@ export function createDemandScheduler(
     }
 
     if (inFlight) {
+      observeCoalesced();
       // Wakes before the probe starts are covered by that probe; later wakes
       // need a follow-up so a concurrent commit cannot be missed.
       if (executing) {
@@ -139,6 +149,7 @@ export function createDemandScheduler(
       generation += 1;
       clearTimer();
       if (inFlight) {
+        observeCoalesced();
         wakePending = true;
         wakeGeneration = generation;
       } else {
@@ -153,6 +164,7 @@ export function createDemandScheduler(
 
       clearTimer();
       if (inFlight) {
+        observeCoalesced();
         if (executing) {
           wakePending = true;
           wakeGeneration = generation;

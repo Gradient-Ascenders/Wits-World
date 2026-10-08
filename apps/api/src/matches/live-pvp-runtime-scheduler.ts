@@ -48,6 +48,8 @@ export function createLivePvpRuntimeScheduler(
   let activeDeadlineRun: Promise<void> | undefined;
   let activeCleanupRun: Promise<void> | undefined;
   const observation = createPoolRunObserver('live_deadline', logger);
+  const probeObservation = createPoolRunObserver('live_probe', logger);
+  const cleanupObservation = createPoolRunObserver('live_cleanup', logger);
 
   async function runDeadlines(): Promise<boolean> {
     if (activeDeadlineRun) {
@@ -55,7 +57,9 @@ export function createLivePvpRuntimeScheduler(
       await activeDeadlineRun;
       return true;
     }
-    const pending = (await options.hasActiveWork?.()) ?? true;
+    const pending = await probeObservation.run(
+      async () => (await options.hasActiveWork?.()) ?? true,
+    );
     await options.onWorkState?.(pending);
     if (!pending) return false;
     activeDeadlineRun = observation.run(async () => {
@@ -93,14 +97,20 @@ export function createLivePvpRuntimeScheduler(
       ? DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS
       : options.deadlineSweepIntervalMs,
     run: runDeadlines,
+    onCoalesced: () => probeObservation.skipped(),
     onError: () => logger.error({}, 'Live PvP deadline sweep failed.'),
   });
 
   async function runCleanup(): Promise<void> {
-    if (activeCleanupRun) return activeCleanupRun;
+    if (activeCleanupRun) {
+      cleanupObservation.skipped();
+      return activeCleanupRun;
+    }
     activeCleanupRun = (async () => {
       try {
-        const result = await cleanupService.purgeTransientAccess();
+        const result = await cleanupObservation.run(() =>
+          cleanupService.purgeTransientAccess(),
+        );
         if (result.accessRowsDeleted > 0 || result.ticketRowsDeleted > 0) {
           logger.info(
             {
@@ -144,6 +154,9 @@ export function createLivePvpRuntimeScheduler(
         deadlines.stop(),
         activeCleanupRun ?? Promise.resolve(),
       ]);
+      observation.flush();
+      probeObservation.flush();
+      cleanupObservation.flush();
     },
   };
 }

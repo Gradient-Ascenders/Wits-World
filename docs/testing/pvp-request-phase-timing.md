@@ -230,25 +230,25 @@ are structured JSON. Retrieve only matching request events and narrowly bounded
 pool/scheduler/listener summaries from the same process and incident window in
 `/home/LogFiles/*_default_docker.log`. Do not export unrelated production logs.
 
-| Field                                                                                                 | Meaning                                                                                                                                                                    |
-| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `totalCount`                                                                                          | Current clients, including connecting and checked-out clients                                                                                                              |
-| `idleCount`                                                                                           | Clients immediately available for reuse                                                                                                                                    |
-| `waitingCount`                                                                                        | Checkouts waiting in the pool queue                                                                                                                                        |
-| `before_total/idle/waiting`, `after_total/idle/waiting`                                               | Snapshots before checkout and after success/failure; release events use acquisition and post-release snapshots                                                             |
-| `checkout_ms`                                                                                         | Time from native connect invocation to resolution/rejection; combines queue and connection establishment time                                                              |
-| `hold_ms`                                                                                             | Successful checkout to release; includes queries, locks, application work and persistent LISTEN retention                                                                  |
-| `active_holds_count`, `oldest_hold_ms`                                                                | Number and oldest age of tracked successful checkouts                                                                                                                      |
-| `listener/request/maintenance/other_holds_count`, corresponding `*_oldest_hold_ms`                    | Holder-category evidence without identifying clients or users                                                                                                              |
-| `checkout_count`, `checkout_failures_count`, `new_connections_count`, `suppressed_count`              | Counts since the previous pool summary                                                                                                                                     |
-| `run_started_unix_ms`, `run_ms`, `running_count`                                                      | Current/latest scheduler run start, elapsed duration and active state                                                                                                      |
-| `runs_count`, `skipped_count`                                                                         | Scheduler runs and active-run skips since its previous summary                                                                                                             |
-| `run_failures_count`, scheduler `checkout_count/checkout_failures_count/checkout_ms/contention_count` | Current/latest run failure flag (0/1), acquisitions, failures, summed checkout time and acquisitions finding contention; snapshots describe its last completed acquisition |
+| Field                                                                                                 | Meaning                                                                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `totalCount`                                                                                          | Current clients, including connecting and checked-out clients                                                                                                           |
+| `idleCount`                                                                                           | Clients immediately available for reuse                                                                                                                                 |
+| `waitingCount`                                                                                        | Checkouts waiting in the pool queue                                                                                                                                     |
+| `before_total/idle/waiting`, `after_total/idle/waiting`                                               | Snapshots before checkout and after success/failure; release events use acquisition and post-release snapshots                                                          |
+| `checkout_ms`                                                                                         | Time from native connect invocation to resolution/rejection; combines queue and connection establishment time                                                           |
+| `hold_ms`                                                                                             | Successful checkout to release; includes queries, locks, application work and persistent LISTEN retention                                                               |
+| `active_holds_count`, `oldest_hold_ms`                                                                | Number and oldest age of tracked successful checkouts                                                                                                                   |
+| `listener/request/maintenance/other_holds_count`, corresponding `*_oldest_hold_ms`                    | Holder-category evidence without identifying clients or users                                                                                                           |
+| `checkout_count`, `checkout_failures_count`, `new_connections_count`, `suppressed_count`              | Counts since the previous pool summary                                                                                                                                  |
+| `run_started_unix_ms`, `run_ms`, `running_count`                                                      | Current/latest scheduler run start, elapsed duration and active state                                                                                                   |
+| `runs_count`, `skipped_count`                                                                         | Scheduler runs and active-run skips since its previous summary                                                                                                          |
+| `run_failures_count`, scheduler `checkout_count/checkout_failures_count/checkout_ms/contention_count` | Failures, completed acquisitions, summed checkout time and acquisitions finding contention since the previous report; snapshots describe the last completed acquisition |
 
 Native promise and callback `connect()` overloads are delegated, including the
 callback used internally by native `pool.query()`. Query text is never wrapped or
-examined. An asynchronous scope assigns only `request`, `ranked_maintenance`,
-`live_deadline`, `listener` or `other`; unscoped work remains `other`. Hold timing
+examined. An asynchronous scope assigns only the fixed categories listed below;
+unscoped work remains `other`. Hold timing
 applies to all acquired clients, including existing transaction helpers.
 
 Successful checkouts below 250 ms without observed contention remain quiet.
@@ -268,8 +268,9 @@ runs produce no per-second logs. If a run has been reported as active, its
 completion always emits `running_count=0`, including failed completion, even
 within the ten-second exceptional-summary throttle. This completion transition
 is scoped to that run and does not make subsequent short runs noisy.
-Cleanup work outside these two run scopes remains
-`other`. Existing scheduler result/error logs retain their existing behavior.
+Background cleanup and discovery work now have the fixed categories described
+below; unscoped work remains `other`. Existing scheduler result/error logs retain
+their existing behavior.
 
 Listener events describe checkout start/success/failure, LISTEN success, client
 error, reconnect, recovery, release and destruction. A long listener hold is
@@ -389,8 +390,100 @@ and scheduler tests. The gated disposable PostgreSQL saturation test uses max=1
 and a short checkout timeout **only in its test pool**, occupies it, observes a
 pending timeout, releases the holder, and verifies native query/callback recovery.
 Full database-suite results and environment limitations belong in the handoff.
-A dedicated direct LISTEN connection remains a separately reviewed follow-up;
-this instrumentation does not move or add a connection endpoint.
+Dedicated direct LISTEN isolation is described above; this attribution slice
+does not move or add a connection endpoint.
+
+### Background connection attribution
+
+Workstream 1B Phase 1 adds observation only. It does not change pools, timers,
+startup order, SQL, transactions, Redis fencing, policies or gameplay behavior.
+There is no admission queue, new connection, query interception or cancellation.
+
+Fixed categories are `request`, `listener`, `other`,
+`ranked_maintenance`, `live_deadline`, `live_cleanup`,
+`movement_retention`, `trust_evaluation`, `trust_retention`,
+`placement_sweep`, `placement_boundary`, `account_deletion_retry`,
+`async_pvp_deadline`, `trade_expiry`, `trade_retention`,
+`ranked_probe`, `live_probe`, `coordination_monitor`,
+`ranked_coordination` and `live_coordination`.
+
+Scheduler entry points carry async context through nested services and transaction
+helpers. Direct queries on an already acquired client do not count as another
+checkout. Native `pool.query()` delegates through the instrumented native
+`connect()` exactly once. HTTP scopes and request log correlation remain intact;
+coordination idle confirmation owns its transaction and delegated probe. Producer
+fencing inside an existing transaction retains its caller's ownership. Listener
+scopes and the dedicated pool remain distinct. Unknown work stays `other`.
+
+Each active category produces one `operation_summary` per pool summary interval
+and a final flush on successful pool shutdown. It reports:
+
+| Field                                             | Meaning                                                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `acquisition_attempts_count`                      | Native connect invocations since previous category summary                                                    |
+| `acquisitions_count`, `checkout_failures_count`   | Successful/failed resolutions since previous category summary                                                 |
+| `pending_count`, `oldest_pending_ms`              | Unsettled connect calls and oldest current age; includes connecting clients, not solely the native wait queue |
+| `active_holds_count`, `oldest_hold_ms`            | Acquired unreleased clients and oldest current hold                                                           |
+| `peak_pending_count`, `peak_active_holds_count`   | Category high-water counts since previous summary, including outstanding work carried into that window        |
+| `checkout_ms`, `checkout_max_ms`                  | Sum/maximum completed checkout duration, including failures                                                   |
+| `holds_completed_count`, `hold_ms`, `hold_max_ms` | Completed holds and summed/maximum hold duration                                                              |
+| `totalCount`, `idleCount`, `waitingCount`         | Pool-wide snapshot at summary, not category-specific capacity                                                 |
+
+Counters update before detail suppression. An attempt, resolution and release can
+occur in different windows: reconcile totals across the whole interval rather
+than requiring each minute's attempts to equal completions. High-water counts
+for different categories need not have occurred simultaneously. The bounded
+`operations` array on checkout and pool summaries instead captures currently
+pending/held categories and oldest ages at that observation. Only fixed categories
+and four count/age fields are admitted; duplicate/arbitrary labels and arbitrary
+objects are excluded. Successful checkout snapshots now include the newly tracked
+holder. Legacy `maintenance_holds_count` still means Ranked/Live deadline holders;
+use category summaries for the other background operations.
+
+Scheduler summaries add `runs_completed_count` and `runs_ms` (summed completed
+run duration). Starts, completions, failures, skips/coalesced invocations and
+checkout/hold counts and totals accumulate across throttled runs. `run_ms` remains
+the current/latest run's duration; it is not continuous client occupancy.
+Successful zero-row cleanup is visible in run aggregates. New background
+categories emit their first completion, then reuse the existing minute/ten-second
+exceptional-report limits; shutdown flushes remaining counters. No observation
+timer changes worker scheduling or waits for an extra database operation.
+
+Detailed events retain the 20-per-pool-per-minute cap. Fixed-cardinality category
+summaries bypass that cap (at most 20 category rows per pool per minute plus a
+shutdown flush), so suppression does not erase acquisition/hold totals. Memory is
+fixed for aggregate categories, plus one tracking entry per outstanding native
+checkout or held client. No SQL strings or client identities are retained in
+telemetry. Counts/ages require a bounded-category scan of existing outstanding
+work at reporting boundaries; numeric counters update on connect/release.
+
+Native cancellation semantics remain authoritative: abandoning an HTTP caller
+or aborting a caller promise does not cancel pg's checkout. It remains pending
+until native success/failure, then cleans up; acquired clients remain held until
+native release/destroy. Observation does not cancel SQL or hide leaked clients.
+Checkout duration still combines queue and connection establishment. Physical
+connection counts support an establishment hypothesis but do not decompose it.
+No percentile should be calculated from selectively emitted detail events.
+
+#### Future production measurement
+
+After separately approved normal deployment, verify the actual artifact/revision.
+Observe one naturally occurring startup and at least two consecutive natural
+30-minute maintenance cycles, with short surrounding windows through each job's
+completion. Do not restart or trigger jobs to manufacture samples. Keep process
+and pool role separate across deployment generations. Capture category summaries,
+`operations` snapshots, checkout/release detail, suppression, scheduler results,
+new connections and matching naturally occurring database-backed HTTP timings.
+
+Identify simultaneous pending/held worker categories at the actual contention
+snapshot, not from independently observed peaks. Compare eligible retention work
+with urgent workers, probes and request holders. Reconcile cross-window counters;
+report suppressed detail and zero-result cleanups explicitly. Separate whole-run
+duration from held-client time. Pool growth plus slow checkout suggests a possible
+establishment component; do not assign queue/network/server phases without
+additional evidence. Decide admission versus targeted query investigation only
+when worker ownership, HTTP overlap and approved postponement bounds support it.
+These fields are observability, not proof of a latency improvement.
 
 ## AI declaration
 

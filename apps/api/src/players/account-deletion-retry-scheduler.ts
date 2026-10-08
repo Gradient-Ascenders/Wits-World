@@ -1,3 +1,4 @@
+import { createPoolRunObserver } from '../database/pool-observability.js';
 import {
   MAX_NODE_TIMER_DELAY_MS,
   MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
@@ -10,15 +11,7 @@ export interface AccountDeletionRetryScheduler {
 }
 
 export interface AccountDeletionRetrySchedulerLogger {
-  info(
-    context: {
-      attempted: number;
-      completed: number;
-      retryRequired: number;
-      purgedAudits: number;
-    },
-    message: string,
-  ): void;
+  info(context: Record<string, unknown>, message: string): void;
 
   error(context: Record<string, never>, message: string): void;
 }
@@ -44,15 +37,17 @@ export function createAccountDeletionRetryScheduler(
 
   let timer: NodeJS.Timeout | undefined;
   let activeRun: Promise<void> | undefined;
+  const observation = createPoolRunObserver('account_deletion_retry', logger);
 
   async function runSweep(): Promise<void> {
     if (activeRun) {
+      observation.skipped();
       return;
     }
 
     activeRun = (async () => {
       try {
-        const result = await processor.runOnce();
+        const result = await observation.run(() => processor.runOnce());
 
         logger.info(
           {
@@ -99,6 +94,7 @@ export function createAccountDeletionRetryScheduler(
       if (activeRun) {
         await activeRun;
       }
+      observation.flush();
     },
   };
 }

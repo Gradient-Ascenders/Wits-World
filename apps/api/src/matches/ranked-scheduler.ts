@@ -70,6 +70,7 @@ export function createRankedScheduler(
   let lastTerritoryMaintenanceAt = 0;
   let reportedCoordinationOutage = false;
   const observation = createPoolRunObserver('ranked_maintenance', logger);
+  const probeObservation = createPoolRunObserver('ranked_probe', logger);
 
   async function runOnce(forceMaintenance = false): Promise<RankedSweepResult> {
     if (active) {
@@ -172,8 +173,11 @@ export function createRankedScheduler(
     idleIntervalMs: options.coordinatedIdle
       ? DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS
       : intervalMs,
+    onCoalesced: () => probeObservation.skipped(),
     run: async () => {
-      const next = await (options.nextSweep?.() ?? nextRankedSweep(database));
+      const next = await probeObservation.run(
+        () => options.nextSweep?.() ?? nextRankedSweep(database),
+      );
       const now = Date.now();
       // A fresh probe can already point to the following territory window.
       const boundaryDue =
@@ -218,6 +222,8 @@ export function createRankedScheduler(
     async stop() {
       await scheduler.stop();
       await active;
+      observation.flush();
+      probeObservation.flush();
     },
   };
 }

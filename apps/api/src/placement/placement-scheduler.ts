@@ -1,3 +1,4 @@
+import { createPoolRunObserver } from '../database/pool-observability.js';
 import type { FastifyBaseLogger } from 'fastify';
 
 import type { PlacementService } from './placement-service.js';
@@ -12,12 +13,20 @@ export function createPlacementScheduler(
   let boundaryTimer: NodeJS.Timeout | undefined;
   let started = false;
   let running: Promise<void> | undefined;
+  const observation = createPoolRunObserver('placement_sweep', logger);
+  const boundaryObservation = createPoolRunObserver(
+    'placement_boundary',
+    logger,
+  );
   const run = () => {
-    if (running) return running;
+    if (running) {
+      observation.skipped();
+      return running;
+    }
     running = (async () => {
       const started = Date.now();
       try {
-        const result = await service.runScheduled();
+        const result = await observation.run(() => service.runScheduled());
         logger.info(
           { outcome: result.outcome, durationMs: Date.now() - started },
           'Event placement sweep completed',
@@ -36,7 +45,9 @@ export function createPlacementScheduler(
   const scheduleBoundary = async () => {
     let delay = SWEEP_MS;
     try {
-      delay = await service.nextBoundaryDelayMs();
+      delay = await boundaryObservation.run(() =>
+        service.nextBoundaryDelayMs(),
+      );
     } catch {
       logger.warn('Event placement boundary scheduling failed');
     }
@@ -62,6 +73,8 @@ export function createPlacementScheduler(
       timer = undefined;
       boundaryTimer = undefined;
       await running;
+      observation.flush();
+      boundaryObservation.flush();
     },
   };
 }

@@ -1,3 +1,4 @@
+import { createPoolRunObserver } from '../database/pool-observability.js';
 import {
   MAX_NODE_TIMER_DELAY_MS,
   MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
@@ -13,14 +14,7 @@ export interface AsyncPvpDeadlineScheduler {
 }
 
 export interface AsyncPvpDeadlineSchedulerLogger {
-  info(
-    context: {
-      invitationsExpired: number;
-      matchesForfeited: number;
-      failures: number;
-    },
-    message: string,
-  ): void;
+  info(context: object, message: string): void;
   error(context: Record<string, never>, message: string): void;
 }
 
@@ -40,11 +34,19 @@ export function createAsyncPvpDeadlineScheduler(
   }
   let timer: NodeJS.Timeout | undefined;
   let activeRun: Promise<void> | undefined;
+  const observation = createPoolRunObserver('async_pvp_deadline', logger);
   async function run(): Promise<void> {
-    if (activeRun) return;
+    if (activeRun) {
+      observation.skipped();
+      return;
+    }
     activeRun = (async () => {
       try {
-        const result = await processor.runOnce();
+        const result = await observation.run(async () => {
+          const result = await processor.runOnce();
+          if (result.failures > 0) observation.failed();
+          return result;
+        });
         logger.info(result, 'Asynchronous PvP deadline sweep completed.');
       } catch {
         logger.error({}, 'Asynchronous PvP deadline sweep failed.');
@@ -67,6 +69,7 @@ export function createAsyncPvpDeadlineScheduler(
       if (timer) clearInterval(timer);
       timer = undefined;
       if (activeRun) await activeRun;
+      observation.flush();
     },
   };
 }

@@ -1,3 +1,4 @@
+import { createPoolRunObserver } from '../database/pool-observability.js';
 import type { FastifyBaseLogger } from 'fastify';
 
 import {
@@ -37,19 +38,28 @@ export function createTrustEvaluationScheduler(
   let timer: NodeJS.Timeout | undefined;
   let running: Promise<void> | undefined;
   let stopped = false;
+  const workObservation = createPoolRunObserver('trust_evaluation', logger);
+  const retentionObservation = createPoolRunObserver('trust_retention', logger);
 
   const run = async () => {
-    if (running) return running;
+    if (running) {
+      workObservation.skipped();
+      return running;
+    }
     running = (async () => {
       try {
-        const evaluated = await service.evaluateMaintenanceBatch();
+        const evaluated = await workObservation.run(() =>
+          service.evaluateMaintenanceBatch(),
+        );
         logger.info({ evaluated }, 'Trust evaluation maintenance completed');
       } catch (error) {
         logger.warn(errorContext(error), 'Trust evaluation maintenance failed');
       }
 
       try {
-        const purged = await service.purgeExpiredData();
+        const purged = await retentionObservation.run(() =>
+          service.purgeExpiredData(),
+        );
         logger.info({ purged }, 'Trust retention cleanup completed');
       } catch (error) {
         logger.warn(errorContext(error), 'Trust retention cleanup failed');
@@ -72,6 +82,8 @@ export function createTrustEvaluationScheduler(
       if (timer) clearInterval(timer);
       timer = undefined;
       await running;
+      workObservation.flush();
+      retentionObservation.flush();
     },
   };
 }
