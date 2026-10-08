@@ -161,6 +161,22 @@ database-free profile is a different execution scope and must not be presented
 as the full-suite result. These are local results; the changed Gitea coverage
 jobs have not yet run remotely.
 
+### Post-rebase verification
+
+On 8 October 2026 (UTC), the coverage branch was rebased onto `main` at
+`827937e`. Its code/test commit `c03b4a9` was checked again after the upstream
+artwork change. Web coverage passed 104 files and 1,169 tests, plus the three
+native static-server tests, and measured **89.61%** (12,853 / 14,342 lines).
+The API and shared-package source/tests were unchanged by the rebase, so their
+verified reports above were retained.
+
+The combined result is **90.03%** (23,265 / 25,841 lines), and regenerating the
+badge produced **90.0%**. The additional 21 measured Web lines come from the
+upstream artwork implementation, not a change to coverage exclusions. Preserve
+the original baseline comparison above; this follow-up is not a claim that
+upstream tests or coverage gains were added by this branch. These remain local
+results; live badge publication requires successful main-branch CI after merge.
+
 ### Remaining test boundaries
 
 - Auth0, Upstash and other external provider behaviour is simulated at public
