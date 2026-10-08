@@ -220,3 +220,93 @@ database was modified.
 AI assistance: Codex[GPT-6] investigated, implemented and documented this pass.
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+## Compact Battles landing reads (Issue #358, Workstream 2)
+
+The landing page previously fetched the active CPU entry, then hydrated every
+saved deck when no match was active. Its recent-results panel also fetched the
+entire completed CPU history, including rounds and actions, to display five
+merged CPU/PvP results. The shared shell's identity read and existing bounded PvP
+reads are unchanged.
+
+Two additive read profiles reuse the existing authenticated endpoints:
+
+- `GET /api/v1/matches/cpu/entry?view=summary` returns nullable `activeMatch` and
+  `selectedDeck` (only `deckId` and `name`). A single statement reads active state
+  or selected-deck metadata for the authenticated player. An active match excludes
+  deck metadata. An empty entry is HTTP 200. This read does not validate a deck or
+  create/recover a match; the existing start endpoint still performs those checks.
+- `GET /api/v1/matches/history?view=summary&limit=5` returns completed headers with
+  `roundCount`. The limit defaults to five and must be an integer from one to 20.
+  SQL bounds the player's matches before counting their rounds, without loading
+  actions or battle state. Ordering is completion time descending, then match ID
+  descending. The browser merges five CPU and five PvP summaries and displays the
+  five newest results with a deterministic identity tie-breaker.
+
+Requests without `view` retain their existing contracts. Full history and match
+detail load when those destinations are opened. CPU preparation, active PvP and
+recent results still load independently, preserving partial-result failures and
+CPU retries. There is no new cache, polling or prefetch. Returning to Battles
+performs fresh reads; starting a match retains authoritative validation and
+active-match recovery. No pool, scheduler, transaction, authentication or gameplay
+policy changed.
+
+### Controlled local comparison
+
+Three independent Chromium contexts per mobile/desktop layout compared frozen
+before/after production-format `basic-e2e` builds, including cold direct entry and
+repeat SPA navigation. Fixtures contained 30 completed CPU matches with 20 rounds
+each, 20 decks and identical PvP rows. API requests were intercepted with a
+constant 150 ms response delay. Mobile used 390 px/DPR 3 and four-times CPU
+throttling; desktop used 1440 px/DPR 2 and normal CPU. These are fixture response
+body bytes and browser timings, not compressed network transfer or deployed API
+measurements. Service workers were blocked for this comparison.
+
+| Metric                              | Before    | After    |
+| ----------------------------------- | --------- | -------- |
+| Battles landing requests            | 5         | 4        |
+| Landing JSON response bodies        | 472,816 B | 1,704 B  |
+| Mobile cold summary-ready median    | 2,984 ms  | 2,662 ms |
+| Mobile repeat summary-ready median  | 775 ms    | 495 ms   |
+| Desktop cold summary-ready median   | 1,114 ms  | 1,086 ms |
+| Desktop repeat summary-ready median | 954 ms    | 305 ms   |
+
+Cold entry includes shell/module preparation. Three samples are noisy and do not
+establish a production latency improvement. Authenticated deployment verification
+and production query plans remain follow-up work.
+
+The CPU preparation/history paths now use two SQL statements instead of five
+when no match is active (four previously with an active match). CPU client
+acquisitions are two instead of three in the no-active case; PvP/identity work is
+excluded and unchanged. These counts are established by source and focused query
+tests, not production telemetry.
+
+The three-match, 20-round service fixture with simulated 10 ms/query reduced
+history from three statements to one, retaining one acquisition. One sampled
+history hold was 53.7 ms versus 19.9 ms. In-process Fastify history requests had
+three-run medians of 58.3 ms versus 16.2 ms and bodies of 21,313 B versus 622 B.
+These simulated database costs are not PostgreSQL or production server timings.
+
+### Verification and release considerations
+
+Focused checks cover ownership, anonymous access, strict query bounds and
+serialization, empty/error/partial states, timeout/retry and stale-response
+protection, explicit resume/start, deferred details, and fresh SPA return. Real
+PostgreSQL checks run the production SELECTs against session-local temporary
+tables in the authorized disposable test database, with rollback cleanup. They
+verify ownership, state changes, deterministic SQL limiting and fresh history;
+they do not benchmark the full migrated schema.
+
+Publish the API supporting these additive profiles before the frontend. An older
+API rejects the new query parameters; the UI reports section errors rather than
+silently falling back to expensive requests. Compare representative account
+sizes after deployment, checking request bodies, query counts/holds, section
+readiness, auth, start/resume, archive/detail navigation and state freshness.
+
+The existing dashboard Playwright heading-focus assertion fails on both the
+unchanged frozen main build and this branch: direct entry does not focus its
+non-focusable `h1`. That unrelated assertion is retained. New SPA return checks
+verify the existing main-content focus behavior.
+
+AI assistance: Codex[GPT-6] implemented, tested, measured and documented this
+Workstream 2 change.

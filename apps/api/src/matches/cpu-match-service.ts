@@ -254,14 +254,28 @@ export interface CpuMatchHistory {
   rounds: readonly CpuMatchHistoryRound[];
 }
 
+export type CpuMatchHistorySummary = Omit<CpuMatchHistory, 'rounds'> & {
+  roundCount: number;
+};
+
+export interface CpuBattleEntrySummary {
+  activeMatch: CpuMatchEntry | null;
+  selectedDeck: { deckId: string; name: string } | null;
+}
+
 export interface CpuMatchService {
   createMatch(input: CreateCpuMatchInput): Promise<CpuMatchResponse>;
   getActiveMatchEntry(playerId: string): Promise<CpuMatchEntry>;
+  getBattleEntrySummary(playerId: string): Promise<CpuBattleEntrySummary>;
   getActiveMatch(playerId: string): Promise<CpuMatchResponse>;
   getMatch(playerId: string, matchId: string): Promise<CpuMatchResponse>;
   forfeitMatch(input: ForfeitCpuMatchInput): Promise<CpuMatchResponse>;
   submitAction(input: SubmitCpuMatchActionInput): Promise<CpuMatchResponse>;
   listHistory(playerId: string): Promise<readonly CpuMatchHistory[]>;
+  listHistorySummaries(
+    playerId: string,
+    limit: number,
+  ): Promise<readonly CpuMatchHistorySummary[]>;
 }
 
 export class CpuMatchNotFoundError extends Error {
@@ -610,6 +624,62 @@ export function createCpuMatchService(
           throw new CpuMatchAlreadyActiveError();
         }
         throw mapBattleSetupError(error);
+      } finally {
+        client.release();
+      }
+    },
+
+    async getBattleEntrySummary(playerId) {
+      const client = await database.connect();
+      try {
+        const result = await client.query<{
+          id: string | null;
+          started_at: Date | null;
+          phase: CpuMatchEntry['state']['phase'];
+          turn_number: number;
+          current_side: CpuMatchEntry['state']['currentSide'];
+          deck_id: string | null;
+          deck_name: string | null;
+        }>(
+          `
+            select match.id::text, match.started_at,
+                   match.state ->> 'phase' as phase,
+                   (match.state ->> 'turnNumber')::integer as turn_number,
+                   match.state ->> 'currentSide' as current_side,
+                   deck.id::text as deck_id, deck.name as deck_name
+              from (select $1::uuid as player_id) viewer
+              left join public.cpu_matches match
+                on match.player_id = viewer.player_id and match.status = 'active'
+              left join public.player_deck_selections selection
+                on selection.player_id = viewer.player_id and match.id is null
+              left join public.player_decks deck
+                on deck.id = selection.deck_id and deck.player_id = viewer.player_id
+          `,
+          [playerId],
+        );
+        if (result.rows.length !== 1) {
+          throw new Error('CPU entry ownership invariant was violated.');
+        }
+        const row = result.rows[0]!;
+        return {
+          activeMatch:
+            row.id && row.started_at
+              ? {
+                  matchId: row.id,
+                  startedAt: row.started_at.toISOString(),
+                  status: 'active',
+                  state: {
+                    phase: row.phase,
+                    currentSide: row.current_side,
+                    turnNumber: row.turn_number,
+                  },
+                }
+              : null,
+          selectedDeck:
+            row.deck_id && row.deck_name !== null
+              ? { deckId: row.deck_id, name: row.deck_name }
+              : null,
+        };
       } finally {
         client.release();
       }
@@ -1152,6 +1222,49 @@ export function createCpuMatchService(
         throw mapped;
       } finally {
         if (!released) client.release();
+      }
+    },
+
+    async listHistorySummaries(playerId, limit) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
+        throw new RangeError('CPU summary limit must be between 1 and 20.');
+      }
+      const client = await database.connect();
+      try {
+        const result = await client.query<{
+          id: string;
+          winner: 'player' | 'cpu';
+          started_at: Date;
+          completed_at: Date;
+          round_count: number;
+        }>(
+          `
+            with recent as materialized (
+              select id, winner, started_at, completed_at
+                from public.cpu_matches
+               where player_id = $1::uuid and status = 'completed'
+                 and completed_at is not null and winner is not null
+               order by completed_at desc, id desc
+               limit $2
+            )
+            select recent.id::text, recent.winner, recent.started_at, recent.completed_at,
+                   (select count(*)::integer from public.cpu_match_rounds round
+                     where round.match_id = recent.id) as round_count
+              from recent
+             order by recent.completed_at desc, recent.id desc
+          `,
+          [playerId, limit],
+        );
+        return result.rows.map((row) => ({
+          matchId: row.id,
+          status: 'completed',
+          winner: row.winner,
+          startedAt: row.started_at.toISOString(),
+          completedAt: row.completed_at.toISOString(),
+          roundCount: row.round_count,
+        }));
+      } finally {
+        client.release();
       }
     },
 

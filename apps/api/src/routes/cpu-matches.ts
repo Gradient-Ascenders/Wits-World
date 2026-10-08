@@ -654,6 +654,83 @@ const historyResponseSchema = {
   },
 } as const;
 
+const entrySummaryResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['activeMatch', 'selectedDeck', 'requestId'],
+  properties: {
+    activeMatch: {
+      anyOf: [
+        {
+          ...activeMatchEntryResponseSchema,
+          required: ['matchId', 'status', 'startedAt', 'state'],
+        },
+        { type: 'null' },
+      ],
+    },
+    selectedDeck: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['deckId', 'name'],
+          properties: {
+            deckId: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+          },
+        },
+        { type: 'null' },
+      ],
+    },
+    requestId: { type: 'string' },
+  },
+} as const;
+
+const historySummaryResponseSchema = {
+  ...historyResponseSchema,
+  properties: {
+    ...historyResponseSchema.properties,
+    matches: {
+      type: 'array',
+      maxItems: 20,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'matchId',
+          'status',
+          'winner',
+          'startedAt',
+          'completedAt',
+          'roundCount',
+        ],
+        properties: {
+          matchId: { type: 'string', format: 'uuid' },
+          status: { const: 'completed' },
+          winner: { type: 'string', enum: ['player', 'cpu'] },
+          startedAt: { type: 'string', format: 'date-time' },
+          completedAt: { type: 'string', format: 'date-time' },
+          roundCount: { type: 'integer', minimum: 0 },
+        },
+      },
+    },
+  },
+} as const;
+
+interface SummaryQuery {
+  view?: 'summary';
+  limit?: number;
+}
+const summaryQuerySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['view'],
+  properties: {
+    view: { const: 'summary' },
+    limit: { type: 'integer', minimum: 1, maximum: 20 },
+  },
+} as const;
+
 export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
   app,
   { service },
@@ -703,7 +780,7 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
     },
   );
 
-  app.get(
+  app.get<{ Querystring: Pick<SummaryQuery, 'view'> }>(
     '/matches/cpu/entry',
     {
       preHandler: [app.authenticate, app.requireActivePlayer],
@@ -711,12 +788,25 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
         operationId: 'getActiveCpuMatchEntry',
         summary: 'Read the current active CPU match dashboard entry',
         description:
-          "Returns only the authenticated player's unfinished CPU match fields needed by the battle-mode dashboard.",
+          "Returns only the authenticated player's unfinished CPU match fields. With view=summary, returns nullable activeMatch and selectedDeck identity/name in one read; the selected deck is omitted when a match is active. No gameplay mutation or deck validation is performed.",
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
-        querystring: emptyQuerySchema,
+        querystring: {
+          oneOf: [
+            emptyQuerySchema,
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['view'],
+              properties: { view: { const: 'summary' } },
+            },
+          ],
+        },
         response: {
-          200: activeMatchEntryResponseSchema,
+          200: {
+            oneOf: [activeMatchEntryResponseSchema, entrySummaryResponseSchema],
+          },
+          400: apiErrorSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
           404: apiErrorSchema,
@@ -727,6 +817,12 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
       const player = requirePlayer(request);
 
       try {
+        if (request.query.view === 'summary') {
+          return reply.status(200).send({
+            ...(await service.getBattleEntrySummary(player.id)),
+            requestId: request.id,
+          });
+        }
         const entry = await service.getActiveMatchEntry(player.id);
         return reply.status(200).send({
           ...entry,
@@ -916,19 +1012,20 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
     },
   );
 
-  app.get(
+  app.get<{ Querystring: SummaryQuery }>(
     '/matches/history',
     {
       preHandler: [app.authenticate, app.requireActivePlayer],
       schema: {
         operationId: 'listCpuMatchHistory',
         summary: 'List completed CPU matches for the current player',
-        description: `Include ${CPU_SWAP_MEDIA_TYPE} in Accept to receive swap actions in completed battle history. Without it, swap entries are omitted for older clients.`,
+        description: `With view=summary, return at most limit (default 5, maximum 20) completed match headers with roundCount; no rounds, actions or state are loaded. Ordered by completedAt descending then matchId descending. Without view, retain full history. Include ${CPU_SWAP_MEDIA_TYPE} in Accept to receive swap actions in full history.`,
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
-        querystring: emptyQuerySchema,
+        querystring: { oneOf: [emptyQuerySchema, summaryQuerySchema] },
         response: {
-          200: historyResponseSchema,
+          200: { oneOf: [historyResponseSchema, historySummaryResponseSchema] },
+          400: apiErrorSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
         },
@@ -936,6 +1033,13 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
     },
     async (request, reply) => {
       const player = requirePlayer(request);
+      if (request.query.view === 'summary') {
+        const matches = await service.listHistorySummaries(
+          player.id,
+          request.query.limit ?? 5,
+        );
+        return reply.status(200).send({ matches, requestId: request.id });
+      }
       const matches = await service.listHistory(player.id);
 
       return reply.status(200).send({

@@ -771,7 +771,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       }
 
       if (pathname.endsWith('/matches/cpu/entry')) {
-        await json(route, problem('CPU_MATCH_NOT_FOUND', 404), 404);
+        await json(route, entryResponse(null, selectedDeck));
         return;
       }
 
@@ -1170,7 +1170,11 @@ test('offers the owned active CPU match for explicit resume', async ({
       });
       return;
     }
-    if (pathname.endsWith('/matches/cpu/entry')) activeLookups += 1;
+    if (pathname.endsWith('/matches/cpu/entry')) {
+      activeLookups += 1;
+      await json(route, entryResponse(active));
+      return;
+    }
     await json(route, response(active));
   });
 
@@ -1482,11 +1486,7 @@ test('renders recent results and starts from the selected deck dashboard', async
     }
 
     if (pathname.endsWith('/matches/cpu/entry')) {
-      if (active) {
-        await json(route, response(active));
-      } else {
-        await json(route, problem('CPU_MATCH_NOT_FOUND', 404), 404);
-      }
+      await json(route, entryResponse(active, selectedDeck));
       return;
     }
 
@@ -1671,6 +1671,10 @@ test('shows deck recovery without exposing a conflicting start action', async ({
     }
     if (pathname.endsWith('/matches/history')) {
       await json(route, { matches: [], requestId: 'dashboard-empty-history' });
+      return;
+    }
+    if (pathname.endsWith('/matches/cpu/entry')) {
+      await json(route, entryResponse(null));
       return;
     }
     await json(route, problem('CPU_MATCH_NOT_FOUND', 404), 404);
@@ -2078,10 +2082,136 @@ async function expectRecentResultActionsAligned(page: Page) {
 }
 
 async function json(route: Route, body: object, status = 200) {
+  const url = new URL(route.request().url());
+  if (
+    url.pathname.endsWith('/matches/history') &&
+    url.searchParams.get('view') === 'summary' &&
+    'matches' in body
+  ) {
+    const matches = (body as { matches: ReturnType<typeof historyItem>[] })
+      .matches;
+    body = {
+      ...body,
+      matches: matches
+        .map(({ rounds, ...match }) => ({
+          ...match,
+          roundCount: rounds.length,
+        }))
+        .slice(0, 5),
+    };
+  }
   await route.fulfill({
     body: JSON.stringify(body),
     contentType: 'application/json',
     status,
+  });
+}
+
+function entryResponse(
+  active: CpuMatch | null,
+  deck: { deckId: string; name: string } | null = null,
+) {
+  return {
+    activeMatch: active
+      ? {
+          matchId: active.matchId,
+          status: 'active',
+          startedAt: active.startedAt,
+          state: {
+            phase: active.state.phase,
+            currentSide: active.state.currentSide,
+            turnNumber: active.state.turnNumber,
+          },
+        }
+      : null,
+    selectedDeck:
+      active || !deck ? null : { deckId: deck.deckId, name: deck.name },
+    requestId: 'cpu-browser-entry-summary',
+  };
+}
+
+for (const width of [390, 1440]) {
+  test(`compact Battles reads four summaries and refreshes on revisit at ${width}px`, async ({
+    page,
+  }) => {
+    const selected = buildSavedDeck({ isSelected: true, name: 'Campus Five' });
+    let active: CpuMatch | null = null;
+    const reads: string[] = [];
+    const result = historyItem();
+    await routeCurrentPlayer(page);
+    await page.route('**/api/v1/decks', () => {
+      throw new Error('Landing must not hydrate decks');
+    });
+    await page.route('**/api/v1/matches/**', async (route) => {
+      const url = new URL(route.request().url());
+      expect(route.request().method()).toBe('GET');
+      reads.push(url.pathname + url.search);
+      if (url.pathname.endsWith('/matches/cpu/entry')) {
+        expect(url.search).toBe('?view=summary');
+        return json(route, entryResponse(active, selected));
+      }
+      if (url.pathname.endsWith('/matches/history')) {
+        expect(url.search).toBe('?view=summary&limit=5');
+        return json(route, { matches: [result], requestId: 'compact-history' });
+      }
+      if (url.pathname.endsWith('/matches/pvp/history'))
+        return json(route, {
+          matches: [],
+          nextCursor: null,
+          requestId: 'compact-pvp-history',
+        });
+      if (url.pathname.endsWith('/matches/pvp'))
+        return json(route, {
+          matches: [activePvpSummary()],
+          nextCursor: null,
+          requestId: 'compact-pvp',
+        });
+      return json(route, response(active ?? completedMatch()));
+    });
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/matches');
+    await expect(
+      page.getByRole('button', { name: 'Start CPU battle' }),
+    ).toBeEnabled();
+    await expect(
+      page.getByRole('list', { name: 'Recent battle results' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Continue player battle' }),
+    ).toBeVisible();
+    expect(reads).toHaveLength(4);
+    expect(
+      reads.every(
+        (path) => path.includes('summary') || path.includes('/matches/pvp'),
+      ),
+    ).toBe(true);
+    await expectNoHorizontalOverflow(page);
+    await page.getByRole('link', { name: 'View battle', exact: true }).click();
+    await expect(page).toHaveURL(`/matches/${result.matchId}`);
+    await expect
+      .poll(
+        () =>
+          reads.filter((path) => path === `/api/v1/matches/${result.matchId}`)
+            .length,
+      )
+      .toBe(1);
+    active = activeMatch(3);
+    await page.getByRole('link', { name: 'Play another battle' }).click();
+    await expect(page).toHaveURL('/matches');
+    await expect(page.locator('main')).toBeFocused();
+    await expect(
+      page.getByRole('link', { name: 'Resume CPU battle' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Start CPU battle' }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('list', { name: 'Recent battle results' }),
+    ).toBeVisible();
+    expect(reads.filter((path) => path.includes('/cpu/entry'))).toHaveLength(2);
+    expect(
+      reads.filter((path) => path.includes('/matches/history')),
+    ).toHaveLength(2);
   });
 }
 

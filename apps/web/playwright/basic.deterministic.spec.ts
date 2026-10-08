@@ -578,18 +578,11 @@ test('keeps the authenticated shared application shell responsive and accessible
       return;
     }
     if (pathname.endsWith('/matches/cpu/entry')) {
-      await json(
-        route,
-        {
-          code: 'CPU_MATCH_NOT_FOUND',
-          detail: 'No active CPU match was found.',
-          requestId: 'shell-browser-no-match',
-          status: 404,
-          title: 'CPU match not found',
-          type: 'about:blank',
-        },
-        404,
-      );
+      await json(route, {
+        activeMatch: null,
+        selectedDeck: null,
+        requestId: 'shell-browser-no-match',
+      });
       return;
     }
 

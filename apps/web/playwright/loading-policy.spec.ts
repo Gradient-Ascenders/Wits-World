@@ -195,11 +195,17 @@ for (const width of [390, 1440]) {
   }, info) => {
     await fixture(page);
     let holdCpu = true;
-    await page.route('**/api/v1/matches/cpu/entry', (route) => {
+    await page.route('**/api/v1/matches/cpu/entry*', (route) => {
       if (holdCpu) return;
       return route.fulfill({
-        status: 404,
-        json: { code: 'CPU_MATCH_NOT_FOUND', requestId: 'loading-fixture' },
+        json: {
+          activeMatch: null,
+          selectedDeck: {
+            deckId: buildSavedDeck().deckId,
+            name: buildSavedDeck().name,
+          },
+          requestId: 'loading-fixture',
+        },
       });
     });
     await page.route('**/api/v1/decks', (route) =>
