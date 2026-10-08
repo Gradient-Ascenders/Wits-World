@@ -208,8 +208,9 @@ describe('database release procedure', () => {
     });
     const verifyRelease = vi.fn().mockResolvedValue({
       migrationCount: 2,
-      verifiedEventCount: 10,
-      verifiedQuestionCount: 100,
+      verifiedEventCount: 11,
+      verifiedQuestionCount: 110,
+      verifiedTrailCount: 3,
     });
 
     await runDatabaseRelease(
@@ -285,8 +286,9 @@ describe('database release inspection and verification', () => {
     const query = vi
       .fn()
       .mockResolvedValueOnce({ rows: [{ count: '2' }] })
-      .mockResolvedValueOnce({ rows: [{ count: '10' }] })
-      .mockResolvedValueOnce({ rows: [{ count: '100' }] });
+      .mockResolvedValueOnce({ rows: [{ count: '11' }] })
+      .mockResolvedValueOnce({ rows: [{ count: '110' }] })
+      .mockResolvedValueOnce({ rows: [{ count: '3' }] });
 
     await expect(
       verifyDatabaseRelease(
@@ -300,8 +302,9 @@ describe('database release inspection and verification', () => {
       ),
     ).resolves.toEqual({
       migrationCount: 2,
-      verifiedEventCount: 10,
-      verifiedQuestionCount: 100,
+      verifiedEventCount: 11,
+      verifiedQuestionCount: 110,
+      verifiedTrailCount: 3,
     });
   });
 });

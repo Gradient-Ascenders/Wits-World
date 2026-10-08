@@ -36,6 +36,7 @@ async function main() {
       `Published Basic demo challenges: ${result.verification.basicDemoChallengeCount}`,
     );
   }
+
   if (result.verification.basicDemoPortableEventCount !== undefined) {
     console.log(
       `Placement-ready Basic demo events: ${result.verification.basicDemoPortableEventCount}`,
@@ -47,6 +48,7 @@ async function main() {
     console.log(
       `Verified questions: ${result.verification.verifiedQuestionCount}`,
     );
+    console.log(`Verified trails: ${result.verification.verifiedTrailCount}`);
   }
 
   console.log('Database release procedure completed successfully.');

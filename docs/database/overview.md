@@ -253,11 +253,13 @@ configuration or protected runtime settings and must use the documented TLS
 configuration. They never enter the browser bundle, Git history, screenshots,
 or routine evidence.
 
-Database migration is deliberately separate from Azure application deployment.
-The Data and Infrastructure Lead runs the guarded release command, confirms the
-exact database name, reviews migration and PostGIS results, and makes a separate
-decision about demo seeding. Gitea Actions does not automatically mutate the
-production database.
+Main-branch API deployment runs the guarded database release before deploying
+the application, using the production App Service's configured database URL and
+the expected Neon host/name checks. The Data and Infrastructure Lead can also
+run the guarded release manually. Content seeding remains a separate, explicit
+decision; application deployment does not install the demo or verified-event
+packs by default. Runtime and migration credentials are currently coupled in
+this workflow; see the credential-separation acceptance work below.
 
 See the [Neon/PostGIS setup](./neon-postgis-setup.md),
 [database release procedure](./database-release-procedure.md), and
@@ -281,6 +283,25 @@ test-database pass is still not proof that production migrations, backups,
 restore, retention, monitoring, or provider recovery were exercised.
 Production evidence must identify the target without exposing its connection
 string and must be recorded by an authorised operator.
+
+## Production data and structural quality
+
+The [production data and database quality](./data-quality-and-structure.md)
+reference records the dated Milestone 4 inspection, remaining content/provenance
+acceptance work, the on-demand read-only `db:audit` command, intentional nullable
+and legacy structures, and the runtime/migration credential separation still
+requiring an operational cutover.
+
+The same reference records the authorised 8 October content and `0065` schema
+releases, separate from unmerged source/API deployment. Its normalisation
+follow-up identifies overlapping legacy/ordered move-effect representations and
+explains why historical snapshots, scoped foreign keys and read projections
+remain intentional.
+
+Migration `0065_constrain_cpu_match_json_shapes.sql` adds outer JSON shape checks
+to existing CPU persistence without changing legacy snapshots or battle rules.
+The migration runner verifies all applied names/checksums before applying any
+pending SQL; it refuses missing source files and changed applied files.
 
 ## Open operational evidence
 
@@ -309,3 +330,6 @@ Sprint 2 schema navigation updated with assistance from Codex-CLI[GPT-6].
 Page title clarified with assistance from Codex-CLI[GPT-6].
 
 Ranked schema navigation updated with assistance from Codex[GPT-5.6 Sol].
+
+Production-data audit and migration/deployment guidance updated with assistance
+from Codex[GPT-5].
