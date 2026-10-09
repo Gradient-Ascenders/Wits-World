@@ -1,5 +1,7 @@
 import { MAX_NODE_TIMER_DELAY_MS } from '../config/timers.js';
 
+const MAX_ERROR_RETRY_DELAY_MS = 30_000;
+
 export interface DemandSchedulerOptions {
   activeIntervalMs: number;
   idleIntervalMs: number;
@@ -24,6 +26,16 @@ export function createDemandScheduler(
   let executing = false;
   let wakePending = false;
   let wakeGeneration: number | undefined;
+  let consecutiveFailures = 0;
+
+  function errorRetryDelay(): number {
+    const exponentialDelay =
+      options.activeIntervalMs * 2 ** Math.max(0, consecutiveFailures - 1);
+    return Math.max(
+      options.activeIntervalMs,
+      Math.min(MAX_ERROR_RETRY_DELAY_MS, exponentialDelay),
+    );
+  }
 
   function observeCoalesced(): void {
     try {
@@ -69,14 +81,21 @@ export function createDemandScheduler(
 
     let remains = false;
     let failed = false;
+    let runFailed = false;
     let explicitDelayMs: number | undefined;
     const execution: Promise<void> = Promise.resolve()
       .then(() => {
         executing = true;
-        return options.run();
+        return Promise.resolve()
+          .then(options.run)
+          .catch((error: unknown) => {
+            runFailed = true;
+            throw error;
+          });
       })
       .then((result) => {
         if (typeof result === 'boolean') {
+          if (generation === runGeneration) consecutiveFailures = 0;
           remains = result;
           return;
         }
@@ -86,16 +105,22 @@ export function createDemandScheduler(
           result >= 1 &&
           result <= MAX_NODE_TIMER_DELAY_MS
         ) {
+          if (generation === runGeneration) consecutiveFailures = 0;
           explicitDelayMs = result;
           return;
         }
 
+        if (generation === runGeneration) consecutiveFailures = 0;
         throw new Error(
           `Demand scheduler run returned an invalid delay; expected an integer between 1 and ${MAX_NODE_TIMER_DELAY_MS} milliseconds.`,
         );
       })
       .catch((error: unknown) => {
         failed = true;
+        if (generation === runGeneration) {
+          if (runFailed) consecutiveFailures += 1;
+          else consecutiveFailures = 0;
+        }
         try {
           options.onError(error);
         } catch {
@@ -129,9 +154,13 @@ export function createDemandScheduler(
         }
 
         schedule(
-          failed || remains
-            ? options.activeIntervalMs
-            : (explicitDelayMs ?? options.idleIntervalMs),
+          failed
+            ? runFailed
+              ? errorRetryDelay()
+              : options.activeIntervalMs
+            : remains
+              ? options.activeIntervalMs
+              : (explicitDelayMs ?? options.idleIntervalMs),
           runGeneration,
         );
       });
@@ -147,6 +176,7 @@ export function createDemandScheduler(
 
       started = true;
       generation += 1;
+      consecutiveFailures = 0;
       clearTimer();
       if (inFlight) {
         observeCoalesced();

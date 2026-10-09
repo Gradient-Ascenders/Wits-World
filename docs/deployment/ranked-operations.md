@@ -68,6 +68,15 @@ remain off while idle; known boundaries can still schedule earlier database
 work. Other API traffic, housekeeping, and external database clients can also
 wake Neon compute.
 
+Thrown gameplay probe/sweep errors retry with exponential backoff: the first
+retry retains the active interval, later consecutive failures double the delay
+up to 30 seconds (or the configured interval if already longer). A successful
+probe resets the backoff; an explicit mutation wake remains immediate. Healthy
+active work, idle confirmation that safely falls back to fast scans, and paused
+work-creation booleans do not enter this error backoff. A Redis coordination
+outage can therefore still keep PostgreSQL scanning; this is not an outage-time
+scale-to-zero guarantee.
+
 An optional `GAMEPLAY_SCHEDULER_NAMESPACE` selects the shared private Redis key
 namespace. If unset, the API derives it as a hash of the canonical database
 endpoint, including normalized host, port, and path; Neon `-pooler` is removed
@@ -110,16 +119,67 @@ Roll out in stages: first deploy the API with polling mode and durable intent
 publishing; then retire every older or otherwise unaware producer, including
 old local servers that can write to the same Neon database. Only after all
 producers of new persisted work participate in the protocol, set the repository Actions variable
-`PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and deploy/restart the API. CI
-maps this variable to the Azure API App Service setting and defaults it to
-`polling`; changing only the live Azure setting is temporary because the next
-deployment will reset it from the repository variable/default. Do not enable
+`PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and, after the audit, explicitly
+set `PRODUCTION_GAMEPLAY_WRITERS_COORDINATED=true`. Start a new API deployment.
+CI retains `polling` unless both conditions are met; the acknowledgement
+defaults to `false`. It changes and verifies the Azure setting only after a
+successful database release. Changing only the live Azure setting is temporary
+because the next deployment will reset it from the gated repository settings.
+Do not enable
 Upstash mode during a rolling deployment that still has unaware writers. Roll
 back by setting the Actions variable to `polling` and redeploying/restarting;
 polling remains the correctness fallback.
 Upstash mode adds Redis commands and is not free. No CU savings, Neon suspend
 behavior, or deployed multi-instance result has been measured yet. No schema
 migration is required.
+
+### Verify the deployed scheduler mode
+
+The Gitea Actions variable requests the mode for a future deployment; it is not
+proof that the running API uses that mode. After the writer-retirement audit,
+start a **new** deployment using the updated variable. CI prints the requested
+backend, safe effective backend, and Azure's non-secret
+`GAMEPLAY_SCHEDULER_BACKEND`, failing if Azure differs from the safe effective
+backend. A missing writer acknowledgement deliberately retains polling and
+logs the activation gate. API startup logs record `gameplaySchedulerBackend`,
+`livePvpActiveIntervalMs`, and `rankedActiveIntervalMs`; production polling also
+emits a warning. Confirm the startup values on every running replica.
+
+On 9 October 2026, the operator reported the requested Gitea backend as
+`upstash` but Azure's backend as `polling`. This mismatch explains persistent
+idle queries, not the entire reported CU-hours increase. Do not assume that a
+finished CI run means old API servers have stopped: check old deployments and
+local API servers sharing production Neon separately. Keep the namespace,
+durable intents, and writer fences intact during activation.
+
+Later on 9 October 2026, the operator confirmed that Kevin and Tyron had
+finished stopping or upgrading the old API servers using production Neon.
+This cleared the operator-confirmed writer-retirement prerequisite, not the
+deployment verification. At confirmation time, the release fixes were local
+and no post-cutover Azure mode readback had been performed. A repository owner must set
+`PRODUCTION_GAMEPLAY_WRITERS_COORDINATED=true` alongside the requested
+`PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash`; merge the reviewed release fix
+and start a new deployment instead of rerunning the old failed job, then verify
+Azure and runtime startup both report `upstash`. The investigation session
+could not manage Gitea Actions variables and had no Azure login. No production
+activation or CU savings are claimed by this incident record.
+
+An upgraded local API still keeps Neon awake if its own scheduler remains in
+polling mode, even when it publishes valid intents. Stop unused local servers;
+prefer a disposable local database for development. Every running API sharing
+production must use the coordinated mode after the safe cutover to obtain the
+idle-probe reduction. A check on one machine cannot establish the state of
+teammates' servers or other replicas.
+
+After deployment, compare `live_probe`, `ranked_probe`, and `listener` pool
+telemetry during at least two otherwise idle 30-minute windows, alongside
+Neon's compute-activity graph and actual CU-hours delta. Observe normal
+gameplay and the next scheduled boundary as well. Neon compute use is compute
+size multiplied by active time; regular queries can prevent its five-minute
+idle suspension. A 30-minute idle check is a scheduling limit, not a promised
+monthly CU budget. Other traffic, maintenance, replicas, sockets and external
+clients still affect usage. See [compute lifecycle](https://neon.com/docs/introduction/compute-lifecycle)
+and [usage metrics](https://neon.com/docs/introduction/usage-metrics).
 
 Ranked queue `POST`, heartbeat `POST`, queue `DELETE`, proposal accept and
 decline `POST`, and other work-producing mutations publish before their
@@ -218,3 +278,6 @@ Codex-CLI[gpt-6-luna], based on source inspection and user direction.
 The durable activity-store rollout guidance was updated with assistance from
 Codex[GPT-5], based on user-provided implementation requirements.
 Existing-work outage behavior was clarified with assistance from Codex-CLI[gpt-6-luna].
+
+Error-backoff and deployed-mode verification guidance was added with assistance
+from Codex[GPT-5] and Codex-CLI[gpt-6-luna].

@@ -13,6 +13,7 @@ const vitestEntrypoint = path.resolve(
   '../../node_modules/vitest/vitest.mjs',
 );
 const testFiles = [
+  'tests/database-maintenance.integration.test.ts',
   'tests/pool-observability.integration.test.ts',
   'tests/live-pvp-notifications.integration.test.ts',
   'tests/offline-challenges-database.integration.test.ts',

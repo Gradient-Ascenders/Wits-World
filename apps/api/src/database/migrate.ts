@@ -1,4 +1,7 @@
-import { buildDatabaseConfig, loadApiEnvironment } from '../config/database.js';
+import {
+  buildMigrationDatabaseConfig,
+  loadApiEnvironment,
+} from '../config/database.js';
 import { runMigrations } from './migrations.js';
 import { getMigrationsDirectory } from './paths.js';
 
@@ -6,7 +9,7 @@ async function main() {
   loadApiEnvironment();
 
   const target = process.argv.includes('--test') ? 'test' : 'development';
-  const databaseConfig = buildDatabaseConfig({ target });
+  const databaseConfig = buildMigrationDatabaseConfig({ target });
   const migrationResult = await runMigrations(
     databaseConfig,
     getMigrationsDirectory(),

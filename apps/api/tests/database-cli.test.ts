@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DatabaseClientRunner } from '../src/database/connection.js';
 import type { DatabaseConfig } from '../src/config/database.js';
-import type { DatabaseReleaseInspection } from '../src/database/release-procedure.js';
+import type {
+  DatabaseReleaseInspection,
+  DatabaseReleaseStage,
+} from '../src/database/release-procedure.js';
 
 const mocks = vi.hoisted(() => ({
   environment: vi.fn(),
@@ -29,6 +32,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../src/config/database.js', () => ({
   loadApiEnvironment: mocks.environment,
   buildDatabaseConfig: mocks.config,
+  buildMigrationDatabaseConfig: mocks.config,
 }));
 vi.mock('../src/database/readiness.js', () => ({
   checkDatabaseReadiness: mocks.readiness,
@@ -87,6 +91,19 @@ async function run(entrypoint: string, args: string[] = []) {
   await entrypoints[entrypoint]!();
   // These entry points launch main() without top-level await.
   await vi.waitFor(() => {
+    if (entrypoint === 'release') {
+      expect(
+        vi.mocked(console.error).mock.calls.length > 0 ||
+          vi
+            .mocked(console.log)
+            .mock.calls.some(
+              ([message]) =>
+                message ===
+                'Database release procedure completed successfully.',
+            ),
+      ).toBe(true);
+      return;
+    }
     expect(
       vi.mocked(console.log).mock.calls.length +
         vi.mocked(console.error).mock.calls.length,
@@ -250,8 +267,15 @@ describe('database command-line boundaries', () => {
       mocks.release.mockImplementation(
         async (options: {
           onInspection: (value: DatabaseReleaseInspection) => void;
+          onStage: (
+            stage: DatabaseReleaseStage,
+            state: 'started' | 'completed',
+            durationMs?: number,
+          ) => void;
         }) => {
           options.onInspection(inspection);
+          options.onStage('migrations', 'started');
+          options.onStage('migrations', 'completed', 20);
           return {
             migrations: {
               applied: ['0065_integrity.sql'],
@@ -293,6 +317,12 @@ describe('database command-line boundaries', () => {
       );
       expect(console.log).toHaveBeenCalledWith(
         'Connected database: disposable',
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        'Database release migrations: started',
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        'Database release migrations: completed (20 ms)',
       );
       expect(console.log).toHaveBeenCalledWith(
         `Applied seed files: ${pack === 'demo' ? 1 : 0}`,

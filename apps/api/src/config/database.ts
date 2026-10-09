@@ -8,7 +8,7 @@ export type DatabaseTarget = 'development' | 'production' | 'test';
 export interface DatabaseConfig {
   connectionString: string;
   target: DatabaseTarget;
-  variableName: 'DATABASE_URL' | 'TEST_DATABASE_URL';
+  variableName: 'DATABASE_URL' | 'TEST_DATABASE_URL' | 'MIGRATION_DATABASE_URL';
 }
 
 export interface ListenerDatabaseConfig {
@@ -123,6 +123,99 @@ export function buildDatabaseConfig({
   };
 }
 
+export function buildMigrationDatabaseConfig({
+  env = process.env,
+  target = 'development',
+}: BuildDatabaseConfigOptions = {}): DatabaseConfig {
+  const runtimeConfig = buildDatabaseConfig({ env, target });
+  const sessionConfig = getSessionDatabaseConfig(runtimeConfig);
+  // A production maintenance credential must never override a test target.
+  const migrationUrl =
+    target === 'test' ? undefined : env.MIGRATION_DATABASE_URL?.trim();
+
+  if (!migrationUrl) return sessionConfig;
+
+  const url = parsePostgresConnectionString(
+    migrationUrl,
+    'MIGRATION_DATABASE_URL',
+  );
+  validateExplicitDatabaseEndpoint(url, 'MIGRATION_DATABASE_URL');
+  if (isNeonPooler(url)) {
+    throw new Error(
+      'MIGRATION_DATABASE_URL must use a direct, non-pooled Neon endpoint.',
+    );
+  }
+  if (!sameDatabaseIdentity(url, new URL(runtimeConfig.connectionString))) {
+    throw new Error(
+      'MIGRATION_DATABASE_URL must identify the same database as DATABASE_URL.',
+    );
+  }
+
+  return {
+    connectionString: migrationUrl,
+    target,
+    variableName: 'MIGRATION_DATABASE_URL',
+  };
+}
+
+/** Session advisory locks cannot survive Neon transaction-pooler routing. */
+export function getSessionDatabaseConfig(
+  config: DatabaseConfig,
+): DatabaseConfig {
+  const url = parsePostgresConnectionString(
+    config.connectionString,
+    config.variableName,
+  );
+  validateExplicitDatabaseEndpoint(url, config.variableName);
+  if (!isNeonPooler(url)) return config;
+
+  url.hostname = normalizeDatabaseHostname(url.hostname);
+  return { ...config, connectionString: url.toString() };
+}
+
+function validateExplicitDatabaseEndpoint(
+  url: URL,
+  variableName: string,
+): void {
+  if (!url.hostname || !url.pathname || url.pathname === '/') {
+    throw new Error(`${variableName} must specify a host and database.`);
+  }
+  const overrides = [
+    'host',
+    'hostaddr',
+    'port',
+    'database',
+    'dbname',
+    'db',
+    'service',
+    'options',
+  ];
+  if (
+    [...url.searchParams.keys()].some((key) =>
+      overrides.includes(key.toLowerCase()),
+    )
+  ) {
+    throw new Error(
+      `${variableName} must not contain endpoint override parameters.`,
+    );
+  }
+}
+
+function isNeonPooler(url: URL): boolean {
+  return (
+    isNeonHostname(url.hostname) &&
+    url.hostname.toLowerCase().split('.')[0]?.endsWith('-pooler') === true
+  );
+}
+
+function normalizeDatabaseHostname(hostname: string): string {
+  const normalized = hostname.toLowerCase().replace(/\.$/u, '');
+  if (!isNeonHostname(normalized)) return normalized;
+  const labels = normalized.split('.');
+  labels[0] = labels[0]!.replace(/-pooler$/u, '');
+  return labels.join('.');
+}
+
 function parsePostgresConnectionString(
   connectionString: string,
   variableName: string,
@@ -182,7 +275,7 @@ function sameDatabaseIdentity(left: URL, right: URL) {
 function getDatabaseIdentity(connectionUrl: URL): DatabaseIdentity {
   return {
     databasePath: decodeURIComponent(connectionUrl.pathname),
-    hostname: connectionUrl.hostname.toLowerCase(),
+    hostname: normalizeDatabaseHostname(connectionUrl.hostname),
     port: connectionUrl.port || '5432',
   };
 }

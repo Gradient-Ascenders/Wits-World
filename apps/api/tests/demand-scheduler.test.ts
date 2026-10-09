@@ -143,6 +143,116 @@ describe('demand scheduler', () => {
     await scheduler.stop();
   });
 
+  it('backs off repeated errors exponentially and caps retries at 30 seconds', async () => {
+    vi.useFakeTimers();
+    const failure = new Error('probe failed');
+    const onError = vi.fn();
+    const run = vi.fn().mockRejectedValue(failure);
+    const scheduler = createDemandScheduler({
+      activeIntervalMs: ACTIVE_INTERVAL_MS,
+      idleIntervalMs: IDLE_INTERVAL_MS,
+      run,
+      onError,
+    });
+
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(0);
+    for (const delayMs of [1_000, 2_000, 4_000, 8_000, 16_000, 30_000]) {
+      await vi.advanceTimersByTimeAsync(delayMs - 1);
+      expect(run).toHaveBeenCalledTimes(onError.mock.calls.length);
+      await vi.advanceTimersByTimeAsync(1);
+    }
+
+    expect(run).toHaveBeenCalledTimes(7);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(run).toHaveBeenCalledTimes(7);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(run).toHaveBeenCalledTimes(8);
+    await scheduler.stop();
+  });
+
+  it('does not retry errors faster than an active interval above the cap', async () => {
+    vi.useFakeTimers();
+    const activeIntervalMs = 40_000;
+    const run = vi.fn().mockRejectedValue(new Error('probe failed'));
+    const scheduler = createDemandScheduler({
+      activeIntervalMs,
+      idleIntervalMs: IDLE_INTERVAL_MS,
+      run,
+      onError: vi.fn(),
+    });
+
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(activeIntervalMs - 1);
+    expect(run).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(run).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(activeIntervalMs - 1);
+    expect(run).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(run).toHaveBeenCalledTimes(3);
+    await scheduler.stop();
+  });
+
+  it('resets the error backoff after a successful run', async () => {
+    vi.useFakeTimers();
+    const run = vi
+      .fn<() => Promise<boolean>>()
+      .mockRejectedValueOnce(new Error('first failure'))
+      .mockRejectedValueOnce(new Error('second failure'))
+      .mockResolvedValueOnce(true)
+      .mockRejectedValueOnce(new Error('failure after success'))
+      .mockResolvedValue(false);
+    const scheduler = createDemandScheduler({
+      activeIntervalMs: ACTIVE_INTERVAL_MS,
+      idleIntervalMs: IDLE_INTERVAL_MS,
+      run,
+      onError: vi.fn(),
+    });
+
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(ACTIVE_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(2 * ACTIVE_INTERVAL_MS);
+    expect(run).toHaveBeenCalledTimes(3);
+
+    await vi.advanceTimersByTimeAsync(ACTIVE_INTERVAL_MS);
+    expect(run).toHaveBeenCalledTimes(4);
+    await vi.advanceTimersByTimeAsync(ACTIVE_INTERVAL_MS - 1);
+    expect(run).toHaveBeenCalledTimes(4);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(run).toHaveBeenCalledTimes(5);
+    await scheduler.stop();
+  });
+
+  it('wakes immediately through backoff and stop cancels the retry timer', async () => {
+    vi.useFakeTimers();
+    const run = vi
+      .fn<() => Promise<boolean>>()
+      .mockRejectedValueOnce(new Error('first failure'))
+      .mockRejectedValueOnce(new Error('second failure'))
+      .mockResolvedValue(false);
+    const scheduler = createDemandScheduler({
+      activeIntervalMs: ACTIVE_INTERVAL_MS,
+      idleIntervalMs: IDLE_INTERVAL_MS,
+      run,
+      onError: vi.fn(),
+    });
+
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(ACTIVE_INTERVAL_MS);
+    expect(run).toHaveBeenCalledTimes(2);
+
+    scheduler.wake();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(run).toHaveBeenCalledTimes(3);
+    await scheduler.stop();
+    await vi.advanceTimersByTimeAsync(IDLE_INTERVAL_MS * 2);
+    expect(run).toHaveBeenCalledTimes(3);
+  });
+
   it('treats an invalid explicit delay as an error and retries actively', async () => {
     vi.useFakeTimers();
     const onError = vi.fn();
@@ -165,6 +275,34 @@ describe('demand scheduler', () => {
     expect(run).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(1);
     expect(run).toHaveBeenCalledTimes(2);
+    await scheduler.stop();
+  });
+
+  it('does not back off scheduler validation errors as thrown probe failures', async () => {
+    vi.useFakeTimers();
+    const run = vi
+      .fn<() => Promise<boolean | number>>()
+      .mockRejectedValueOnce(new Error('probe failed'))
+      .mockResolvedValueOnce(0)
+      .mockRejectedValueOnce(new Error('probe failed again'))
+      .mockResolvedValue(false);
+    const scheduler = createDemandScheduler({
+      activeIntervalMs: ACTIVE_INTERVAL_MS,
+      idleIntervalMs: IDLE_INTERVAL_MS,
+      run,
+      onError: vi.fn(),
+    });
+
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(ACTIVE_INTERVAL_MS);
+    expect(run).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(ACTIVE_INTERVAL_MS);
+    expect(run).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(ACTIVE_INTERVAL_MS - 1);
+    expect(run).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(run).toHaveBeenCalledTimes(4);
     await scheduler.stop();
   });
 
