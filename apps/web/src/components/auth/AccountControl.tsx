@@ -23,7 +23,7 @@ export function AccountControl() {
   const [isProtectedExploreRoute] = useRoute('/explore');
   const [isProtectedCollectionRoute] = useRoute('/collection');
   const [isProtectedProfileRoute] = useRoute('/profile');
-  const [isProtectedAccountRoute] = useRoute('/account');
+  const [isProtectedAccountRoute] = useRoute('/account/*?');
   const [isProtectedAuthorRoute] = useRoute('/author/*?');
   const playerName =
     currentPlayer.status === 'ready' ? currentPlayer.player.playerName : null;

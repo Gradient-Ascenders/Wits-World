@@ -1,6 +1,7 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { ArrowSquareOut, Key, Trash } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'wouter';
 
 import {
   AccountApiError,
@@ -18,10 +19,7 @@ import './account.css';
 
 const accountRoute = '/account';
 const deletionReturnRoute = `${accountRoute}?action=confirm-deletion`;
-const recoveryReturnRoute = `${accountRoute}?action=password-recovery`;
-
-type RecoveryState = 'idle' | 'redirecting' | 'returned' | 'unavailable';
-type AccountReturnAction = 'confirm-deletion' | 'password-recovery';
+type AccountReturnAction = 'confirm-deletion';
 
 type DeletionState =
   | { status: 'idle' }
@@ -40,7 +38,6 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const { getIdTokenClaims, loginWithRedirect, logout } = useAuth0();
   const { state: currentPlayer } = useCurrentPlayer();
   const getAccessToken = useApiAccessToken();
-  const [recovery, setRecovery] = useState<RecoveryState>('idle');
   const [deletion, setDeletion] = useState<DeletionState>({ status: 'idle' });
   const [signOutFailed, setSignOutFailed] = useState(false);
   const returnAction = useRef<AccountReturnAction | null>(
@@ -63,12 +60,6 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     if (!returnUrlCleared.current) {
       returnUrlCleared.current = true;
       window.history.replaceState({}, '', accountRoute);
-    }
-
-    if (action === 'password-recovery') {
-      returnAction.current = null;
-      setRecovery('returned');
-      return;
     }
 
     setDeletion({ status: 'reauthenticating' });
@@ -128,19 +119,6 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const player = currentPlayer.player;
   const provider = player.connectionStrategy;
-
-  async function startPasswordRecovery() {
-    setRecovery('redirecting');
-
-    try {
-      await loginWithRedirect({
-        appState: { returnTo: recoveryReturnRoute },
-        authorizationParams: { prompt: 'login' },
-      });
-    } catch {
-      setRecovery('unavailable');
-    }
-  }
 
   async function startReauthentication() {
     setDeletion({ status: 'reauthenticating' });
@@ -270,10 +248,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               {provider === 'google-oauth2' ? (
                 <FederatedRecovery />
               ) : (
-                <DatabaseRecovery
-                  onStart={startPasswordRecovery}
-                  state={recovery}
-                />
+                <DatabaseRecovery />
               )}
             </div>
           </section>
@@ -372,9 +347,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
 function readAccountReturnAction(): AccountReturnAction | null {
   const action = new URLSearchParams(window.location.search).get('action');
-  return action === 'confirm-deletion' || action === 'password-recovery'
-    ? action
-    : null;
+  return action === 'confirm-deletion' ? action : null;
 }
 
 function AccountActionIcon({ name }: { name: 'danger' | 'recovery' }) {
@@ -388,44 +361,16 @@ function AccountActionIcon({ name }: { name: 'danger' | 'recovery' }) {
   );
 }
 
-function DatabaseRecovery({
-  onStart,
-  state,
-}: {
-  onStart: () => Promise<void>;
-  state: RecoveryState;
-}) {
+function DatabaseRecovery() {
   return (
     <>
       <div className="account-action-card__content">
         <h3>Password recovery</h3>
-        <p>Choose “Forgot password?” on the Auth0 sign-in page.</p>
+        <p>Request an email link to choose a new password.</p>
       </div>
-      <button
-        className="button"
-        disabled={state === 'redirecting'}
-        onClick={() => void onStart()}
-        type="button"
-      >
-        {state === 'redirecting' ? 'Opening sign-in…' : 'Reset password'}
-      </button>
-      {state === 'returned' ? (
-        <p
-          className="account-action-card__message account-inline-status"
-          role="status"
-        >
-          If you requested a reset, use the latest email link. Wits World cannot
-          confirm whether your password changed.
-        </p>
-      ) : null}
-      {state === 'unavailable' ? (
-        <p
-          className="account-action-card__message account-inline-error state-message state-message--error"
-          role="alert"
-        >
-          Could not open password recovery. Check your connection and try again.
-        </p>
-      ) : null}
+      <Link className="button" href="/account/reset-password">
+        Reset password
+      </Link>
     </>
   );
 }

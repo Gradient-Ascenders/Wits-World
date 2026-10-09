@@ -31,6 +31,7 @@ import type {
   LocationPermissionProvider,
 } from './browser-location';
 import type { MapFactory } from './components/exploration/map-provider';
+import type { AuthConfig } from './config/environment';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
 const OfflinePages = () => import('./offline/OfflinePages');
@@ -62,6 +63,7 @@ const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
 const PvpHubPage = lazy(() => import('./pages/PvpHubPage'));
 const PvpMatchPage = lazy(() => import('./pages/PvpMatchPage'));
 const AccountPage = lazy(() => import('./pages/AccountPage'));
+const PasswordResetPage = lazy(() => import('./pages/PasswordResetPage'));
 
 // Start the destination module while identity checks run. Importing code does
 // not mount protected components or start their data requests.
@@ -94,6 +96,8 @@ function prepareRoute(path: string) {
     return import('./pages/ProfilePage');
   if (path === '/leaderboard') return import('./pages/LeaderboardPage');
   if (path === '/account') return import('./pages/AccountPage');
+  if (path === '/account/reset-password')
+    return import('./pages/PasswordResetPage');
   if (path === '/' || path === '/about') return import('./pages/HomePage');
 }
 
@@ -112,14 +116,16 @@ export function RoutePreparation({ pathname }: { pathname: string }) {
               ? 'saved events'
               : pathname.startsWith('/challenge')
                 ? 'challenge'
-                : pathname === '/account'
-                  ? 'account settings'
-                  : pathname === '/leaderboard'
-                    ? 'leaderboard'
-                    : pathname.startsWith('/profile') ||
-                        pathname.startsWith('/players')
-                      ? 'profile'
-                      : 'home';
+                : pathname === '/account/reset-password'
+                  ? 'password reset'
+                  : pathname === '/account'
+                    ? 'account settings'
+                    : pathname === '/leaderboard'
+                      ? 'leaderboard'
+                      : pathname.startsWith('/profile') ||
+                          pathname.startsWith('/players')
+                        ? 'profile'
+                        : 'home';
   return (
     <LoadingState
       delayed
@@ -132,6 +138,7 @@ export function RoutePreparation({ pathname }: { pathname: string }) {
 
 interface AppRoutesProps {
   apiBaseUrl: string;
+  authConfig?: AuthConfig;
   locationClaimProvider?: LocationClaimProvider;
   locationObservationProvider?: LocationObservationProvider;
   locationPermissionProvider?: LocationPermissionProvider;
@@ -141,6 +148,7 @@ interface AppRoutesProps {
 
 export function AppRoutes({
   apiBaseUrl,
+  authConfig,
   locationClaimProvider,
   locationObservationProvider,
   locationPermissionProvider,
@@ -283,6 +291,14 @@ export function AppRoutes({
                     </ProtectedRoute>
                   )}
                 </Route>
+                <Route path="/account/reset-password">
+                  <ProtectedRoute
+                    allowPlayerNameSetupRequired
+                    destination="reset your password"
+                  >
+                    <PasswordResetPage authConfig={authConfig} />
+                  </ProtectedRoute>
+                </Route>
                 <Route path="/account">
                   <ProtectedRoute
                     allowPlayerNameSetupRequired
@@ -380,6 +396,7 @@ function DecksRoute({ apiBaseUrl }: { apiBaseUrl: string }) {
 type AppProps =
   | {
       apiBaseUrl: string;
+      authConfig?: AuthConfig;
       children?: never;
       locationClaimProvider?: LocationClaimProvider;
       locationObservationProvider?: LocationObservationProvider;
@@ -400,6 +417,7 @@ export function App(props: AppProps) {
         <StartupGate>
           <AppRoutes
             apiBaseUrl={props.apiBaseUrl}
+            authConfig={props.authConfig}
             locationClaimProvider={props.locationClaimProvider}
             locationObservationProvider={props.locationObservationProvider}
             locationPermissionProvider={props.locationPermissionProvider}

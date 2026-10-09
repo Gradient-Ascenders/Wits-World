@@ -6,6 +6,107 @@ const apiBaseUrl = 'http://127.0.0.1:3999/api/v1';
 const playerId = '6fe7dc26-cdea-4275-a2df-861724137cbc';
 const deletionId = '00000000-0000-4000-8000-000000000600';
 
+for (const width of [390, 1280]) {
+  test(`requests a password reset without a sign-in detour at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    const errors = monitorRuntimeErrors(page);
+    await mockAccountApi(page, 'auth0', 'completed');
+    await page.setViewportSize({ height: 844, width });
+    let requestedBody: unknown;
+    let releaseRequest = () => {};
+    const pendingRequest = new Promise<void>((resolve) => {
+      releaseRequest = resolve;
+    });
+    await page.route(
+      'https://account-e2e.invalid/dbconnections/change_password',
+      async (route) => {
+        expect(route.request().method()).toBe('POST');
+        expect(route.request().headers()).not.toHaveProperty('authorization');
+        requestedBody = route.request().postDataJSON();
+        await pendingRequest;
+        await route.fulfill({
+          body: 'Request accepted.',
+          contentType: 'text/plain',
+          status: 200,
+        });
+      },
+    );
+
+    await page.goto('/account');
+    const resetLink = page.getByRole('link', {
+      name: 'Reset password',
+      exact: true,
+    });
+    await resetLink.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL('/account/reset-password');
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Reset password' }),
+    ).toBeVisible();
+    const email = page.getByRole('textbox', { name: 'Account email' });
+    await email.fill('player@example.test');
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`${width}-reset-form.png`),
+    });
+
+    await email.focus();
+    await page.keyboard.press('Tab');
+    await expect(
+      page.getByRole('button', { name: 'Send reset link' }),
+    ).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(
+      page.getByRole('button', { name: 'Sending...' }),
+    ).toBeDisabled();
+    await expect(email).toBeDisabled();
+    releaseRequest();
+    await expect(
+      page.getByRole('heading', { name: 'Check your inbox' }),
+    ).toBeFocused();
+    expect(requestedBody).toEqual({
+      client_id: 'account-e2e-client',
+      connection: 'Username-Password-Authentication',
+      email: 'player@example.test',
+    });
+    await expect(
+      page.getByText(
+        'If an account uses this email, you will receive a password-reset link.',
+      ),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`${width}-reset-confirmation.png`),
+    });
+    await page.getByRole('link', { name: 'Back to account settings' }).click();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Account settings' }),
+    ).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+}
+
+test('keeps Google password recovery with Google on a direct reset-page visit', async ({
+  page,
+}) => {
+  await mockAccountApi(page, 'google-oauth2', 'completed');
+  await page.goto('/account/reset-password');
+  await expect(page.getByText(/Google manages your password/)).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Open Google recovery' }),
+  ).toHaveAttribute(
+    'href',
+    'https://support.google.com/accounts/answer/7682439',
+  );
+  await expect(
+    page.getByRole('textbox', { name: 'Account email' }),
+  ).toHaveCount(0);
+});
+
 test('keeps the database-account deletion journey focused and accessible on mobile', async ({
   page,
 }, testInfo) => {
@@ -22,7 +123,7 @@ test('keeps the database-account deletion journey focused and accessible on mobi
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible();
   await expect(
-    page.getByRole('button', { name: 'Reset password' }),
+    page.getByRole('link', { name: 'Reset password' }),
   ).toBeVisible();
   const mobileNavigation = page.locator('.primary-navigation--mobile');
   await expect(
