@@ -8,8 +8,9 @@ Developer keys authenticate the external read-only API. PostgreSQL stores a
 secret verifier and safe key metadata; the full reusable credential is returned
 only when created.
 
-The [Developer API guide](../architecture/developer-api.md) owns key-management
-routes, public resources, rate limits, and response formats.
+The [Developer API guide](../architecture/developer-api.md) covers key-management
+routes, public resources, response formats, and retry behaviour.
+Shared quotas and headers are defined in [Rate limits](../architecture/rate-limiting.md).
 
 ## Stored fields
 
