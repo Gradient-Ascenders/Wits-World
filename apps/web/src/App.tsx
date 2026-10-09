@@ -18,6 +18,7 @@ import { StartupGate, StartupSettler } from './components/auth/startup-state';
 import { AuthorRoute } from './components/auth/AuthorRoute';
 import { AuthorLoadingState } from './components/author/AuthorLoadingState';
 import { GuardedRouter } from './components/author/AuthorNavigationGuard';
+import { prepareAuthorWorkspace } from './components/author/author-workspace-modules';
 import {
   CurrentPlayerProvider,
   useCurrentPlayer,
@@ -65,7 +66,11 @@ const AccountPage = lazy(() => import('./pages/AccountPage'));
 // Start the destination module while identity checks run. Importing code does
 // not mount protected components or start their data requests.
 function prepareRoute(path: string) {
-  if (path.startsWith('/author')) return import('./pages/AuthorConsolePage');
+  if (path.startsWith('/author'))
+    return Promise.all([
+      import('./pages/AuthorConsolePage'),
+      prepareAuthorWorkspace(path),
+    ]);
   if (path.startsWith('/offline')) return OfflinePages();
   if (path.startsWith('/challenge-attempts/'))
     return import('./pages/ChallengePage');
