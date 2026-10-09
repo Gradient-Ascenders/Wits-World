@@ -296,12 +296,19 @@ export async function listOwnedCards({
   getAccessToken,
   signal,
   unique = false,
-}: CardRequestOptions & { unique?: boolean }): Promise<OwnedCard[]> {
+  deckId,
+}: CardRequestOptions & {
+  unique?: boolean;
+  deckId?: string;
+}): Promise<OwnedCard[]> {
+  const query = new URLSearchParams();
+  if (unique) query.set('unique', 'true');
+  if (deckId) query.set('deckId', deckId);
   const payload = await cardRequest({
     apiBaseUrl,
     getAccessToken,
     method: 'GET',
-    path: unique ? '/cards/collection?unique=true' : '/cards/collection',
+    path: `/cards/collection${query.size ? `?${query}` : ''}`,
     signal,
   });
 

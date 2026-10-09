@@ -120,6 +120,28 @@ afterEach(() => {
 });
 
 describe('live lobby API boundaries', () => {
+  it('loads only selected-deck details and reads them afresh after returning', async () => {
+    const fetchMock = installLobbyFetch(() => response(queueState()));
+    const view = renderLobby();
+    await screen.findByRole('button', {
+      name: 'View Campus Guardian 1 details, card 1',
+    });
+    const cardCalls = () =>
+      fetchMock.mock.calls.filter(([input]) =>
+        new URL(String(input)).pathname.endsWith('/cards/collection'),
+      );
+    expect(cardCalls()).toHaveLength(1);
+    expect(new URL(String(cardCalls()[0]![0])).searchParams.get('deckId')).toBe(
+      activeDeck.deckId,
+    );
+    view.unmount();
+    renderLobby();
+    await screen.findByRole('button', {
+      name: 'View Campus Guardian 1 details, card 1',
+    });
+    expect(cardCalls()).toHaveLength(2);
+  });
+
   it('cancels a search, permits a fresh attempt, and follows a matched participant into battle', async () => {
     const user = userEvent.setup();
     let joins = 0;

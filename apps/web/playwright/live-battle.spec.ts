@@ -24,7 +24,7 @@ test.beforeEach(async ({ page }) => {
     'field-kit',
     'grand-strategy',
   ];
-  await page.route('**/api/v1/cards/collection', (route) =>
+  await page.route('**/api/v1/cards/collection**', (route) =>
     json(route, {
       cards: buildStarterCards().map((card, index) => ({
         ...card,
@@ -33,6 +33,113 @@ test.beforeEach(async ({ page }) => {
       requestId: 'live-deck-cards',
     }),
   );
+});
+
+for (const failure of ['http', 'offline'] as const) {
+  test(`keeps the lobby usable after a scoped card ${failure} failure and retries the same deck`, async ({
+    page,
+  }) => {
+    const deck = buildSavedDeck({ isSelected: true });
+    await routeReadyLobby(page, [deck]);
+    let unavailable = true;
+    const scopes: string[] = [];
+    await page.route('**/api/v1/cards/collection**', async (route) => {
+      scopes.push(
+        new URL(route.request().url()).searchParams.get('deckId') ?? '',
+      );
+      if (unavailable && failure === 'offline') {
+        await route.abort('internetdisconnected');
+        return;
+      }
+      await json(
+        route,
+        unavailable
+          ? {
+              code: 'UNAVAILABLE',
+              status: 503,
+              title: 'Unavailable',
+              detail: 'Fixture failure',
+              type: 'about:blank',
+              requestId: 'cards-failed',
+            }
+          : { cards: buildStarterCards(), requestId: 'cards-retried' },
+        unavailable ? 503 : 200,
+      );
+    });
+    await page.goto('/matches/live');
+    await expect(
+      page.getByRole('button', { name: 'Find battle', exact: true }),
+    ).toBeEnabled();
+    await expect(page.getByText('Card details couldn’t load.')).toBeVisible();
+    unavailable = false;
+    await page
+      .locator('.live-lobby__card-recovery')
+      .getByRole('button', { name: 'Retry' })
+      .click();
+    const card = page.getByRole('button', {
+      name: 'View Campus Guardian 1 details, card 1',
+    });
+    await expect(card).toBeVisible();
+    expect(scopes).toEqual([deck.deckId, deck.deckId]);
+    await card.click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(card).toBeFocused();
+  });
+}
+
+test('does not read card details without a selected deck', async ({ page }) => {
+  await routeReadyLobby(page, [buildSavedDeck({ isSelected: false })]);
+  let cardReads = 0;
+  await page.route('**/api/v1/cards/collection**', async (route) => {
+    cardReads++;
+    await json(route, { cards: [], requestId: 'unexpected-read' });
+  });
+  await page.goto('/matches/live');
+  await expect(
+    page.getByRole('heading', { name: 'No deck selected' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Select deck', exact: true }),
+  ).toHaveAttribute('href', '/collection/decks');
+  expect(cardReads).toBe(0);
+});
+
+test('re-reads the changed selected deck on repeat entry at mobile and desktop widths', async ({
+  page,
+}) => {
+  let deck = buildSavedDeck({ isSelected: true });
+  await routeReadyLobby(page, []);
+  await page.route('**/api/v1/decks', (route) =>
+    json(route, { decks: [deck], requestId: 'fresh-deck' }),
+  );
+  const scopes: string[] = [];
+  await page.route('**/api/v1/cards/collection**', (route) => {
+    scopes.push(
+      new URL(route.request().url()).searchParams.get('deckId') ?? '',
+    );
+    return json(route, {
+      cards: buildStarterCards(),
+      requestId: 'fresh-cards',
+    });
+  });
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/matches/live');
+    await expect(
+      page.locator('.live-deck-fan .card-thumbnail__button'),
+    ).toHaveCount(5);
+    expect(scopes.at(-1)).toBe(deck.deckId);
+    await expectNoHorizontalOverflow(page);
+    await page.goto('/not-a-route');
+    deck = {
+      ...deck,
+      deckId: '00000000-0000-4000-8000-000000000901',
+      name: 'Changed deck',
+    };
+  }
+  expect(scopes).toHaveLength(2);
 });
 
 test('loads deck artwork before delayed details on entry and reload', async ({
@@ -75,7 +182,10 @@ test('loads deck artwork before delayed details on entry and reload', async ({
   let releaseDetails!: () => void;
   let detailsGate: Promise<void>;
   let collectionRequests = 0;
-  await page.route('**/api/v1/cards/collection', async (route) => {
+  await page.route('**/api/v1/cards/collection**', async (route) => {
+    expect(new URL(route.request().url()).searchParams.get('deckId')).toBe(
+      deck.deckId,
+    );
     collectionRequests++;
     await detailsGate;
     await json(route, { cards, requestId: 'delayed-details' });
@@ -890,6 +1000,31 @@ async function routeCurrentPlayer(page: Page) {
       requestId: 'live-browser-player',
       role: 'player',
     }),
+  );
+}
+
+async function routeReadyLobby(
+  page: Page,
+  decks: ReturnType<typeof buildSavedDeck>[],
+) {
+  await routeCurrentPlayer(page);
+  await page.route('**/api/v1/decks', (route) =>
+    json(route, { decks, requestId: 'lobby-decks' }),
+  );
+  await page.route('**/api/v1/ranked/queue', (route) =>
+    json(route, queueState()),
+  );
+  await page.route('**/api/v1/ranked/seasons/current', (route) =>
+    json(route, { season: rankedSeason() }),
+  );
+  await page.route('**/api/v1/ranked/me', (route) =>
+    json(route, rankedProfile()),
+  );
+  await page.route('**/api/v1/ranked/standings**', (route) =>
+    json(route, rankedStandings()),
+  );
+  await page.route('**/api/v1/territory/zones', (route) =>
+    json(route, { zones: territoryZones() }),
   );
 }
 

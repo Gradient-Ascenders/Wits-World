@@ -206,6 +206,7 @@ export default function LiveLobbyPage({
     setInspectedCard(null);
     void listOwnedCards({
       apiBaseUrl,
+      deckId: currentDeck.deckId,
       getAccessToken,
       signal: controller.signal,
     })

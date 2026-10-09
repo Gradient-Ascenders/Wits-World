@@ -335,3 +335,141 @@ verify the existing main-content focus behavior.
 
 AI assistance: Codex[GPT-6] implemented, tested, measured and documented this
 Workstream 2 change.
+
+## Issue #358 Workstream 3: Live deck detail scoping
+
+Source baseline: `cfdbf8d375f11bd4089a4e4206994a8eda59e2ac` (9 October 2026).
+The asynchronous PvP hub already reads compact invitation, active-match and
+history projections in parallel with saved decks. It does not hydrate full
+matches before opening one. Its two invitation reads retain independent cursors
+and authoritative expiry handling. These paths, the existing post-accept fresh
+match GET, Live projection/ticket sequence and polling frequencies are unchanged.
+
+Live entry reads six resources, then requests the **entire** owned collection to
+resolve five selected-deck cards. The initial queue controls are already usable
+independently of those supplementary card details. The narrowly scoped change
+adds `deckId` to the existing authenticated `GET /api/v1/cards/collection` read.
+It filters current deck membership before projecting moves/effects, requiring
+both deck and card ownership to match the authenticated player. Missing,
+deleted and another player's decks return the same empty list. Invalid UUIDs
+return 400. The response envelope and full card metadata are unchanged.
+`unique=true` still selects the newest copy, within the deck if also scoped.
+
+Live passes its freshly loaded selected deck ID. No selected deck means no card
+read. Existing artwork fallback, independent detail retry, abort cleanup,
+keyboard dialog focus and fresh reads on return remain intact. No summary cache,
+prefetch, new endpoint, transaction, index, pool, scheduler or gameplay change is
+introduced. Deploy the API support before the frontend; the existing release
+workflow publishes both from the same commit in that order. An older API may
+reject the new scope; supplementary card details then use their existing error
+and retry state rather than blocking queue readiness.
+
+### Measured scope and results
+
+Equivalent optimized Vite `basic-e2e` production builds use the existing synthetic
+authentication boundary and local HTTP fixtures. Each build uses a fresh Chromium
+context for three runs per device, with cold then cache-warm document entry.
+Service workers are blocked. Mobile is 390 × 844, CPU 4× slowdown, 150 ms network
+latency and 200,000 bytes/s download; desktop is 1440 × 900, native CPU, 20 ms and
+1,250,000 bytes/s. JSON is actually served with gzip and a fixed 35 ms simulated
+server delay. The 250-card synthetic collection and five-card deck are identical
+between builds. These are **local fixture measurements, not production evidence**.
+
+| Measurement                             |    Before |    After |
+| --------------------------------------- | --------: | -------: |
+| Live reads excluding identity           |         7 |        7 |
+| Live reads including `/auth/me`         |         8 |        8 |
+| Collection rows projected               |       250 |        5 |
+| Collection JSON body                    | 163,072 B |  2,842 B |
+| Collection gzip response body           |   3,621 B |    487 B |
+| All sampled Live JSON bodies            | 166,229 B |  5,999 B |
+| All sampled Live gzip bodies            |   5,187 B |  2,053 B |
+| Mobile cold usable median               |  5,724 ms | 5,871 ms |
+| Mobile repeat usable median             |  1,773 ms | 1,642 ms |
+| Desktop cold usable median              |  1,053 ms | 1,057 ms |
+| Desktop repeat usable median            |    945 ms |   944 ms |
+| Mobile cold card-detail-ready median    |  5,748 ms | 5,912 ms |
+| Mobile repeat card-detail-ready median  |  1,972 ms | 1,847 ms |
+| Desktop cold card-detail-ready median   |  1,089 ms | 1,128 ms |
+| Desktop repeat card-detail-ready median |    948 ms |   947 ms |
+
+Collection JSON falls 98.3%, its gzip body 86.6%, and total sampled gzip bodies
+60.4%. Transfer figures exclude headers. The mobile collection request median
+falls 196 → 178 ms cold and 184 → 172 ms repeat; desktop is essentially unchanged
+at approximately 55–57 ms. **No general navigation speedup is demonstrated**:
+cold mobile entry became slower in the sample and queue readiness does not wait
+for the card response. The repeat difference is not statistical proof.
+
+Five PostgreSQL checks create a new database using the explicitly disposable
+`TEST_DATABASE_URL`, apply the real migrations, and remove the database afterward.
+The fixture has 250 owned definitions with moves and a legal five-card deck.
+After one warm-up pair, three alternating unscoped/scoped service samples show:
+
+| PostgreSQL client measurement           |    Before |    After |
+| --------------------------------------- | --------: | -------: |
+| Statements / acquisitions per card read |     1 / 1 |    1 / 1 |
+| Connection hold median                  |  182.8 ms | 176.7 ms |
+| Checkout median                         |  0.062 ms | 0.093 ms |
+| Service duration median                 |  183.5 ms | 177.2 ms |
+| Serialized card envelope                | 164,943 B |  2,851 B |
+
+These client holds include query round trip, row transfer and parsing, not pure
+database execution. No saturated-pool benefit or production server latency is
+established. Database and browser fixtures use different metadata, so their
+serialized sizes are reported separately. The fixture deliberately represents
+many owned copies, not a real player's collection or a normal starter grant.
+
+Unchanged-path controls use the same local server and three samples per device.
+PvP first entry follows Live in the same context: the shared shell is warm while
+the PvP route is first visited. The following control variation is not attributed
+to this change.
+
+| Control median                                        | Mobile before → after | Desktop before → after |
+| ----------------------------------------------------- | --------------------: | ---------------------: |
+| PvP first lobby entry                                 |      1,594 → 1,732 ms |           943 → 938 ms |
+| PvP repeat lobby entry                                |      1,716 → 1,602 ms |           941 → 966 ms |
+| Invitation create and four-list refresh               |          647 → 646 ms |           223 → 179 ms |
+| Accept click through initial match GET and ready view |      1,119 → 1,184 ms |           864 → 857 ms |
+| PvP repeat match entry                                |      1,613 → 1,587 ms |           937 → 930 ms |
+| Live initial REST projection displayed                |      1,601 → 1,819 ms |           950 → 954 ms |
+
+PvP lobby remains five reads plus identity, 2,284 JSON bytes. Creation remains one
+POST plus four refresh reads, 1,408 bytes. Acceptance remains one POST and one
+initial GET, 6,348 bytes. Repeat PvP entry remains identity plus one GET, 3,179
+bytes. Live entry remains identity, projection GET and ticket POST, 3,350 bytes.
+The Live timing control stubs the transport and measures projection display,
+**not WebSocket connection readiness**. Simulated HTTP server waits are not real
+API/server timings; invitation and match SQL were not benchmarked again because
+their implementations are unchanged.
+
+### Reproduction and regression checks
+
+Use equivalent fixture builds and capture response bodies, Resource Timing and
+readiness separately. Retain the benchmark harness and per-run JSON as local
+review artifacts; they contain synthetic data only and are not production logs.
+The following focused commands exercise the committed test definitions:
+
+```sh
+npm test --workspace @wits-world/api -- tests/card-collection.test.ts tests/cards.integration.test.ts tests/cards-coverage-boundaries.test.ts tests/asynchronous-pvp-routes.integration.test.ts tests/live-pvp-routes.integration.test.ts
+npm test --workspace @wits-world/web -- tests/cards-client.test.ts tests/live-lobby-boundaries.test.tsx tests/pvp-hub-boundaries.test.tsx
+RUN_DATABASE_INTEGRATION_TESTS=true npm test --workspace @wits-world/api -- tests/live-deck-collection.integration.test.ts --maxWorkers=1
+npm run test:e2e:battle --workspace @wits-world/web -- --grep-invert 'centres Player Battles'
+```
+
+The PostgreSQL test optionally writes safe numeric samples to
+`LIVE_DECK_MEASUREMENT_FILE`; keep this output outside version control. Normal
+isolated API coverage discovers this gated integration file. No CI configuration
+was changed; the battle browser suite was executed separately.
+
+Regressions cover scoped ownership, invalid/unauthenticated requests, complete
+metadata parity, missing/deleted decks, fresh membership after edits, empty
+entry, delayed card details, HTTP/offline request failures and retry, repeat
+entry, responsive layout and dialog focus restoration. Existing PvP tests cover
+incoming/outgoing invitations, populated/history navigation and authoritative
+match interactions. One unchanged browser assertion expects the obsolete
+`Checking battles and challenges…` text; it also fails against the unchanged
+baseline build and is not fixed here. A history-flow timeout from the initial
+concurrent dev-server run did not reproduce on either production build.
+
+AI assistance: Codex[GPT-6] investigated, implemented, tested, measured and
+documented this Workstream 3 slice.

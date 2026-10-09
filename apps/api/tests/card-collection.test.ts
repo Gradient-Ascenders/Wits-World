@@ -9,6 +9,39 @@ import {
 const PLAYER_ID = '70000000-0000-4000-8000-000000000069';
 
 describe('card collection service', () => {
+  it('scopes deck copies to both authenticated ownership and deck membership before projection', async () => {
+    const fixture = createFixture([]);
+    const deckId = '74000000-0000-4000-8000-000000000001';
+    await createCardCollectionService(fixture.database).listOwnedCards(
+      PLAYER_ID,
+      false,
+      deckId,
+    );
+    expect(fixture.query).toHaveBeenCalledTimes(1);
+    expect(fixture.query).toHaveBeenCalledWith(expect.any(String), [
+      PLAYER_ID,
+      deckId,
+    ]);
+    const sql = executedSql(fixture.query);
+    expect(sql).toContain('membership.deck_id = $2::uuid');
+    expect(sql).toContain('membership.player_id = $1::uuid');
+    expect(sql).toContain('deck.player_id = membership.player_id');
+    expect(sql).toContain('membership.owned_card_id = owned.id');
+  });
+
+  it('applies deck membership inside unique-copy selection so older deck copies are retained', async () => {
+    const fixture = createFixture([]);
+    await createCardCollectionService(fixture.database).listOwnedCards(
+      PLAYER_ID,
+      true,
+      '74000000-0000-4000-8000-000000000001',
+    );
+    const sql = executedSql(fixture.query);
+    expect(sql.indexOf('membership.deck_id = $2::uuid')).toBeLessThan(
+      sql.indexOf('order by card_definition_id, acquired_at desc, id desc'),
+    );
+  });
+
   it('returns an empty collection when the player owns no cards', async () => {
     const fixture = createFixture([]);
 
