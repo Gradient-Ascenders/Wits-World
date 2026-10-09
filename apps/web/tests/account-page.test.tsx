@@ -77,6 +77,7 @@ describe('player account page', () => {
       await screen.findByRole('heading', { level: 1, name: 'Reset password' }),
     ).toBeVisible();
     expect(window.location.pathname).toBe('/account/reset-password');
+    expect(document.title).toBe('Reset password · Wits World');
     expect(loginWithRedirect).not.toHaveBeenCalled();
     expect(
       screen.getByRole('textbox', { name: 'Account email' }),
@@ -88,6 +89,7 @@ describe('player account page', () => {
         name: 'Account settings',
       }),
     ).toBeVisible();
+    expect(document.title).toBe('Account settings · Wits World');
   });
 
   it.each([200, 404])(
@@ -106,6 +108,7 @@ describe('player account page', () => {
         name: 'Account email',
       });
       expect(email).toHaveValue('player@example.test');
+      expect(document.title).toBe('Reset password · Wits World');
       await user.click(screen.getByRole('button', { name: 'Send reset link' }));
       expect(
         await screen.findByRole('heading', { name: 'Check your inbox' }),
@@ -221,6 +224,7 @@ describe('player account page', () => {
     expect(
       await screen.findByText(/Google manages your password/),
     ).toBeVisible();
+    expect(document.title).toBe('Reset password · Wits World');
     expect(
       screen.getByRole('link', { name: 'Open Google recovery' }),
     ).toHaveAttribute('target', '_blank');

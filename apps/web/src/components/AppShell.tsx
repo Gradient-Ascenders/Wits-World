@@ -104,6 +104,8 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith('/matches/')) return 'CPU battle · Wits World';
   if (pathname === '/matches') return 'Battles · Wits World';
   if (pathname === '/profile') return 'Player profile · Wits World';
+  if (pathname === '/account/reset-password')
+    return 'Reset password · Wits World';
   if (pathname === '/account') return 'Account settings · Wits World';
   if (pathname.startsWith('/author')) return 'Author console · Wits World';
   if (pathname === '/about') return 'About · Wits World';

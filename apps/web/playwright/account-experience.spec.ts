@@ -44,6 +44,7 @@ for (const width of [390, 1280]) {
     await expect(
       page.getByRole('heading', { level: 1, name: 'Reset password' }),
     ).toBeVisible();
+    await expect(page).toHaveTitle('Reset password · Wits World');
     const email = page.getByRole('textbox', { name: 'Account email' });
     await email.fill('player@example.test');
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
@@ -86,6 +87,7 @@ for (const width of [390, 1280]) {
     await expect(
       page.getByRole('heading', { level: 1, name: 'Account settings' }),
     ).toBeVisible();
+    await expect(page).toHaveTitle('Account settings · Wits World');
     expect(errors).toEqual([]);
   });
 }
@@ -96,6 +98,7 @@ test('keeps Google password recovery with Google on a direct reset-page visit', 
   await mockAccountApi(page, 'google-oauth2', 'completed');
   await page.goto('/account/reset-password');
   await expect(page.getByText(/Google manages your password/)).toBeVisible();
+  await expect(page).toHaveTitle('Reset password · Wits World');
   await expect(
     page.getByRole('link', { name: 'Open Google recovery' }),
   ).toHaveAttribute(
