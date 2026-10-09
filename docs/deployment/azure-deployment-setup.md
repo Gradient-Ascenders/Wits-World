@@ -487,6 +487,7 @@ VITE_API_BASE_URL
 VITE_AUTH0_DOMAIN
 VITE_AUTH0_CLIENT_ID
 VITE_AUTH0_AUDIENCE
+VITE_AUTH0_DATABASE_CONNECTION (optional; defaults to Username-Password-Authentication)
 VITE_MAPBOX_ACCESS_TOKEN
 ```
 
@@ -533,6 +534,25 @@ The Auth0 dashboard currently records:
 | Allowed Logout URLs    | `http://localhost:5173`, `https://witsworld.co.za` |
 | Allowed Web Origins    | `http://localhost:5173`, `https://witsworld.co.za` |
 | Allowed Origins (CORS) | Empty                                              |
+
+The dedicated `/account/reset-password` flow posts from the browser to Auth0's
+Authentication API endpoint `/dbconnections/change_password`. Auth0 requires
+the calling web origin in the SPA's Allowed Origins (CORS). Configure the
+exact current local and production web origins:
+
+```text
+http://localhost:5173
+https://witsworld.co.za
+```
+
+Do not use a wildcard. The recorded dashboard value above remains the observed
+configuration; the required CORS entries have not been verified as applied.
+The `www` hostname redirects before the SPA starts and is not a separate web
+origin for this request. The optional browser build variable
+`VITE_AUTH0_DATABASE_CONNECTION` selects the Auth0 database connection and
+defaults to `Username-Password-Authentication`; it is not a secret and does
+not add a mandatory deployment setting. See [Auth0's password-change guide](https://auth0.com/docs/authenticate/database-connections/password-change)
+and [Authentication API endpoint reference](https://auth0.com/docs/api/authentication/change-password/change-password).
 
 `https://www.witsworld.co.za` is not a second application origin. It redirects
 to the canonical origin before the SPA initializes and must not be added to the
@@ -1864,3 +1884,6 @@ Listener isolation rollout prerequisites updated with assistance from Codex[GPT-
 
 Release deadlines, direct migration connections, and scheduler-mode verification
 were documented with assistance from Codex[GPT-5].
+
+The dedicated password-reset deployment requirements were documented with
+assistance from Codex-CLI[gpt-6-luna].

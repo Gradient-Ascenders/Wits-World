@@ -331,12 +331,30 @@ application roles are insufficient.
 
 ## Password reset
 
-Database-connection users reset passwords through Auth0 Universal Login's
-hosted recovery flow. The protected Wits World account page opens Universal
-Login and tells the player to choose Auth0 recovery; Auth0 collects the account
-identifier, sends the email, and hosts replacement-password entry. Auth0 does
-not report recovery completion to the SPA, so the return state describes the
-handoff without claiming a password was changed.
+The protected `/account/reset-password` route serves Auth0 database-connection
+users. It submits `client_id`, the editable email (prefilled from Auth0
+`user.email` when available), and the configured connection to Auth0's
+`/dbconnections/change_password` Authentication API endpoint. The optional
+browser setting `VITE_AUTH0_DATABASE_CONNECTION` defaults to
+`Username-Password-Authentication`. Email is request-only and is not persisted
+or logged by Wits World. The account settings action links internally to this
+route rather than redirecting through Universal Login. Google users remain on
+Google's recovery path and do not see the Auth0 email form, including when they
+visit the route directly.
+
+Accepted and provider-`404` requests produce the same neutral confirmation to
+avoid disclosing account existence. It confirms neither password replacement
+nor email delivery. Submission has a bounded timeout and pending state; network
+and provider failures can be retried, with a specific rate-limit message for
+HTTP 429. Auth0 sends and owns the reset email and hosted replacement-password
+page. Wits World collects no password, uses no client secret or Management
+API for reset, and adds no API or database behavior. Browser use requires exact
+local and production origins in Auth0 Allowed Origins (CORS), not a wildcard.
+See the [Auth0 password-change guide](https://auth0.com/docs/authenticate/database-connections/password-change)
+and [Authentication API endpoint reference](https://auth0.com/docs/api/authentication/change-password/change-password).
+
+Real Auth0 email delivery and hosted reset behavior remain unverified until an
+operator completes the manual provider check.
 
 Wits World will not receive, store, compare, or log user passwords.
 
@@ -408,14 +426,17 @@ production custom-domain configuration.
 
 Production currently uses the Auth0 SPA/application named `Wits World` with
 both localhost and production callback, logout, and web-origin entries. Allowed
-Origins (CORS) is empty. ADR-005 treats this as a temporary deviation: separate
-development and production Auth0 resources remain outstanding remediation,
-without requiring separate tenants specifically.
+Origins (CORS) is currently recorded as empty. The browser-triggered reset
+request requires the exact local (`http://localhost:5173`) and production
+(`https://witsworld.co.za`) web origins in Allowed Origins (CORS); that
+provider configuration has not been verified. This is separate from the
+temporary shared development/production SPA deviation in ADR-005.
 
-Password recovery, account deletion, and their protected player account page
-are implemented. Remaining work includes real Auth0 recovery and deletion smoke
-evidence, remediation of the shared SPA resource, and Wits SSO if it is approved
-and available.
+The dedicated password-recovery route, account deletion, and protected player
+account page are documented as implemented. Remaining work includes real
+Auth0 recovery-email delivery and hosted-page evidence, deletion smoke evidence,
+verification of reset-request CORS configuration, remediation of the shared
+SPA resource, and Wits SSO if it is approved and available.
 
 ---
 
@@ -428,6 +449,8 @@ and available.
 - https://clerk.com/articles/clerk-pricing-explained?utm_source=chatgpt.com
 - https://clerk.com/changelog/2026-02-05-new-plans-more-value?utm_source=chatgpt.com
 - https://github.com/keycloak/keycloak?utm_source=chatgpt.com
+- https://auth0.com/docs/authenticate/database-connections/password-change
+- https://auth0.com/docs/api/authentication/change-password/change-password
 
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking] and Codex[GPT-5].
@@ -436,3 +459,6 @@ The decision-status notice was added with assistance from Codex-CLI[GPT-5] and
 Codex-CLI[gpt-5.6-sol medium].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+The dedicated password-reset route documentation was updated with assistance
+from Codex-CLI[gpt-6-luna].
