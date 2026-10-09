@@ -351,14 +351,25 @@ gameplay work sharing Neon publishes and validates durable pre-write intents.
 After first deploying that polling-mode writer support, retire all older or
 otherwise unaware producers, including old local servers, before promotion.
 Then set the repository Actions variable
-`PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and deploy/restart the API.
-CI maps this variable to the Azure API App Service setting
-`GAMEPLAY_SCHEDULER_BACKEND`; its default is `polling`. A manual Azure app
+`PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and explicitly confirm the audit
+with `PRODUCTION_GAMEPLAY_WRITERS_COORDINATED=true`, then start a new deployment.
+CI selects `polling` unless both settings allow promotion; the acknowledgement
+defaults to `false`. It maps the safe effective mode to the Azure API setting
+`GAMEPLAY_SCHEDULER_BACKEND` after database release succeeds. A manual Azure app
 setting change alone will be reset by the next deployment unless the Actions
 variable is also updated. The optional
 `GAMEPLAY_SCHEDULER_NAMESPACE` must be identical across all API replicas and
 writers sharing the database; when unset, it is derived from a hash of the
 canonical database endpoint, with Neon `-pooler` removed and port/path retained.
+
+After changing the repository variable, start a new deployment and verify both
+Azure and the running process; a finished old CI run is not writer-retirement
+evidence. The configuration step logs the requested and safe effective modes,
+reads back the non-secret Azure backend, and fails if it differs from that
+effective mode. Startup logs include the actual `gameplaySchedulerBackend`
+and both active probe intervals; production polling emits a warning. Do not
+promote long idle sleeps while older or unaware local writers remain. See the
+[deployed-mode checklist](ranked-operations.md#verify-the-deployed-scheduler-mode).
 Rollback sets the Actions variable to `polling` and redeploys/restarts the app. Do not enable
 Upstash mode during a rolling deployment with unaware writers. Redis activity
 keys are persistent, have no TTL, and contain only opaque tokens; never log
@@ -1226,13 +1237,23 @@ The final command must print
 `/home/site/wwwroot/apps/api/startup.sh`. These commands do not alter
 `BUILD_FLAGS`, enable App Service build automation, or change SCM Basic Auth.
 
-Before the database release, the workflow configures account-deletion retry,
+After database release succeeds and before API publication, the workflow configures account-deletion retry,
 movement-evidence cleanup, asynchronous-PvP deadline processing, live-PvP
 transient cleanup, trust evaluation, and card-trade maintenance to the same
 `1800000` ms production interval. The six housekeeping settings remain at
 their existing `1800000` ms intervals; request-time checks remain authoritative,
 so this maintenance cadence does not extend persisted deadlines or make
 expired evidence valid.
+
+The release uses a direct migration connection even when runtime `DATABASE_URL`
+uses Neon PgBouncer. An optional Azure `MIGRATION_DATABASE_URL` is fetched
+without logging it and must identify the same endpoint/database with direct
+maintenance credentials. PostgreSQL migration/seed lock waits are limited to
+30 seconds, statements to five minutes, and the release command to six minutes;
+the release step and API job also have eight- and 15-minute timeouts. CLI phase
+durations identify the failing stage. A timed-out release blocks API deployment;
+it does not permit skipping migration or PostGIS verification. See the
+[release and recovery procedure](../database/database-release-procedure.md#bounded-migration-connections-and-release-waits).
 
 With `GAMEPLAY_SCHEDULER_BACKEND=polling` (the default), live PvP and ranked
 workers probe persisted work at their configured intervals even when idle
@@ -1840,3 +1861,6 @@ Codex[GPT-5], based on user-provided implementation requirements.
 Existing-work outage recovery documented with assistance from Codex-CLI[GPT-5].
 
 Listener isolation rollout prerequisites updated with assistance from Codex[GPT-6].
+
+Release deadlines, direct migration connections, and scheduler-mode verification
+were documented with assistance from Codex[GPT-5].

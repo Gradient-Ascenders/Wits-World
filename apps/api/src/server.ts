@@ -504,9 +504,25 @@ async function startServer(): Promise<void> {
     app.log.info(
       {
         address,
+        gameplaySchedulerBackend: config.gameplaySchedulerBackend,
+        livePvpActiveIntervalMs: config.livePvpDeadlineSweepIntervalMs,
+        rankedActiveIntervalMs: config.rankedSweepIntervalMs,
       },
       'Wits World API started',
     );
+    if (
+      process.env.NODE_ENV === 'production' &&
+      config.gameplaySchedulerBackend === 'polling'
+    ) {
+      app.log.warn(
+        {
+          gameplaySchedulerBackend: config.gameplaySchedulerBackend,
+          livePvpActiveIntervalMs: config.livePvpDeadlineSweepIntervalMs,
+          rankedActiveIntervalMs: config.rankedSweepIntervalMs,
+        },
+        'Production gameplay scheduler is polling; idle live and ranked probes can keep Neon compute active.',
+      );
+    }
   } catch (error) {
     app.log.fatal(
       {

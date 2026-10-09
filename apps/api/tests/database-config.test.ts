@@ -3,10 +3,137 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDatabaseConfig,
   buildListenerDatabaseConfig,
+  buildMigrationDatabaseConfig,
+  getSessionDatabaseConfig,
 } from '../src/config/database.js';
 
 const neonUrl =
   'postgresql://neondb_owner:password@example.neon.tech/neondb?sslmode=require';
+
+describe('migration database configuration', () => {
+  const pooledUrl =
+    'postgresql://owner:encoded%40secret@ep-example-pooler.eu-central-1.aws.neon.tech/neon%64b?sslmode=require&channel_binding=require';
+  const directUrl =
+    'postgresql://owner:encoded%40secret@ep-example.eu-central-1.aws.neon.tech/neon%64b?sslmode=require&channel_binding=require';
+
+  it('derives only the direct Neon endpoint without changing runtime credentials or configuration', () => {
+    const runtime = buildDatabaseConfig({
+      env: { DATABASE_URL: pooledUrl },
+      target: 'production',
+    });
+    expect(getSessionDatabaseConfig(runtime)).toEqual({
+      ...runtime,
+      connectionString: directUrl,
+    });
+    expect(
+      buildMigrationDatabaseConfig({
+        env: { DATABASE_URL: pooledUrl },
+        target: 'production',
+      }),
+    ).toEqual({ ...runtime, connectionString: directUrl });
+    expect(runtime.connectionString).toBe(pooledUrl);
+  });
+
+  it.each([
+    directUrl,
+    'postgres://owner:password@localhost:55434/test',
+    'postgres://owner:password@ep-example-pooler.example.test/test',
+  ])('does not rewrite direct or non-Neon endpoints (%#)', (DATABASE_URL) => {
+    expect(
+      buildMigrationDatabaseConfig({ env: { DATABASE_URL } }).connectionString,
+    ).toBe(DATABASE_URL);
+  });
+
+  it('allows a distinct maintenance credential only for the same database', () => {
+    const migrationUrl =
+      'postgres://maintenance:different@EP-EXAMPLE.EU-CENTRAL-1.AWS.NEON.TECH.:5432/neondb?sslmode=require';
+    expect(
+      buildMigrationDatabaseConfig({
+        env: { DATABASE_URL: pooledUrl, MIGRATION_DATABASE_URL: migrationUrl },
+        target: 'production',
+      }),
+    ).toEqual({
+      connectionString: migrationUrl,
+      target: 'production',
+      variableName: 'MIGRATION_DATABASE_URL',
+    });
+  });
+
+  it.each([
+    pooledUrl,
+    'postgresql://owner:private-marker@ep-other.eu-central-1.aws.neon.tech/neondb?sslmode=require',
+    'postgresql://owner:private-marker@ep-example.eu-central-1.aws.neon.tech/other?sslmode=require',
+    'postgresql://owner:private-marker@ep-example.eu-central-1.aws.neon.tech:5433/neondb?sslmode=require',
+    'postgresql://owner:private-marker@ep-example.eu-central-1.aws.neon.tech/neondb?sslmode=disable',
+    'postgresql://owner:private-marker@ep-example.eu-central-1.aws.neon.tech/neondb?sslmode=require&HOST=other',
+    'private-marker',
+  ])(
+    'rejects unsafe maintenance overrides without disclosing credentials (%#)',
+    (MIGRATION_DATABASE_URL) => {
+      expect(() =>
+        buildMigrationDatabaseConfig({
+          env: { DATABASE_URL: pooledUrl, MIGRATION_DATABASE_URL },
+        }),
+      ).toThrow(/MIGRATION_DATABASE_URL/u);
+      try {
+        buildMigrationDatabaseConfig({
+          env: { DATABASE_URL: pooledUrl, MIGRATION_DATABASE_URL },
+        });
+      } catch (error) {
+        expect((error as Error).message).not.toContain('private-marker');
+        expect((error as Error).message).not.toContain('encoded%40secret');
+      }
+    },
+  );
+
+  it.each([
+    'host',
+    'HOST',
+    'hostaddr',
+    'port',
+    'database',
+    'dbname',
+    'db',
+    'service',
+    'options',
+  ])('rejects hidden runtime target overrides (%s)', (key) => {
+    expect(() =>
+      buildMigrationDatabaseConfig({
+        env: {
+          DATABASE_URL: `${pooledUrl}&${key}=private-marker`,
+          MIGRATION_DATABASE_URL: directUrl,
+        },
+      }),
+    ).toThrow('endpoint override parameters');
+  });
+
+  it('does not use production maintenance credentials for test commands', () => {
+    const testUrl = pooledUrl.replace('/neon%64b?', '/isolated_test?');
+    expect(
+      buildMigrationDatabaseConfig({
+        env: {
+          DATABASE_URL: pooledUrl,
+          TEST_DATABASE_URL: testUrl,
+          MIGRATION_DATABASE_URL: 'invalid-production-secret',
+        },
+        target: 'test',
+      }),
+    ).toMatchObject({
+      target: 'test',
+      variableName: 'TEST_DATABASE_URL',
+      connectionString: testUrl.replace('-pooler.', '.'),
+    });
+  });
+
+  it('rejects the same Neon test database through its alternate pooler hostname', () => {
+    expect(() =>
+      buildDatabaseConfig({
+        env: { DATABASE_URL: pooledUrl, TEST_DATABASE_URL: directUrl },
+        target: 'test',
+      }),
+    ).toThrow('different host, port, or database');
+  });
+});
 
 describe('explicit listener database configuration', () => {
   it('does not fall back to either shared or test configuration', () => {

@@ -100,12 +100,16 @@ export const withDatabaseClient: DatabaseClientRunner = async <T>(
   callback: (client: pg.PoolClient) => Promise<T>,
 ) => {
   const pool = createDatabasePool(databaseConfig);
-  const client = await pool.connect();
 
   try {
-    return await callback(client);
+    const client = await pool.connect();
+    try {
+      return await callback(client);
+    } finally {
+      // Destroy failed maintenance sessions rather than returning aborted state.
+      client.release(true);
+    }
   } finally {
-    client.release();
     await pool.end();
   }
 };

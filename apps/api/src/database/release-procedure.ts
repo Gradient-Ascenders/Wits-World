@@ -74,12 +74,20 @@ export interface DatabaseReleaseResult {
   verification: DatabaseReleaseVerification;
 }
 
+export type DatabaseReleaseStage =
+  'inspection' | 'migrations' | 'readiness' | 'seeding' | 'verification';
+
 interface DatabaseReleaseOptions {
   confirmDatabase: string;
   databaseConfig: DatabaseConfig;
   includeBasicDemoSeed: boolean;
   includeVerifiedEventsSeed?: boolean;
   onInspection?: (inspection: DatabaseReleaseInspection) => void;
+  onStage?: (
+    stage: DatabaseReleaseStage,
+    state: 'started' | 'completed',
+    durationMs?: number,
+  ) => void;
 }
 
 interface DatabaseReleaseDependencies {
@@ -102,6 +110,7 @@ export async function runDatabaseRelease(
     includeBasicDemoSeed,
     includeVerifiedEventsSeed = false,
     onInspection = () => undefined,
+    onStage = () => undefined,
   }: DatabaseReleaseOptions,
   {
     checkReadiness = checkDatabaseReadiness,
@@ -116,7 +125,20 @@ export async function runDatabaseRelease(
     verifyRelease = verifyDatabaseRelease,
   }: DatabaseReleaseDependencies = {},
 ): Promise<DatabaseReleaseResult> {
-  const inspection = await inspectTarget(databaseConfig);
+  async function stage<T>(
+    name: DatabaseReleaseStage,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    onStage(name, 'started');
+    const startedAt = performance.now();
+    const result = await run();
+    onStage(name, 'completed', Math.round(performance.now() - startedAt));
+    return result;
+  }
+
+  const inspection = await stage('inspection', () =>
+    inspectTarget(databaseConfig),
+  );
   onInspection(inspection);
 
   if (inspection.database !== confirmDatabase) {
@@ -125,30 +147,37 @@ export async function runDatabaseRelease(
     );
   }
 
-  const migrations = await runMigrationFiles(
-    databaseConfig,
-    migrationsDirectory,
+  const migrations = await stage('migrations', () =>
+    runMigrationFiles(databaseConfig, migrationsDirectory),
   );
-  const readiness = await checkReadiness(databaseConfig);
+  const readiness = await stage('readiness', () =>
+    checkReadiness(databaseConfig),
+  );
   const seeds = includeBasicDemoSeed
-    ? await runBasicDemoSeedFiles(
-        databaseConfig,
-        seedsDirectory,
-        basicDemoSeedsDirectory,
-      )
-    : includeVerifiedEventsSeed
-      ? await runVerifiedEventSeedFiles(
+    ? await stage('seeding', () =>
+        runBasicDemoSeedFiles(
           databaseConfig,
           seedsDirectory,
-          verifiedEventsSeedsDirectory,
+          basicDemoSeedsDirectory,
+        ),
+      )
+    : includeVerifiedEventsSeed
+      ? await stage('seeding', () =>
+          runVerifiedEventSeedFiles(
+            databaseConfig,
+            seedsDirectory,
+            verifiedEventsSeedsDirectory,
+          ),
         )
       : null;
-  const verification = await verifyRelease(databaseConfig, {
-    expectedMigrationCount:
-      migrations.applied.length + migrations.skipped.length,
-    verifyBasicDemo: includeBasicDemoSeed,
-    ...(includeVerifiedEventsSeed ? { verifyVerifiedEvents: true } : {}),
-  });
+  const verification = await stage('verification', () =>
+    verifyRelease(databaseConfig, {
+      expectedMigrationCount:
+        migrations.applied.length + migrations.skipped.length,
+      verifyBasicDemo: includeBasicDemoSeed,
+      ...(includeVerifiedEventsSeed ? { verifyVerifiedEvents: true } : {}),
+    }),
+  );
 
   return {
     inspection,

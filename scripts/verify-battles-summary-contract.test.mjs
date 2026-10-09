@@ -437,6 +437,7 @@ async function releaseFixture(changedFiles, callback) {
       'packages/game-rules/fixture.ts',
       'scripts/confirm-current-main.sh',
       'scripts/prepare-api.mjs',
+      'scripts/production-gameplay-mode.mjs',
       'database/migrations/fixture.sql',
       'docs/fixture.md',
     ];
@@ -550,6 +551,11 @@ for (const { label, changed, required } of [
     label: 'unrelated docs only',
     changed: ['docs/fixture.md'],
     required: [false, false, false, false],
+  },
+  {
+    label: 'production gameplay gate only',
+    changed: ['scripts/production-gameplay-mode.mjs'],
+    required: [false, true, true, false],
   },
 ]) {
   test(`actual artifact and publication filters agree for ${label} changes`, async () => {

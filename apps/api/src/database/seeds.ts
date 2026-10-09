@@ -29,10 +29,13 @@ export async function runSeeds(
   const seedFiles = await loadSeedFiles(seedsDirectory);
 
   return runWithClient(databaseConfig, async (client) => {
-    await client.query('select pg_advisory_lock($1)', [SEED_LOCK_KEY]);
+    await client.query('begin');
 
     try {
-      await client.query('begin');
+      await client.query("set local lock_timeout = '30s'");
+      await client.query("set local statement_timeout = '5min'");
+      // All seed files share one transaction, so this lock also works with PgBouncer.
+      await client.query('select pg_advisory_xact_lock($1)', [SEED_LOCK_KEY]);
 
       for (const seedFile of seedFiles) {
         await client.query(seedFile.sql);
@@ -43,8 +46,6 @@ export async function runSeeds(
     } catch (error) {
       await client.query('rollback');
       throw error;
-    } finally {
-      await client.query('select pg_advisory_unlock($1)', [SEED_LOCK_KEY]);
     }
   });
 }
