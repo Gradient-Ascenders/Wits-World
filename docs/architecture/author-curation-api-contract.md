@@ -105,7 +105,7 @@ reviewer, publication state, or readiness.
 Updates include `expectedVersion`. Review/package routes, transition errors,
 and audit behavior are defined in
 [Review and publish](diagrams/content-review.md#versions-and-history).
-The [API reference](api-overview.md) provides exact schemas; the
+The [API reference](../api-reference.md) provides exact schemas; the
 [challenge contract](challenge-attempt-api-contract.md) covers player attempts,
 timing, marking, and saved rewards.
 

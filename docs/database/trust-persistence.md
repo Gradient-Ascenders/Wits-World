@@ -125,7 +125,7 @@ capability effect. A new registration inherits none of the old trust state.
 
 Author reads and bounded exports use the same safe projections and object-level
 access checks. Player responses expose neither stored scores nor case evidence.
-The [API reference](../architecture/api-overview.md) owns endpoint details.
+The [API reference](../api-reference.md) owns endpoint details.
 
 **AI declaration:** Prepared and updated with assistance from
 ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and Codex[GPT-6].

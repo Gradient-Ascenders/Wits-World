@@ -1,157 +1,137 @@
 ---
-title: 'Contested-campus territory API contract'
+title: Territories API
+description: Read campus zones, attach a ranked territory claim, and retrieve influence feedback.
 ---
 
-# Contested-campus territory API contract
+# Territories API
 
-Issue `#270` implements the server-authoritative runtime for the reviewed
-[`territory-v1` policy](../requirements/contested-campus-zone-policy.md). The
-browser may express an intended zone and submit an untrusted location claim, but
-it never submits influence, an owner, settlement totals, a winner, a local day,
-or an owner-bonus card choice.
+The territory API lets active players read campus zones and add an optional
+zone claim when joining ranked matchmaking. It returns ownership, anonymous
+influence standings, and each player's own contribution result.
 
-## Ranked queue territory intent
+See [Territory rules](../requirements/contested-campus-zone-policy.md) for the
+player journey, location policy, influence limits, hourly ownership decisions,
+and owner card bonuses. The [ranked API](ranked-matchmaking-api-contract.md)
+owns queue and rating behaviour.
 
-`POST /api/v1/ranked/queue` keeps the existing ranked contract and accepts an
-optional `territoryClaim` alongside `deckId`:
+## Zone reads
+
+All routes require bearer authentication and an active player account, use the
+general [request quota](rate-limiting.md), and return `200` on success. Errors
+use the shared [API format](../api-reference.md#responses-and-retries).
+
+| Route                                           | Response                                                          |
+| ----------------------------------------------- | ----------------------------------------------------------------- |
+| `GET /api/v1/territory/zones`                   | `{ zones }` containing active and suspended zones.                |
+| `GET /api/v1/territory/zones/:zoneId`           | A zone object plus `lifecycleVersion` and `lastSettledAt`.        |
+| `GET /api/v1/territory/zones/:zoneId/standings` | Current influence totals and your remaining daily allowance.      |
+| `GET /api/v1/territory/zones/:zoneId/history`   | `{ zoneId, entries }` with up to 50 recent ownership transitions. |
+
+Zone objects contain `zoneId`, `name`, `status`, GeoJSON `geometry`, `owner`,
+`seasonId`, `windowStart`, and `windowEnd`. Status is `active` or `suspended`.
+`owner` is `{ playerName }` or null; season and window fields can be null when
+no competitive season is current. Missing or unavailable zones return
+`404 TERRITORY_ZONE_NOT_FOUND`.
+
+Standings return `zoneId`, `seasonId`, and:
+
+| Field      | Contents                                                                       |
+| ---------- | ------------------------------------------------------------------------------ |
+| `top`      | Up to 3 anonymous `{ rank, influence }` entries for the current window.        |
+| `activity` | Aggregate `influence` and `contributors` counts.                               |
+| `viewer`   | Your `influence`, `todayInfluence`, `dailyCap`, and `remainingDailyInfluence`. |
+
+History entries include `seasonId`, `owner`, `transitionKind`, and `effectiveAt`.
+Repeated settlements that keep the same owner are omitted from ownership-period
+history. Deleted owners display as `Deleted player`. A map or locally elapsed
+window does not establish a new owner; use the returned ownership state.
+
+## Join with a zone claim
+
+Use the existing `POST /api/v1/ranked/queue` route with `deckId` and optional
+`territoryClaim`:
 
 ```json
 {
-  "deckId": "<owned-deck-uuid>",
+  "deckId": "11111111-1111-4111-8111-111111111111",
   "territoryClaim": {
-    "zoneId": "<reviewed-zone-uuid>",
+    "zoneId": "22222222-2222-4222-8222-222222222222",
     "latitude": -26.19,
     "longitude": 28.03,
     "accuracyMetres": 8,
-    "acquiredAt": "2026-09-22T10:00:00.000Z"
+    "acquiredAt": "2026-10-09T10:00:00.000Z"
   }
 }
 ```
 
-Identity comes from the bearer token. PostgreSQL/PostGIS applies the persisted
-claim-age and grant-lifetime policy, checks strict containment of the complete
-reported-accuracy envelope, and rejects ambiguous overlap. The precise
-latitude, longitude, and accuracy are used only for the decision and are not
-stored. The resulting private grant is bound to that player and queue entry and
-expires after five minutes even if queue heartbeats continue.
+All claim fields are required when claiming a zone. Coordinates must be valid,
+accuracy non-negative, and the acquisition time fresh. The server checks that
+the reported point and its full accuracy envelope lie strictly inside the
+requested active zone, without ambiguous overlap with another active zone.
+This is stricter than the ordinary event-radius check.
 
-Ordinary ranked queue requests omit `territoryClaim` and remain valid. Their
-matches receive a deliberate null territory snapshot and cannot create
-influence. A territory grant is revalidated immediately before match creation
-and consumed exactly once. If a grant becomes unavailable during a proposal,
-that contender is removed without a decline cooldown and a still-eligible
-accepting opponent returns to searching with the original queue-join time.
+An accepted claim binds eligibility to the caller's queue entry for 5 minutes.
+Heartbeats do not extend that eligibility. It is checked again at match creation,
+then saved with the match. If eligibility expires or the zone becomes unavailable
+before matching, the entry is removed without a decline cooldown; obtain a fresh
+reading before joining again.
 
-Location failures use safe outcomes: malformed coordinates/timestamps are a
-`400 TERRITORY_LOCATION_INVALID`; stale/future or boundary-ambiguous claims use
-`409 TERRITORY_LOCATION_REFRESH_REQUIRED`; a valid claim outside the requested
-active zone uses `409 TERRITORY_NOT_ELIGIBLE`; overlapping active-zone
-configuration uses `503 TERRITORY_CONFIGURATION_UNAVAILABLE`.
+Omit `territoryClaim` for ordinary ranked play. Selecting or viewing a zone does
+not create eligibility, and a match without a saved claim cannot add influence.
+The server evaluates precise coordinates for the claim without retaining those
+coordinate values.
 
-## Zone reads
+## Claim failures
 
-All territory read routes require bearer authentication and an active local
-player:
+| Response                                  | Caller action                                                                |
+| ----------------------------------------- | ---------------------------------------------------------------------------- |
+| `400 TERRITORY_LOCATION_INVALID`          | Correct malformed coordinates or timestamps.                                 |
+| `409 TERRITORY_LOCATION_REFRESH_REQUIRED` | Obtain a fresh or more precise reading, or move farther inside the zone.     |
+| `409 TERRITORY_NOT_ELIGIBLE`              | Check that the chosen zone is active and the reported location is inside it. |
+| `503 TERRITORY_CONFIGURATION_UNAVAILABLE` | Show temporary unavailability; do not infer eligibility from the map.        |
 
-| Method | Route                                       | Player-safe result                                                                                                                                      |
-| ------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/v1/territory/zones`                   | Reviewed active/suspended geometry, display name, current owner name, current ranked season/window.                                                     |
-| `GET`  | `/api/v1/territory/zones/:zoneId`           | Zone detail plus lifecycle version and last settlement time.                                                                                            |
-| `GET`  | `/api/v1/territory/zones/:zoneId/standings` | Anonymous top-three current-window influence counts, aggregate activity, and only the authenticated viewer's own current/daily count and remaining cap. |
-| `GET`  | `/api/v1/territory/zones/:zoneId/history`   | Recent ownership-changing lifecycle/settlement history with current owner Player Names and `Deleted player` labels for removed accounts.                |
+Use the ranked contract to recover queue state after an uncertain join. Repeating
+an existing queue selection does not extend the claim's lifetime.
 
-The response contract never exposes contributor UUIDs, grant identifiers,
-source match identifiers, opponents, decks, location evidence, trust signals,
-or excluded-decision reasons. Repeated same-owner hourly settlements remain in
-the immutable database ledger but are omitted from the ownership-period history
-response so they are not presented as transfers.
+## Match contribution feedback
 
-Issue `#271` presents these reads as a `Territories` view inside `/explore`.
-The map polygons and the keyboard-accessible list are equivalent ways to select
-a zone; the list remains the complete interaction path if Mapbox is unavailable.
-The browser loads the catalogue only after the player opens the view, loads a
-selected zone's detail, standings, and history independently, and keeps the
-last good response visibly marked as stale when a refresh fails. It does not
-infer eligibility, influence, ownership, settlement, or a winner from map
-position or locally elapsed time.
+`GET /api/v1/ranked/matches/:matchId/settlement` includes `territory`. It is null
+when the caller's match has no saved zone claim. Otherwise it contains `zoneId`,
+`zoneName`, `outcome`, `influencePoints`, and `exclusionReason`.
 
-The territory view is browse-first. It explains how a future Ranked entry
-surface can submit the existing optional `territoryClaim`, but it does not add a
-second queue action or imply that viewing/selecting a polygon creates a grant.
+| Outcome    | Meaning                                                    |
+| ---------- | ---------------------------------------------------------- |
+| `pending`  | The match has not settled.                                 |
+| `lost`     | You lost, so the saved zone received no influence.         |
+| `accepted` | Your eligible win committed the returned influence points. |
+| `excluded` | You won, but the contribution was ineligible.              |
 
-## Per-match contribution feedback
+For an excluded win, `exclusionReason` is `daily_cap_reached`,
+`placement_matches_remaining`, `player_unavailable`, `result_not_eligible`, or
+`zone_unavailable`. The result describes only the authenticated participant;
+it does not disclose the opponent's claim or contribution decision.
 
-`GET /api/v1/ranked/matches/:matchId/settlement` now includes a required,
-nullable `territory` member. Ordinary ranked matches return `null`. A match with
-the authenticated participant's immutable territory snapshot returns the zone
-ID/name and one of these player-safe outcomes:
+Influence is created from authoritative ranked settlement. There is no endpoint
+for writing influence or choosing an owner. Render the returned contribution
+rather than inferring it from a win, rating change, or standings refresh.
+Ownership is settled separately under the linked territory rules.
 
-| Outcome    | Meaning                                                                                                                                                                                                 |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pending`  | The ranked match has not committed its authoritative settlement.                                                                                                                                        |
-| `lost`     | The participant lost, so the attempted territory received no influence.                                                                                                                                 |
-| `accepted` | The participant won and the reported `influencePoints` were committed.                                                                                                                                  |
-| `excluded` | The participant won but no influence was committed; `exclusionReason` is one of `daily_cap_reached`, `placement_matches_remaining`, `player_unavailable`, `result_not_eligible`, or `zone_unavailable`. |
+## Challenge bonus and privacy
 
-The response is scoped through the authenticated match participant. It does not
-expose the opponent's claim, contribution decision, location evidence, internal
-policy reason, or private identifiers. The browser must render this result when
-the Ranked match-result surface is available; it must not reconstruct the
-outcome from score, rating, standings, or zone state.
+A completed challenge can include `ownerBonus: { outcome, card }`.
+Its outcome is `awarded`, `not_eligible`, `score_too_low`, or `already_claimed`;
+`card` is null unless awarded. It is separate from `reward.cards`, and retries
+cannot claim another bonus. See the
+[challenge response](challenge-attempt-api-contract.md#completed-response) and
+[owner bonus rules](../requirements/contested-campus-zone-policy.md#owner-card-bonus).
 
-## Influence and settlement authority
+Zone reads and standings omit contributor identities, source match IDs, decks,
+location evidence, and private account or trust details. The current owner's
+Player Name is public; other contributors remain anonymous except for the
+caller's own totals.
 
-There is no influence-write HTTP endpoint. When a live ranked match commits its
-authoritative terminal result, the same database transaction creates exactly one
-territory decision for the winner. The runtime uses the immutable match-time
-zone snapshot, prior ranked-settlement count, completion reason, current zone
-lifecycle, active-player state, and Johannesburg daily cap. Accepted decisions
-always contribute the policy-defined one point; excluded decisions contribute
-zero.
+## AI declaration
 
-The maintenance worker settles fixed Johannesburg hourly windows from immutable
-accepted contributions. Ownership requires at least three points; highest count
-leads; an incumbent wins a leader tie; otherwise the earliest accepted
-contribution and then stable internal UUID break the tie. Stale state retries
-from the current owner/version instead of overwriting it. Contribution creation
-and settlement share the player-before-zone lock order and the zone row is the
-boundary that assigns a racing contribution to exactly one half-open window.
-
-When a ranked season is closing, ranked closure waits until all source matches
-settle. Territory then catches up complete windows, commits the final partial
-window to one frozen authoritative close time, seals the territory season, and
-appends an unowned `season_reset` for every active zone before ranked closure can
-finish.
-
-## Owner bonus
-
-Challenge start resolves the event's authoritative effective location and
-snapshots whether the authenticated player owns the one active territory zone
-containing it. The bonus date is derived from the persisted challenge-start
-instant in `Africa/Johannesburg`; later ownership, zone, placement, or midnight
-changes do not rewrite that snapshot.
-
-On normal challenge completion, a snapshotted eligible attempt with at least
-three correct answers may receive one additional active, published,
-reward-eligible, non-evolved Common card. The database enforces at most one
-awarded bonus per player and challenge-start local date. The completed-attempt
-response exposes only `awarded`, `not_eligible`, `score_too_low`, or
-`already_claimed`, plus the awarded card when applicable. The normal challenge
-reward remains independent and commits in the same transaction.
-
-## Operations and privacy
-
-The existing ranked worker performs territory maintenance about once per minute;
-no new environment variable is introduced. Safe aggregate logs cover expired
-contenders/grants and settled windows without logging precise location or
-private competitive evidence. Expired private grants are deleted within the
-persisted 24-hour cleanup deadline.
-
-The implementation is backed by additive migration
-`0054_implement_contested_territory_runtime.sql`; published migration `0053`
-remains unchanged.
-
-The preceding document was generated and edited with the assistance of:
+Rewritten with assistance from Codex[GPT-6], using territory routes, claim
+validation, and ranked settlement projections. Earlier versions also used
 ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
-
-This account-deletion update was edited with assistance from Codex[GPT-6].

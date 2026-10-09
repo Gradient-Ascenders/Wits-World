@@ -78,7 +78,8 @@ During an active attempt, the API withholds correct answers, correctness,
 score, and reward outcomes. After completion, it returns the final score,
 rewards, and five ordered review entries showing the player's answer, the
 correct answer, and correctness. Unanswered entries have no player answer.
-The player review does not expose Author explanations or private answer-key IDs.
+Multiple-choice review omits explanations; ordering review includes its saved
+explanation. Private answer-key IDs are never returned.
 
 ## Rewards
 

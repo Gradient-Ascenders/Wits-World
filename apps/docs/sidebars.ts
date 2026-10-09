@@ -246,13 +246,10 @@ const sidebars: SidebarsConfig = {
       label: 'API',
       collapsed: true,
       link: {
-        type: 'generated-index',
-        slug: '/api-reference',
-        title: 'API Reference',
-        description: 'HTTP endpoints, authentication, and feature contracts.',
+        type: 'doc',
+        id: 'api-reference',
       },
       items: [
-        doc('architecture/api-overview', 'Overview'),
         doc('architecture/rate-limiting', 'Rate limits'),
         category('Players and cards', [
           doc('architecture/player-profile-api-contract', 'Profiles'),

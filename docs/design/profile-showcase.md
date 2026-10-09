@@ -63,7 +63,7 @@ progression. Uploaded pictures are resized and re-encoded by the API without
 image metadata.
 
 See the [profile API contract](../architecture/player-profile-api-contract.md)
-for persistence and privacy details, and
+for request fields and privacy rules, and
 [progression rules](../requirements/player-progression-rules.md) for points,
 streaks, and achievements.
 

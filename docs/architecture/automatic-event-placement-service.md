@@ -143,7 +143,7 @@ Azure App Service uses **Always On**.
 
 See [placement storage](../database/automatic-event-placement-persistence.md)
 for locks, assignment history, schema, and rollout details, and the
-[API reference](api-overview.md) for exact schemas.
+[API reference](../api-reference.md) for exact schemas.
 
 ---
 

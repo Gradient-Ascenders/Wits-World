@@ -65,8 +65,9 @@ Configure these values in `apps/api/.env`:
 
 Keep `RATE_LIMIT_BACKEND=local` and `GAMEPLAY_SCHEDULER_BACKEND=polling` for
 local development. Offline challenge packs additionally require
-`OFFLINE_PACK_SIGNING_KEY`; see the
-[offline play contract](../architecture/offline-challenge-play.md).
+`OFFLINE_PACK_SIGNING_KEY`. The
+[offline play contract](../architecture/offline-challenge-play.md) describes
+preparation and synchronisation behaviour.
 
 The [Neon/PostGIS guide](../database/neon-postgis-setup.md) covers database
 provisioning and test-target safeguards. The

@@ -35,7 +35,7 @@ Retries return saved state without issuing rewards again. Artwork loads
 separately from the award itself.
 
 Attempt limits, timings, and reward probabilities are in the
-[game rules](basic-game-rules.md). Implementation details are in the
+[game rules](basic-game-rules.md). Requests, responses, and retry rules are in the
 [challenge API contract](../architecture/challenge-attempt-api-contract.md).
 
 ---

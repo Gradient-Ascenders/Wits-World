@@ -107,7 +107,7 @@ There is no standalone player campaign endpoint. Effective scheduling is resolve
 by the API/database when content is read; it does not depend on a browser timer
 or a job that retires ended campaigns. See
 [campaign storage](../database/campaign-scheduling-persistence.md) and the
-[API reference](api-overview.md) for implementation details and exact schemas.
+[API reference](../api-reference.md) for implementation details and exact schemas.
 
 ---
 

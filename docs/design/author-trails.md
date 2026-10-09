@@ -7,7 +7,7 @@ description: Prepare an ordered trail, publish it when its events are ready, and
 
 Authors can arrange existing events into an ordered trail. Trail management is currently **API-only**; the console can select published trails for campaigns but has no trail creation or editing workspace.
 
-The [API reference](../architecture/api-overview.md) provides the authenticated Author trail operations. The workflow below describes what to prepare and when each operation is allowed.
+The [API reference](../api-reference.md) provides the authenticated Author trail operations. The workflow below describes what to prepare and when each operation is allowed.
 
 ## Prepare and publish
 

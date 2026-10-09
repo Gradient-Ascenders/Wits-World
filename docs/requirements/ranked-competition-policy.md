@@ -162,9 +162,10 @@ Each ranked match saves its season, policy version, and both players' starting
 rating and placement status. Completion, both rating updates, and any territory
 contribution decision commit together; retries cannot settle them twice.
 
-Detailed queue, formula, persistence, and concurrency contracts are documented
-in the [ranked API](../architecture/ranked-matchmaking-api-contract.md) and
-[ranked storage](../database/ranked-competition-persistence.md).
+Requests, responses, and recovery are documented in the
+[ranked API](../architecture/ranked-matchmaking-api-contract.md).
+[Ranked storage](../database/ranked-competition-persistence.md) explains saved
+competitive records and settlement.
 
 ---
 

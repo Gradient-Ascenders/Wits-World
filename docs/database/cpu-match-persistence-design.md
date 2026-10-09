@@ -101,7 +101,7 @@ Completed results never recalculate from later decks or catalogue data.
 Account deletion removes personal CPU matches and their snapshots/history.
 See [Progression storage](player-progression-persistence.md),
 [Account retention](account-deletion-retention.md), and the
-[API reference](../architecture/api-overview.md).
+[API reference](../api-reference.md).
 
 **AI declaration:** Prepared and updated with assistance from
 ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], Codex-CLI[gpt-5.6-sol],

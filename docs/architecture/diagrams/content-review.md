@@ -113,7 +113,7 @@ Transition notes are optional and limited to 1,000 characters. Return requires
 a nonblank reason of up to 1,000 characters. Common responses are
 `403 SELF_REVIEW_FORBIDDEN`, `409 CONTENT_STATE_CONFLICT`,
 `409 STALE_CONTENT_VERSION`, and `422 CONTENT_NOT_READY`.
-The [API reference](../api-overview.md) provides exact request and response schemas.
+The [API reference](../../api-reference.md) provides exact request and response schemas.
 
 ---
 

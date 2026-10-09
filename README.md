@@ -115,7 +115,7 @@ detailed source of truth. Start with:
 
 - [Developer Guide](docs/development/getting-started.md)
 - [Maintaining the documentation site](docs/development/documentation-site.md)
-- [API Overview](docs/architecture/api-overview.md)
+- [API reference](docs/api-reference.md)
   and the repository's [API Guide](apps/api/README.md)
 - [Architecture Overview](docs/architecture/overview.md)
 - [Database Overview](docs/database/overview.md)

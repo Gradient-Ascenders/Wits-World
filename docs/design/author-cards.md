@@ -50,7 +50,7 @@ Published content cannot be edited. Prepare a new definition for changed mechani
 
 Retirement is blocked for a configured starter definition without a configured replacement. It is also blocked if it would remove the last active, published Common reward card while published events still depend on that reward pool.
 
-For exact request schemas, use the [API reference](../architecture/api-overview.md). [Card storage](../database/challenge-reward-persistence-design.md) describes the underlying definitions, moves, and ownership records.
+For exact request schemas, use the [API reference](../api-reference.md). [Card storage](../database/challenge-reward-persistence-design.md) describes the underlying definitions, moves, and ownership records.
 
 **AI declaration**
 

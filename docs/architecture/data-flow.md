@@ -10,7 +10,7 @@ and the API returns a view suitable for that caller.
 
 This page describes that processing path. Player instructions and game rules
 remain in the [Player guides](/docs/player-guide); endpoint details belong in
-the [API overview](api-overview.md).
+the [API reference](../api-reference.md).
 
 ## A typical gameplay request
 

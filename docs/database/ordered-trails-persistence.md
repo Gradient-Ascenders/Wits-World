@@ -89,7 +89,7 @@ row lock.
 
 The [Author trail guide](../design/author-trails.md) covers preparation and
 publication. Endpoint schemas are in the
-[API reference](../architecture/api-overview.md).
+[API reference](../api-reference.md).
 
 ## Derived progress
 

@@ -214,7 +214,7 @@ raw database rows.
 
 ## Related documentation
 
-- [API overview](./api-overview.md)
+- [API reference](../api-reference.md)
 - [Trust boundaries](./trust-boundaries.md)
 - [External integrations](./external-integrations.md)
 - [Developer API key persistence](../database/developer-api-keys.md)

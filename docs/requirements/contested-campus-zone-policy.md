@@ -152,9 +152,10 @@ challenge rewards and owner bonuses together. Retries cannot add duplicate
 influence or cards. Rules and zone boundaries are versioned; changes do not
 rewrite completed results or historical ownership.
 
-For implementation details, see the
-[territory API](../architecture/contested-campus-territory-api-contract.md) and
-[territory storage](../database/contested-campus-territory-persistence.md).
+See the [territory API](../architecture/contested-campus-territory-api-contract.md)
+for requests, response fields, and privacy boundaries, and
+[territory storage](../database/contested-campus-territory-persistence.md) for
+saved grants, contributions, and ownership records.
 
 ---
 

@@ -45,7 +45,7 @@ Unauthenticated HTTP GETs returned **200** for:
 These checks establish public reachability at the audit time. They do not prove
 the served revision, successful authentication, database migration state,
 correct gameplay, external API operation, or participant acceptance. The
-[API reference](../architecture/api-overview.md) documents the interactive API
+[API reference](../api-reference.md) documents the interactive API
 and authentication; [external integrations](../architecture/external-integrations.md)
 records Auth0 and Mapbox usage and authority boundaries.
 

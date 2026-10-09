@@ -110,7 +110,7 @@ Routes require an authenticated, active account with completed Player Name setup
 | Select                      | `PUT /api/v1/decks/:deckId/selection` |
 
 List responses identify the active selection with `isSelected`.
-The [API reference](../architecture/api-overview.md) owns request schemas,
+The [API reference](../api-reference.md) owns request schemas,
 response fields, and error codes.
 
 ## Battle and ownership boundaries

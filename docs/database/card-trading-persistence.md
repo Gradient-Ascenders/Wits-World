@@ -141,7 +141,7 @@ non-completed trades also remove their command receipts.
 Only participants can read an offer and its history. Settlement projections
 identify exchanged copies and movements, but omit their original completion,
 starter-grant, evolution, and territory-bonus source IDs. The
-[API reference](../architecture/api-overview.md) owns route and response details.
+[Trading API](../architecture/card-trading-api-contract.md) owns route and response details.
 
 **AI declaration:** Prepared and updated with assistance from
 ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-6].

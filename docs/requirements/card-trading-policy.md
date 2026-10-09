@@ -90,8 +90,9 @@ Only participants can read an offer or its history. Completed receipts retain
 profile-free ownership provenance indefinitely; other closed-offer details are
 purged after 30 days. History displays **Deleted player** after account deletion.
 
-See [trading persistence](../database/card-trading-persistence.md) for API
-idempotency and ownership records, [trust review](longitudinal-trust-policy.md)
+See the [Trading API](../architecture/card-trading-api-contract.md) for requests
+and retries, [trading persistence](../database/card-trading-persistence.md) for
+ownership records, [trust review](longitudinal-trust-policy.md)
 for holds and appeals, and [account retention](../database/account-deletion-retention.md)
 for deletion rules.
 
