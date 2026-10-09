@@ -295,7 +295,7 @@ const sidebars: SidebarsConfig = {
       items: [
         category('Process', [
           doc('planning/project-and-git-methodology', 'Methodology and Git'),
-          doc('planning/work-tracking-and-issue-management', 'Issue tracking'),
+          doc('planning/work-tracking-and-issue-management', 'Work and bugs'),
           doc('planning/delivery-roadmap', 'Roadmap'),
           doc('planning/risk-register', 'Risks'),
           doc('planning/ai-use', 'AI use'),

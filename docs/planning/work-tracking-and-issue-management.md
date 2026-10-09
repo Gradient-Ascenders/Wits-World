@@ -1,215 +1,136 @@
 ---
-title: 'Track tasks, bugs and fixes'
-description: How Wits World plans work, tracks bugs, and moves Gitea issues through branches, pull requests, review, CI, and merge.
+title: 'Work and bug tracking'
+description: How issues, bug reports, feedback, and pull requests connect planning to delivery.
 ---
 
-# Track tasks, bugs and fixes
+import EvidenceScreenshot from '@site/src/components/EvidenceScreenshot';
 
-[Wits-World Gitea Issues](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues)
-are the operational tracker for planned work, defects, research, documentation,
-and release evidence. The project does not maintain a second application as the
-authoritative backlog. Repository documents preserve plans and Sprint context;
-Gitea records the live work item, ownership, discussion, dependencies, and
-delivery links.
+# Work and bug tracking
 
-This page explains the working method and then distinguishes it from historical
-records that are useful evidence but are not always internally consistent.
+[Gitea Issues](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues)
+holds the implementation backlog: features, defects, research, documentation,
+and release work. Issues connect the problem and acceptance criteria to an
+owner, discussion, dependencies, pull requests, and verification.
 
-## What belongs in Gitea
+## Making work visible
 
-One issue represents one reviewable unit of work or one bug. A useful issue
-states:
+A useful issue explains the problem, the intended outcome, included scope,
+acceptance criteria, and how the result will be checked. Its assignee owns the
+next action. Dependencies identify work that must finish first; labels and
+milestones help organise priorities and delivery periods.
 
-- the purpose and player/project problem;
-- included and excluded scope;
-- acceptance criteria;
-- verification and evidence requirements;
-- documentation or operational impact;
-- dependencies and blocked work;
-- the assignee and reviewer or required cross-role decision; and
-- the relevant priority, work-area labels, and milestone.
+The agreed board flow is **Backlog → In Progress → Review & Test → Done**.
+Priority and area labels help filter the backlog without replacing the issue's
+description. The detailed issue and PR record explains progress when a board
+column alone would be ambiguous.
 
-The tracker has issue dependencies enabled, and repository history shows them
-used alongside explicit `Depends on` and `Blocks` fields. The issue and its
-comments are the first source of truth for scope. When a stakeholder decision,
-security boundary, or data rule remains unresolved, record the owner and blocker
-instead of inventing a default.
+[Issue #10](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/10)
+records the process and board setup. Later governance snapshots identified
+missing dependency and board evidence, so the planned flow should not be read
+as confirmation that every item used it consistently. Current assignment and
+state come from the tracker, rather than a historical issue plan.
 
-Assignment identifies the current owner. The durable team responsibilities in
-`AGENTS.md` guide coordination, but ownership not defined there comes from the
-current issue/assignee; it should not be guessed.
+## Issues and pull requests
 
-## Issue to merge
+Implementation starts on a short-lived branch. The issue records the branch,
+progress, discoveries, and blockers; a linked PR explains the resulting change
+and its checks. Review findings return to the branch for correction.
+The [methodology](project-and-git-methodology.md) describes the review and CI
+gates without repeating their configuration here.
 
-```text
-refined Gitea issue
-        ↓
-short-lived branch from current main
-        ↓
-small linked pull request
-        ↓
-Gitea Actions + human review
-        ↓
-authorised merge commit to main
-        ↓
-confirm issue, board, and remaining gates
-```
+Use a closing link when the PR satisfies the whole issue. Partial work should
+use a related-work link and leave unmet acceptance criteria visible. After
+merge, reconcile the issue, board, follow-up defects, and remaining release
+checks. A closed issue cannot stand in for an unrecorded manual test or retest.
 
-1. **Refine the issue.** Read its full body, comments, dependencies, acceptance
-   criteria, evidence needs, labels, milestone, and assignee. Planning or
-   refinement makes the issue ready before implementation begins.
-2. **Branch from current `main`.** Use a descriptive, short-lived name such as
-   `feat/campus-map` or `fix/geolocation-denied-state`. Do not work directly on
-   `main`.
-3. **Make progress visible.** Comment with the branch, planned outcomes, and
-   verification approach when work starts. Keep discoveries within scope or
-   create/link a follow-up issue.
-4. **Open a linked PR.** Complete `.gitea/pull_request_template.md`: identify the
-   problem and approach, list only checks actually run, record remaining manual
-   work and impacts, and disclose AI use. Use `Closes #<issue>` only when the PR
-   fully satisfies that issue. Use `Relates to #<issue>` or
-   `Partially implements #<issue>` when gates will remain.
-5. **Verify and review.** Pull requests targeting `main` start the independent
-   formatting, lint, type-check, test, and build jobs described in
-   [Continuous Integration](../testing/continuous-integration.md). A human
-   reviewer checks the change and relevant non-automated risks. Review findings
-   are resolved before approval.
-6. **Merge through the authorised PR path.** The repository uses merge commits;
-   squash and rebase merging are disabled. Contributors do not merge their own
-   PRs under the documented methodology.
-7. **Reconcile the tracker.** After merge, confirm the issue closure, acceptance
-   checklist, board state, follow-up defects, remaining manual/external gates,
-   and documentation all match reality. Delete the short-lived branch when it
-   is no longer needed.
+## Bug reports {/* #bugs-usability-findings-and-features-use-the-same-tracker */}
 
-`main` branch protection requires one approval and dismisses stale approvals
-after new changes. Required CI status checks are not currently enabled in that
-branch-protection rule. Consequently, a green CI run is a documented Definition
-of Done gate and review responsibility, but Gitea does not mechanically prevent
-every merge with missing or failing status checks. The merge button alone is not
-evidence that CI passed.
+A bug is implemented behaviour that differs from an agreed requirement. A
+usability finding records difficulty using the product; it may require more
+investigation before it becomes a confirmed defect. A feature adds capability.
+This distinction helps the team prioritise evidence and avoid treating every
+suggestion as a requirement.
 
-## Bugs, usability findings, and features use the same tracker
+A reproducible bug report includes:
 
-Gitea Issues is also the bug tracker. The repository has a `bug` label and uses
-it together with priority, application-area, and testing labels where a work
-item contains confirmed defects. There is no separate bug database and no
-bug-specific issue template in the repository.
+- expected and observed behaviour;
+- steps, application state, and relevant device or browser details;
+- impact and a proportionate priority;
+- sanitised evidence, such as a screenshot or request ID; and
+- the correction's acceptance criteria and regression check.
 
-Keep these work classes distinct:
+Gitea's `bug` label identifies defect work. Sprint 3 governance also allows
+reports originating in YouTrack to link to a Gitea implementation issue and PR.
+When two tools are involved, cross-links keep the report, fix, and retest aligned.
+The [Sprint 3 record](sprint-3-governance-and-evidence.md#feedback-workflow)
+describes that relationship; it does not establish an audited YouTrack inventory.
 
-- a **bug** is implemented behavior that differs from an agreed requirement or
-  expected safe operation;
-- a **usability finding** is observed friction, confusion, accessibility
-  difficulty, or recovery trouble that does not by itself establish a
-  functional defect; and
-- a **feature** is a new capability or scope addition.
+<a id="examples-of-the-tracker-in-use" />
 
-Use `bug` for defects and `feature` for new capability. Mark a usability finding
-explicitly in the issue title or body and retain its `UT-S2-*` identifier when
-user-test sourced. A dedicated `usability` label may be added later as tracker
-hygiene, but its absence is not a blocker for Sprint 2 governance or issue
-#159. See the
-[Sprint 2 governance and evidence](./sprint-2-governance-and-evidence.md#defect-usability-and-feature-classification)
-rules.
+## Workflow in practice
 
-A bug report should make reproduction and closure reviewable:
+[Issue #9](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/9)
+defined the API foundation work. Its linked
+[PR #28](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/28)
+shows how that task moved through implementation, peer review, correction,
+and merge. Select an image to open the full-size screenshot.
 
-- observed behaviour and expected behaviour;
-- the smallest reliable reproduction, including route or command;
-- relevant environment, viewport, role, or data state without credentials,
-  tokens, precise reported coordinates, or private game data;
-- player, security, data, accessibility, release, or operational impact;
-- evidence such as a safe error/request ID or sanitised screenshot when useful;
-- scope boundaries, acceptance criteria, and the regression check required; and
-- related issues, dependencies, assignee/reviewer, labels, and milestone.
+### 1. Define and assign the work
 
-Use a priority label that reflects confirmed impact rather than confidence or
-convenience. Fixes still use an issue branch, linked PR, proportionate regression
-test, CI, and review. If a larger defect is discovered while validating another
-issue, either add it only when it is clearly within that issue's acceptance
-criteria or record a follow-up bug; do not silently broaden the original change.
+<EvidenceScreenshot
+src="/img/workflow/issue-9-scope.png"
+alt="Closed issue 9 with API scope, acceptance criteria, Tyron's assignment, and the Sprint 1 milestone"
+crop={{ left: 300, top: 65, width: 1310, height: 1015 }}
 
-Issue
-[#51, Refine the Wits Quest visual identity and frontend presentation](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/51),
-is preserved evidence of the shared model: it carries `bug`, priority,
-frontend, feature, and testing labels; records dependencies and a reviewer;
-links the working branch and PRs in comments; records verification and CI; and
-tracks reproducible visual defects alongside bounded feature work. PR
-[#56](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/56) also
-preserves a change-request review, focused correction, re-verification, and
-later approval before merge.
+>
 
-## Labels, milestones, and the project board
+Issue #9 sets out the purpose, included and excluded scope, and acceptance
+criteria. Tyron owns the work, with labels and the Sprint 1 milestone providing
+planning context.
+</EvidenceScreenshot>
 
-Repository evidence supports these tracker aids:
+### 2. Implement and record checks
 
-- priority labels: `High Priority`, `Medium Priority`, and `Low Priority`;
-- area/type labels including `backend`, `database`, `documentation`, `frontend`,
-  `testing`, `feature`, `bug`, `meeting`, and `research`;
-- the `Sprint 1` milestone on planned and completed issues; and
-- project board columns `Backlog`, `In Progress`, `Review & Test`, and `Done`.
+<EvidenceScreenshot
+src="/img/workflow/pr-28-overview.png"
+alt="Merged pull request 28 from feat/api-foundation into main, with implementation details and a verification checklist"
+crop={{ left: 300, top: 65, width: 1310, height: 960 }}
 
-Use labels to aid filtering, not to replace a clear issue body. A milestone
-groups work against a real delivery boundary; it does not prove completion. The
-board gives a compact flow view, while the issue remains the detailed record.
-Issue [#10, Establish the project and Git methodology](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/10)
-records the agreed board/process setup, attached board evidence, and a board
-transition. Later issue timelines also preserve project and board movements.
+>
 
-Do not infer a future milestone, project, label, or board status merely because
-it appears in an old plan. Create or assign it in Gitea before presenting it as
-current tracker state.
+PR #28 summarises the branch's changes and records local automated and manual
+checks. The “Repository CI passes” item is unchecked; this screenshot does not
+establish a complete CI pass.
+</EvidenceScreenshot>
 
-For Sprint 2, use the
-[governance and evidence page](./sprint-2-governance-and-evidence.md) for the
-required readiness audit, board transitions, rubric evidence map, weekly
-cadence, and explicit live-tracker follow-ups.
+### 3. Review and request a correction
 
-## Sprint planning and repository records
+<EvidenceScreenshot
+src="/img/workflow/pr-28-review.png"
+alt="Uzair requests changes on PR 28 after identifying a vulnerable Swagger UI dependency"
+crop={{ left: 300, top: 535, width: 1000, height: 265 }}
 
-The weekly Scrum-lite planning/review cadence orders Gitea issues, reviews
-dependencies and risk, and records decisions that change acceptance criteria.
-Short coordination occurs as needed during the week. Backlog refinement makes
-issues implementation-ready; Sprint review compares the increment with the
-planned outcomes; retrospective records process improvements.
+>
 
-Use these sources for different questions. The repository
-[contribution guide](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/CONTRIBUTING.md)
-contains the concise contributor-facing workflow.
+Uzair identifies a vulnerable dependency during independent review and requests
+an update before approval. The review records both the finding and the checks
+performed.
+</EvidenceScreenshot>
 
-| Question                                                | Source                                                                                          |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| What is assigned, blocked, under review, or closed now? | Current Gitea issue, comments, dependencies, PRs, and project board                             |
-| What process should the team follow?                    | [Project & Git Methodology](./project-and-git-methodology.md), this page, and `CONTRIBUTING.md` |
-| What was planned or discussed during Sprint 1?          | [Scrum records](./scrum/index.md) and the preserved historical issue plans                      |
-| What is the current product/release truth?              | Current requirements, release validation, implementation, tests, and open tracker gates         |
+### 4. Correct, recheck, and merge
 
-The Scrum records are retrospectively assembled and explicitly distinguish
-repository-backed outcomes from inferred coordination; they are not verbatim
-meeting transcripts. The Sprint 1 and Sprint 2 Gitea issue-plan pages are
-planning snapshots, not substitutes for the live tracker.
+<EvidenceScreenshot
+src="/img/workflow/pr-28-approval-merge.png"
+alt="Tyron records a dependency fix, Uzair rechecks and approves it, then merges PR 28 into main and deletes the branch"
+crop={{ left: 300, top: 35, width: 1000, height: 790 }}
 
-## Evidence limits and known inconsistencies
+>
 
-The repository shows the methodology in real use: issues contain acceptance
-criteria and dependencies, comments identify branches and verification, PRs
-link issues, Gitea Actions reports CI, and review records include approvals and
-change requests. It also shows exceptions that must not be hidden:
+Tyron records the dependency update and repeat checks. Uzair rechecks the latest
+commit, records successful local checks, approves the change, and merges it into
+main. The completed branch is then deleted.
+</EvidenceScreenshot>
 
-- some later product-polish PRs explicitly state that no issue was linked;
-- some closed issues retain unchecked acceptance or completion items; and
-- a closing keyword or closed Gitea state therefore cannot, by itself, prove
-  every manual, stakeholder, deployment, or release gate passed.
-
-The confirmed methodology remains issue-driven and review-before-merge. When
-the historical record differs, preserve that record and describe the gap; do
-not rewrite an unchecked box or infer missing evidence. Current work should
-reconcile its issue and PR before it is treated as Done.
-
----
-
-This work-tracking guide was created and edited with assistance from
-Codex[GPT-5].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
+**AI declaration:** Prepared and edited with assistance from Codex[GPT-5],
+Codex-CLI[GPT-6], and Codex[GPT-6]. The latest revision used Codex[GPT-6] for
+rubric comparison, source review, prose editing, and screenshot layout and captions.

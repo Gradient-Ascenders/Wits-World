@@ -274,3 +274,39 @@
     break-inside: avoid;
   }
 }
+
+/* Frame tracker evidence while retaining full-size, unchanged source images. */
+.workflow-evidence {
+  margin: 1.5rem 0 2rem;
+}
+
+.workflow-evidence a {
+  display: block;
+}
+
+.workflow-evidence a:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 4px;
+}
+
+.workflow-evidence svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: hidden;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 0.5rem;
+}
+
+.workflow-evidence figcaption {
+  margin-top: 0.75rem;
+  color: var(--ww-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+@media print {
+  .workflow-evidence {
+    break-inside: avoid;
+  }
+}

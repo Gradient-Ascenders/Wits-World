@@ -80,6 +80,8 @@ of the approved prefixes:
 [fix] handle denied geolocation permission
 [test] cover stale location response state
 [docs] document Sprint 1 player journey
+[perf] reduce Battles landing requests
+[ci] enforce API-first Battles releases
 [refactor] isolate event status presentation
 [chore] configure front-end quality checks
 ```
@@ -135,3 +137,5 @@ The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
 
 Documentation workflow added with assistance from Codex-CLI[GPT-6].
+
+Commit-prefix guidance updated with assistance from Codex[GPT-6].

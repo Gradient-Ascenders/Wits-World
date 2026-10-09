@@ -12,6 +12,8 @@ export const repositoryOnlyDocs = [
   'database/basic-demo-seed.md',
   'database/data-quality-and-structure.md',
   'development/documentation-site.md',
+  'planning/delivery-roadmap-baseline.md',
+  'planning/risk-register-baseline.md',
   'planning/scrum/sprint-1/backlog-refinement.md',
   'planning/scrum/sprint-1/daily-scrum-01.md',
   'planning/scrum/sprint-1/daily-scrum-02.md',
