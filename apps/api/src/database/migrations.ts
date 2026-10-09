@@ -4,7 +4,10 @@ import { basename, resolve } from 'node:path';
 
 import type pg from 'pg';
 
-import type { DatabaseConfig } from '../config/database.js';
+import {
+  getSessionDatabaseConfig,
+  type DatabaseConfig,
+} from '../config/database.js';
 import { type DatabaseClientRunner, withDatabaseClient } from './connection.js';
 import { getMigrationsDirectory } from './paths.js';
 
@@ -58,52 +61,76 @@ export async function runMigrations(
 ): Promise<MigrationResult> {
   const migrationFiles = await loadMigrationFiles(migrationsDirectory);
 
-  return runWithClient(databaseConfig, async (client) => {
-    await client.query('select pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
-
-    try {
-      await ensureMigrationTable(client);
-
-      const appliedMigrations = await loadAppliedMigrations(client);
-      const history = inspectMigrationHistory(
-        migrationFiles,
-        appliedMigrations,
-      );
-
-      if (history.unexpected.length > 0) {
-        throw new Error(
-          `Applied migrations are missing from this release: ${history.unexpected.join(', ')}.`,
-        );
+  return runWithClient(
+    getSessionDatabaseConfig(databaseConfig),
+    async (client) => {
+      // This dedicated direct session spans the per-file migration transactions.
+      await client.query("set lock_timeout = '30s'");
+      await client.query("set statement_timeout = '5min'");
+      try {
+        await client.query('select pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error as NodeJS.ErrnoException).code === '55P03'
+        ) {
+          throw new Error(
+            'Migration lock was not acquired within 30 seconds. Check for another database release before retrying.',
+            { cause: error },
+          );
+        }
+        throw error;
       }
 
-      if (history.changed.length > 0) {
-        throw new Error(
-          `Migration ${history.changed[0]} has changed after being applied.`,
+      const result: MigrationResult = { applied: [], skipped: [] };
+      let lockReleased: boolean;
+      try {
+        await ensureMigrationTable(client);
+
+        const appliedMigrations = await loadAppliedMigrations(client);
+        const history = inspectMigrationHistory(
+          migrationFiles,
+          appliedMigrations,
         );
-      }
 
-      const result: MigrationResult = {
-        applied: [],
-        skipped: [],
-      };
-
-      for (const migrationFile of migrationFiles) {
-        const appliedChecksum = appliedMigrations.get(migrationFile.name);
-
-        if (appliedChecksum) {
-          result.skipped.push(migrationFile.name);
-          continue;
+        if (history.unexpected.length > 0) {
+          throw new Error(
+            `Applied migrations are missing from this release: ${history.unexpected.join(', ')}.`,
+          );
         }
 
-        await applyMigration(client, migrationFile);
-        result.applied.push(migrationFile.name);
-      }
+        if (history.changed.length > 0) {
+          throw new Error(
+            `Migration ${history.changed[0]} has changed after being applied.`,
+          );
+        }
 
+        for (const migrationFile of migrationFiles) {
+          const appliedChecksum = appliedMigrations.get(migrationFile.name);
+
+          if (appliedChecksum) {
+            result.skipped.push(migrationFile.name);
+            continue;
+          }
+
+          await applyMigration(client, migrationFile);
+          result.applied.push(migrationFile.name);
+        }
+      } finally {
+        const unlocked = await client.query<{ pg_advisory_unlock: boolean }>(
+          'select pg_advisory_unlock($1)',
+          [MIGRATION_LOCK_KEY],
+        );
+        lockReleased = unlocked.rows[0]?.pg_advisory_unlock === true;
+      }
+      if (!lockReleased) {
+        throw new Error(
+          'Migration lock ownership was lost. Migrations require a direct, session-compatible database connection.',
+        );
+      }
       return result;
-    } finally {
-      await client.query('select pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]);
-    }
-  });
+    },
+  );
 }
 
 export async function loadMigrationFiles(

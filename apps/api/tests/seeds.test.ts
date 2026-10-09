@@ -59,22 +59,20 @@ describe('seed execution', () => {
     });
 
     expect(query.mock.calls.map(([statement]) => statement)).toEqual([
-      'select pg_advisory_lock($1)',
       'begin',
+      "set local lock_timeout = '30s'",
+      "set local statement_timeout = '5min'",
+      'select pg_advisory_xact_lock($1)',
       'select 1;',
       'select 2;',
       'commit',
-      'select pg_advisory_unlock($1)',
     ]);
     expect(query).toHaveBeenNthCalledWith(
-      1,
-      'select pg_advisory_lock($1)',
+      4,
+      'select pg_advisory_xact_lock($1)',
       [9_160_002],
     );
-    expect(query).toHaveBeenLastCalledWith(
-      'select pg_advisory_unlock($1)',
-      [9_160_002],
-    );
+    expect(query).toHaveBeenLastCalledWith('commit');
   });
 
   it('rolls back a failed seed and releases the lock', async () => {
@@ -95,7 +93,22 @@ describe('seed execution', () => {
     const statements = query.mock.calls.map(([statement]) => statement);
     expect(statements).toContain('rollback');
     expect(statements).not.toContain('commit');
-    expect(statements.at(-1)).toBe('select pg_advisory_unlock($1)');
+    expect(statements.at(-1)).toBe('rollback');
+  });
+
+  it('rolls back a failed lock acquisition without executing seed SQL', async () => {
+    const directory = await createTemporarySeedDirectory();
+    await writeFile(join(directory, '0001_first.sql'), 'select 1;');
+    const query = vi.fn(async (statement: string) => {
+      if (statement === 'select pg_advisory_xact_lock($1)')
+        throw new Error('lock timeout');
+      return { rows: [] };
+    });
+    await expect(
+      runSeeds(databaseConfig, directory, createClientRunner(query)),
+    ).rejects.toThrow('lock timeout');
+    expect(query).not.toHaveBeenCalledWith('select 1;');
+    expect(query).toHaveBeenLastCalledWith('rollback');
   });
 });
 
