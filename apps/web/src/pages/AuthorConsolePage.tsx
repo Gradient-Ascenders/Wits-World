@@ -4,7 +4,14 @@ import {
 } from '../components/author/AuthorRetainedReads';
 import { AuthorReviewNavigationProvider } from '../components/author/AuthorReviewNavigation';
 import { authorErrorDetail } from '../components/author/author-error-copy';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useLocation } from 'wouter';
 
 import {
@@ -13,13 +20,16 @@ import {
   type AuthorCard,
 } from '../api/author';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
-import { CardWorkspace } from '../components/author/CardWorkspace';
-import { CampaignWorkspace } from '../components/author/CampaignWorkspace';
-import { AnalyticsWorkspace } from '../components/author/AnalyticsWorkspace';
-import { EventWorkspace } from '../components/author/EventWorkspace';
-import { EventPlacementWorkspace } from '../components/author/EventPlacementWorkspace';
-import { ReviewWorkspace } from '../components/author/ReviewWorkspace';
-import { TrustReviewWorkspace } from '../components/author/TrustReviewWorkspace';
+import { AuthorLoadingState } from '../components/author/AuthorLoadingState';
+import {
+  loadAnalyticsWorkspace,
+  loadCampaignWorkspace,
+  loadCardWorkspace,
+  loadEventPlacementWorkspace,
+  loadEventWorkspace,
+  loadReviewWorkspace,
+  loadTrustReviewWorkspace,
+} from '../components/author/author-workspace-modules';
 import {
   authorPaths,
   parseAuthorWorkspaceRoute,
@@ -35,6 +45,42 @@ import '../components/author/author.css';
 import '../components/author/author-events.css';
 import '../components/author/author-cards.css';
 import '../components/author/author-review.css';
+
+const EventWorkspace = lazy(() =>
+  loadEventWorkspace().then((module) => ({
+    default: module.EventWorkspace,
+  })),
+);
+const CardWorkspace = lazy(() =>
+  loadCardWorkspace().then((module) => ({
+    default: module.CardWorkspace,
+  })),
+);
+const CampaignWorkspace = lazy(() =>
+  loadCampaignWorkspace().then((module) => ({
+    default: module.CampaignWorkspace,
+  })),
+);
+const AnalyticsWorkspace = lazy(() =>
+  loadAnalyticsWorkspace().then((module) => ({
+    default: module.AnalyticsWorkspace,
+  })),
+);
+const TrustReviewWorkspace = lazy(() =>
+  loadTrustReviewWorkspace().then((module) => ({
+    default: module.TrustReviewWorkspace,
+  })),
+);
+const EventPlacementWorkspace = lazy(() =>
+  loadEventPlacementWorkspace().then((module) => ({
+    default: module.EventPlacementWorkspace,
+  })),
+);
+const ReviewWorkspace = lazy(() =>
+  loadReviewWorkspace().then((module) => ({
+    default: module.ReviewWorkspace,
+  })),
+);
 
 interface AuthorConsolePageProps {
   apiBaseUrl: string;
@@ -169,65 +215,71 @@ function AuthorConsoleWorkspace({
 
         <AuthorSidebar pathname={pathname} route={route} />
         <div className="author-console__workspace">
-          {route.section === 'events' ? (
-            <EventWorkspace
-              apiBaseUrl={apiBaseUrl}
-              cards={cards}
-              cardsState={cardsState}
-              getAccessToken={getAccessToken}
-              mapFactory={mapFactory}
-              mapboxAccessToken={mapboxAccessToken}
-              mutationCoordinator={mutationCoordinator}
-              navigate={navigate}
-              onOpenCards={() => navigate(authorPaths.cards)}
-              onReloadCards={loadCards}
-              route={route}
-            />
-          ) : route.section === 'cards' ? (
-            <CardWorkspace
-              apiBaseUrl={apiBaseUrl}
-              cards={cards}
-              errorMessage={cardsError}
-              getAccessToken={getAccessToken}
-              mutationCoordinator={mutationCoordinator}
-              navigate={navigate}
-              onCardsChange={setCards}
-              onReload={loadCards}
-              route={route}
-              state={cardsState}
-              confirmed={cardsConfirmed}
-            />
-          ) : route.section === 'campaigns' ? (
-            <CampaignWorkspace
-              apiBaseUrl={apiBaseUrl}
-              getAccessToken={getAccessToken}
-              navigate={navigate}
-              route={route}
-            />
-          ) : route.section === 'analytics' ? (
-            <AnalyticsWorkspace
-              apiBaseUrl={apiBaseUrl}
-              getAccessToken={getAccessToken}
-            />
-          ) : route.section === 'playerReview' ? (
-            <TrustReviewWorkspace
-              apiBaseUrl={apiBaseUrl}
-              getAccessToken={getAccessToken}
-              route={route}
-            />
-          ) : route.section === 'placement' ? (
-            <EventPlacementWorkspace
-              apiBaseUrl={apiBaseUrl}
-              getAccessToken={getAccessToken}
-              mapFactory={mapFactory}
-              mapboxAccessToken={mapboxAccessToken}
-            />
-          ) : (
-            <ReviewWorkspace
-              apiBaseUrl={apiBaseUrl}
-              getAccessToken={getAccessToken}
-            />
-          )}
+          <Suspense
+            fallback={
+              <AuthorLoadingState page label="Opening author workspace…" />
+            }
+          >
+            {route.section === 'events' ? (
+              <EventWorkspace
+                apiBaseUrl={apiBaseUrl}
+                cards={cards}
+                cardsState={cardsState}
+                getAccessToken={getAccessToken}
+                mapFactory={mapFactory}
+                mapboxAccessToken={mapboxAccessToken}
+                mutationCoordinator={mutationCoordinator}
+                navigate={navigate}
+                onOpenCards={() => navigate(authorPaths.cards)}
+                onReloadCards={loadCards}
+                route={route}
+              />
+            ) : route.section === 'cards' ? (
+              <CardWorkspace
+                apiBaseUrl={apiBaseUrl}
+                cards={cards}
+                errorMessage={cardsError}
+                getAccessToken={getAccessToken}
+                mutationCoordinator={mutationCoordinator}
+                navigate={navigate}
+                onCardsChange={setCards}
+                onReload={loadCards}
+                route={route}
+                state={cardsState}
+                confirmed={cardsConfirmed}
+              />
+            ) : route.section === 'campaigns' ? (
+              <CampaignWorkspace
+                apiBaseUrl={apiBaseUrl}
+                getAccessToken={getAccessToken}
+                navigate={navigate}
+                route={route}
+              />
+            ) : route.section === 'analytics' ? (
+              <AnalyticsWorkspace
+                apiBaseUrl={apiBaseUrl}
+                getAccessToken={getAccessToken}
+              />
+            ) : route.section === 'playerReview' ? (
+              <TrustReviewWorkspace
+                apiBaseUrl={apiBaseUrl}
+                getAccessToken={getAccessToken}
+                route={route}
+              />
+            ) : route.section === 'placement' ? (
+              <EventPlacementWorkspace
+                apiBaseUrl={apiBaseUrl}
+                getAccessToken={getAccessToken}
+                mapFactory={mapFactory}
+                mapboxAccessToken={mapboxAccessToken}
+              />
+            ) : (
+              <ReviewWorkspace
+                apiBaseUrl={apiBaseUrl}
+                getAccessToken={getAccessToken}
+              />
+            )}
+          </Suspense>
         </div>
       </section>
     </AuthorReviewNavigationProvider>

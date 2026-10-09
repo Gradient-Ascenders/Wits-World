@@ -91,6 +91,12 @@ describe('player battle hub recovery', () => {
     const tabs = within(
       await screen.findByRole('tablist', { name: 'Player battle sections' }),
     ).getAllByRole('tab');
+    // The tablist can mount before the initial page-focus effect completes.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'Player Battles' }),
+      ).toHaveFocus(),
+    );
     tabs[0]!.focus();
     await user.keyboard('{ArrowLeft}');
     expect(tabs.at(-1)).toHaveFocus();
