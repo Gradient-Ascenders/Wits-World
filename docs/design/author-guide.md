@@ -30,6 +30,16 @@ The content catalogue is shared between Authors. Each mutation records the actin
 
 Authors can also create, reorder, publish, and retire trails through the protected API. There is currently no trail editor in the console: see [Author trails](./author-trails.md).
 
+## Saving and recovery
+
+Save drafts explicitly before leaving an editor. Unsaved edits are not stored across page reloads. When leaving with changes, **Keep editing** stays in the editor; **Discard changes** leaves and loses those edits. A failed save keeps the form while the editor remains open.
+
+If a save or publication response is unconfirmed, reload the relevant catalogue or record and check its saved state and history before submitting again. For a new draft, check whether it already appears in the catalogue before creating another. Copy any unsaved work you need before reloading.
+
+If another Author has changed the record, load its current version and review the changes before saving again. In the campaign editor, **Reload server version** replaces local edits with the saved campaign after confirmation; **Keep local draft** cancels that reload. Copy any changes you want to reapply first.
+
+Player decisions and placement changes have their own recovery steps: see [Moderation and trust](../requirements/longitudinal-trust-policy.md#reviewer-decisions) and [Event placement](../architecture/automatic-event-placement-service.md#preview-and-apply).
+
 ## Review boundaries
 
 An Author cannot approve or return their own latest submission. Another Author must review it. Approval and publication are separate actions, and published definitions remain immutable. See [Review and publish](../architecture/diagrams/content-review.md) for the shared lifecycle.

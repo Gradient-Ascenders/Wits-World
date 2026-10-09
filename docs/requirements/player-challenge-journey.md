@@ -23,6 +23,9 @@ description: Answer questions, resume saved progress, and review the result.
 To resume, reopen the challenge page. It returns the first unanswered question
 or the completed result. Unsaved selections are discarded after a reload.
 
+For prepared challenges played without a connection, follow
+[Saved events and offline play](player-offline-journey.md).
+
 ## How it works
 
 The API stores the questions, accepted answers, and deadline. Accepted answers

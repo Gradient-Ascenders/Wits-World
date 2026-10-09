@@ -134,8 +134,9 @@ Auth0 handles sign-in and password recovery. Account settings provide reading
 and accessibility preferences, developer API access, and account deletion.
 Deletion locks the account while cleanup runs, removes personal game data,
 and preserves only the shared or system records required by the retention policy.
-See [account lifecycle validation](testing/player-account-lifecycle-validation.md)
-and [deletion and retention](database/account-deletion-retention.md).
+See [Account settings](requirements/player-account-settings.md) for recovery and
+deletion controls, [Accessibility](design/design-system.md) for interface preferences,
+and [deletion and retention](database/account-deletion-retention.md) for retained data.
 
 The application supports keyboard navigation, responsive layouts, reduced
 motion, and map-independent event discovery. Manual screen-reader, touch,

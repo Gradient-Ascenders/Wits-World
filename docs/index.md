@@ -17,6 +17,9 @@ Read [About Wits Quest](basic-release-reference.md) for the gameplay overview
 and the features added beyond Basic. For detailed timing, rewards, decks, and
 CPU battles, see the [game rules](requirements/basic-game-rules.md).
 
+New players can follow [Getting started as a player](requirements/player-getting-started.md)
+for sign-in, Player Name setup, and starter cards.
+
 To run the project locally, follow [Getting started](development/getting-started.md).
 The [visual guide](architecture/diagrams/index.md) explains the system,
 database, and deployment through diagrams.

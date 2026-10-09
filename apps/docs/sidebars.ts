@@ -62,13 +62,17 @@ const sidebars: SidebarsConfig = {
         slug: '/player-guide',
         title: 'Player Guide',
         description:
-          'Explore campus, complete challenges, collect cards, and battle.',
+          'Get started, explore campus, play online or offline, and manage your account.',
       },
       items: [
+        doc('requirements/player-getting-started', 'Getting started'),
         doc('requirements/player-location-journey', 'Explore'),
         doc('requirements/player-challenge-journey', 'Challenges'),
+        doc('requirements/player-offline-journey', 'Offline play'),
         doc('requirements/ordered-trails-rules', 'Trails'),
         doc('design/profile-showcase', 'Profile'),
+        doc('requirements/player-account-settings', 'Account settings'),
+        doc('design/design-system', 'Accessibility'),
         category('Cards', [
           doc(
             'requirements/player-deck-building-journey',
@@ -102,27 +106,24 @@ const sidebars: SidebarsConfig = {
         id: 'design/author-guide',
       },
       items: [
-        category(
-          'Content',
-          [
-            doc(
-              'architecture/author-curation-api-contract',
-              'Events and questions',
-            ),
-            doc('design/author-cards', 'Cards'),
-            doc('design/author-trails', 'Trails'),
-            doc('architecture/campaign-scheduling-api-contract', 'Campaigns'),
-            doc(
-              'architecture/automatic-event-placement-service',
-              'Event placement',
-            ),
-            doc(
-              'requirements/automatic-event-placement-policy',
-              'Placement rules',
-            ),
-          ],
-          'architecture/diagrams/content-review',
-        ),
+        category('Content', [
+          doc('architecture/diagrams/content-review', 'Review and publish'),
+          doc(
+            'architecture/author-curation-api-contract',
+            'Events and questions',
+          ),
+          doc('design/author-cards', 'Cards'),
+          doc('design/author-trails', 'Trails'),
+          doc('architecture/campaign-scheduling-api-contract', 'Campaigns'),
+          doc(
+            'architecture/automatic-event-placement-service',
+            'Event placement',
+          ),
+          doc(
+            'requirements/automatic-event-placement-policy',
+            'Placement rules',
+          ),
+        ]),
         doc('requirements/longitudinal-trust-policy', 'Moderation and trust'),
         doc('design/author-analytics', 'Analytics'),
         doc('database/question-performance-analytics', 'Question reports'),
@@ -226,7 +227,6 @@ const sidebars: SidebarsConfig = {
         ),
         category('Interface', [
           doc('design/ui-ux-design', 'UI/UX design'),
-          doc('design/design-system', 'Accessibility'),
           doc('design/state-review', 'Interaction states'),
         ]),
         category('Testing', [
