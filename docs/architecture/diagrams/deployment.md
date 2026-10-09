@@ -20,10 +20,10 @@ flowchart TB
     Review --> DocsBuild["Docs workflow<br/>Relevant path changes only"]
     Main --> Web["Azure App Service<br/>Web deployment and smoke check"]
     Main --> Guard["API change and current-main guards"]
-    Guard --> Release["Production DB release<br/>Confirmed host and database; migrations"]
-    Release --> DB[("Neon PostgreSQL / PostGIS")]
+    Guard --> Release["Production DB release<br/>Confirmed target; bounded direct migrations"]
+    Release -->|"Direct session; lock/statement deadlines"| DB[("Neon PostgreSQL / PostGIS")]
     Release --> API["Azure App Service<br/>API deployment and smoke check"]
-    API -->|"Encrypted connection"| DB
+    API -->|"Encrypted runtime connection; pooler permitted"| DB
     DocsBuild --> Docs["Cloudflare Pages<br/>Docusaurus documentation"]
 ```
 
@@ -59,6 +59,8 @@ is still present on this branch; it is not shown as a prerequisite of every depl
 3. `ci.yml` runs on `main`, prepares release artifacts, and deploys eligible Web
    and API changes through separate jobs. API deployment rejects stale commits
    and runs the guarded production database release before deploying the API.
+   Migration sessions use the direct Neon endpoint with bounded waits; the
+   runtime may keep its pooled URL. Release failures prevent API publication.
 4. `docs-deploy.yml` independently builds and publishes documentation when its
    configured paths change on `main`. A Web/API deployment is not proof that
    the documentation deployment succeeded.
@@ -95,3 +97,6 @@ ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
 
 Page title and diagram updated against the current repository with assistance
 from Codex-CLI[GPT-6].
+
+Connection and bounded-release labels were updated with assistance from
+Codex[GPT-5].

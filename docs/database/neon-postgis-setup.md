@@ -61,6 +61,14 @@ psql "$DATABASE_URL" -c 'select current_database(), current_user;'
 
 Migrations are tracked as SQL files in `database/migrations`.
 
+Migration and release commands automatically derive a direct Neon endpoint
+from a `-pooler` URL without changing the API's runtime `DATABASE_URL`.
+The optional server-only `MIGRATION_DATABASE_URL` supplies distinct maintenance
+credentials for that same endpoint/database; it must be direct and is ignored
+by test commands. Migration locks time out after 30 seconds, statements after
+five minutes. See [bounded migration connections and release waits](database-release-procedure.md#bounded-migration-connections-and-release-waits)
+for serialization, seed locking, CI deadlines, and incident recovery.
+
 Run development migrations:
 
 ```bash
@@ -180,10 +188,13 @@ to force idle. No schema migration is required.
 Use the documented staged rollout: first deploy polling mode with durable
 writers, then retire all older/unaware producers (including old local servers)
 that can write to the same Neon database. Only then set the repository Actions
-variable `PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and deploy/restart;
-CI maps it to the Azure API setting `GAMEPLAY_SCHEDULER_BACKEND` and defaults
-that setting to `polling`. A manual Azure setting change alone is temporary;
-the next deployment reapplies the repository variable/default. Do not enable
+variable `PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and acknowledge the
+completed audit with `PRODUCTION_GAMEPLAY_WRITERS_COORDINATED=true`, then start
+a new deployment. CI defaults that acknowledgement to `false` and retains
+`polling` unless both settings permit activation. It maps the safe effective
+mode to Azure only after database release succeeds and verifies the readback.
+A manual Azure setting change alone is temporary; the next deployment reapplies
+the gated repository settings. Do not enable
 Upstash mode while an unaware writer is still running. Roll back by setting the
 Actions variable to `polling` and redeploying/restarting.
 `GAMEPLAY_SCHEDULER_NAMESPACE` is optional; its default is a hash of
@@ -269,3 +280,6 @@ from Codex-CLI[GPT-5].
 The staged gameplay scheduler guidance was updated with assistance from
 Codex[GPT-5], based on user-provided implementation requirements.
 Existing-work outage behavior was clarified with assistance from Codex-CLI[gpt-6-luna].
+
+Direct migration connection guidance was added with assistance from
+Codex[GPT-5].
