@@ -80,6 +80,11 @@ The current shared SPA dashboard configuration is:
 | Allowed Web Origins    | `http://localhost:5173`, `https://witsworld.co.za` |
 | Allowed Origins (CORS) | Empty                                              |
 
+The recorded empty CORS value does not meet the browser reset endpoint's
+requirement. Add the exact local and production web origins listed in the
+[deployment requirements](../../deployment/azure-deployment-setup.md#9-auth0-production-url-configuration);
+their presence in the provider configuration remains unverified.
+
 Refreshing or directly revisiting a protected route must restore the same local
 Wits World player or fail safely without protected player data. The browser
 therefore waits for `GET /api/v1/auth/me` and compares its stable local player
@@ -304,18 +309,40 @@ handling.
 
 ## Password reset
 
-Password recovery is implemented through the protected player account page.
-Database-connection users continue to Auth0 Universal Login and choose Auth0's
-hosted recovery option; Auth0 collects the identifier, sends the email, and
-hosts replacement-password entry. Google users receive provider-specific
-guidance and continue to Google's recovery service instead.
+Password recovery uses the dedicated protected `/account/reset-password`
+route. The account settings **Reset password** action is an internal link and
+does not start a Universal Login redirect. Auth0 database-connection users can
+submit an email address, prefilled from Auth0 `user.email` when available and
+otherwise entered by the player. The editable address is used only for the
+request; Wits World does not persist or log it. Google users receive
+Google-specific recovery guidance, and direct visits by Google users do not
+show the Auth0 email form.
+
+The browser sends JSON containing `client_id`, `email`, and `connection` to
+`https://<configured auth domain>/dbconnections/change_password`. The optional
+public `VITE_AUTH0_DATABASE_CONNECTION` setting defaults to
+`Username-Password-Authentication`, so existing deployments do not need a new
+mandatory environment variable. The request has a bounded timeout, disables
+submission while pending, and allows retry after network/provider errors; a
+429 response is reported as rate limiting. The UI gives the same neutral
+success for an accepted request and a provider `404`, so it does not reveal
+whether an account exists. That success only describes request acceptance (or
+the privacy-preserving response); it does not assert that a password changed
+or that an email was delivered.
+
+Auth0 owns reset email delivery and the hosted replacement-password page. This
+flow does not send `loginWithRedirect`, collect current or replacement
+passwords, use a client secret or Management API, or change the Wits World API
+or database. The browser origin must be listed in the Auth0 application's
+Allowed Origins (CORS); configure exact local and production web origins, never
+a wildcard. See the [Auth0 password-change guide](https://auth0.com/docs/authenticate/database-connections/password-change)
+and [Authentication API endpoint reference](https://auth0.com/docs/api/authentication/change-password/change-password).
 
 The Wits World web application and API will not receive or process the user's
 current or replacement password.
 
-Auth0 does not send hosted recovery completion back to the SPA. The browser
-therefore reports the completed handoff, not a completed password change. Real
-email delivery and hosted reset behavior remain an operator-run release check.
+Real Auth0 email delivery and hosted reset behavior remain an operator-run
+release check; they are not established by the client response or local tests.
 
 ## Account deletion
 
@@ -382,7 +409,7 @@ Any later player-linked model must be added to the same `BASIC-12` matrix before
 deployment.
 
 Hosted registration, sign-in, and database password recovery are available
-through Auth0 Universal Login. The permanent-deletion profile/account entry
+through Auth0-hosted flows. The permanent-deletion profile/account entry
 point and persistence are implemented.
 
 ## Environment configuration
@@ -393,6 +420,7 @@ The browser application will use:
 VITE_AUTH0_DOMAIN
 VITE_AUTH0_CLIENT_ID
 VITE_AUTH0_AUDIENCE
+VITE_AUTH0_DATABASE_CONNECTION (optional; defaults to Username-Password-Authentication)
 ```
 
 Every `VITE_` value is included in the browser bundle and must therefore contain
@@ -571,3 +599,6 @@ This account-deletion update was edited with assistance from Codex[GPT-6].
 
 The housekeeping suspension caveat was clarified with assistance from
 Codex-CLI[GPT-5].
+
+The dedicated password-reset route documentation was updated with assistance
+from Codex-CLI[gpt-6-luna].

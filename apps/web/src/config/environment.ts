@@ -7,6 +7,7 @@ export interface WebConfig {
 export interface AuthConfig {
   audience: string;
   clientId: string;
+  databaseConnection?: string;
   domain: string;
 }
 
@@ -101,6 +102,11 @@ export function loadWebConfig(environment: PublicEnvironment): WebConfig {
     auth: {
       audience,
       clientId,
+      databaseConnection:
+        typeof environment.VITE_AUTH0_DATABASE_CONNECTION === 'string' &&
+        environment.VITE_AUTH0_DATABASE_CONNECTION.trim()
+          ? environment.VITE_AUTH0_DATABASE_CONNECTION.trim()
+          : 'Username-Password-Authentication',
       domain,
     },
     mapboxAccessToken,

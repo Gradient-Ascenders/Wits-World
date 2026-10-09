@@ -41,10 +41,32 @@ describe('web configuration', () => {
       auth: {
         audience: 'https://api.wits-world.invalid',
         clientId: 'public-spa-client-id',
+        databaseConnection: 'Username-Password-Authentication',
         domain: 'dev-5artxfvpdennq8qm.us.auth0.com',
       },
       mapboxAccessToken: 'pk.test-token',
     });
+  });
+
+  it.each([undefined, '', '   '])(
+    'uses the default reset connection when its optional setting is %s',
+    (databaseConnection) => {
+      expect(
+        loadWebConfig({
+          ...validEnvironment,
+          VITE_AUTH0_DATABASE_CONNECTION: databaseConnection,
+        }).auth.databaseConnection,
+      ).toBe('Username-Password-Authentication');
+    },
+  );
+
+  it('uses a configured Auth0 database connection for password recovery', () => {
+    expect(
+      loadWebConfig({
+        ...validEnvironment,
+        VITE_AUTH0_DATABASE_CONNECTION: ' Wits-Players ',
+      }).auth.databaseConnection,
+    ).toBe('Wits-Players');
   });
 
   it.each([
