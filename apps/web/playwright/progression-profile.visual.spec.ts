@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 import { profileExtension } from '../tests/fixtures/player-profile';
@@ -123,9 +124,9 @@ test('renders and operates the progression route across mobile and desktop', asy
   ).toBeVisible();
   await page.keyboard.press('Escape');
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
-    path: '/tmp/issue-173-profile-mobile.png',
+    path: 'visual/issue-173-profile-mobile.png',
   });
 
   await page.goto('/leaderboard');
@@ -192,9 +193,9 @@ test('renders and operates the progression route across mobile and desktop', asy
       name: 'Player profile, Progress and achievements',
     }),
   ).toHaveAttribute('aria-current', 'page');
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
-    path: '/tmp/issue-173-profile-desktop.png',
+    path: 'visual/issue-173-profile-desktop.png',
   });
 
   expect(consoleErrors).toEqual([]);

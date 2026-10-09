@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import {
   expect,
   test,
@@ -74,7 +75,7 @@ test('shows rarity frames and confirms an authoritative CPU forfeit', async ({
       ),
     )
     .toBeGreaterThan(1.01);
-  await page.locator('.battle-stage').screenshot({
+  await captureScreenshot(test.info(), page.locator('.battle-stage'), {
     path: path.join(screenshotsDirectory, 'desktop-card-depth.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
@@ -98,7 +99,7 @@ test('shows rarity frames and confirms an authoritative CPU forfeit', async ({
       name: 'Forfeit battle',
     }),
   ).toHaveCount(0);
-  await page.locator('.battle-side-rail').screenshot({
+  await captureScreenshot(test.info(), page.locator('.battle-side-rail'), {
     path: path.join(screenshotsDirectory, 'desktop-compact-rail.png'),
   });
   await forfeit.click();
@@ -272,7 +273,7 @@ test('hands mobile Creature sheet gestures between scrolling and dragging', asyn
   await expect(sheet).toBeVisible();
   expect(await body.evaluate((node) => node.scrollTop)).toBe(0);
   expect((await sheet.boundingBox())!.height).toBeCloseTo(844 * 0.85, 0);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: path.join(screenshotsDirectory, '390-gesture-sheet.png'),
   });
   headerBox = (await header.boundingBox())!;
@@ -341,7 +342,7 @@ test('opens Creature details from active and bench pictures', async ({
     await expect(
       dialog.getByRole('heading', { name: 'Moves', exact: true }),
     ).toBeVisible();
-    await dialog.screenshot({
+    await captureScreenshot(test.info(), dialog, {
       path: path.join(screenshotsDirectory, `${width}-creature-details.png`),
     });
     if (width === 390) {
@@ -840,7 +841,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       } else {
         await expect(page.locator('.site-header')).toBeVisible();
       }
-      await page.locator('.battle-page').screenshot({
+      await captureScreenshot(test.info(), page.locator('.battle-page'), {
         path: path.join(
           screenshotsDirectory,
           `${viewport.label}-opening-selection.png`,
@@ -931,7 +932,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       if (viewport.width >= 1024) {
         await expectBattleStageFirstDesktopLayout(page);
       }
-      await page.locator('.battle-page').screenshot({
+      await captureScreenshot(test.info(), page.locator('.battle-page'), {
         path: path.join(
           screenshotsDirectory,
           `${viewport.label}-power-actions.png`,
@@ -987,7 +988,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       } else {
         await expect(page.locator('.site-header')).toBeVisible();
       }
-      await page.locator('.battle-page').screenshot({
+      await captureScreenshot(test.info(), page.locator('.battle-page'), {
         path: path.join(
           screenshotsDirectory,
           `${viewport.label}-active-battle.png`,
@@ -1031,7 +1032,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       if (viewport.width >= 1024) {
         await expectBattleStageFirstDesktopLayout(page);
       }
-      await page.locator('.battle-page').screenshot({
+      await captureScreenshot(test.info(), page.locator('.battle-page'), {
         path: path.join(
           screenshotsDirectory,
           `${viewport.label}-replacement.png`,
@@ -1068,7 +1069,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       if (viewport.width >= 1024) {
         await expectCompletedSideRailLayout(page);
       }
-      await page.locator('.battle-page').screenshot({
+      await captureScreenshot(test.info(), page.locator('.battle-page'), {
         path: path.join(
           screenshotsDirectory,
           `${viewport.label}-completed-battle.png`,
@@ -1094,7 +1095,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
         ),
       )
       .toBeLessThanOrEqual(0.5);
-    await page.locator('.battle-page').screenshot({
+    await captureScreenshot(test.info(), page.locator('.battle-page'), {
       path: path.join(screenshotsDirectory, '390-battle-log.png'),
       style: '.skip-link, .primary-navigation { display: none !important; }',
     });
@@ -1341,7 +1342,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
       name: 'Forfeit battle',
     }),
   ).toBeVisible();
-  await page.locator('.battle-page').screenshot({
+  await captureScreenshot(test.info(), page.locator('.battle-page'), {
     path: path.join(screenshotsDirectory, '390-compact-rail.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
@@ -1378,7 +1379,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
     page.locator('.battle-actions'),
     page.locator('.battle-side-rail'),
   );
-  await page.locator('.battle-page').screenshot({
+  await captureScreenshot(test.info(), page.locator('.battle-page'), {
     path: path.join(screenshotsDirectory, '390-cpu-turn.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
@@ -1398,7 +1399,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
     } else {
       await expect(page.locator('.site-header')).toBeVisible();
     }
-    await page.locator('.battle-page').screenshot({
+    await captureScreenshot(test.info(), page.locator('.battle-page'), {
       path: path.join(screenshotsDirectory, `${viewport.label}-cpu-turn.png`),
       style: '.skip-link, .primary-navigation { display: none !important; }',
     });
@@ -1552,7 +1553,7 @@ test('renders recent results and starts from the selected deck dashboard', async
 
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1024 });
-    await page.locator('.matches-page').screenshot({
+    await captureScreenshot(test.info(), page.locator('.matches-page'), {
       path: path.join(screenshotsDirectory, `${width}-match-hub.png`),
     });
   }
@@ -1612,7 +1613,7 @@ test('renders recent results and starts from the selected deck dashboard', async
         actionBox!.x,
       );
     }
-    await page.locator('.matches-page').screenshot({
+    await captureScreenshot(test.info(), page.locator('.matches-page'), {
       path: path.join(screenshotsDirectory, `${width}-match-history.png`),
     });
   }
@@ -1769,7 +1770,7 @@ test('keeps the desktop battlefield stable when activity and bench expand', asyn
   await reserveDetail.scrollIntoViewIfNeeded();
   await expect(reserveDetail).toBeInViewport();
   await expectNoHorizontalOverflow(page);
-  await page.locator('.battle-page').screenshot({
+  await captureScreenshot(test.info(), page.locator('.battle-page'), {
     path: path.join(screenshotsDirectory, '1440-expanded-sidebar.png'),
   });
   for (const width of [390, 768, 1440]) {
@@ -1777,7 +1778,7 @@ test('keeps the desktop battlefield stable when activity and bench expand', asyn
     await page.evaluate(() => window.scrollTo(0, 0));
     const history = page.locator('.battle-log');
     await history.locator('summary').click();
-    await history.screenshot({
+    await captureScreenshot(test.info(), history, {
       path: path.join(screenshotsDirectory, `${width}-history.png`),
     });
     await history.locator('summary').click();
@@ -1793,7 +1794,7 @@ test('keeps the desktop battlefield stable when activity and bench expand', asyn
       )
       .toBe(true);
     await expectNoHorizontalOverflow(page);
-    await page.locator('.battle-page').screenshot({
+    await captureScreenshot(test.info(), page.locator('.battle-page'), {
       path: path.join(screenshotsDirectory, `${width}-creature-artwork.png`),
     });
   }
@@ -2272,7 +2273,7 @@ test('shows existing artwork when choosing a replacement', async ({ page }) => {
       choices.getByRole('button', { name: /Use as replacement Quillip/ }),
     ).toBeDisabled();
     await expectNoHorizontalOverflow(page);
-    await choices.screenshot({
+    await captureScreenshot(test.info(), choices, {
       path: path.join(screenshotsDirectory, `${width}-replacement-artwork.png`),
     });
   }

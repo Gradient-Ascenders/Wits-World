@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import path from 'node:path';
 
@@ -150,7 +151,7 @@ test('completes the saved-deck journey and records responsive evidence', async (
 
   await expect(page.getByText('Complete lineup')).toBeVisible();
   await expect(page.getByText('5 / 10')).toBeVisible();
-  await page.locator('.decks-page').screenshot({
+  await captureScreenshot(test.info(), page.locator('.decks-page'), {
     path: path.join(screenshotsDirectory, '390-editor-ready.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
@@ -185,7 +186,7 @@ test('completes the saved-deck journey and records responsive evidence', async (
       width: viewport.width,
     });
     await expectNoHorizontalOverflow(page);
-    await page.locator('.decks-page').screenshot({
+    await captureScreenshot(test.info(), page.locator('.decks-page'), {
       path: path.join(
         screenshotsDirectory,
         `${viewport.label}-active-deck.png`,

@@ -12,6 +12,7 @@ import type {
   GameplayActivityStore,
   GameplayWorkerKind,
 } from './gameplay-activity-store.js';
+import { gameplayActivityErrorCategory } from './gameplay-activity-store.js';
 
 export const GAMEPLAY_COORDINATION_POLL_INTERVAL_MS = 10_000;
 const ADVISORY_LOCK_CLASS = 1_468_503_121;
@@ -166,11 +167,14 @@ export function createGameplayCoordination(
       wakeFrom(await monitorObservation.run(() => store.read()));
       return false;
     },
-    onError: () => {
+    onError: (error) => {
       // Availability loss must restore fast DB discovery, never a long sleep.
       for (const worker of workers) wakes[worker].wake();
       logger.error(
-        {},
+        {
+          coordination_stage: 'read_state',
+          activity_error_category: gameplayActivityErrorCategory(error),
+        },
         'Gameplay coordination unavailable; scanning persisted work.',
       );
     },
@@ -200,10 +204,13 @@ export function createGameplayCoordination(
         let client: pg.PoolClient | undefined;
         let open = false;
         let destroy = false;
+        let stage = 'client_acquisition';
         try {
           client = await database.connect();
+          stage = 'begin';
           await client.query('begin');
           open = true;
+          stage = 'fence';
           const lock = await client.query<{ acquired: boolean }>(
             'select pg_try_advisory_xact_lock($1, $2) as acquired',
             [ADVISORY_LOCK_CLASS, workerIds[worker]],
@@ -212,18 +219,26 @@ export function createGameplayCoordination(
 
           // The exclusive lock fences every in-flight writer and any delayed
           // producer must revalidate its intent after taking the shared lock.
+          stage = 'recover_intents';
           await store.removeAbandoned(worker);
+          stage = 'read_state';
           const snapshot = await store.read();
+          stage = 'probe';
           const nextSweep = await probe(client);
+          stage = 'try_idle';
           if (nextSweep === true || !(await store.tryIdle(worker, snapshot))) {
             return { idle: false, nextSweep: true };
           }
           locallyActive[worker] = false;
           return { idle: true, nextSweep };
-        } catch {
+        } catch (error) {
           idleObservations[worker].failed();
           logger.error(
-            {},
+            {
+              worker,
+              coordination_stage: stage,
+              activity_error_category: gameplayActivityErrorCategory(error),
+            },
             'Gameplay idle confirmation failed; retaining fast scans.',
           );
           return { idle: false, nextSweep: true };

@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type Page } from '@playwright/test';
 
 const ZONE_IDS = [
@@ -44,7 +45,7 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
   expect(territoryRowBox?.x).toBe(territoryScrollBox?.x);
   expect(territoryRowBox?.width).toBe(territoryScrollBox?.width);
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: testInfo.outputPath('territory-list-desktop.png'),
   });
@@ -67,7 +68,7 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
   await expect(territoryLoading.locator('[role="status"]')).toHaveClass(
     /sr-only/,
   );
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: testInfo.outputPath('territory-loading-desktop.png'),
   });
@@ -96,7 +97,7 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
     '10px',
   );
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: testInfo.outputPath('territory-detail-desktop.png'),
   });
@@ -121,7 +122,7 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
     page.getByRole('heading', { name: 'Campus territories' }),
   ).toBeFocused();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: testInfo.outputPath('territory-list-mobile.png'),
   });
@@ -151,7 +152,7 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'This hour' })).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: testInfo.outputPath('territory-detail-mobile.png'),
   });
@@ -161,7 +162,7 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
     .scrollIntoViewIfNeeded();
   await expect(page.getByText('blue_witsie took ownership')).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: testInfo.outputPath('territory-history-mobile.png'),
   });
@@ -176,13 +177,13 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
   await expect(page.locator('.territory-activity')).toHaveCount(0);
   await expect(page.getByText('0 / 5')).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: testInfo.outputPath('territory-empty-mobile.png'),
   });
   await page.setViewportSize({ height: 900, width: 1440 });
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: testInfo.outputPath('territory-empty-desktop.png'),
   });

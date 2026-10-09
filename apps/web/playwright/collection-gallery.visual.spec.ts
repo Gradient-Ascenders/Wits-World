@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { selectOption } from './select-option';
 import {
   expect,
@@ -101,7 +102,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     page.getByRole('link', { name: 'Trades', exact: true }),
   ).toBeInViewport();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('collection-narrow-mobile.png'),
   });
   await page.setViewportSize({ height: 844, width: 390 });
@@ -128,7 +129,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
       artworkImage.evaluate((img: HTMLImageElement) => img.naturalWidth),
     )
     .toBeGreaterThan(0);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('square-artwork-mobile.png'),
     fullPage: true,
   });
@@ -146,7 +147,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     Promise.all(element.getAnimations().map((animation) => animation.finished)),
   );
   await expectSquareArtwork(dialog);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('square-artwork-detail.png'),
   });
   await expect(
@@ -166,7 +167,9 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     'overflow-y',
     'auto',
   );
-  await page.screenshot({ path: testInfo.outputPath('moves-mobile.png') });
+  await captureScreenshot(test.info(), page, {
+    path: testInfo.outputPath('moves-mobile.png'),
+  });
   const mobilePanel = await dialog.boundingBox();
   expect(mobilePanel).not.toBeNull();
   expect(Math.round(mobilePanel!.y + mobilePanel!.height)).toBe(844);
@@ -241,7 +244,9 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   ).toBeVisible();
   await page.getByRole('button', { name: 'Clear', exact: true }).click();
   await page.getByRole('button', { name: 'Filters & sort' }).click();
-  await page.screenshot({ path: testInfo.outputPath('filters-mobile.png') });
+  await captureScreenshot(test.info(), page, {
+    path: testInfo.outputPath('filters-mobile.png'),
+  });
   await selectOption(page.getByLabel('Category', { exact: true }), 'power');
   await expect(gallery.locator(':scope > li')).toHaveCount(8);
   await selectOption(page.getByLabel('Rarity', { exact: true }), 'epic');
@@ -254,7 +259,9 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   await expect(
     page.getByRole('heading', { name: 'No cards match these filters' }),
   ).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('no-results-mobile.png') });
+  await captureScreenshot(test.info(), page, {
+    path: testInfo.outputPath('no-results-mobile.png'),
+  });
   await page
     .getByRole('button', { name: 'Clear filters', exact: true })
     .click();
@@ -292,7 +299,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   expect(
     Math.abs(desktopPanel!.x + desktopPanel!.width / 2 - 720),
   ).toBeLessThan(2);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('card-details-desktop.png'),
   });
   await dialog
@@ -310,7 +317,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
       ),
     )
     .toBeGreaterThan(1.01);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('square-artwork-desktop-hover.png'),
     fullPage: true,
   });
@@ -329,14 +336,18 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   await expect(
     page.getByRole('heading', { name: 'Loading cards' }),
   ).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('loading-mobile.png') });
+  await captureScreenshot(test.info(), page, {
+    path: testInfo.outputPath('loading-mobile.png'),
+  });
   collectionState = 'error';
   releaseCollection?.();
   collectionDelay = undefined;
   await expect(
     page.getByRole('heading', { name: 'Your cards could not load' }),
   ).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('error-mobile.png') });
+  await captureScreenshot(test.info(), page, {
+    path: testInfo.outputPath('error-mobile.png'),
+  });
 
   collectionState = 'empty';
   await page.reload();
@@ -345,7 +356,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   ).toBeVisible();
   await expect(page.getByRole('radio')).toHaveCount(3);
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('empty-mobile.png'),
     fullPage: true,
   });

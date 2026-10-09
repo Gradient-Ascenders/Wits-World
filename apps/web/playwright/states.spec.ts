@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { buildSavedDeck } from '../tests/fixtures/decks';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { buildStarterCards } from '../tests/fixtures/cards';
@@ -48,7 +49,7 @@ async function capture(page: Page, info: TestInfo, name: string) {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: info.outputPath(`${name}.png`),
     fullPage: true,
     animations: 'disabled',

@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type Page } from '@playwright/test';
 import { buildCard, buildStarterOptions } from '../tests/fixtures/cards';
 
@@ -156,7 +157,7 @@ test('enlarges navigation text and reflows card inspection without clipping copy
     await expect(
       page.getByRole('button', { name: 'Close Campus Guardian 1 details' }),
     ).toBeVisible();
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: test.info().outputPath(`${width}-150-card-inspection.png`),
     });
     await page.keyboard.press('Escape');

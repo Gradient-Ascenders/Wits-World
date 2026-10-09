@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 import {
@@ -229,7 +230,7 @@ test('loads deck artwork before delayed details on entry and reload', async ({
           sources,
         });
         if (!reload && width !== 825) {
-          await page.screenshot({
+          await captureScreenshot(test.info(), page, {
             animations: 'disabled',
             fullPage: true,
             path: testInfo.outputPath(`deck-artwork-pending-${width}.png`),
@@ -308,7 +309,7 @@ test('renders authoritative participant and private spectator views responsively
     page.getByRole('button', { name: 'Copy private link' }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('live-participant-1440.png'),
@@ -395,7 +396,7 @@ test('renders authoritative participant and private spectator views responsively
     resignCard.getByRole('button', { name: 'Forfeit battle' }),
   ).toBeFocused();
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('live-participant-390.png'),
@@ -407,7 +408,7 @@ test('renders authoritative participant and private spectator views responsively
   await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
   await expect(firstAction).toBeInViewport();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('live-participant-200-percent-reflow.png'),
@@ -435,7 +436,7 @@ test('renders authoritative participant and private spectator views responsively
     page.getByText(/private snapshot|activeCreatureId/i),
   ).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('live-spectator-390.png'),
@@ -513,7 +514,7 @@ test('explains unavailable ranked entry at mobile and desktop widths', async ({
       page.getByRole('button', { name: 'Refresh season' }),
     ).toBeEnabled();
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       fullPage: true,
       path: testInfo.outputPath(`live-lobby-unavailable-${width}.png`),
@@ -673,7 +674,7 @@ test('presents the active season, personal record, standings, and territory opti
       expect(Math.abs(motion.x)).toBeLessThanOrEqual(10.01);
       expect(Math.abs(motion.y)).toBeLessThanOrEqual(12.01);
       expect(motion.scale).toBeLessThanOrEqual(1.056);
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: testInfo.outputPath('live-lobby-fast-hover.png'),
       });
       // Record the entire return to rest: outgoing cards must not linger in
@@ -737,7 +738,7 @@ test('presents the active season, personal record, standings, and territory opti
       .toBe(true);
     await page.evaluate(() => document.fonts.ready);
     if (width === 825) {
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         animations: 'disabled',
         fullPage: true,
         path: testInfo.outputPath('live-lobby-hero-825.png'),
@@ -802,7 +803,7 @@ test('presents the active season, personal record, standings, and territory opti
     }
     await page.evaluate(() => window.scrollTo(0, 0));
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       fullPage: true,
       path: testInfo.outputPath(`live-lobby-active-${width}.png`),
@@ -813,7 +814,7 @@ test('presents the active season, personal record, standings, and territory opti
     ).toBeVisible();
     await expect(page).toHaveURL(/\?tab=standings$/u);
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       fullPage: true,
       path: testInfo.outputPath(`live-lobby-standings-${width}.png`),
@@ -823,7 +824,7 @@ test('presents the active season, personal record, standings, and territory opti
       page.getByRole('textbox', { name: 'Private battle link or ID' }),
     ).toBeVisible();
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       fullPage: true,
       path: testInfo.outputPath(`live-lobby-watch-${width}.png`),
@@ -899,7 +900,7 @@ test('keeps matchmaking controls visible when changing lobby views', async ({
         expect(cardBox!.height).toBeGreaterThan(cardBox!.width);
       }
 
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         animations: 'disabled',
         fullPage: true,
         path: testInfo.outputPath(`live-lobby-${status}-${width}.png`),
@@ -919,7 +920,7 @@ test('keeps matchmaking controls visible when changing lobby views', async ({
         navBox?.y ?? 900,
       );
       await expectNoHorizontalOverflow(page);
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         animations: 'disabled',
         fullPage: true,
         path: testInfo.outputPath(`live-lobby-${status}-watch-${width}.png`),

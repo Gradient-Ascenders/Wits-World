@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test } from '@playwright/test';
 import { buildCard, buildUuid } from '../tests/fixtures/cards';
 import { activeMatch, MATCH_ID } from '../tests/fixtures/matches';
@@ -77,7 +78,7 @@ test('card family across collection, detail, deck selection and battle', async (
     await page.goto('/collection');
     const gallery = page.getByRole('list', { name: 'Owned card designs' });
     await expect(gallery.locator('button')).toHaveCount(5);
-    await gallery.screenshot({
+    await captureScreenshot(test.info(), gallery, {
       animations: 'disabled',
       path: testInfo.outputPath(`collection-${width}.png`),
     });
@@ -104,7 +105,7 @@ test('card family across collection, detail, deck selection and battle', async (
         }
         document.body.append(board);
       });
-      await page.locator('#frame-comparison').screenshot({
+      await captureScreenshot(test.info(), page.locator('#frame-comparison'), {
         animations: 'disabled',
         path: testInfo.outputPath('rarity-comparison.png'),
       });
@@ -121,7 +122,7 @@ test('card family across collection, detail, deck selection and battle', async (
     for (const rarity of ['common', 'rare', 'epic', 'legendary']) {
       await gallery.locator(`.collectible-card--${rarity}`).first().click();
       await expect(page.getByRole('dialog')).toBeVisible();
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         animations: 'disabled',
         path: testInfo.outputPath(`detail-${rarity}-${width}.png`),
       });
@@ -142,7 +143,7 @@ test('card family across collection, detail, deck selection and battle', async (
       .getByRole('button', { name: /Add.*Quillip/, exact: false })
       .first()
       .click();
-    await picker.screenshot({
+    await captureScreenshot(test.info(), picker, {
       animations: 'disabled',
       path: testInfo.outputPath(`deck-${width}.png`),
     });
@@ -156,7 +157,7 @@ test('card family across collection, detail, deck selection and battle', async (
     await expect(
       page.getByRole('heading', { name: 'Your turn', exact: true }),
     ).toBeVisible();
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       path: testInfo.outputPath(`battle-${width}.png`),
     });
@@ -164,7 +165,7 @@ test('card family across collection, detail, deck selection and battle', async (
       .getByRole('button', { name: 'View Quillip details', exact: true })
       .first()
       .click();
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       path: testInfo.outputPath(`battle-detail-${width}.png`),
     });
