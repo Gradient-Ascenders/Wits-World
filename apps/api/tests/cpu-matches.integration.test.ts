@@ -17,6 +17,7 @@ import {
   type CpuMatchService,
 } from '../src/matches/cpu-match-service.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
+import type { PlayerProfileService } from '../src/players/player-profile.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',
@@ -38,6 +39,7 @@ const activePlayer = {
 };
 
 let app: FastifyInstance;
+let profileService: PlayerProfileService;
 let service: {
   createMatch: ReturnType<typeof vi.fn<CpuMatchService['createMatch']>>;
   forfeitMatch: ReturnType<typeof vi.fn<CpuMatchService['forfeitMatch']>>;
@@ -99,6 +101,11 @@ beforeEach(async () => {
     listHistorySummaries: vi.fn().mockResolvedValue([]),
   };
 
+  profileService = {
+    get: vi.fn<PlayerProfileService['get']>(),
+    save: vi.fn<PlayerProfileService['save']>(),
+  };
+
   app = await buildApp({
     authConfig,
     accessTokenVerifier,
@@ -106,6 +113,7 @@ beforeEach(async () => {
       resolve: resolvePlayer,
     },
     cpuMatchService: service,
+    playerProfileService: profileService,
     logger: false,
   });
 });
@@ -115,7 +123,7 @@ afterEach(async () => {
 });
 
 describe('CPU match API', () => {
-  it('verifies the release gate against real public schemas and auth boundaries without gameplay reads', async () => {
+  it('verifies the release gate with production profile routes enabled and no gameplay reads', async () => {
     const { verifyBattlesRelease } = await import(
       new URL(
         '../../../scripts/verify-battles-summary-contract.mjs',
@@ -141,9 +149,12 @@ describe('CPU match API', () => {
         },
       },
     );
+    expect(app.swagger().paths?.['/api/v1/profiles/me']?.get).toBeDefined();
     expect(service.getBattleEntrySummary).not.toHaveBeenCalled();
     expect(service.listHistorySummaries).not.toHaveBeenCalled();
     expect(service.listHistory).not.toHaveBeenCalled();
+    expect(profileService.get).not.toHaveBeenCalled();
+    expect(profileService.save).not.toHaveBeenCalled();
   });
 
   it('scopes compact entry and bounded history to the authenticated player', async () => {

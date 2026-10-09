@@ -269,6 +269,13 @@ block publication without logging response bodies or upstream error details.
 The current-main check still runs after the contract gate, immediately before
 Azure web mutation.
 
+A healthy `/health` response does not establish that `/documentation/json` works.
+If the contract request fails, check that public endpoint as well as the two
+anonymous summary requests before retrying deployment. Schema-less routes such
+as `GET /api/v1/profiles/me` must not crash the OpenAPI rate-limit transform. The
+API regression tests cover a schema-less route and run the release guard with
+the real profile routes registered, without calling profile or gameplay services.
+
 API artifact creation and deployment both include all existing web release
 inputs. Normal web-only pushes thus build and publish the same-commit API ZIP
 before automatic web publication, even when the API source is unchanged. These
@@ -372,3 +379,6 @@ assistance from Codex[GPT-5].
 
 The API-first Battles release gate and its verification boundaries were documented
 with assistance from Codex[GPT-6].
+
+OpenAPI failure troubleshooting updated with assistance from Codex[GPT-5] and
+Codex[gpt-6-luna].
