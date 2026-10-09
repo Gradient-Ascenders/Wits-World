@@ -16,8 +16,19 @@ self.addEventListener('install', (event) => {
     name.then(async (key) => {
       const cache = await caches.open(key);
       await cache.addAll(
-        [...new Set(manifest.map((entry) => entry.url))].map(
-          (url) => new Request(url, { cache: 'reload' }),
+        [
+          ...new Map(
+            manifest
+              .filter((entry) => entry.precache !== false)
+              .map((entry) => [entry.url, entry]),
+          ).values(),
+        ].map(
+          (entry) =>
+            new Request(entry.url, {
+              // Hashed assets are immutable. Reuse their HTTP cache on
+              // installation/upgrade; revalidate revisioned public files.
+              cache: entry.revision == null ? 'default' : 'reload',
+            }),
         ),
       );
     }),
@@ -54,14 +65,21 @@ self.addEventListener('fetch', (event) => {
     );
   } else if (paths.has(url.pathname)) {
     event.respondWith(
-      name.then(
-        async (key) =>
-          // Only immutable, build-allowlisted same-origin assets reach here.
-          // Module requests carry Origin while precache requests do not.
-          (await (
-            await caches.open(key)
-          ).match(event.request, { ignoreVary: true })) || fetch(event.request),
-      ),
+      name.then(async (key) => {
+        const cache = await caches.open(key);
+        // Module requests carry Origin while installation requests do not.
+        const cached = await cache.match(event.request, { ignoreVary: true });
+        if (cached) return cached;
+        // Only exact build-allowlisted, same-origin asset URLs reach here.
+        // Retain successfully requested deferred modules for offline revisits.
+        const response = await fetch(event.request);
+        if (response.status === 200 && response.type === 'basic') {
+          event.waitUntil(
+            cache.put(event.request, response.clone()).catch(() => {}),
+          );
+        }
+        return response;
+      }),
     );
   }
 });

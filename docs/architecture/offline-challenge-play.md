@@ -79,7 +79,16 @@ audit. Offline payloads are redacted from API logs.
 
 The service worker caches only application assets and navigation fallback.
 It never caches API, Auth0 or Mapbox traffic. It does not download commercial
-map tiles. An update waits for user activation, and the UI blocks activation
+map tiles. Installation retains the entry/Home/saved-challenge JavaScript and
+their static build dependencies, plus the existing CSS, fonts, branding and
+campus artwork. Other build-allowlisted JavaScript is cached on successful
+same-origin demand, rather than downloaded during installation. Previously
+requested modules remain available offline within that worker version; a first
+visit to an unrequested online-only route requires connectivity. This does not
+add offline Author/Profile API support or change the prepared-challenge contract.
+Hashed assets can reuse the browser HTTP cache during installation; revisioned
+public files are reloaded. A failed installation leaves the active shell intact.
+An update waits for user activation, and the UI blocks activation
 while a local challenge remains active. Pending IndexedDB data survives updates.
 
 ## Deployment and team setup

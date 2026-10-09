@@ -649,7 +649,7 @@ reads. Leaderboard imports its standings component independently of Profile.
 
 `apps/web/playwright/lazy-loading.spec.ts` tests the optimized production bundle,
 including direct routes, role denial, delayed and failed imports, reload recovery,
-focus restoration, cached navigation and the unchanged offline shell precache.
+focus restoration, cached navigation and demand-cached deferred modules.
 The normal experience-regression CI command does not include this separate
 configuration. Run it explicitly alongside the relevant existing Author and
 Profile journeys. Some existing Author visual cases write screenshots under
@@ -686,14 +686,57 @@ Analytics overview. Repeated visits reuse loaded modules while making fresh
 route reads. Record incremental JavaScript requests/transfer and layout shifts.
 
 Route-demand measurements block service workers to separate page-critical code
-from background precaching. The existing service worker still precaches all
-built JavaScript/CSS, including deferred modules: this change reduces immediate
-route loading/evaluation, not total installed-shell bytes or background Author
-downloads. The offline test verifies cached shell/chunk delivery and an already
+from background precaching. Workstream 7 alone left deferred modules precached;
+Workstream 5 now installs only the supported offline JavaScript closure and
+caches other build-allowlisted modules on demand. The offline test verifies
+cached shell/chunk delivery and an already
 loaded emoji picker; it does not imply offline Author API or Profile API support.
 Fixture timings and build sizes are not deployed Auth0/API performance evidence.
 
 This module-loading procedure was documented with assistance from Codex[GPT-6].
+
+### Service-worker installation and demand caching
+
+Issue `#358` Workstream 5 derives the essential JavaScript closure from emitted
+entry, Home and OfflinePages chunks and their static imports. Missing build roots,
+dependencies or manifest entries fail the build. All existing non-JavaScript
+shell assets remain installed. Other exact same-origin build URLs are retained
+only after successful requests; API, third-party and query-string traffic remain
+excluded. Unit tests cover this selection, failed installation, immutable asset
+reuse, demand-cache failures and activation cleanup.
+
+Use two preserved `basic-e2e` production builds with identical synthetic public
+configuration (as above), one from unchanged main and one from the feature tree.
+Set `PRECACHE_BEFORE_DIRECTORY` and `PRECACHE_AFTER_DIRECTORY` to their absolute
+paths, then run from `apps/web`:
+
+```powershell
+npx playwright test --config=playwright/precache.config.ts
+```
+
+The fixture server uses the production static server's compression and records
+actual response-body and header bytes, including service-worker requests. Tests
+cover first-use offline `/explore`, both prepared challenge formats, answer
+reload persistence, failed sync and receipt recovery, on-demand module reuse,
+failed first installation, failed upgrade, explicit activation and IndexedDB
+preservation. Outputs use Playwright's isolated `test-results/precache` path,
+never `.impeccable/`. This separate configuration is not included in normal CI.
+
+`PRECACHE_MEASURE=1` enables three fresh installations per build and viewport.
+Mobile uses 390 × 844, DPR 3 and fourfold CPU throttling; desktop uses 1440 × 1000,
+DPR 2 and normal CPU. Both use loopback networking. Timings indicate visible Home,
+worker control after successful installation and a warm saved-event navigation.
+Report compressed response bodies separately from raw build-manifest bytes and
+full allowlist counts separately from actually installed entries. These are local
+fixture measurements, not production or real mobile-network results.
+
+The two existing `offline.spec.ts` cases have baseline failures at the obsolete
+`Saved on this device. Waiting for server validation.` assertion. This workstream
+does not modify those tests or claim the complete offline suite is green. The
+new tests independently verify persisted answers, retry and confirmed receipts.
+
+This cache-policy verification procedure was documented with Codex[GPT-6]
+assistance.
 
 ## Evidence and review rule
 
