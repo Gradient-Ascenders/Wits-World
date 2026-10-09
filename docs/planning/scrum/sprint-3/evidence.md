@@ -12,6 +12,12 @@ These are dated repository records, not a current release audit. Read the
 for the collected findings and retest limits. Implementation, automated results,
 and deployed acceptance remain separate.
 
+The [10 October feedback implementation review](feedback.md#prioritised-findings)
+adds focused survey crops and pinned code/test evidence. All eleven supplied
+screenshots and their visible written comments are retained in one
+[Full survey evidence](feedback.md#full-survey-evidence) section. This later
+review does not change the 28 September feature and release snapshots below.
+
 ## Features
 
 **Snapshot:** 28 September 2026, main `c0fd42b`.
@@ -32,7 +38,7 @@ execution evidence separately.
 | Brief requirement                                                                | Implementation and reference                                                                                                                                                                                                                                                                                                         | Merge-history evidence                                                                                                                                                                                                                                                                         | Acceptance still to record                                                                                   |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | Two players in one live authoritative match                                      | Implemented live gateway, shared engine, persisted versions, and player interface; [realtime contract](../../../architecture/live-pvp-api-contract.md), [storage](../../../database/live-pvp-persistence.md)                                                                                                                         | [#281](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/281), [#283](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/283), [#285](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/285), [#318](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/318) | Two deployed clients, rejected stale/duplicate actions, correct result and history                           |
-| Timed turns and return after dropout                                             | Implemented persisted deadlines, reconnect generations and resume flow; [deadline/reconnect contract](../../../architecture/live-pvp-api-contract.md#deadlines-and-reconnect)                                                                                                                                                        | #285 / #318                                                                                                                                                                                                                                                                                    | Deliberate network loss, refresh, completed/expired match handling; investigate UT-S3-02                     |
+| Timed turns and return after dropout                                             | Implemented persisted deadlines, reconnect generations and resume flow; [deadline/reconnect contract](../../../architecture/live-pvp-api-contract.md#deadlines-and-reconnect)                                                                                                                                                        | #285 / #318                                                                                                                                                                                                                                                                                    | Deliberate network loss, refresh, completed/expired match handling; investigate reported recovery failures   |
 | Spectators watch a match in progress                                             | Implemented spectator tickets and safe realtime projections; [live contract](../../../architecture/live-pvp-api-contract.md)                                                                                                                                                                                                         | #285 / #318                                                                                                                                                                                                                                                                                    | Spectator sees committed public state, cannot mutate or access participant-private data                      |
 | Longitudinal trust from movement, conflicting submissions and repeated opponents | Implemented bounded evidence, versioned scoring, cases and proportionate restrictions; [trust policy](../../../requirements/longitudinal-trust-policy.md), [storage](../../../database/trust-persistence.md)                                                                                                                         | [#282](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/282), [#288](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/288), [#293](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/293)                                                                         | Synthetic fixtures showing evidence decay, band thresholds, legitimate retries, and proportionate scope      |
 | Suspect players surfaced for human judgment                                      | Implemented review/audit API and console with versioned decisions; [trust reference](../../../database/trust-persistence.md)                                                                                                                                                                                                         | [#320](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/320), [#326](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/326)                                                                                                                                                 | Authorized independent review, appeal/evidence flow, stale-decision rejection and privacy checks             |
@@ -68,9 +74,10 @@ deployed edge case is bug-free or that participant validation is complete.
 - **Upstash-backed quotas:** The developer API currently applies process-local
   per-key limits. Shared Upstash enforcement is proposed, not a current
   dependency or a completed external integration.
-- **Feedback fixes:** `UT-S3-01` through `UT-S3-06` are recommended findings in
-  the [results report](feedback.md), not
-  automatically accepted, implemented or retested work.
+- **Feedback fixes:** The six plain-language findings are recommendations in
+  the [results report](feedback.md), not automatically accepted or retested work.
+  The later implementation review identifies current code/test coverage and
+  remaining gaps separately.
 
 ## Verification
 
@@ -100,9 +107,11 @@ rows have identical answers. The export does not prove unique participants,
 consent, session dates, devices, browsers, or the tested release.
 
 Only two responses cover reconnect and one covers Author review. Treat these as
-small-sample signals, not population failure rates. The report links findings to
-repository context, but it does not prove that a later change fixed the issue.
-A fix needs a linked change and a participant retest.
+small-sample signals, not population failure rates. The
+[later implementation review](feedback.md#local-implementation-verification)
+links findings to current source and 199 passing focused tests across 13 files.
+It does not establish reproduction or participant acceptance of the original
+problems. Recovery and comprehension still need deployed, unaided retests.
 
 ### Focused PR #329 review
 
@@ -179,3 +188,7 @@ Sprint report links updated with assistance from Codex[GPT-6].
 Public evidence consolidated with assistance from Codex[GPT-6]. Historical
 results, source revisions, original attributions, and acceptance limits are
 preserved; no checks were rerun for this consolidation.
+
+The later survey screenshot and implementation-review links were added with
+assistance from Codex[GPT-6]. The historical snapshots remain separate from
+the 10 October focused implementation checks and unresolved participant retests.

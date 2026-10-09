@@ -12,6 +12,34 @@ These are dated repository records, not a current release audit. Read the
 for the collected findings and retest limits. Implementation, automated results,
 and deployed acceptance remain separate.
 
+### Updated questionnaire charts
+
+The original Google Forms questionnaire now shows **12 responses per question**
+in the [supplied chart snapshot](feedback.md#google-forms-chart-snapshot).
+The earlier CSV contained ten responses and underpins the original five issue
+decisions. The updated chart counts are presented alongside those findings;
+the charts do not show the additional response dates or tested build and do not
+establish participant retests. The dated release evidence below is unchanged.
+
+The [written questionnaire excerpts](feedback.md#written-feedback-screenshots)
+support the battle, deck, event, quiz, and first-time guidance findings, with
+unchanged screenshots and verbatim transcripts. Six show their question totals;
+the two battle crops do not. Question totals and visible comments are kept
+separate, without treating them as additional participants or retests.
+
+The main feedback review now uses one focused comment crop per finding. All
+original charts and written transcripts remain in its single
+[Full survey evidence](feedback.md#full-survey-evidence) section.
+
+### Implementation follow-up — 9 October
+
+The [finding-by-finding implementation review](feedback.md#prioritised-findings)
+now links merged changes, pinned source, and **165 passing local tests** at
+application revision `d0d716b`. It includes later battle, deck, and Explore
+improvements; it does not backdate them into Sprint 2. The 14 September
+matrix below remains historical, including the implementation gaps recorded then.
+Participant retests and deployed performance remain unverified by this update.
+
 ## Features
 
 **Snapshot:** 14 September 2026, against main revision `9a2f941`.
@@ -158,8 +186,9 @@ journey.
   measurements, focused test counts, browser scenarios, fixes, reruns and
   limitations. Keep each result attached to its recorded change; do not add
   counts across different revisions or describe them as tonight's full suite.
-- [User-feedback results](feedback.md) records ten formal
-  questionnaire responses and five accepted findings. #240/#241 have PR #245
+- [User-feedback results](feedback.md) preserves the original ten-response CSV
+  findings and adds the updated twelve-response Google Forms charts.
+  Five findings were accepted. #240/#241 have PR #245
   implementation evidence; #242 has partial scope evidence. #243/#244 lacked
   linked post-feedback change/retest evidence in the report. All require
   participant follow-up; closure alone does not fill that gap.
@@ -257,7 +286,7 @@ This is an evidence guide, not a predicted grade or claim that every band is met
 | Automated testing              | 10%    | [Dated results](#verification), [testing strategy](../../../testing/testing-strategy.md)                                                                                                                                                                                                                       | UI/API coverage and specific results; outstanding nightly and manual gates remain visible                                  |
 | Stakeholder reviews            | 10%    | [Meeting 2 — Database & hosting](../../stakeholder-interactions/2026-09-04-database-usage-review.md), [Meeting 3 — Trails & card artwork](../../stakeholder-interactions/2026-09-08-trails-and-card-art-review.md), [Meeting 4 — Frontend UI](../../stakeholder-interactions/2026-09-11-frontend-ui-review.md) | Records distinguish feedback, evaluation, changes and missing follow-up                                                    |
 | API                            | 15%    | [API reference/OpenAPI](../../../api-reference.md), [external integrations](../../../architecture/external-integrations.md)                                                                                                                                                                                    | Public API docs and implemented integrations; HTTP reachability is not an authenticated end-to-end pass                    |
-| User feedback                  | 10%    | [testing strategy](../../../testing/testing-strategy.md#manual-and-field-validation), [actual results and issue/change trail](feedback.md)                                                                                                                                                                     | Ten responses, five accepted findings; incomplete change/retest evidence is identified                                     |
+| User feedback                  | 10%    | [testing strategy](../../../testing/testing-strategy.md#manual-and-field-validation), [actual results and issue/change trail](feedback.md)                                                                                                                                                                     | Original CSV: 10 responses; updated charts: 12; five accepted findings; retests incomplete                                 |
 | Project methodology            | 10%    | [Project/Git methodology](../../project-and-git-methodology.md)                                                                                                                                                                                                                                                | Show actual issues/PRs and recorded meetings; process documentation alone is insufficient                                  |
 | Bug tracker                    | 5%     | [Work/bug tracking](../../work-tracking-and-issue-management.md), [Gitea issues](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues)                                                                                                                                                                  | Tracker is authoritative; old planning checkboxes are not live status                                                      |
 | Database documentation         | 5%     | [Schema and relationship guide](../../../database/overview.md), [deployment](../../../database/neon-postgis-setup.md), [migrations](../../../database/database-release-procedure.md), [database technology](../../../architecture/technology-stack.md#postgresql-postgis-and-pg)                               | Distinguish schema reference from proof of production migration/recovery                                                   |
@@ -288,3 +317,19 @@ Sprint report links updated with assistance from Codex[GPT-6].
 Public evidence consolidated with assistance from Codex[GPT-6]. Historical
 results, source revisions, original attributions, and acceptance limits are
 preserved; no checks were rerun for this consolidation.
+
+The twelve-response Google Forms chart snapshot was linked with assistance
+from Codex[GPT-6], preserving the original dated release results and issue decisions.
+
+The 9 October implementation follow-up was linked with assistance from
+Codex[GPT-6]. Its focused local results are separate from the historical
+release audit and do not establish deployment or participant acceptance.
+
+Written feedback excerpts linked with assistance from Codex[GPT-6], without
+changing the historical response counts or acceptance record.
+
+Additional written questions and plain-language finding links incorporated with
+assistance from Codex[GPT-6], preserving cropped-response and retest limitations.
+
+Focused-comment layout and full-source links added with assistance from
+Codex[GPT-6]; original source images and response counts remain unchanged.

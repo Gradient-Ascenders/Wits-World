@@ -1,0 +1,275 @@
+{
+  "responseCount": 12,
+  "originalCsvResponseCount": 10,
+  "collectionDateRange": null,
+  "images": [
+    {
+      "file": "exploration-events.png",
+      "width": 777,
+      "height": 1075,
+      "sha256": "049b65f6ad3cec1695430ea8b0a17c8f1cd5a05648a710f895e720aa7552c1d6"
+    },
+    {
+      "file": "quiz-rewards.png",
+      "width": 778,
+      "height": 1069,
+      "sha256": "5fe4cf63c871c104acc7aabf915fde2bbaf373a700da91aa4d84b8c8de896ea8"
+    },
+    {
+      "file": "cards-decks.png",
+      "width": 777,
+      "height": 1055,
+      "sha256": "3a1be95f7e5641303f260a72070f957ac70bf79ef90615c6aed4233b7fb40d48"
+    },
+    {
+      "file": "cpu-battle.png",
+      "width": 776,
+      "height": 1074,
+      "sha256": "201c4d155e714f864a44c8c9eb11c55e33dd2adaecf846a6f42ee90dfe9d342a"
+    },
+    {
+      "file": "battle-effects-results.png",
+      "width": 779,
+      "height": 684,
+      "sha256": "3502e46811bdc07717f7da633819e3723c3ac5747f8759111acc20a6ac1196f8"
+    },
+    {
+      "file": "navigation-readability-screen-size.png",
+      "width": 780,
+      "height": 1116,
+      "sha256": "35ded9abfcbdcc5b0a3f6028836a27cbb176c1bdc043df2b0ab85f4526bdd6d4"
+    },
+    {
+      "file": "consistency-satisfaction.png",
+      "width": 775,
+      "height": 736,
+      "sha256": "9db7da8bafba57bad6447af115adfb3871b53b51ba087857d2ee0f194941cc3e"
+    },
+    {
+      "file": "reported-bugs.png",
+      "width": 772,
+      "height": 321,
+      "sha256": "49a8fed40756652bbe82c5d9676a7b578175a6bad76593b6d8282c1231336de8"
+    },
+    {
+      "file": "would-use-again.png",
+      "width": 798,
+      "height": 330,
+      "sha256": "5530403067e92a6bee0ecbacc7a78366cc909cebc74173d17133fd8f06901811"
+    }
+  ],
+  "writtenFeedback": {
+    "collectionDateRange": null,
+    "uniqueParticipantCount": null,
+    "images": [
+      {
+        "file": "written-battle-feedback-1.png",
+        "width": 693,
+        "height": 377,
+        "sha256": "c3054b89582f4d48316bbb0b38f1317acc2a4aaa4c5056a01e3dfbd4799d303c",
+        "comments": [
+          "Make the battle faster.",
+          "Optimize the slowness and make it clearer when it is your turn to play.",
+          "A short battle log or clearer effect messages would make it easier to understand why health and status values changed after each move.",
+          "Showing move costs and active effects closer to the action buttons would make battles easier to follow without looking around the screen.",
+          "It is very slow when you vs the CPU, moves take forever to complete",
+          "The battle flow was clearer than I expected. The only thing I would add is a quick note explaining special card effects when they first appear.",
+          "Faster battles, better indication on what is actually happening, and better animations"
+        ],
+        "questionText": null,
+        "questionResponseCount": null
+      },
+      {
+        "file": "written-battle-feedback-2.png",
+        "width": 816,
+        "height": 288,
+        "sha256": "36be3738097b633d9f29d2d22a009e96c9bb10a0788e6029650de80e6c28ae5d",
+        "comments": [
+          "A small summary of active effects and recent moves would make the battle easier to follow without changing the core gameplay.",
+          "Way too slow.",
+          "Make the battle animation a bit more visual to illustrate moves being made.",
+          "The battle screen needs clearer feedback after each action. Effects, buffs, debuffs, and why a move worked or failed should be explained more directly.",
+          "Fix slowness"
+        ],
+        "questionText": null,
+        "questionResponseCount": null
+      },
+      {
+        "file": "written-exploration-events.png",
+        "width": 749,
+        "height": 507,
+        "sha256": "d0e450a8747330921bc00763c8820ec4692b5807af62564cc35cb0b7c011b796",
+        "questionText": "What, if anything, was confusing about the exploration map or events?",
+        "questionResponseCount": 9,
+        "comments": [
+          "Nothing",
+          "The map was mostly easy to follow, but the difference between upcoming and too-far events could be explained a bit more clearly.",
+          "The map itself was clear. The event list was helpful, but I would make the sorting or filtering options more obvious.",
+          "When selecting the event, it does specify the amount of questions or the type of questions the event gives.",
+          "The map was fairly clear, but I did not notice the event list at first. Making that option more visible would help.",
+          "3D Map can show the event locations inaccurately",
+          "The map was understandable after looking around for a bit. The event states were mostly clear, but a short legend or label explanation would help."
+        ]
+      },
+      {
+        "file": "written-quiz-rewards.png",
+        "width": 836,
+        "height": 548,
+        "sha256": "c611ad0468981bf5dabc9b5783a1ac0c353f48ca652e223459bb9e7158e4052a",
+        "questionText": "What would improve the quiz or reward experience?",
+        "questionResponseCount": 8,
+        "comments": [
+          "Nothing",
+          "It would help to show a short reward summary after each quiz, including what was earned and how it can be used.",
+          "The quiz worked well overall. A preview of possible reward types before starting would make it clearer what users are working toward.",
+          "I would add a short example before the quiz starts. I was not fully sure how the quiz flow and rewards were supposed to connect.",
+          "More types of quizzes or on different subjects",
+          "The quiz was generally understandable, but it would help to explain the reward before and after the quiz so the outcome feels clearer.",
+          "The quiz needs clearer instructions before starting, especially around the timer and what happens after finishing. The reward message should also be more noticeable."
+        ]
+      },
+      {
+        "file": "written-cards-decks.png",
+        "width": 798,
+        "height": 534,
+        "sha256": "c57fd74d8040980ec2810bea5d912ce0b66f0d749e241a5a4b724c840f893e5d",
+        "questionText": "What would improve the card collection or deck-building experience?",
+        "questionResponseCount": 8,
+        "comments": [
+          "A small checklist showing the deck requirements while building would make it easier to see what is still missing.",
+          "The collection would be easier to scan if owned cards stood out more clearly from locked or unavailable cards.",
+          "Make it visually better",
+          "The collection view was easier to understand than the deck-building flow. I would make the deck option more inviting or explain when users should use it.",
+          "Better visuals",
+          "The card and deck sections were understandable overall, but a checklist of deck requirements would make the process easier to follow.",
+          "Card ownership and deck rules should be more visible. When a deck cannot be saved, the app should list the exact missing requirement instead of leaving the user to guess."
+        ]
+      },
+      {
+        "file": "written-unexpected-behaviour.png",
+        "width": 791,
+        "height": 514,
+        "sha256": "568c5de8bb56d84fb90c29c8b1d8690322495a7433ebee66d6fe467b5b65907c",
+        "questionText": "Did anything behave differently from what you expected?",
+        "questionResponseCount": 11,
+        "comments": [
+          "No",
+          "Nothing major. Some of the status labels and battle effect changes took a moment to understand at first.",
+          "No major surprises. I expected a bit more guidance the first time opening the card and battle sections.",
+          "I expected the quiz and deck sections to have more guidance before starting. The app worked, but some text and prompts were easy to miss.",
+          "Battles",
+          "Nothing behaved very differently from expected, but some sections needed more context before they felt intuitive.",
+          "No",
+          "I expected more guidance when moving between events, cards, decks, and battles. Some screens assumed I already understood the system."
+        ]
+      },
+      {
+        "file": "written-bug-reports.png",
+        "width": 783,
+        "height": 473,
+        "sha256": "322aa26aea6f7704c35a4bf90c96936452e53d269fa79bd51340104ecd9dcfa0",
+        "questionText": "If you encountered a bug, describe what you did and what happened.",
+        "questionResponseCount": 7,
+        "comments": [
+          "I was able to make a move in the CPU battle even though it was not my turn",
+          "No bug encountered during testing.",
+          "I did not run into a clear bug, but a few transitions or explanations felt like they could be smoother for a first-time user.",
+          "No bug encountered.",
+          "Battle took very long to finish. Couldn't understand how some moves were made",
+          "No clear bug encountered during testing.",
+          "I am not sure if it was a bug, but some feedback messages were easy to miss and made it unclear whether an action had worked."
+        ]
+      },
+      {
+        "file": "written-top-improvement.png",
+        "width": 779,
+        "height": 529,
+        "sha256": "63288ac0eb25edce851edf052a1dd83c7b8170dcc58f006ad19128a55781d6a7",
+        "questionText": "If we could improve only one thing, what should it be?",
+        "questionResponseCount": 12,
+        "comments": [
+          "App speed",
+          "CPU Battle",
+          "Improve the feedback messages for event statuses, rewards, and battle effects so users can understand changes more quickly.",
+          "Add a simple first-time guide or tooltips for the main sections so users know what to do next.",
+          "Have the site and battles run faster",
+          "Make the instructions and important labels easier to notice, especially for quizzes and deck-building.",
+          "Battles",
+          "Add clearer explanations for first-time users, especially around event states, deck requirements, and battle effects."
+        ]
+      }
+    ]
+  },
+  "focusedExcerpts": [
+    {
+      "file": "focused-turn-ownership.svg",
+      "source": "written-bug-reports.png",
+      "commentIndex": 0,
+      "finding": "Prevent actions during the CPU's turn",
+      "bounds": {
+        "x": 25,
+        "y": 24,
+        "width": 720,
+        "height": 115
+      },
+      "quote": "I was able to make a move in the CPU battle even though it was not my turn",
+      "questionIncluded": true
+    },
+    {
+      "file": "focused-battle-speed.svg",
+      "source": "written-battle-feedback-1.png",
+      "commentIndex": 4,
+      "finding": "Make battles faster",
+      "bounds": {
+        "x": 10,
+        "y": 223,
+        "width": 683,
+        "height": 40
+      },
+      "quote": "It is very slow when you vs the CPU, moves take forever to complete",
+      "questionIncluded": false
+    },
+    {
+      "file": "focused-battle-explanations.svg",
+      "source": "written-battle-feedback-2.png",
+      "commentIndex": 0,
+      "finding": "Explain turns, moves, and effects",
+      "bounds": {
+        "x": 24,
+        "y": 16,
+        "width": 704,
+        "height": 60
+      },
+      "quote": "A small summary of active effects and recent moves would make the battle easier to follow without changing the core gameplay.",
+      "questionIncluded": false
+    },
+    {
+      "file": "focused-deck-rules.svg",
+      "source": "written-cards-decks.png",
+      "commentIndex": 0,
+      "finding": "Show deck rules and explain invalid decks",
+      "bounds": {
+        "x": 38,
+        "y": 26,
+        "width": 704,
+        "height": 128
+      },
+      "quote": "A small checklist showing the deck requirements while building would make it easier to see what is still missing.",
+      "questionIncluded": true
+    },
+    {
+      "file": "focused-quiz-guidance.svg",
+      "source": "written-quiz-rewards.png",
+      "commentIndex": 6,
+      "finding": "Make events, quizzes, and rewards easier to follow",
+      "bounds": {
+        "x": 41,
+        "y": 460,
+        "width": 704,
+        "height": 65
+      },
+      "quote": "The quiz needs clearer instructions before starting, especially around the timer and what happens after finishing. The reward message should also be more noticeable.",
+      "questionIncluded": false
+    }
+  ]
+}

@@ -409,11 +409,15 @@ Ten questionnaire responses were collected on 13 September. The sanitised
 [Sprint 2 user-feedback results](feedback.md)
 identified five prioritised findings:
 
-- **`UT-S2-01` possible out-of-turn CPU action:** #240 investigated; PR #245 retained server actor/version checks and disabled invalid client controls
-- **`UT-S2-02` CPU battle latency and pacing:** #241 addressed in PR #245 with fewer identity writes and bounded match-history queries
-- **`UT-S2-03` battle turn/effect clarity:** #242 partially addressed in PR #245 with explicit turn and synchronisation states
-- **`UT-S2-04` deck requirements unclear:** #243 recorded and closed; linked implementation/retest evidence remained incomplete in the results report
-- **`UT-S2-05` event, quiz, and reward guidance weak:** #244 recorded and closed; linked implementation/retest evidence remained incomplete in the results report
+The summaries below preserve the Sprint 2 record. The
+[updated feedback review](feedback.md#prioritised-findings) adds written evidence
+and separately dated implementation follow-up.
+
+- **possible out-of-turn CPU action:** #240 investigated; PR #245 retained server actor/version checks and disabled invalid client controls
+- **CPU battle latency and pacing:** #241 addressed in PR #245 with fewer identity writes and bounded match-history queries
+- **battle turn/effect clarity:** #242 partially addressed in PR #245 with explicit turn and synchronisation states
+- **deck requirements unclear:** #243 recorded and closed; linked implementation/retest evidence remained incomplete in the results report
+- **event, quiz, and reward guidance weak:** #244 recorded and closed; linked implementation/retest evidence remained incomplete in the results report
 
 #### Verification status {/* #daily-scrum-04-verification-status */}
 
@@ -455,7 +459,7 @@ Review the goal, dependencies, release evidence, and follow-up scope across the 
 - merged pull-request review findings and migration compatibility failures;
 - Neon compute/storage constraints and deployment reliability;
 - stakeholder reviews on 4, 8, and 11 September; and
-- ten user-testing responses and findings `UT-S2-01` through `UT-S2-05`.
+- ten user-testing responses and five findings linked to issues #240–#244.
 
 ### Completed or Mostly Completed Items {/* #backlog-refinement-completed-or-mostly-completed-items */}
 
@@ -524,11 +528,11 @@ Stakeholder feedback was evaluated against the implemented architecture:
 
 Formal user feedback then produced five traceable issues:
 
-- **`UT-S2-01` possible out-of-turn action** — **Issue:** [#240](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/240); **Priority and disposition:** High; investigated and addressed through server-authority regressions and client control state in PR #245
-- **`UT-S2-02` CPU action latency** — **Issue:** [#241](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/241); **Priority and disposition:** High; query and identity hot paths improved in PR #245
-- **`UT-S2-03` unclear battle state/effects** — **Issue:** [#242](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/242); **Priority and disposition:** High; turn/request clarity improved, full effect comprehension still requires retest
-- **`UT-S2-04` unclear deck requirements** — **Issue:** [#243](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/243); **Priority and disposition:** Medium; issue closed, but linked implementation/retest evidence remained incomplete
-- **`UT-S2-05` weak first-time event/quiz/reward guidance** — **Issue:** [#244](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/244); **Priority and disposition:** Medium; issue closed, but linked implementation/retest evidence remained incomplete
+- **possible out-of-turn action** — **Issue:** [#240](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/240); **Priority and disposition:** High; investigated and addressed through server-authority regressions and client control state in PR #245
+- **CPU action latency** — **Issue:** [#241](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/241); **Priority and disposition:** High; query and identity hot paths improved in PR #245
+- **unclear battle state/effects** — **Issue:** [#242](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/242); **Priority and disposition:** High; turn/request clarity improved, full effect comprehension still requires retest
+- **unclear deck requirements** — **Issue:** [#243](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/243); **Priority and disposition:** Medium; issue closed, but linked implementation/retest evidence remained incomplete
+- **weak first-time event/quiz/reward guidance** — **Issue:** [#244](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/244); **Priority and disposition:** Medium; issue closed, but linked implementation/retest evidence remained incomplete
 
 ### Sources {/* #backlog-refinement-record-details-and-sources */}
 
@@ -574,7 +578,7 @@ the validation gate rather than being inferred from merge status.
    accessibility, field, and release evidence is reconciled.
 3. Keep #186 open until the planned Intermediate systems are demonstrated and
    validated against a named revision/environment.
-4. Require focused retests for `UT-S2-01` through `UT-S2-05`, with explicit
+4. Require focused retests for all five user-feedback findings, with explicit
    implementation evidence for #243 and #244.
 5. Correct missing milestone/project metadata for carry-over work rather than
    relying on historical Markdown ownership.
@@ -767,3 +771,7 @@ Report consolidation and simplification assisted by Codex[GPT-6]. Repeated
 agendas, workflow instructions, and source notices were removed; historical
 dates, photo provenance, and evidence limits are unchanged. No meeting,
 attendance, quotation, acceptance, or test result is inferred from this edit.
+
+Feedback labels simplified and linked to the updated written-feedback review
+with assistance from Codex[GPT-6]. Historical sprint decisions and dates remain
+unchanged.
