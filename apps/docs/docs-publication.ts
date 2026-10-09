@@ -1,5 +1,10 @@
-// Sprint source records are kept in Git; report/evidence/feedback are public.
+// Detailed source records stay in Git; concise sprint summaries are public.
 export const repositoryOnlyDocs = [
+  'testing/basic-tier-release-validation.md',
+  'testing/deployed-auth-cors-privacy-review.md',
+  'testing/player-account-lifecycle-validation.md',
+  'testing/api-battle-responsiveness.md',
+  'requirements/location-eligibility-field-test.md',
   'testing/sprint-1-evidence-index.md',
   'testing/sprint-1-known-limitations.md',
   'sprint-2-overview.md',

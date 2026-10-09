@@ -161,8 +161,8 @@ It covers the pinned Node.js and npm versions, configuration, database setup,
 and commands for running each application. Production setup is documented in
 the [deployment guide](deployment/azure-deployment-setup.md).
 
-The [Basic release acceptance checklist](testing/basic-tier-release-validation.md)
-owns the release requirements and remaining evidence gates. The
+The [testing strategy](testing/testing-strategy.md) defines the verification
+boundaries; dated outcomes and remaining gaps belong in the sprint evidence pages. The
 [deterministic Basic journey](testing/automated-verification.md#basic-journey) exercises
 the core flow through a browser, API, and test database, with Auth0 and Mapbox
 controlled at their external boundaries.
@@ -182,4 +182,4 @@ Project workflow and attribution are documented in the
 
 This page was generated, edited, and reviewed with assistance from Codex[GPT-5],
 Codex[gpt-5.6-sol], ChatGPT-Web[GPT-5.6 Sol],
-Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-6].
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-6], and Codex[GPT-6].

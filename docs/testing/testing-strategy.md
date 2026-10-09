@@ -92,8 +92,10 @@ field GPS accuracy and broader provider availability require their own checks. P
 services; hosted-service reliability needs separate verification.
 
 Manual observations should identify the tested revision, device, scenario, and
-outcome. The [location field-test protocol](../requirements/location-eligibility-field-test.md)
-describes the campus procedure; completed observations belong in dated records.
+outcome. The [Sprint 1 field evidence](../planning/scrum/sprint-1/evidence.md#on-campus-field-evidence)
+records the missing campus observations and links the historical protocol.
+Use current eligibility rules for new checks; completed observations belong in
+dated records.
 
 For participant sessions, explain the purpose, voluntary participation, planned
 tasks, retention, and right to skip or stop. Obtain separate consent for recording,

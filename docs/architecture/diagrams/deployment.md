@@ -80,7 +80,7 @@ See [Continuous integration](../../testing/continuous-integration.md),
 [Azure deployment](../../deployment/azure-deployment-setup.md), and
 [database releases](../../database/database-release-procedure.md) for
 commands and operating procedures. Executed checks are recorded in the
-[validation records](../../testing/basic-tier-release-validation.md).
+[sprint evidence](../../planning/scrum/sprint-2/evidence.md#verification).
 
 **AI declaration:** Prepared and updated with assistance from
 ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex-CLI[GPT-5],

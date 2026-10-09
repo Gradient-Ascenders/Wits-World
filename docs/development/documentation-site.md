@@ -9,14 +9,15 @@ game services and publishes Markdown and MDX pages under `/docs/`.
 
 ## Source files
 
-| Location                         | Contents                                         |
-| -------------------------------- | ------------------------------------------------ |
-| `docs/`                          | Page content.                                    |
-| `apps/docs/sidebars.ts`          | Sidebar labels, ordering, and page links.        |
-| `apps/docs/docusaurus.config.ts` | Site configuration, search, and Mermaid support. |
-| `apps/docs/docs-publication.ts`  | Documents excluded from the public build.        |
-| `apps/docs/src/`                 | Homepage components and styling.                 |
-| `apps/docs/static/`              | Images and other static assets.                  |
+| Location                         | Contents                                            |
+| -------------------------------- | --------------------------------------------------- |
+| `docs/`                          | Page content.                                       |
+| `apps/docs/sidebars.ts`          | Sidebar labels, ordering, and page links.           |
+| `apps/docs/docusaurus.config.ts` | Site configuration, search, and Mermaid support.    |
+| `apps/docs/docs-publication.ts`  | Documents excluded from the public build.           |
+| `apps/docs/src/`                 | Homepage components and styling.                    |
+| `apps/docs/static/`              | Images and other static assets.                     |
+| `apps/docs/static/_redirects`    | Cloudflare Pages redirects for retired public URLs. |
 
 Keep implementation details in the relevant developer or API reference and
 link to them from shorter user guides. Repository-only notes should be excluded
@@ -53,6 +54,11 @@ category's linked overview.
 Use relative Markdown links between documents. Preserve existing file paths
 and public URLs when changing sidebar labels or ordering. A front-matter
 `slug` changes the public route, not the document ID.
+
+When consolidating a public page into an existing summary, retain its source in
+Git, exclude it from publication, update incoming links, and redirect the old
+route through `apps/docs/static/_redirects`. These hosting redirects apply after
+deployment; they do not add pages to navigation or search.
 
 For diagrams, edit the Mermaid source in the page. Include `accTitle`,
 `accDescr`, and a nearby explanation. Use the existing `diagram-scroll` region

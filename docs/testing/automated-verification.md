@@ -110,7 +110,7 @@ production data. Authentication is controlled by the harness, and external
 providers are excluded.
 
 The canonical scenario has 21 sequential `test.step` blocks, described in the
-[acceptance checklist](basic-tier-release-validation.md#the-21-step-journey).
+[acceptance checklist](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/docs/testing/basic-tier-release-validation.md#the-21-step-journey).
 It uses a fixed clock, controlled reward and CPU selection, and a unique
 player/Author identity. The real HTTP, authorization, service, and database
 boundaries remain exercised. The local token verifier and Mapbox module are

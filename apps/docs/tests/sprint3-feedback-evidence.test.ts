@@ -146,6 +146,13 @@ describe('Sprint 3 survey evidence', () => {
     expect(feedback.match(/<details>/g)).toHaveLength(1);
     expect(main.match(/<figure/g)).toHaveLength(6);
     expect(full.match(/<figure/g)).toHaveLength(11);
+    expect(main).not.toContain('## Collection method and limitations');
+    expect(full).toContain('### Collection method and limitations');
+    expect(main).toContain('[Run details](#verification-details)');
+    expect(full).toContain('### Verification details');
+    expect(full).toContain('### Discoverability');
+    expect(full).toContain('### Feature understanding');
+    expect(full).toContain('tests/live-session-boundaries.test.tsx');
     const display = [
       ...source.images,
       ...source.focusedExcerpts.map(({ file, bounds }) => ({

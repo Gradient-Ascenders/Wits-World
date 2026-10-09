@@ -9,90 +9,31 @@ toc_max_heading_level: 2
 
 ## Evidence status
 
-The supplied Google Forms charts now show **12 responses per question**. The
-team confirmed they are from the original Sprint 2 questionnaire. The earlier
-CSV snapshot contained ten responses; its dated findings and decisions are
-preserved below, with chart-derived counts updated where the same question is
-visible. The raw export remains outside the public repository.
-
-The charts do not show when the additional responses were collected, their
-tested build, or written comments. They are an updated survey snapshot, not
-evidence of two participant retests or a measured improvement after a fix.
-
-Separately supplied [written feedback screenshots](#written-feedback-screenshots)
-now support the battle, deck, event, quiz, and first-time guidance findings.
-Six show their question text and response totals; the two earlier battle
-excerpts do not. No names, contact details, response identifiers, dates, or
-tested builds are visible.
-
-This report covers the five material findings accepted into Gitea issues
-[#240](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/240) through
-[#244](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/244). It does
-not turn self-reported answers into observed facts, claim that the sample is
-representative, or claim that a closed issue has been retested.
-
-## Collection method and limitations
-
-- Participants completed the same structured Google Forms questionnaire after
-  using the Wits World player experience.
-- Fixed-choice answers were counted directly. Repeated written concerns were
-  grouped only where they described the same product area in the original
-  ten-response CSV. Updated fixed-choice counts come from the supplied charts;
-  written findings are not extrapolated to the two additional responses.
-- The written screenshot excerpts support the feedback themes separately. Visible
-  comments are not counted as additional or uniquely identified participants.
-- Participant recruitment, demographic profile, device, browser, tested commit,
-  and facilitator observations were not captured in the supplied export.
-- The responses are therefore suitable for identifying usability themes, but
-  not for browser-specific diagnosis, performance benchmarking, or statistical
-  claims about the wider student population.
-- Follow-up testing must use the same affected tasks and record whether each
-  accepted finding improved, remained, or regressed.
+The original Sprint 2 questionnaire now shows **12 responses per question**.
+The earlier CSV snapshot contained ten responses and underpins the five accepted
+findings. The charts do not show when the additional responses were collected
+or which build they tested; they are not evidence of two participant retests.
 
 ## Google Forms chart snapshot
 
-Each chart shows twelve responses from the same questionnaire. The collection
-date/range and tested build are not shown. Numeric charts use ratings 1–5;
-their endpoint labels are not visible, so the counts are transcribed without
-assuming a named rating scale.
-
-| Area                | Main signal in the updated charts                                                | Related finding                                                                  |
-| ------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Events and rewards  | 7/12 found all event states clear; 4/12 found the event list useful.             | [Events, quizzes and rewards](#make-events-quizzes-and-rewards-easier-to-follow) |
-| Deck building       | Only 2/10 responses from deck builders found requirements clear.                 | [Deck rules](#show-deck-rules-and-explain-invalid-decks)                         |
-| Battle clarity      | Only 2/12 found turn ownership clear; none found effects fully clear.            | [Battle explanations](#explain-turns-moves-and-effects)                          |
-| Overall experience  | 7/12 rated satisfaction 3 and 5/12 rated it 4.                                   | Follow-up usability sessions                                                     |
-| Future use and bugs | 8/12 would probably or definitely use again; 1 reported a bug and 3 were unsure. | Investigate before claiming a defect or fix                                      |
-
-All nine original charts and their text captions are kept in the
-[Full survey evidence](#full-survey-evidence) section.
+Only 2/12 found turn ownership fully clear; none found effects fully clear.
+Among ten deck builders, only two found the requirements clear.
+Full counts, screenshots, and transcripts are in [Full survey evidence](#full-survey-evidence).
 
 ## Written feedback screenshots
 
-Each finding below includes one focused comment crop. These illustrate the
-reported problems; they are not additional responses or evidence of improvement.
-The [Full survey evidence](#full-survey-evidence) section retains every original
-screenshot and complete visible transcript, including positive and "no problem" responses.
+Each finding includes an unchanged comment crop. Comments illustrate concerns,
+not their frequency or proof of improvement.
 
 ## Prioritised findings
 
-The headings below use the requests in the written feedback. Each connects
-**feedback → implemented change → code and test evidence**. Existing issues
-#240–#244 retain the original decisions from the ten-response CSV; the supplied
-screenshots add supporting context, not new decisions or before-and-after results.
-
-**Implementation review: 9 October 2026.** Source and test links are pinned to
-[main revision `01a364f`](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6).
-Those linked files match the locally tested revision `d0d716b`.
-Later changes are dated separately: they show how the current product addresses
-the findings, not what had shipped during Sprint 2 or what caused each later change.
+**Implementation review: 9 October 2026.** Links use [main `01a364f`](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6);
+the linked files match tested revision `d0d716b`. Later changes are dated
+separately, not backdated into Sprint 2 or assumed to result from this survey.
 
 ### Prevent actions during the CPU's turn
 
-**Feedback:** A participant reported acting during the CPU's turn. Accepted as
-High priority in
-[#240](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/240).
-It is a reported possible defect, not an independently observed illegal move.
+**Feedback:** Reported acting during the CPU's turn; not an independently observed illegal move. [#240](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/240): High priority.
 
 <figure className="workflow-evidence">
   <a href="/img/feedback/sprint-2/focused-turn-ownership.svg" aria-label="Open full-size focused comment: Prevent actions during the CPU's turn">
@@ -111,24 +52,17 @@ It is a reported possible defect, not an independently observed illegal move.
   </figcaption>
 </figure>
 
-**Changed:** Actions require the server's current actor and legal-action list;
-controls lock during submission or uncertain recovery. The server rejects an
-out-of-turn action without saving a transition. This protects match integrity
-whether the original report described an illegal action or misleading UI state.
+**Changed:** The server rejects out-of-turn actions without saving a transition. Controls lock during submission and uncertain recovery.
 
-**Proof:** [Merged PR #245 — 13 September](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/efc399d2081d1cbe4d7ae4decab7811c989f0ffd).
-The [server regression](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/api/tests/cpu-match-service.test.ts#L34)
-asserts rejection, rollback, and no persisted transition. The
-[control regression](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/battle-controls.test.tsx#L7)
-checks actor, legal-action, pending, and recovery locks. Both passed in the local
-verification below.
+**Proof:** [PR #245 — 13 September](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/efc399d2081d1cbe4d7ae4decab7811c989f0ffd) ·
+[rejection/rollback test](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/api/tests/cpu-match-service.test.ts#L34) ·
+[actor/pending-state tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/battle-controls.test.tsx#L7).
+
+**Still needed:** Reproduce the original task on a named deployment.
 
 ### Make battles faster
 
-**Feedback:** Repeated requests asked for faster CPU battles and shorter waits.
-The original count remains 5/10; the later screenshots reinforce the theme
-without recalculating that frequency. Accepted as High priority in
-[#241](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/241).
+**Feedback:** Players asked for faster CPU battles. The original count remains 5/10. [#241](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/241): High priority.
 
 <figure className="workflow-evidence">
   <a href="/img/feedback/sprint-2/focused-battle-speed.svg" aria-label="Open full-size focused comment: Make battles faster">
@@ -147,29 +81,19 @@ without recalculating that frequency. Accepted as High priority in
   </figcaption>
 </figure>
 
-**Changed:** [PR #245](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/efc399d2081d1cbe4d7ae4decab7811c989f0ffd)
-removed repeated identity writes and batched history loading. Later,
-[PR #338 — 1 October](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/09570fe60790992477470984a834d7a75725af07)
-shortened CPU presentation delays; the
-[delay function](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/src/pages/CpuMatchPage.tsx#L968)
-records the implemented intervals.
+**Changed:** Batched history reads and fewer identity writes; later, shorter CPU presentation delays.
 
-**Proof:** The [history regression](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/api/tests/history-performance.test.ts#L8)
-passed with exactly three queries for three matches of twenty rounds each. The
-[identity regression](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/api/tests/player-identity.test.ts#L23)
-passed without starting a transaction for unchanged identity reads.
+**Proof:** [PR #245](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/efc399d2081d1cbe4d7ae4decab7811c989f0ffd) ·
+[PR #338 — 1 October](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/09570fe60790992477470984a834d7a75725af07) ·
+[delay function](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/src/pages/CpuMatchPage.tsx#L968) ·
+[three-query test](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/api/tests/history-performance.test.ts#L8) ·
+[unchanged-identity test](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/api/tests/player-identity.test.ts#L23).
 
-The [original investigation](../../../testing/api-battle-responsiveness.md)
-recorded local identity medians of 738 ms → 185 ms and history queries of
-83 → 3. Those measurements were not rerun here. Query-count tests and shorter
-animation intervals prove specific changes, not deployed click-to-result speed.
+**Still needed:** Measure deployed click-to-result speed and retest pacing.
 
 ### Explain turns, moves, and effects
 
-**Feedback:** Players requested clearer turns, short action summaries, nearby
-move costs/effects, and explanations of why a move worked or failed. Accepted
-as High priority in
-[#242](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/242).
+**Feedback:** Players wanted clearer turns, move costs, effects, and action results. [#242](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/242): High priority.
 
 <figure className="workflow-evidence">
   <a href="/img/feedback/sprint-2/focused-battle-explanations.svg" aria-label="Open full-size focused comment: Explain turns, moves, and effects">
@@ -188,26 +112,19 @@ as High priority in
   </figcaption>
 </figure>
 
-**Changed:** PR #245 added explicit turn and request-state messages. Later,
-[PR #318 — 26 September](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/f5f739a2e01c65100a332b129dcb0c74d503f813)
-introduced the shared battle presentation: move costs, server-projected affinity
-effectiveness, active modifier magnitudes/durations, and grouped action outcomes.
+**Changed:** Turn/request messages, server-projected effectiveness, active effect magnitudes/durations, and grouped action outcomes.
 
-**Proof:** [Effect descriptions](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/src/battle/effect-presentation.ts#L75)
-are implemented, not just requested. Passing
-[effect tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/effect-presentation.test.ts#L69)
-check finite/permanent durations and actual damage outcomes;
-[presentation tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/battle-presentation.test.tsx#L161)
-check that effectiveness comes from the server, not a client guess; and
-[log tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/battle-log-presentation.test.ts#L19)
-check that costs and effects stay grouped with the correct action and turn.
+**Proof:** [PR #318 — 26 September](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/f5f739a2e01c65100a332b129dcb0c74d503f813) ·
+[effect source](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/src/battle/effect-presentation.ts#L75) ·
+[duration/outcome tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/effect-presentation.test.ts#L69) ·
+[server-effectiveness tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/battle-presentation.test.tsx#L161) ·
+[grouped-action tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/battle-log-presentation.test.ts#L19).
+
+**Still needed:** Check players can explain turns, effects, and outcomes.
 
 ### Show deck rules and explain invalid decks
 
-**Feedback:** Players asked for a live requirements checklist and exact reasons
-when saving fails, plus clearer ownership and an explanation of when to use
-decks. The validation finding was accepted as Medium priority in
-[#243](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/243).
+**Feedback:** Players wanted a requirements checklist and exact invalid-deck reasons. [#243](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/243): Medium priority.
 
 <figure className="workflow-evidence">
   <a href="/img/feedback/sprint-2/focused-deck-rules.svg" aria-label="Open full-size focused comment: Show deck rules and explain invalid decks">
@@ -226,28 +143,17 @@ decks. The validation finding was accepted as Medium priority in
   </figcaption>
 </figure>
 
-**Changed:** The current editor shows live Creature/Power counts, rarity points,
-and missing-rule messages. Invalid drafts cannot be saved; separately owned
-copies are tracked, the selected deck is identified, and server rejections
-explain what to correct without discarding the draft. Later
-[PR #341 — 2 October](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/e740e0bdb356202598ebe420e0bd60d0f6d7ef5c)
-refined this editor and its tests.
+**Changed:** Live card/point counts, owned-copy limits, disabled invalid saves, and server rejection messages that preserve the draft.
 
-**Proof:** The [live checklist and server-error messages](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/src/pages/DecksPage.tsx#L1852)
-are present in source. Passing [deck tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/decks-page.test.tsx#L711)
-check a visible `14 / 10` point-cap failure, a disabled save action, and focused
-server feedback requiring three Creature and two Power cards. The same suite
-checks owned-copy limits and selecting a saved deck. This replaces the earlier
-"no linked change" assessment with verified current implementation, not a claim
-that every behaviour was first introduced by PR #341.
+**Proof:** [PR #341 — 2 October](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/e740e0bdb356202598ebe420e0bd60d0f6d7ef5c) ·
+[checklist source](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/src/pages/DecksPage.tsx#L1852) ·
+[validation/copy tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/decks-page.test.tsx#L711).
+
+**Still needed:** Retest invalid saves, ownership visibility, and when to use decks.
 
 ### Make events, quizzes, and rewards easier to follow
 
-**Feedback:** Requests covered clearer event states and discovery, instructions
-and reward context before and after quizzes, and first-time guidance across
-events, cards, decks, and battles. The original finding was accepted as Medium
-priority in
-[#244](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/244).
+**Feedback:** Players wanted clearer event states, quiz instructions, reward context, and first-time guidance. [#244](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/244): Medium priority.
 
 <figure className="workflow-evidence">
   <a href="/img/feedback/sprint-2/focused-quiz-guidance.svg" aria-label="Open full-size focused comment: Make events, quizzes, and rewards easier to follow">
@@ -266,87 +172,43 @@ priority in
   </figcaption>
 </figure>
 
-**Changed:** Later [PR #336 — 30 September](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/04fcfa4d8dac26b781ded1b3cefc22834aa40f4d)
-refined Explore navigation and status copy. The current journey has an Events
-control and map-independent list, textual in-range/out-of-range/not-open/ended
-states, a quiz countdown and saved-answer progress, and named earned cards with
-an "Added to collection" message and "View collection" link.
+**Changed:** Map-independent event discovery, text availability labels, quiz countdown/progress, and earned cards linked to Collection.
 
-**Proof:** Passing [Explore tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/exploration.test.tsx#L517)
-exercise the Events control and list without relying on the map. Passing
-[challenge tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/challenge-page.test.tsx#L326)
-check persisted scores, earned-card names, and answer review;
-[reward tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/challenge-rewards.test.tsx#L35)
-check the exact awarded copy and honest recovery when artwork fails. The
-[result source](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/src/components/challenge/ChallengeResult.tsx#L60)
-contains the collection link. These establish implemented guidance, not that a
-first-time player notices it or understands the timing before starting.
+**Proof:** [PR #336 — 30 September](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/04fcfa4d8dac26b781ded1b3cefc22834aa40f4d) ·
+[event-list tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/exploration.test.tsx#L517) ·
+[score/review tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/challenge-page.test.tsx#L326) ·
+[awarded-copy tests](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/tests/challenge-rewards.test.tsx#L35) ·
+[result source](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/apps/web/src/components/challenge/ChallengeResult.tsx#L60).
 
-**Remaining gap:** These links do not establish a complete first-time guide,
-pre-quiz example, reward preview, or explanation of how to use each reward.
-The current countdown and saved-card summary only cover part of those requests.
+**Remaining gap:** A complete first-time guide, pre-quiz example, reward preview, and explanation of reward use are not established by these changes.
 
 ## Traceability summary
 
-| Finding                    | Implementation evidence                                                                                         | Still needed                                                                  |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Turn ownership · #240      | Actor checks and action locks; regressions passed                                                               | Reproduce the original task on a deployment                                   |
-| Battle speed · #241        | Batched reads and shorter presentation delays; query-count regression passed                                    | Deployed click-to-result timing and pacing retest                             |
-| Battle explanations · #242 | Turn messages, effect explanations and server-projected effectiveness; regressions passed                       | Participant understanding of turns, effects and outcomes                      |
-| Deck validation · #243     | Live deck checklist, owned-copy limits and validation feedback; regressions passed                              | Invalid-deck retest, ownership visibility and when to use decks               |
-| Events and guidance · #244 | Event discovery/states and saved-reward feedback; regressions passed; first-use guidance only partially covered | First-time guide, pre-start timing/example/reward context and discoverability |
-
-Issue closure alone is not proof of a fix. The links above establish concrete
-implementation; the checks below establish local automated behaviour. Neither
-establishes participant acceptance or closes the release checks in
-[#167](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/167).
+The five findings link accepted issues to implementation and passing local
+regressions. Issue closure is not participant acceptance; release checks in
+[#167](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/167) remain separate.
 
 ## Other requests needing review
 
-The new comments also mention inaccurate 3D event locations, more quiz types or
-subjects, better card visuals and battle animations, and general application
-speed. These are retained in the screenshots, not silently treated as completed
-by the five fixes above. No new issue decision is inferred from them.
-
-The map-location report needs reproduction against real event coordinates;
-mocked-map tests do not establish location accuracy. Quiz variety, visual polish,
-first-use effect explanations, and non-battle performance need their own
-implementation or acceptance evidence before being described as addressed.
+Map accuracy, quiz variety, visual polish, first-use effect explanations, and
+non-battle speed still need evidence; mocked-map tests do not establish location accuracy.
 
 ## Local implementation verification
 
-**Run date:** 9 October 2026. **Application revision:** `d0d716b`.
-**Result:** 165 tests passed across 12 files.
-
-- **Web: 117 tests, 9 files.** Vitest/Testing Library in jsdom, using mocked API
-  responses and map providers. Files: `battle-controls`, `battle-presentation`,
-  `battle-log-presentation`, `effect-presentation`, `decks-page`, `deck-save-bar`,
-  `exploration`, `challenge-page`, and `challenge-rewards` in `apps/web/tests`.
-- **API: 48 tests, 3 files.** Vitest with mocked database clients. Files:
-  `cpu-match-service.test.ts`, `history-performance.test.ts`, and
-  `player-identity.test.ts` in `apps/api/tests`. The history fixture simulates
-  query delays; it is not a real database latency benchmark.
-
-Reproduce with `npx vitest run` followed by the listed test paths from each
-application directory. Build the `@wits-world/game-rules` and
-`@wits-world/account-policy` workspaces first.
+**9 October 2026 · `d0d716b` · 165 tests passed across 12 files**
+(117 web tests; 48 API tests). Services, maps, and database clients were mocked.
+[Run details](#verification-details) are retained below; these application checks
+were not rerun for this copy edit.
 
 No browser, live database, hosted CI, deployed journey, or participant checks were
-run for this update. The [14 September evidence](evidence.md#verification)
-remains a separate historical snapshot.
+run for this update. The [14 September snapshot](evidence.md#verification) is separate.
 
 ## Follow-up evidence required
 
-1. Run focused participant retests for all five findings against a named
-   deployment and commit. Include first-time event discovery and an explanation
-   of the quiz timing before entry; create follow-up work for any unmet criteria.
-2. Measure signed-in CPU click-to-result timing on mobile and desktop separately
-   from database-query and animation timings.
-3. Record the date, anonymous session codes, applicable device/browser context,
-   affected task outcome, assistance given, and whether each finding improved,
-   remained, or regressed.
-4. Link resulting fixes and retest evidence from issue #167 without publishing
-   raw responses or participant-identifying information.
+Retest each affected task on a named deployment, including pre-quiz timing and
+first-time discovery; measure CPU click-to-result speed on mobile and desktop.
+Record build/date, anonymous session code, device/browser, completion, assistance,
+and whether the finding improved. Link results from #167 without publishing identities.
 
 ## Full survey evidence
 
@@ -729,41 +591,79 @@ separate. These are reports of the problems, not proof of fixes.
     </figcaption>
   </figure>
 
+### Collection method and limitations
+
+The raw CSV remains outside the public repository.
+
+- Participants completed the same structured Google Forms questionnaire after
+  using the Wits World player experience.
+- Fixed-choice answers were counted directly. Repeated written concerns were
+  grouped only where they described the same product area in the original
+  ten-response CSV. Updated fixed-choice counts come from the supplied charts;
+  written findings are not extrapolated to the two additional responses.
+- The written screenshot excerpts support the feedback themes separately. Visible
+  comments are not counted as additional or uniquely identified participants.
+- Participant recruitment, demographic profile, device, browser, tested commit,
+  and facilitator observations were not captured in the supplied export.
+- The responses are therefore suitable for identifying usability themes, but
+  not for browser-specific diagnosis, performance benchmarking, or statistical
+  claims about the wider student population.
+- Follow-up testing must use the same affected tasks and record whether each
+  accepted finding improved, remained, or regressed.
+
+<h3>Detailed counts</h3>
+
+Each chart shows twelve responses from the same questionnaire. The collection
+date/range and tested build are not shown. Numeric charts use ratings 1–5;
+their endpoint labels are not visible, so the counts are transcribed without
+assuming a named rating scale.
+
+| Area                | Main signal in the updated charts                                                | Related finding                                                                  |
+| ------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Events and rewards  | 7/12 found all event states clear; 4/12 found the event list useful.             | [Events, quizzes and rewards](#make-events-quizzes-and-rewards-easier-to-follow) |
+| Deck building       | Only 2/10 responses from deck builders found requirements clear.                 | [Deck rules](#show-deck-rules-and-explain-invalid-decks)                         |
+| Battle clarity      | Only 2/12 found turn ownership clear; none found effects fully clear.            | [Battle explanations](#explain-turns-moves-and-effects)                          |
+| Overall experience  | 7/12 rated satisfaction 3 and 5/12 rated it 4.                                   | Follow-up usability sessions                                                     |
+| Future use and bugs | 8/12 would probably or definitely use again; 1 reported a bug and 3 were unsure. | Investigate before claiming a defect or fix                                      |
+
+All nine original charts and their text captions are kept in the
+[Full survey evidence](#full-survey-evidence) section.
+
+### Verification details
+
+**Run date:** 9 October 2026. **Application revision:** `d0d716b`.
+**Result:** 165 tests passed across 12 files.
+
+- **Web: 117 tests, 9 files.** Vitest/Testing Library in jsdom, using mocked API
+  responses and map providers. Files: `battle-controls`, `battle-presentation`,
+  `battle-log-presentation`, `effect-presentation`, `decks-page`, `deck-save-bar`,
+  `exploration`, `challenge-page`, and `challenge-rewards` in `apps/web/tests`.
+- **API: 48 tests, 3 files.** Vitest with mocked database clients. Files:
+  `cpu-match-service.test.ts`, `history-performance.test.ts`, and
+  `player-identity.test.ts` in `apps/api/tests`. The history fixture simulates
+  query delays; it is not a real database latency benchmark.
+
+Reproduce with `npx vitest run` followed by the listed test paths from each
+application directory. Build the `@wits-world/game-rules` and
+`@wits-world/account-policy` workspaces first.
+
+No browser, live database, hosted CI, deployed journey, or participant checks were
+run for this update. The [14 September evidence](evidence.md#verification)
+remains a separate historical snapshot.
+
+<h3>Original performance measurements</h3>
+
+The [original investigation](evidence.md#battle-responsiveness)
+recorded local identity medians of 738 ms → 185 ms and history queries of
+83 → 3. Those measurements were not rerun here. Query-count tests and shorter
+animation intervals prove specific changes, not deployed click-to-result speed.
+
 </details>
 
 ## AI declaration
 
-This sanitised report was generated, edited, and reviewed with the assistance
-of Codex[gpt-5.6-sol]. Aggregate counts were derived from the supplied response
-export; no participants, responses, fixes, or retest outcomes were fabricated.
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
-
-Public feedback relocated into the sprint folder with assistance from
-Codex[GPT-6]; findings, response counts, and retest limits are unchanged.
-
-Google Forms screenshots and twelve-response summaries added with assistance
-from Codex[GPT-6]. Original image bytes and historical issue/PR decisions are
-preserved. The earlier ten-response CSV remains the source for written comments;
-no new collection date, tested build, fix, or retest is inferred.
-
-Implementation traceability clarified with assistance from Codex[GPT-6].
-Merged changes, source, and focused local test results were checked on
-9 October 2026; later implementation is not backdated into Sprint 2, and no
-participant retest or deployed performance result is claimed.
-
-Written battle-response screenshots and verbatim transcripts added with
-assistance from Codex[GPT-6]. Both original image files and every complete
-visible comment are preserved, without inventing question text, participant
-identities, collection dates, or retest outcomes.
-
-Finding headings and summaries rewritten around the supplied written feedback
-with assistance from Codex[GPT-6]. Six additional screenshots are preserved
-with their visible question totals and complete-comment transcripts; issue
-decisions, historical counts, and implementation/retest boundaries remain separate.
-
-Focused survey comment crops and the consolidated evidence section prepared
-with assistance from Codex[GPT-6]. Each SVG is a rectangular viewport over
-embedded, unchanged source PNG bytes. All originals and complete visible
-transcripts remain available; selected comments do not establish response
-frequencies, participant counts, or post-fix improvement.
+Prepared with Codex[gpt-5.6-sol], then edited with Codex-CLI[GPT-6] and
+Codex[GPT-6]. This distillation consolidates repeated explanations and
+attributions. Originals, counts, provenance, code/test links, recorded results,
+and retest limits remain. Crops embed unchanged PNG bytes.
+No new responses, application results, or participant outcomes were added.

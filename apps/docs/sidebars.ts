@@ -321,54 +321,36 @@ const sidebars: SidebarsConfig = {
           ],
           'planning/scrum/index',
         ),
-        category('Verification', [
-          doc('testing/basic-tier-release-validation', 'Acceptance checklist'),
-          category('Live checks', [
-            doc(
-              'testing/deployed-auth-cors-privacy-review',
-              'Auth and privacy',
-            ),
-            doc(
-              'testing/player-account-lifecycle-validation',
-              'Account lifecycle',
-            ),
-            doc('testing/api-battle-responsiveness', 'Battle responsiveness'),
-            doc(
-              'requirements/location-eligibility-field-test',
-              'On-campus location',
-            ),
-          ]),
-        ]),
         category(
           'Stakeholder reviews',
           [
             doc(
               'planning/stakeholder-interactions/initial-client-meeting',
-              'Initial meeting',
+              'Project introduction',
             ),
             doc(
               'planning/stakeholder-interactions/2026-09-04-database-usage-review',
-              'Database (4 Sep)',
+              'Database and hosting',
             ),
             doc(
               'planning/stakeholder-interactions/2026-09-08-trails-and-card-art-review',
-              'Trails and art (8 Sep)',
+              'Trails and artwork',
             ),
             doc(
               'planning/stakeholder-interactions/2026-09-11-frontend-ui-review',
-              'Interface (11 Sep)',
+              'Interface clarity',
             ),
             doc(
               'planning/stakeholder-interactions/2026-09-21-battle-performance-review',
-              'Performance (21 Sep)',
+              'Battle performance',
             ),
             doc(
               'planning/stakeholder-interactions/2026-09-23-account-deletion-review',
-              'Deletion (23 Sep)',
+              'Account deletion',
             ),
             doc(
               'planning/stakeholder-interactions/2026-09-25-territories-and-rate-limits-review',
-              'Territories (25 Sep)',
+              'Territories and rate limits',
             ),
           ],
           'planning/stakeholder-interactions/index',

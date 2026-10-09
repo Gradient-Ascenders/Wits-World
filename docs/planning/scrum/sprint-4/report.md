@@ -326,7 +326,7 @@ Refine final-submission work around the most visible player friction and the ope
 
 ### Sources {/* #backlog-refinement-record-details-and-sources */}
 
-- **Evidence:** [Merge register](evidence.md#merge-register), [loading policy](../../../design/state-review.md#loading), [Gameplay workers](../../../deployment/ranked-operations.md), and [PvP timing guide](../../../testing/api-battle-responsiveness.md#timing-diagnostics-and-remaining-limits).
+- **Evidence:** [Merge register](evidence.md#merge-register), [loading policy](../../../design/state-review.md#loading), [Gameplay workers](../../../deployment/ranked-operations.md), and [PvP timing guide](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/docs/testing/api-battle-responsiveness.md#timing-diagnostics-and-remaining-limits).
 
 <a id="sprint-review--8-october-2026-interim" />
 
@@ -363,7 +363,7 @@ The merge register establishes repository integration through `a9dca04`. No orig
 
 ### Sources {/* #sprint-review-record-details-and-sources */}
 
-- **Evidence:** [Merge register](evidence.md#merge-register), homepage measurement [`5b76e39`](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/5b76e39), profile implementation [`6514154`](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/6514154), [listener verification](../../../testing/api-battle-responsiveness.md#timing-diagnostics-and-remaining-limits), and [delivery roadmap](../../delivery-roadmap.md).
+- **Evidence:** [Merge register](evidence.md#merge-register), homepage measurement [`5b76e39`](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/5b76e39), profile implementation [`6514154`](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/commit/6514154), [listener verification](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/docs/testing/api-battle-responsiveness.md#timing-diagnostics-and-remaining-limits), and [delivery roadmap](../../delivery-roadmap.md).
 
 <a id="sprint-retrospective--8-october-2026-interim" />
 
@@ -403,7 +403,7 @@ These are reconstructed recommendations; no team vote or acceptance of an action
 
 ### Sources {/* #sprint-retrospective-record-details-and-sources */}
 
-- **Evidence:** [Merge register](evidence.md#merge-register), [loading policy](../../../design/state-review.md#loading), [pool/listener observations](../../../testing/api-battle-responsiveness.md#timing-diagnostics-and-remaining-limits), and [Gameplay workers](../../../deployment/ranked-operations.md).
+- **Evidence:** [Merge register](evidence.md#merge-register), [loading policy](../../../design/state-review.md#loading), [pool/listener observations](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/docs/testing/api-battle-responsiveness.md#timing-diagnostics-and-remaining-limits), and [Gameplay workers](../../../deployment/ranked-operations.md).
 
 ## Sources and Record Status
 

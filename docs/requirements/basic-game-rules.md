@@ -11,8 +11,9 @@ identifies the features added beyond Basic.
 
 The API and database determine eligibility, correctness, rewards, ownership,
 deck legality, and battle outcomes. The browser displays state and submits
-player actions. Release evidence is tracked in the
-[acceptance checklist](../testing/basic-tier-release-validation.md).
+player actions. Dated release evidence is tracked in the
+[Sprint 2](../planning/scrum/sprint-2/evidence.md) and
+[Sprint 3](../planning/scrum/sprint-3/evidence.md) records.
 
 ## Event challenge
 

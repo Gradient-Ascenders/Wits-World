@@ -223,6 +223,12 @@ describe('Sprint 2 questionnaire evidence', () => {
     const main = feedback.slice(0, archiveStart);
     const archive = feedback.slice(archiveStart, attributionStart);
     expect(main).not.toContain('<details>');
+    expect(main).not.toContain('## Collection method and limitations');
+    expect(archive).toContain('### Collection method and limitations');
+    expect(main).toContain('[Run details](#verification-details)');
+    expect(archive).toContain('### Verification details');
+    expect(archive).toContain('738 ms → 185 ms');
+    expect(archive).toContain('83 → 3');
     expect(archive.match(/<details>/g)).toHaveLength(1);
     for (const image of allImages) {
       expect(archive).toContain(`src="/img/feedback/sprint-2/${image.file}"`);

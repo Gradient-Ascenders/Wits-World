@@ -19,8 +19,8 @@ Device readings remain claims, so automated distance checks cannot establish
 physical presence or prove that campus thresholds suit every device.
 
 The [location journey](../requirements/player-location-journey.md) explains the
-current behaviour. The [field-test protocol](../requirements/location-eligibility-field-test.md)
-retains the required campus observations. Responsive and component tests also
+current behaviour. The [field evidence](scrum/sprint-1/evidence.md#on-campus-field-evidence)
+records the missing campus observations. Responsive and component tests also
 need to be supplemented by real-device, keyboard, and screen-reader review.
 
 ## Game integrity and privacy
@@ -105,7 +105,7 @@ Background workers and realtime listeners share limited database capacity.
 Coordination and listener isolation address different sources of contention;
 their deployed benefit depends on configuration and measured behaviour.
 [Gameplay operations](../deployment/ranked-operations.md) and
-[battle responsiveness](../testing/api-battle-responsiveness.md) retain the
+[battle responsiveness](scrum/sprint-2/evidence.md#battle-responsiveness) retain the
 rollout requirements and measurement limits.
 
 ## Delivery and release evidence
@@ -118,7 +118,7 @@ checking existing journeys as described in the [roadmap](delivery-roadmap.md).
 Passing automation can still leave usability, provider, or deployment failures
 unobserved. Participant retests, named-build acceptance, and stakeholder review
 must be recorded separately. The
-[release checklist](../testing/basic-tier-release-validation.md) and
+[testing strategy](../testing/testing-strategy.md) and
 [Sprint 3 validation record](scrum/sprint-3/evidence.md) identify
 the evidence boundaries. [AI review and disclosure](ai-use.md) address the
 additional risk of incorrect or unattributed generated work.

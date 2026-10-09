@@ -59,18 +59,18 @@ for the full BASIC-01–19 decisions.
 
 ### Basic and cross-project requirements
 
-| Requirement                                          | Repository status and evidence                                                                                                                                                                                                            | Remaining acceptance boundary                                                       |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Registration, login, password reset, deletion        | Implemented Auth0 and account lifecycle; [rules](../../../requirements/basic-game-rules.md#roles-authority-and-account-lifecycle), [account validation](../../../testing/player-account-lifecycle-validation.md); issues #160/#161 closed | Provider email, recent-authentication and deletion smoke evidence                   |
-| Event discovery and location eligibility             | Implemented map and semantic list; [location journey](../../../requirements/player-location-journey.md), [spatial rules](../../../database/event-eligibility.md)                                                                          | Real-campus device/accuracy checks; reported location is not proof of presence      |
-| Five-question challenge and completed review         | Implemented server timers, marking and answer privacy; [rules](../../../requirements/basic-game-rules.md#event-challenge), [attempt contract](../../../architecture/challenge-attempt-api-contract.md)                                    | Full deployed journey and quiz/reward usability follow-up                           |
-| Reward, collection and starter cards                 | Implemented atomic card rewards and owned-copy persistence; [persistence](../../../database/challenge-reward-persistence-design.md), [release journey](../../../testing/basic-tier-release-validation.md)                                 | Deployed retry/recovery and player comprehension                                    |
-| Complete card catalogue and move rules               | Migration 0041 supplies the 30-card ordinary catalogue and four moves per Creature; [catalogue](../../../design/basic-card-roster.md); #164 closed                                                                                        | Confirm deployed migration/content, presentation and balance review                 |
-| Saved decks and CPU battles                          | Implemented [deck journey](../../../requirements/player-deck-building-journey.md), [CPU journey](../../../requirements/player-cpu-battle-journey.md), [battle rules](../../../requirements/basic-game-rules.md#cpu-battles)               | Feedback #240–#244 retests; deck-validation integration evidence remains incomplete |
-| Author workflow                                      | Implemented review/publication, multiple-choice and ordering editors; [Author contract](../../../architecture/author-curation-api-contract.md)                                                                                            | Independent content review and deployed role/workflow checks                        |
-| Responsive and accessible experience                 | [Accessibility](../../../design/design-system.md), semantic/component tests and browser checks described in [testing strategy](../../../testing/testing-strategy.md)                                                                      | Recorded real-device, keyboard and screen-reader acceptance                         |
-| Separate frontend/backend and hand-written API       | React/Vite, Fastify and PostgreSQL/PostGIS; [architecture](../../../architecture/overview.md), [API](../../../api-reference.md), [database](../../../database/overview.md)                                                                | External/public reachability is recorded separately from authenticated gameplay     |
-| External integration, CI/CD and public documentation | [Integration boundaries](../../../architecture/external-integrations.md), [CI](../../../testing/continuous-integration.md), [deployment](../../../deployment/azure-deployment-setup.md)                                                   | Service/operator evidence; this documentation branch must be published              |
+| Requirement                                          | Repository status and evidence                                                                                                                                                                                              | Remaining acceptance boundary                                                       |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Registration, login, password reset, deletion        | Implemented Auth0 and account lifecycle; [rules](../../../requirements/basic-game-rules.md#roles-authority-and-account-lifecycle), [account validation](#account-lifecycle-evidence); issues #160/#161 closed               | Provider email, recent-authentication and deletion smoke evidence                   |
+| Event discovery and location eligibility             | Implemented map and semantic list; [location journey](../../../requirements/player-location-journey.md), [spatial rules](../../../database/event-eligibility.md)                                                            | Real-campus device/accuracy checks; reported location is not proof of presence      |
+| Five-question challenge and completed review         | Implemented server timers, marking and answer privacy; [rules](../../../requirements/basic-game-rules.md#event-challenge), [attempt contract](../../../architecture/challenge-attempt-api-contract.md)                      | Full deployed journey and quiz/reward usability follow-up                           |
+| Reward, collection and starter cards                 | Implemented atomic card rewards and owned-copy persistence; [persistence](../../../database/challenge-reward-persistence-design.md), [Basic test journey](../../../testing/automated-verification.md#basic-journey)         | Deployed retry/recovery and player comprehension                                    |
+| Complete card catalogue and move rules               | Migration 0041 supplies the 30-card ordinary catalogue and four moves per Creature; [catalogue](../../../design/basic-card-roster.md); #164 closed                                                                          | Confirm deployed migration/content, presentation and balance review                 |
+| Saved decks and CPU battles                          | Implemented [deck journey](../../../requirements/player-deck-building-journey.md), [CPU journey](../../../requirements/player-cpu-battle-journey.md), [battle rules](../../../requirements/basic-game-rules.md#cpu-battles) | Feedback #240–#244 retests; deck-validation integration evidence remains incomplete |
+| Author workflow                                      | Implemented review/publication, multiple-choice and ordering editors; [Author contract](../../../architecture/author-curation-api-contract.md)                                                                              | Independent content review and deployed role/workflow checks                        |
+| Responsive and accessible experience                 | [Accessibility](../../../design/design-system.md), semantic/component tests and browser checks described in [testing strategy](../../../testing/testing-strategy.md)                                                        | Recorded real-device, keyboard and screen-reader acceptance                         |
+| Separate frontend/backend and hand-written API       | React/Vite, Fastify and PostgreSQL/PostGIS; [architecture](../../../architecture/overview.md), [API](../../../api-reference.md), [database](../../../database/overview.md)                                                  | External/public reachability is recorded separately from authenticated gameplay     |
+| External integration, CI/CD and public documentation | [Integration boundaries](../../../architecture/external-integrations.md), [CI](../../../testing/continuous-integration.md), [deployment](../../../deployment/azure-deployment-setup.md)                                     | Service/operator evidence; this documentation branch must be published              |
 
 ### Intermediate systems and additional delivered work
 
@@ -182,9 +182,9 @@ journey.
 
 ### Existing detailed results
 
-- [API and battle responsiveness](../../../testing/api-battle-responsiveness.md) records dated
-  measurements, focused test counts, browser scenarios, fixes, reruns and
-  limitations. Keep each result attached to its recorded change; do not add
+- [Battle responsiveness](#battle-responsiveness) summarises dated measurements
+  and links the complete repository investigation. Keep each result attached to
+  its recorded change; do not add
   counts across different revisions or describe them as tonight's full suite.
 - [User-feedback results](feedback.md) preserves the original ten-response CSV
   findings and adds the updated twelve-response Google Forms charts.
@@ -195,8 +195,8 @@ journey.
 - [Stakeholder reviews](#meeting-evidence-map) link dated
   records with evaluation, decisions and evidence limits. The 11 September
   record explicitly distinguishes earlier UI work from a feedback-caused change.
-- [Basic release validation](../../../testing/basic-tier-release-validation.md) defines the
-  integrated journey and manual gates; it is not a blanket passing release report.
+- [Testing strategy](../../../testing/testing-strategy.md) defines procedures
+  and manual gates; it is not a blanket passing release report.
 
 ### Known failures and remaining acceptance work
 
@@ -270,9 +270,45 @@ speech preferences enabled.
 These are recorded automated/component/browser checks. The source record does
 not identify a release commit. It contains no completed real-device or
 screen-reader assessment; those manual acceptance gaps remain open. The
-[acceptance checklist](../../../testing/basic-tier-release-validation.md#deployed-and-manual-acceptance)
-and [testing strategy](../../../testing/testing-strategy.md#manual-and-field-validation)
-retain the required review scope.
+[testing strategy](../../../testing/testing-strategy.md#manual-and-field-validation)
+retains the required review scope.
+
+## Account lifecycle evidence
+
+The #160/#161 record describes server-authoritative deletion, immediate access
+locking and retry-safe cleanup. Component, API and database coverage accompany
+controlled Auth0/API browser fixtures at **390×844** and **1280×800**, checking
+keyboard cancellation, focus, explicit confirmation, recovery and safe errors.
+The record gives no execution date, so these are not new dated run results.
+
+Real recovery email, provider behaviour, recent-authentication claims,
+Management API permissions and production logout remained operator checks.
+Fixture coverage is not real Auth0 or production-deletion acceptance. The
+[full repository record](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/docs/testing/player-account-lifecycle-validation.md)
+preserves the test scope and remaining checks.
+
+## Battle responsiveness
+
+[PR #245](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/245)
+added illegal-actor regression coverage, made controls follow server-returned
+turn/action state, avoided unchanged-identity writes, and batched CPU history.
+These changes address the reported turn ambiguity and slow battles; participant
+retests remain separate from implementation proof in [user feedback](feedback.md#prioritised-findings).
+
+**Measured locally on 12 September 2026:** unchanged-identity median fell from
+**738 ms to 185 ms** in five alternating warm runs against a disposable database.
+Three-match history with 79 rounds fell from **83 queries to 3** and
+**16,360 ms to 579 ms** in a read-only transaction, with identical serialized
+responses. A separate simulated-delay fixture fell from **64 queries to 3**;
+it is not the same dataset or a production benchmark.
+
+Later changes added a history column and an identity lock, so the original
+timings do not describe the final implementation. `Server-Timing` separates
+authentication, identity and server work, not browser transport; detailed spans
+can overlap and must not be summed. No signed-in deployed click-to-result
+comparison was recorded. The [full repository investigation](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/docs/testing/api-battle-responsiveness.md)
+retains the measurements, regressions and follow-ups. Historical measurements
+were not rerun for this consolidation.
 
 ## Meeting evidence map
 

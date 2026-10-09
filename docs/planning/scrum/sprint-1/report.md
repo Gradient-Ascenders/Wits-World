@@ -552,8 +552,8 @@ also recording these limitations at the boundary:
   at the time it occurred.
 
 These limits are preserved in the [Sprint 1 evidence index](evidence.md),
-[known limitations](evidence.md#known-limitations), and
-[Basic-tier release validation](../../../testing/basic-tier-release-validation.md).
+[known limitations](evidence.md#known-limitations), and later dated
+[Sprint 2 evidence](../sprint-2/evidence.md).
 
 ### Follow-up Items {/* #sprint-review-follow-up-items */}
 
