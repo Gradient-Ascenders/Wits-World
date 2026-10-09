@@ -12,15 +12,15 @@ The records are planning and coordination snapshots, a release-readiness view,
 and retrospective recommendations. Ceremony dates, attendance, demonstration,
 acceptance, and team agreement were not supplied.
 
-This report combines the ceremony records, their sources, and follow-up actions.
+Reporting windows describe delivery activity, not proof that meetings occurred.
+Role labels identify coordination responsibilities, not recorded assignments or
+attendance. Planned stakeholder reviews remain plans unless outcomes are supplied.
 
 <a id="sprint-planning--28-september-2026-snapshot" />
 
 ## Sprint Planning — 28 September 2026 snapshot {/* #planning */}
 
 **Date:** 28 September 2026 snapshot; work window 16–28 September.
-
-> Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
 ### Meeting photo {/* #planning-meeting-photo */}
 
@@ -49,10 +49,6 @@ review, placement, ranked seasons, territories, card trading, analytics, and
 developer API. Improve usability, accessibility, performance, and responsive
 work while separating implementation from release evidence. Randomized
 territories and Upstash shared limits remain proposed, not delivered.
-
-### Agenda {/* #planning-agenda */}
-
-Organise the Advanced increment around contracts, persistence, services, and client integration. Review dependencies, open release evidence, and feedback follow-up. This agenda summarises the planning topics visible in the repository; it is not a recorded meeting agenda.
 
 ### Discussion Summary {/* #planning-discussion-summary */}
 
@@ -123,11 +119,8 @@ ceremony attendance.
 - Link feedback investigation, accepted work, implementation, and retest.
 - Keep territory randomization and distributed limits proposed until verified.
 
-### Record Details and Sources {/* #planning-record-details-and-sources */}
+### Sources {/* #planning-record-details-and-sources */}
 
-- **Snapshot:** 28 September 2026
-- **Scope window:** Merged work from 16-28 September against `main` at `c0fd42b`
-- **Participants:** Not recorded; roles below are coordination context only
 - **Sources:** Merge history, repository docs, planned stakeholder records, feedback report
 
 <a id="daily-scrum-1--1619-september-2026-reporting-window" />
@@ -135,8 +128,6 @@ ceremony attendance.
 ## Daily Scrum 1 — 16–19 September 2026 reporting window {/* #daily-scrum-01 */}
 
 **Date:** 16–19 September 2026 reporting window.
-
-> Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
 ### Meeting photo {/* #daily-scrum-01-meeting-photo */}
 
@@ -159,12 +150,6 @@ and association with this record are unconfirmed. See the
 [photo provenance and layout](../index.md#sprint-3-photo-provenance).
 
 ### Summary of Progress {/* #daily-scrum-01-summary-of-progress */}
-
-#### Sprint goal context {/* #daily-scrum-01-sprint-goal-context */}
-
-Establish the contracts, policies, and persistence foundations for live PvP,
-trust review, event placement, ranked competition, contested territories, and
-trading while preserving server authority and data integrity.
 
 #### Progress by stream {/* #daily-scrum-01-progress-by-stream */}
 
@@ -211,14 +196,9 @@ review, and acceptance details rather than inferring them from its number.
   focused tests and PR review.
 - Capture actual demonstration and release evidence when it exists.
 
-### Record Details and Sources {/* #daily-scrum-01-record-details-and-sources */}
-
-This repository-backed reporting window summarizes merge history; it is not a
-claim that a Daily Scrum occurred.
+### Sources {/* #daily-scrum-01-record-details-and-sources */}
 
 - **Reporting window:** 16-19 September 2026
-- **Meeting / attendance:** No ceremony date, time, attendance, or notes supplied
-- **Baseline:** `main` at `c0fd42b`
 - **Evidence:** Merged PRs #281-#294 in the requested window
 
 <a id="daily-scrum-2--2022-september-2026-reporting-window" />
@@ -226,8 +206,6 @@ claim that a Daily Scrum occurred.
 ## Daily Scrum 2 — 20–22 September 2026 reporting window {/* #daily-scrum-02 */}
 
 **Date:** 20–22 September 2026 reporting window.
-
-> Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
 ### Meeting photo {/* #daily-scrum-02-meeting-photo */}
 
@@ -250,12 +228,6 @@ and association with this record are unconfirmed. See the
 [photo provenance and layout](../index.md#sprint-3-photo-provenance).
 
 ### Summary of Progress {/* #daily-scrum-02-summary-of-progress */}
-
-#### Sprint goal context {/* #daily-scrum-02-sprint-goal-context */}
-
-Integrate policy-backed backend services and persistence for trust, ranked
-competition, territories, trading, analytics, and live PvP, with interfaces
-remaining consumers of server-confirmed state.
 
 #### Progress by stream {/* #daily-scrum-02-progress-by-stream */}
 
@@ -297,13 +269,9 @@ contract and persistence documents linked by each PR as technical context.
   demonstration; distinguish database benchmarks from user-visible latency.
 - Retain independent PR and automated-check evidence for each capability.
 
-### Record Details and Sources {/* #daily-scrum-02-record-details-and-sources */}
-
-This is a repository-backed reporting window, not a claim that a Daily Scrum
-occurred.
+### Sources {/* #daily-scrum-02-record-details-and-sources */}
 
 - **Reporting window:** 20-22 September 2026
-- **Meeting / attendance:** No ceremony date, time, attendance, or notes supplied
 - **Evidence:** Merge history against `main` at `c0fd42b`; stakeholder interaction plans dated 21 September
 
 <a id="daily-scrum-3--2325-september-2026-reporting-window" />
@@ -311,8 +279,6 @@ occurred.
 ## Daily Scrum 3 — 23–25 September 2026 reporting window {/* #daily-scrum-03 */}
 
 **Date:** 23–25 September 2026 reporting window.
-
-> Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
 ### Meeting photo {/* #daily-scrum-03-meeting-photo */}
 
@@ -336,12 +302,6 @@ and association with this record are unconfirmed. See the
 
 ### Summary of Progress {/* #daily-scrum-03-summary-of-progress */}
 
-#### Sprint goal context {/* #daily-scrum-03-sprint-goal-context */}
-
-Connect competitive, territory, trading, analytics, and account workflows to
-the previously merged service and persistence foundations, while keeping
-release and user-feedback evidence explicit.
-
 #### Progress by stream {/* #daily-scrum-03-progress-by-stream */}
 
 - **Product/Web (Kevin, coordination role):** PR #303 integrates the analytics
@@ -362,7 +322,7 @@ release and user-feedback evidence explicit.
 - The supplied records do not confirm that either planned stakeholder
   interaction took place.
 - Feedback collected on 28 September was not yet evidence of a post-change
-  retest; see the [results report](../../../testing/sprint-3-user-feedback-results.md).
+  retest; see the [results report](feedback.md).
 - Deployment, manual review, and release acceptance remain separate from
   merged PR status.
 
@@ -387,13 +347,9 @@ proposed features.
   implementation and multi-instance verification are recorded.
 - Triage feedback into reproducible tasks without declaring related PRs fixes.
 
-### Record Details and Sources {/* #daily-scrum-03-record-details-and-sources */}
-
-This repository-backed reporting window is not a claim that a Daily Scrum or
-stakeholder meeting occurred.
+### Sources {/* #daily-scrum-03-record-details-and-sources */}
 
 - **Reporting window:** 23-25 September 2026
-- **Meeting / attendance:** No ceremony date, time, attendance, or notes supplied
 - **Evidence:** Merged PR history; planned stakeholder records dated 23 and 25 September
 
 <a id="daily-scrum-4--2628-september-2026-reporting-window" />
@@ -401,8 +357,6 @@ stakeholder meeting occurred.
 ## Daily Scrum 4 — 26–28 September 2026 reporting window {/* #daily-scrum-04 */}
 
 **Date:** 26–28 September 2026 reporting window.
-
-> Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
 ### Meeting photo {/* #daily-scrum-04-meeting-photo */}
 
@@ -425,12 +379,6 @@ and association with this record are unconfirmed. See the
 [photo provenance and layout](../index.md#sprint-3-photo-provenance).
 
 ### Summary of Progress {/* #daily-scrum-04-summary-of-progress */}
-
-#### Sprint goal context {/* #daily-scrum-04-sprint-goal-context */}
-
-Consolidate the delivered player-facing work, address operational and account
-lifecycle concerns, and assess feedback without equating merges with release
-acceptance or retests.
 
 #### Progress by stream {/* #daily-scrum-04-progress-by-stream */}
 
@@ -456,7 +404,7 @@ acceptance or retests.
 
 ### Actions Taken {/* #daily-scrum-04-actions-taken */}
 
-The [Sprint 3 feedback report](../../../testing/sprint-3-user-feedback-results.md)
+The [Sprint 3 feedback report](feedback.md)
 records 15 submissions on 28 September, including three identical complete
 answer sets. It identifies six proposed findings. The report records no new
 accepted issues and no participant retests. Findings are signals for triage,
@@ -472,13 +420,9 @@ not verified defects or proof that associated UI/performance PRs resolve them.
   rate-limit behavior through the appropriate existing automated policies and
   recorded manual checks.
 
-### Record Details and Sources {/* #daily-scrum-04-record-details-and-sources */}
-
-This repository-backed reporting window is not a claim that a Daily Scrum
-occurred.
+### Sources {/* #daily-scrum-04-record-details-and-sources */}
 
 - **Reporting window:** 26-28 September 2026
-- **Meeting / attendance:** No ceremony date, time, attendance, or notes supplied
 - **Evidence:** Merged PR history through `c0fd42b`; feedback report dated 28 September
 
 <a id="backlog-refinement--1628-september-2026-evidence-window" />
@@ -486,8 +430,6 @@ occurred.
 ## Backlog Refinement — 16–28 September 2026 evidence window {/* #backlog-refinement */}
 
 **Date:** 16–28 September 2026 evidence window.
-
-> Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
 ### Discussion {/* #backlog-refinement-discussion */}
 
@@ -517,7 +459,7 @@ These items describe repository integration through `c0fd42b`, not demonstration
 
 #### Refinement pass 4: user feedback {/* #backlog-refinement-refinement-pass-4-user-feedback */}
 
-The [feedback report](../../../testing/sprint-3-user-feedback-results.md)
+The [feedback report](feedback.md)
 records 15 submissions dated 28 September, with three identical complete
 answer sets. It identifies six proposed findings; no new issue has been
 accepted and no retests are recorded. Findings should be reproduced, scoped,
@@ -565,15 +507,9 @@ the corresponding PR and issue for exact acceptance and status.
 3. Refine territory rotation and distributed quota requirements before
    implementation; define safety, versioning, failure, and multi-instance tests.
 
-### Record Details and Sources {/* #backlog-refinement-record-details-and-sources */}
-
-This retrospective refinement view groups repository-backed scope changes and
-open follow-up. It does not reconstruct a refinement meeting or live issue
-status.
+### Sources {/* #backlog-refinement-record-details-and-sources */}
 
 - **Evidence window:** 16-28 September 2026
-- **Meeting / attendance:** Not supplied
-- **Baseline:** `main` at `c0fd42b`; first-parent merge history through 28 September
 - **Sources:** PR merge subjects, local policy/docs, planned stakeholder records, feedback report
 
 <a id="sprint-review--28-september-2026-release-readiness-snapshot" />
@@ -581,8 +517,6 @@ status.
 ## Sprint Review — 28 September 2026 release-readiness snapshot {/* #sprint-review */}
 
 **Date:** 28 September 2026 snapshot.
-
-> Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
 ### Implementation Available for Review {/* #sprint-review-implementation-available-for-review */}
 
@@ -618,7 +552,7 @@ The three stakeholder pages dated 21, 23, and 25 September are explicitly
 planned. Their implementation context includes #285/#327, #329, and existing
 territory/developer API behavior. No occurrence or acceptance is claimed.
 
-The [Sprint 3 feedback report](../../../testing/sprint-3-user-feedback-results.md)
+The [Sprint 3 feedback report](feedback.md)
 records 15 submissions on 28 September, including three identical full answer
 sets, and six proposed findings. It records no newly accepted issues or
 retests. This sample informs triage, not feature acceptance or a confirmed
@@ -647,25 +581,16 @@ claim stakeholder acceptance. Those conclusions require explicit evidence.
    them resolved.
 4. Keep randomization and shared limits out of delivered scope until verified.
 
-### Record Details and Sources {/* #sprint-review-record-details-and-sources */}
+### Sources {/* #sprint-review-record-details-and-sources */}
 
-- **Snapshot date:** 28 September 2026
-- **Baseline:** `main` at `c0fd42b`
-- **Participants / stakeholder:** Not recorded for a Sprint Review
 - **Implementation evidence:** First-parent merge history and local docs through 28 September
 - **Release evidence:** Pending until named revision/environment results are recorded
-
-This is a release-readiness snapshot as of 28 September 2026, not minutes of a
-Sprint Review. The user supplied no ceremony date, attendance, or review
-outcome.
 
 <a id="sprint-retrospective--recommendations-from-the-28-september-snapshot" />
 
 ## Sprint Retrospective — recommendations from the 28 September snapshot {/* #sprint-retrospective */}
 
 **Date:** 28 September 2026 evidence snapshot.
-
-> Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
 ### What Went Well {/* #sprint-retrospective-what-went-well */}
 
@@ -731,24 +656,12 @@ The evidence supports continued work on earlier feedback triage,
 contemporaneous process records, and explicit release validation. These are
 recommendations from artifact review; no team agreement is implied.
 
-### Record Details and Sources {/* #sprint-retrospective-record-details-and-sources */}
+### Sources {/* #sprint-retrospective-record-details-and-sources */}
 
-- **Evidence snapshot:** 28 September 2026; baseline `c0fd42b`
-- **Participants:** Not recorded; role labels below identify coordination owners only
 - **Inputs:** Merge history, three planned stakeholder records, Sprint 3 feedback report
 - **Overall signal:** Broad implementation integration; release and feedback validation evidence remains incomplete
 
-This is a recommended retrospective based on repository evidence available on
-28 September 2026, not a record of a team Retrospective. No attendance,
-discussion, agreement, or retrospective date was supplied.
-
-## Meeting Photos
-
-The five supplied photos appear alongside planning and Daily Scrums 1–4 above,
-following their supplied order. This placement matches the earlier sprint layout;
-meeting dates and photo-to-record associations remain unconfirmed.
-
-## Photos, Sources, and Record Status
+## Photos and Sources {/* #meeting-photos */}
 
 Five Sprint 3 team-call photos supplied by Uzair are retained in the
 [photo index](../index.md#sprint-3-photo-provenance). Their dates and mapping to
@@ -758,8 +671,8 @@ photos are not reused.
 
 The records above retain merge references, coordination-role limits, and
 original AI declarations. See the
-[feedback results](../../../testing/sprint-3-user-feedback-results.md),
-[validation status](../../../testing/sprint-3-validation-status.md), and
+[feedback results](feedback.md),
+[validation status](evidence.md), and
 [stakeholder interaction plans](../../stakeholder-interactions/index.md#sprint-3-review-plans).
 All status statements preserve the 28 September evidence boundary.
 
@@ -767,4 +680,7 @@ All status statements preserve the 28 September evidence boundary.
 
 The original ceremony narratives used repository history, project documentation, and the supplied `vitaqsprint.pdf` layout reference with assistance from Codex-CLI[gpt-6-luna], Codex-CLI[gpt-6-sol], Codex[GPT-6].
 
-The records were consolidated into this report with assistance from Codex[GPT-6]. This edit creates no meeting, attendance, quotation, stakeholder acceptance, or test result; original dates, photo provenance, and reconstruction limits remain in the record.
+Report consolidation and simplification assisted by Codex[GPT-6]. Repeated
+agendas, workflow instructions, and source notices were removed; historical
+dates, photo provenance, and evidence limits are unchanged. No meeting,
+attendance, quotation, acceptance, or test result is inferred from this edit.

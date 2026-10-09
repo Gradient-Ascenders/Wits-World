@@ -80,8 +80,8 @@ changed both scope and timing:
 | A correct answer awards one event card.     | Five-question attempts award zero to two cards according to score.       | The team-confirmed challenge and reward rules replaced the initial planning assumption. The [challenge decision](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/46#issuecomment-2732), [reward decision](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/49#issuecomment-2748), and [current rules](../requirements/basic-game-rules.md#rewards) record the policy used for implementation. |
 
 The [product overview](../basic-release-reference.md) describes the resulting
-capabilities. The [Sprint 2](../requirements/sprint-2-feature-matrix.md) and
-[Sprint 3](../requirements/sprint-3-feature-matrix.md) feature matrices provide
+capabilities. The [Sprint 2](scrum/sprint-2/evidence.md#features) and
+[Sprint 3](scrum/sprint-3/evidence.md#features) feature matrices provide
 the detailed implementation mapping.
 
 **AI declaration:** The original plan used ChatGPT-Web[GPT-5.6 Thinking],

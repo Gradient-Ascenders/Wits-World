@@ -12,9 +12,9 @@ suite setup; [CI workflows](continuous-integration.md) describes automated gates
 
 Local tests, CI results, production smoke checks, participant evaluation, and
 operator checks are separate evidence. This checklist does not certify a
-release. Dated outcomes remain in the [Sprint 1 evidence](sprint-1-evidence-index.md),
-[Sprint 2 results](sprint-2-validation-status.md), and
-[Sprint 3 results](sprint-3-validation-status.md).
+release. Dated outcomes remain in the [Sprint 1 evidence](../planning/scrum/sprint-1/evidence.md),
+[Sprint 2 results](../planning/scrum/sprint-2/evidence.md), and
+[Sprint 3 results](../planning/scrum/sprint-3/evidence.md).
 
 ## The 21-step journey
 
@@ -128,7 +128,7 @@ infrastructure. Record the actual CI run and deployed identifiers separately.
 Public `200` responses establish reachability, not successful authentication or
 a matching application/database release. Automated component/browser assertions
 support accessibility review but do not establish full manual conformance.
-The [formal testing plan](sprint-2-user-testing-plan.md) defines consent,
+The [testing strategy](testing-strategy.md#manual-and-field-validation) defines consent,
 observation, stakeholder review, disposition, and retest procedures.
 
 ## AI declaration

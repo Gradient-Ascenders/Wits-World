@@ -95,6 +95,20 @@ Manual observations should identify the tested revision, device, scenario, and
 outcome. The [location field-test protocol](../requirements/location-eligibility-field-test.md)
 describes the campus procedure; completed observations belong in dated records.
 
+For participant sessions, explain the purpose, voluntary participation, planned
+tasks, retention, and right to skip or stop. Obtain separate consent for recording,
+quotes, or screenshots. Use anonymous session codes and controlled test accounts;
+keep raw notes, consent records, credentials, and precise locations out of public
+evidence. Publish only sanitised summaries.
+
+Observe tasks without coaching first, and record any assistance. Label each task
+complete, assisted, incomplete, or not run on the named build and device. Keep
+questionnaire self-reports separate from observed outcomes. Evaluate findings,
+record an accept/defer/reject decision, link accepted work to its issue and change,
+and retest the affected task. Stakeholder reviews should likewise record the
+demonstrated scope, feedback, decision, remaining conditions, and actual sign-off;
+an issue closure or planned review is not acceptance evidence.
+
 ## Interpreting results
 
 A passing check supports the behaviour and environment it exercised. Test counts

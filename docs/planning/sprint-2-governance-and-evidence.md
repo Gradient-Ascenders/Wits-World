@@ -39,7 +39,7 @@ linked without treating blank templates as completed evidence.
 
 [PR #248](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/248) adds
 Sprint 2 planning, four Daily Scrums, backlog refinement, Review and Retrospective.
-They are linked from the [sprint meeting overview](scrum/index.md#sprint-2-record).
+They are consolidated in the [Sprint 2 report](scrum/sprint-2/report.md).
 The four supplied meeting photos are attached in Kevin's confirmed order, with
 [their provenance recorded separately](scrum/index.md#sprint-2-meeting-photos).
 

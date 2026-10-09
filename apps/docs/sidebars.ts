@@ -35,7 +35,7 @@ const sprint = (
     type: 'generated-index',
     slug: `/project/sprint-${number}`,
     title: `Sprint ${number}`,
-    description: `Meetings and related Sprint ${number} material.`,
+    description: `Sprint ${number} report and supporting evidence.`,
   },
   items,
 });
@@ -300,29 +300,23 @@ const sidebars: SidebarsConfig = {
         category(
           'Sprints',
           [
-            sprint(4, [sprintReport(4)]),
-            sprint(3, [
-              sprintReport(3),
-              doc('sprint-3-overview', 'Milestone evidence'),
-              doc('requirements/sprint-3-feature-matrix', 'Features'),
-              doc('testing/sprint-3-validation-status', 'Validation status'),
-              doc('testing/sprint-3-user-testing-plan', 'User testing plan'),
-              doc('testing/sprint-3-user-feedback-results', 'User feedback'),
-              doc('planning/sprint-3-governance-and-evidence', 'Governance'),
+            sprint(1, [
+              sprintReport(1),
+              doc('planning/scrum/sprint-1/evidence', 'Evidence'),
             ]),
             sprint(2, [
               sprintReport(2),
-              doc('sprint-2-overview', 'Milestone evidence'),
-              doc('requirements/sprint-2-feature-matrix', 'Features'),
-              doc('testing/sprint-2-validation-status', 'Validation status'),
-              doc('testing/sprint-2-user-testing-plan', 'User testing plan'),
-              doc('testing/sprint-2-user-feedback-results', 'User feedback'),
-              doc('planning/sprint-2-governance-and-evidence', 'Governance'),
+              doc('planning/scrum/sprint-2/evidence', 'Evidence'),
+              doc('planning/scrum/sprint-2/feedback', 'User feedback'),
             ]),
-            sprint(1, [
-              sprintReport(1),
-              doc('testing/sprint-1-evidence-index', 'Release evidence'),
-              doc('testing/sprint-1-known-limitations', 'Known limitations'),
+            sprint(3, [
+              sprintReport(3),
+              doc('planning/scrum/sprint-3/evidence', 'Evidence'),
+              doc('planning/scrum/sprint-3/feedback', 'User feedback'),
+            ]),
+            sprint(4, [
+              sprintReport(4),
+              doc('planning/scrum/sprint-4/evidence', 'Evidence'),
             ]),
           ],
           'planning/scrum/index',

@@ -134,8 +134,8 @@ accessible title and description, with its main points explained in nearby text.
 The diagrams describe architecture and rules. Executed checks and release
 acceptance are recorded separately in the
 [Basic acceptance checklist](../../testing/basic-tier-release-validation.md)
-and the [Sprint 2](../../testing/sprint-2-validation-status.md) and
-[Sprint 3](../../testing/sprint-3-validation-status.md) validation records.
+and the [Sprint 2](../../planning/scrum/sprint-2/evidence.md) and
+[Sprint 3](../../planning/scrum/sprint-3/evidence.md) validation records.
 
 ---
 

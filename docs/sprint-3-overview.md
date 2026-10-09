@@ -41,7 +41,7 @@ all codebases. A configured threshold is not a measured result.
 | Performance            |     5% | [Battle response evidence](testing/api-battle-responsiveness.md)                                                                                                                    | Mobile and desktop timings, including warm and cold cases        |
 | Improvement            |     5% | [Feedback traceability](testing/sprint-3-user-feedback-results.md#traceability-summary) and [stakeholder records](planning/stakeholder-interactions/index.md#sprint-3-review-plans) | Links from each accepted finding to its change and retest        |
 | Documentation          |    15% | Product, API, database, test, deployment, and process guides on this site                                                                                                           | Publish the reviewed revision and keep status statements current |
-| Project methodology    |    15% | [Team workflow](planning/project-and-git-methodology.md), [governance](planning/sprint-3-governance-and-evidence.md), and [Scrum record](planning/scrum/index.md#sprint-3-record)   | Reconcile tracker state, reviews, and release evidence           |
+| Project methodology    |    15% | [Team workflow](planning/project-and-git-methodology.md), [governance](planning/sprint-3-governance-and-evidence.md), and [Sprint report](planning/scrum/sprint-3/report.md)        | Reconcile tracker state, reviews, and release evidence           |
 
 This table helps markers find evidence. It does not predict a grade.
 

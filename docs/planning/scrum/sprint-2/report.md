@@ -10,7 +10,10 @@ toc_max_heading_level: 2
 Historical report for 26 August–15 September 2026. Status statements describe
 the retained Sprint 2 evidence, including the release gates still open at its close.
 
-This report combines the ceremony records, their sources, and follow-up actions.
+The team comprised Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, and Caleb
+Perumalsamy. These summaries draw on issues, commits, stakeholder records, and
+user feedback; they are not verbatim ceremony transcripts. Shared workflow rules
+are in the [project methodology](../../project-and-git-methodology.md).
 
 <a id="sprint-planning--26-august-2026" />
 
@@ -29,10 +32,6 @@ author publication, campaigns, and question analytics.
 The API and database remain authoritative for identity, eligibility, marking,
 rewards, progression, card ownership, legal battle actions, deadlines, and
 publication state.
-
-### Agenda {/* #planning-agenda */}
-
-Review the remaining Basic work and Intermediate requirements, split the backlog into parallel delivery streams, confirm server-owned contracts, and plan content, testing, stakeholder feedback, and release evidence.
 
 ### Discussion Summary {/* #planning-discussion-summary */}
 
@@ -76,39 +75,6 @@ not native blockers.
 - **Production content could be unverified or incomplete:** Create a reviewed 30-card catalogue and ten events with one hundred verified questions
 - **Testing and feedback could arrive too late:** Add dedicated automation, user-testing, stakeholder-review, and release-validation issues
 
-### Key Decisions {/* #planning-key-decisions */}
-
-#### Working agreements {/* #planning-working-agreements */}
-
-- Use Gitea issues and the project board as the live backlog.
-- Keep work on short-lived branches and require an independently reviewed pull
-  request before merging.
-- Keep the browser untrusted for protected game and account decisions.
-- Run proportionate tests for meaningful behaviour, then rely on required CI
-  gates rather than duplicating low-value tests.
-- Update API, schema, game-rule, deployment, testing, and user documentation
-  when their contracts change.
-- Record stakeholder and user feedback with a decision, owner, linked issue,
-  resulting change, and outstanding retest.
-- Preserve privacy by avoiding unnecessary exact location, credentials, raw
-  consent data, and personal account data in public evidence.
-
-#### Definition of Done {/* #planning-definition-of-done */}
-
-A Sprint 2 issue is complete when its acceptance criteria are met, relevant
-tests and required repository checks pass, CI succeeds, another member reviews
-the pull request, documentation is current, and the merged result is reconciled
-with the issue. Manual, deployed, stakeholder, or participant validation is not
-converted into a pass merely because implementation merged.
-
-#### Planning outcome {/* #planning-planning-outcome */}
-
-The issue set established ownership and dependency-aware delivery across all
-four team streams. Later Git and Gitea activity supports that the planned
-feature work was implemented in small pull requests, while final Basic and
-Intermediate release validation remained separate gates rather than being
-assumed from merges.
-
 ### Task Allocation {/* #planning-task-allocation */}
 
 The backlog was created as issues #159-#186. The list groups the work by its
@@ -128,13 +94,12 @@ authority for ownership and status.
 - Capture stakeholder and user feedback with issue, change, and retest links.
 - Complete Basic and Intermediate validation against a named revision and environment.
 
-### Record Details and Sources {/* #planning-record-details-and-sources */}
+### Sources {/* #planning-record-details-and-sources */}
 
 - **Planning date:** 26 August 2026
 - **Milestone:** Sprint 2, due 15 September 2026
 - **Planning horizon:** Remaining Basic release work plus the planned Intermediate systems
-- **Participants:** Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy
-- **Source status:** Gitea issues #159-#186, issue metadata, [Sprint 2 governance](../../sprint-2-governance-and-evidence.md), and Git history
+- **Source status:** Gitea issues #159-#186, issue metadata, [project methodology](../../project-and-git-methodology.md), and Git history
 
 <a id="daily-scrum-1--28-august-2026" />
 
@@ -209,12 +174,10 @@ See the [photo provenance and mapping](../index.md#sprint-2-meeting-photos).
   persistence-heavy services increases.
 - Begin integrating the corresponding author and player experiences.
 
-### Record Details and Sources {/* #daily-scrum-01-record-details-and-sources */}
+### Sources {/* #daily-scrum-01-record-details-and-sources */}
 
 - **Checkpoint date:** 28 August 2026
 - **Reporting window:** 26-28 August 2026
-- **Participants:** Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy
-- **Sprint focus:** Establish the contracts and persistence needed for parallel Intermediate delivery
 - **Evidence:** Issues #159-#186 and merged PRs #187-#196
 
 <a id="daily-scrum-2--30-august-2026" />
@@ -291,12 +254,10 @@ See the [photo provenance and mapping](../index.md#sprint-2-meeting-photos).
 - Review database indexes and UI feedback states as the integrated surface
   expands.
 
-### Record Details and Sources {/* #daily-scrum-02-record-details-and-sources */}
+### Sources {/* #daily-scrum-02-record-details-and-sources */}
 
 - **Checkpoint date:** 30 August 2026
 - **Reporting window:** 29-30 August 2026
-- **Participants:** Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy
-- **Sprint focus:** Persist and enforce the Intermediate domain rules behind server-authoritative APIs
 - **Evidence:** Merged PRs #197-#205, #210, and #212; issues #168, #169, #176, and #179-#183
 
 <a id="daily-scrum-3--5-september-2026" />
@@ -381,12 +342,10 @@ than being presented as implemented.
 - Run formal user testing, convert findings into Gitea issues, and verify the
   resulting changes.
 
-### Record Details and Sources {/* #daily-scrum-03-record-details-and-sources */}
+### Sources {/* #daily-scrum-03-record-details-and-sources */}
 
 - **Checkpoint date:** 5 September 2026
 - **Reporting window:** 31 August-5 September 2026
-- **Participants:** Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy
-- **Sprint focus:** Expose the new account, challenge, progression, trail, PvP, and Author capabilities through usable UI
 - **Evidence:** Merged PRs #209, #211, #214, #218, and #221-#226; 4 September stakeholder review
 
 <a id="daily-scrum-4--13-september-2026" />
@@ -447,7 +406,7 @@ See the [photo provenance and mapping](../index.md#sprint-2-meeting-photos).
 #### Formal user feedback {/* #daily-scrum-04-formal-user-feedback */}
 
 Ten questionnaire responses were collected on 13 September. The sanitised
-[Sprint 2 user-feedback results](../../../testing/sprint-2-user-feedback-results.md)
+[Sprint 2 user-feedback results](feedback.md)
 identified five prioritised findings:
 
 - **`UT-S2-01` possible out-of-turn CPU action:** #240 investigated; PR #245 retained server actor/version checks and disabled invalid client controls
@@ -475,12 +434,10 @@ identified five prioritised findings:
 - Record process improvements for earlier testing, dependency hygiene, and
   contemporaneous ceremony evidence.
 
-### Record Details and Sources {/* #daily-scrum-04-record-details-and-sources */}
+### Sources {/* #daily-scrum-04-record-details-and-sources */}
 
 - **Checkpoint date:** 13 September 2026
 - **Reporting window:** 6-13 September 2026
-- **Participants:** Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy
-- **Sprint focus:** Finish production content, harden automated verification, and integrate stakeholder and user feedback
 - **Evidence:** Merged PRs #229-#246; stakeholder records dated 8 and 11 September; ten user-testing responses
 
 <a id="backlog-refinement--28-august15-september-2026" />
@@ -573,33 +530,13 @@ Formal user feedback then produced five traceable issues:
 - **`UT-S2-04` unclear deck requirements** — **Issue:** [#243](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/243); **Priority and disposition:** Medium; issue closed, but linked implementation/retest evidence remained incomplete
 - **`UT-S2-05` weak first-time event/quiz/reward guidance** — **Issue:** [#244](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/244); **Priority and disposition:** Medium; issue closed, but linked implementation/retest evidence remained incomplete
 
-#### Resulting backlog policy {/* #backlog-refinement-resulting-backlog-policy */}
-
-- Dependencies represent actual inability to begin or complete work, not a
-  preferred sequence or shared reviewer.
-- Operational and migration defects receive focused issues and upgrade-path
-  tests when existing environments are affected.
-- Stakeholder and user findings are evaluated, prioritised, linked to a change,
-  and retested; closing an issue alone is not integration evidence.
-- Content, documentation, testing, and release evidence are delivery work, not
-  optional work deferred until after feature coding.
-- Final validation stays open until deployed/manual evidence exists.
-
-#### Refinement outcome {/* #backlog-refinement-refinement-outcome */}
-
-The sprint backlog adapted to confirmed progression rules, complete PvP
-lifecycle needs, database upgrade compatibility, operational constraints, and
-observed user friction. The resulting changes remained small and traceable,
-while #167 and #186 preserved the outstanding release-validation boundary.
-
-### Record Details and Sources {/* #backlog-refinement-record-details-and-sources */}
+### Sources {/* #backlog-refinement-record-details-and-sources */}
 
 This page records scope, dependency, defect, and usability changes visible in
 Gitea and Git during Sprint 2. Exact issue status remains authoritative in
 Gitea.
 
 - **Refinement period:** 28 August-15 September 2026
-- **Participants:** Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy
 - **Initial backlog:** Issues #159-#186
 - **Evidence:** Issue creation and closure history, native dependencies, PR review changes, stakeholder records, and user findings
 - **Trigger:** Product decisions, integration findings, operational constraints, and formal user feedback changed the ready work
@@ -669,7 +606,7 @@ Ten structured responses collected on 13 September produced five prioritised
 findings. Issues #240-#242 were connected to PR #245, which added authority
 regressions, reduced repeated database work, and clarified turn/request state.
 Issues #243 and #244 captured deck and first-time journey clarity requirements,
-but the [results report](../../../testing/sprint-2-user-feedback-results.md)
+but the [results report](feedback.md)
 still records missing linked implementation/retest evidence.
 
 The feedback is evidence of collection and evaluation. It is not treated as
@@ -706,11 +643,10 @@ validated until the two open release gates and retest boundaries are resolved.
 - Verify external API/docs availability and the final named deployment.
 - Retain future ceremony and feedback records contemporaneously.
 
-### Record Details and Sources {/* #sprint-review-record-details-and-sources */}
+### Sources {/* #sprint-review-record-details-and-sources */}
 
 - **Review date:** 15 September 2026
 - **Milestone due:** 15 September 2026
-- **Participants:** Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy
 - **Stakeholder:** Calvin Rea, through the three linked Sprint 2 review records
 - **Tracker snapshot:** 27 of 28 live Sprint 2 milestone issues closed; #167 open
 - **Additional planned gate:** #186 open; #179-#186 lacked Sprint 2 milestone metadata in the inspected tracker state
@@ -804,10 +740,9 @@ integration. The main process correction is to move validation and evidence
 earlier, narrow simultaneous work, and make the live tracker accurately reflect
 the whole planned sprint.
 
-### Record Details and Sources {/* #sprint-retrospective-record-details-and-sources */}
+### Sources {/* #sprint-retrospective-record-details-and-sources */}
 
 - **Retrospective date:** 15 September 2026
-- **Participants:** Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy
 - **Inputs:** Sprint goal, issue/PR history, CI/deployment work, three stakeholder records, ten user responses, and open validation gates
 - **Overall result:** Strong implementation throughput with release, retest, and tracker-hygiene work still open
 
@@ -821,11 +756,14 @@ and original AI declarations. Kevin supplied four Daily Scrum photos and
 confirmed their order; they do not independently establish dates or discussion.
 Planning, refinement, Review, and Retrospective have no mapped meeting photo.
 See the [photo provenance](../index.md#sprint-2-meeting-photos),
-[feedback results](../../../testing/sprint-2-user-feedback-results.md), and
-[dated validation status](../../../testing/sprint-2-validation-status.md).
+[feedback results](feedback.md), and
+[dated validation status](evidence.md).
 
 ## AI declaration
 
 The original ceremony narratives used repository history, project documentation, and the supplied `vitaqsprint.pdf` layout reference with assistance from Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-6], Codex[GPT-6].
 
-The records were consolidated into this report with assistance from Codex[GPT-6]. This edit creates no meeting, attendance, quotation, stakeholder acceptance, or test result; original dates, photo provenance, and reconstruction limits remain in the record.
+Report consolidation and simplification assisted by Codex[GPT-6]. Repeated
+agendas, workflow instructions, and source notices were removed; historical
+dates, photo provenance, and evidence limits are unchanged. No meeting,
+attendance, quotation, acceptance, or test result is inferred from this edit.

@@ -77,7 +77,7 @@ Existing attempts, issued offline packs, and started matches can finish. Restric
 
 Gameplay denials use neutral messages. The shared activity error is `ACTIVITY_REVIEW_RESTRICTION`; ranked entry uses `RANKED_RESTRICTED`.
 
-The trading service also supports a `card_trade_hold`. The current review console can display that scope but cannot create it. See [Trading](./card-trading-policy.md) for its effect on offers and card locks.
+The trading service also supports a `card_trade_hold`. The current review console can display that scope but cannot create it. See [Trading](card-trading-policy.md) for its effect on offers and card locks.
 
 ## Appeals and audit access
 

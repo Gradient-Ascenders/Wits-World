@@ -21,14 +21,14 @@ The content catalogue is shared between Authors. Each mutation records the actin
 | Workspace          | Capabilities                                                                              | Guide                                                                   |
 | ------------------ | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | **Events**         | Create events, set schedules and locations, and write challenge questions                 | [Events and questions](../architecture/author-curation-api-contract.md) |
-| **Cards**          | Define Creature moves and Power-card effects, then prepare cards for publication          | [Author cards](./author-cards.md)                                       |
+| **Cards**          | Define Creature moves and Power-card effects, then prepare cards for publication          | [Author cards](author-cards.md)                                         |
 | **Campaigns**      | Schedule published events and trails together                                             | [Campaigns](../architecture/campaign-scheduling-api-contract.md)        |
 | **Content review** | Review another Author's submissions, approve or return them, and publish approved content | [Review and publish](../architecture/diagrams/content-review.md)        |
 | **Placement**      | Preview and apply automatic event assignments, manage overrides, and request rollback     | [Event placement](../architecture/automatic-event-placement-service.md) |
 | **Player review**  | Inspect trust cases, record decisions, and apply supported temporary restrictions         | [Moderation and trust](../requirements/longitudinal-trust-policy.md)    |
-| **Analytics**      | Inspect aggregate event activity, question outcomes, and card rewards                     | [Analytics overview](./author-analytics.md)                             |
+| **Analytics**      | Inspect aggregate event activity, question outcomes, and card rewards                     | [Analytics overview](author-analytics.md)                               |
 
-Authors can also create, reorder, publish, and retire trails through the protected API. There is currently no trail editor in the console: see [Author trails](./author-trails.md).
+Authors can also create, reorder, publish, and retire trails through the protected API. There is currently no trail editor in the console: see [Author trails](author-trails.md).
 
 ## Saving and recovery
 

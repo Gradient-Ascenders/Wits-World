@@ -11,15 +11,17 @@ Historical report for the August 2026 increment. Planning and Daily Scrum dates
 are reconstructed from repository activity. The team confirmed that the Review
 and Retrospective occurred; their exact dates were not retained.
 
-This report combines the ceremony records, their sources, and follow-up actions.
+The records are reconstructions, not transcripts: exact times, detailed attendance,
+individual statements, and votes were not retained. Team-confirmed recollections
+are labelled separately from repository evidence. Merged work does not establish
+release acceptance. Shared workflow rules are in the
+[project methodology](../../project-and-git-methodology.md).
 
 <a id="sprint-planning--5-august-2026-reconstructed" />
 
 ## Sprint Planning — 5 August 2026 (reconstructed) {/* #planning */}
 
 **Date:** 5 August 2026 (reconstructed).
-
-> Historical reconstruction; exact meeting details were not retained.
 
 <figure className="sprint-meeting-photo">
   <a href="/img/scrum/sprint-1/sprint-planning.png" aria-label="Open full-size photo: Four-person team call image supplied for the Sprint 1 planning record">
@@ -45,10 +47,6 @@ browser-reported location, and receive a server-authoritative PostGIS eligibilit
 decision. The slice should establish the separate Web/API architecture,
 repeatable quality checks, and public project documentation needed for later
 gameplay.
-
-### Agenda {/* #planning-agenda */}
-
-Review the first campus exploration journey, confirm the location-slice goal, allocate Web, API, database, and delivery work, and agree on dependencies and release checks before gameplay expands.
 
 ### Discussion Summary {/* #planning-discussion-summary */}
 
@@ -89,36 +87,6 @@ deployment had been proven.
 - **CI or deployment might arrive too late:** Establish the pipeline in the same vertical slice
 - **Numeric location thresholds were not yet validated:** Treat them as provisional and create field-test follow-up rather than claim certainty
 
-### Key Decisions {/* #planning-key-decisions */}
-
-#### Working agreements {/* #planning-working-agreements */}
-
-The planned working agreement, reconstructed from issue #10 and the methodology
-documents, was:
-
-- use Gitea issues as the backlog and keep acceptance criteria visible;
-- work on short-lived branches rather than directly on `main`;
-- link implementation to issues and use pull requests for human review;
-- keep protected decisions in the API and treat browser data as untrusted;
-- add proportionate tests and documentation with each feature;
-- keep secrets out of Git and browser-visible environment variables; and
-- record AI assistance accurately in commits and submission-facing documents.
-
-#### Definition of Done used for planning {/* #planning-definition-of-done-used-for-planning */}
-
-A backlog item would be considered complete only when its acceptance criteria
-were implemented, relevant tests passed, CI succeeded, review findings were
-resolved, documentation and security/accessibility impacts were addressed, and
-the authorised pull request was merged. External or manual validation that had
-not happened would remain explicit rather than being marked as complete.
-
-#### Planning outcome {/* #planning-planning-outcome */}
-
-The planned increment, ownership split, and dependency order are strongly
-supported by the issue creation and subsequent commit history. Exact spoken
-agreements are not available; the outcome above is the smallest reconstruction
-consistent with the work that followed.
-
 ### Task Allocation {/* #planning-task-allocation */}
 
 The list reflects the issue assignments recorded in Gitea. Issue links may
@@ -138,33 +106,18 @@ require access to the private course Gitea instance.
 - Connect the map and accessible event list to the API.
 - Deploy the slice, publish documentation, and record release checks.
 
-### Record Details and Sources {/* #planning-record-details-and-sources */}
-
-:::note[Historical Sprint 1 evidence]
-
-This page preserves a reconstructed Sprint 1 planning record. It is not a
-current plan; see the [Scrum records overview](../index.md) for its evidence and
-inference boundaries.
-
-:::
+### Sources {/* #planning-record-details-and-sources */}
 
 - **Reconstructed date:** 5 August 2026
-- **Milestone:** Sprint 1
 - **Planning horizon:** Initial vertical slice, followed by release validation before the milestone due date
 - **Team in scope:** Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy
 - **Source status:** Retrospective reconstruction from Gitea issues #10–#21, Git history, and committed planning documents
-
-> This is not a contemporaneous transcript. Exact meeting time, duration,
-> facilitator, and individual statements were not recorded in the available
-> repository evidence.
 
 <a id="daily-scrum-1--6-august-2026-reconstructed" />
 
 ## Daily Scrum 1 — 6 August 2026 (reconstructed) {/* #daily-scrum-01 */}
 
 **Date:** 6 August 2026 (reconstructed).
-
-> Historical reconstruction; exact meeting details were not retained.
 
 <figure className="sprint-meeting-photo">
   <a href="/img/scrum/sprint-1/daily-scrum-01.png" aria-label="Open full-size photo: Four-person team call image supplied as Daily Scrum 01 evidence">
@@ -210,32 +163,17 @@ inference boundaries.
 - Uzair: implement and test server-side PostGIS eligibility.
 - Caleb: establish the Gitea Actions quality workflow.
 
-### Record Details and Sources {/* #daily-scrum-01-record-details-and-sources */}
-
-:::note[Historical Sprint 1 evidence]
-
-This page preserves a reconstructed Sprint 1 coordination record. It is not a
-current status report; see the [Scrum records overview](../index.md) for its
-evidence and inference boundaries.
-
-:::
+### Sources {/* #daily-scrum-01-record-details-and-sources */}
 
 - **Reconstructed date:** 6 August 2026
 - **Reporting window:** 5–6 August 2026
-- **Sprint focus:** Establish a shared foundation that each specialist stream can build on
 - **Evidence:** Commits and merged PRs for the monorepo, Web scaffold, architecture, Neon/PostGIS setup, and event schema
-
-> This summary is reconstructed from repository activity during this reporting
-> window. It records demonstrated progress and the most likely coordination
-> needs; it does not attribute unrecorded quotations to team members.
 
 <a id="daily-scrum-2--10-august-2026-reconstructed" />
 
 ## Daily Scrum 2 — 10 August 2026 (reconstructed) {/* #daily-scrum-02 */}
 
 **Date:** 10 August 2026 (reconstructed).
-
-> Historical reconstruction; exact meeting details were not retained.
 
 <figure className="sprint-meeting-photo">
   <a href="/img/scrum/sprint-1/daily-scrum-02.png" aria-label="Open full-size photo: Four-person team call image supplied as Daily Scrum 02 evidence">
@@ -285,32 +223,17 @@ evidence and inference boundaries.
 - Keep eligibility, challenge outcomes, rewards, and other protected state on
   the server.
 
-### Record Details and Sources {/* #daily-scrum-02-record-details-and-sources */}
-
-:::note[Historical Sprint 1 evidence]
-
-This page preserves a reconstructed Sprint 1 coordination record. It is not a
-current status report; see the [Scrum records overview](../index.md) for its
-evidence and inference boundaries.
-
-:::
+### Sources {/* #daily-scrum-02-record-details-and-sources */}
 
 - **Reconstructed date:** 10 August 2026
 - **Reporting window:** 7–10 August 2026
-- **Sprint focus:** Turn the separate foundations into an authenticated vertical slice
 - **Evidence:** Commits for Gitea Actions, Fastify, Auth0, event APIs, PostGIS eligibility, reported location, CORS, and Azure deployment
-
-> This is an evidence-based reconstruction, not a transcript. The repository
-> establishes the work completed during this reporting window but not the exact
-> order or wording of a call.
 
 <a id="daily-scrum-3--13-august-2026-reconstructed" />
 
 ## Daily Scrum 3 — 13 August 2026 (reconstructed) {/* #daily-scrum-03 */}
 
 **Date:** 13 August 2026 (reconstructed).
-
-> Historical reconstruction; exact meeting details were not retained.
 
 <figure className="sprint-meeting-photo">
   <a href="/img/scrum/sprint-1/daily-scrum-03.png" aria-label="Open full-size photo: Four-person team call image supplied as Daily Scrum 03 evidence">
@@ -366,32 +289,17 @@ evidence and inference boundaries.
 - Keep CI, public documentation, and release validation moving alongside the
   feature increment.
 
-### Record Details and Sources {/* #daily-scrum-03-record-details-and-sources */}
-
-:::note[Historical Sprint 1 evidence]
-
-This page preserves a reconstructed Sprint 1 coordination record. It is not a
-current status report; see the [Scrum records overview](../index.md) for its
-evidence and inference boundaries.
-
-:::
+### Sources {/* #daily-scrum-03-record-details-and-sources */}
 
 - **Reconstructed date:** 13 August 2026
 - **Reporting window:** 11–13 August 2026
-- **Sprint focus:** Convert refinement decisions into public documentation, stable contracts, and dependency-aware delivery work
 - **Evidence:** Gitea refinement history and commits for responsive review, PostGIS recovery, Docusaurus, branding, Mapbox, and challenge APIs
-
-> This is an evidence-based reconstruction of activity during the reporting
-> window. It is not a verbatim transcript and does not invent attendance,
-> estimates, or quotations that were not retained.
 
 <a id="daily-scrum-4--17-august-2026-reconstructed" />
 
 ## Daily Scrum 4 — 17 August 2026 (reconstructed) {/* #daily-scrum-04 */}
 
 **Date:** 17 August 2026 (reconstructed).
-
-> Historical reconstruction; exact meeting details were not retained.
 
 <figure className="sprint-meeting-photo">
   <a href="/img/scrum/sprint-1/daily-scrum-04.png" aria-label="Open full-size photo: Four-person team call image supplied as Daily Scrum 04 evidence">
@@ -452,32 +360,17 @@ eligibility, challenge results, rewards, deck legality, or battle outcomes.
 - Consolidate release, testing, deployment, recovery, and known-limitation
   documentation for the handover.
 
-### Record Details and Sources {/* #daily-scrum-04-record-details-and-sources */}
-
-:::note[Historical Sprint 1 evidence]
-
-This page preserves a reconstructed Sprint 1 coordination record. It is not a
-current status report; see the [Scrum records overview](../index.md) for its
-evidence and inference boundaries.
-
-:::
+### Sources {/* #daily-scrum-04-record-details-and-sources */}
 
 - **Reconstructed date:** 17 August 2026
 - **Reporting window:** 14–17 August 2026
-- **Sprint focus:** Integrate the Basic-tier player loop while preserving server authority and collecting release evidence
 - **Evidence:** Commits for challenges, rewards, collections, decks, authoring, CPU battles, account lifecycle, tests, documentation, and CI work
-
-> This summary condenses a high-volume delivery window into a representative
-> coordination record. It is based on repository evidence, not on a retained
-> transcript or invented individual quotations.
 
 <a id="backlog-refinement--1112-august-2026-reconstructed" />
 
 ## Backlog Refinement — 11–12 August 2026 (reconstructed) {/* #backlog-refinement */}
 
 **Date:** 11–12 August 2026 (reconstructed).
-
-> Historical reconstruction; exact meeting details were not retained.
 
 ### Discussion {/* #backlog-refinement-discussion */}
 
@@ -506,7 +399,6 @@ Review the goal, dependencies, release evidence, and follow-up scope across the 
 - Resolve challenge, reward, ownership, deck, battle, and account rules before dependent work.
 - Keep the Basic issue-plan naming discrepancy visible rather than rewriting tracker history.
 
-The committed artifact
 An earlier issue-writing plan called issues #62–#80 a
 Sprint 2 plan. Current Gitea metadata records those issues under the `Sprint 1`
 milestone, and their work was completed within the same August delivery period.
@@ -560,53 +452,17 @@ The second pass decomposed the complete game loop into issues #62–#80:
 The dependency order prevented the Web client from inventing protected rules
 before API, database, and product decisions existed.
 
-#### Resulting backlog policy {/* #backlog-refinement-resulting-backlog-policy */}
-
-- A backlog item is ready when its user or system outcome, owner, dependencies,
-  acceptance criteria, security/data constraints, and evidence expectations are
-  clear enough to implement.
-- Priority follows the dependency chain and release risk, not merely visual
-  appeal or issue age.
-- Manual and external checks stay visible as checks; they are not converted into
-  automated passes.
-- New findings become focused issues instead of silently broadening the active
-  implementation branch.
-- Work that cannot fit without compromising testing, security, accessibility,
-  or documentation is carried forward explicitly.
-
-#### Refinement outcome {/* #backlog-refinement-refinement-outcome */}
-
-The refined backlog transformed one deployable location slice into two clear
-tracks: evidence needed to release that slice responsibly, and dependency-ordered
-work needed to complete the Basic game loop. Subsequent Gitea history shows that
-the resulting issues were assigned and closed, but each issue and its pull
-request remain the source of truth for completion evidence.
-
-### Record Details and Sources {/* #backlog-refinement-record-details-and-sources */}
-
-:::note[Historical Sprint 1 evidence]
-
-This page preserves a reconstructed Sprint 1 refinement record. It is not a
-current backlog; see the [Scrum records overview](../index.md) for its evidence
-and inference boundaries.
-
-:::
+### Sources {/* #backlog-refinement-record-details-and-sources */}
 
 - **Reconstructed dates:** 11–12 August 2026
 - **Trigger:** The first vertical slice was implemented and deployable, but release evidence and the remaining Basic-tier journey were not yet decomposed sufficiently
 - **Evidence:** Gitea issue creation history, the committed week-two issue plan, the Basic-tier issue plan, and subsequent implementation commits
-
-> This page records backlog changes that are visible in Gitea and Git. It does
-> not claim a single uninterrupted refinement meeting or invent exact votes,
-> estimates, or quotations that were not retained.
 
 <a id="sprint-review--exact-date-not-retained" />
 
 ## Sprint Review — exact date not retained {/* #sprint-review */}
 
 **Date:** Exact date not retained.
-
-> Historical reconstruction; exact meeting details were not retained.
 
 ### Demoed Features {/* #sprint-review-demoed-features */}
 
@@ -695,8 +551,8 @@ also recording these limitations at the boundary:
 - meeting, ceremony, and feedback evidence had not been captured consistently
   at the time it occurred.
 
-These limits are preserved in the [Sprint 1 evidence index](../../../testing/sprint-1-evidence-index.md),
-[known limitations](../../../testing/sprint-1-known-limitations.md), and
+These limits are preserved in the [Sprint 1 evidence index](evidence.md),
+[known limitations](evidence.md#known-limitations), and
 [Basic-tier release validation](../../../testing/basic-tier-release-validation.md).
 
 ### Follow-up Items {/* #sprint-review-follow-up-items */}
@@ -712,7 +568,7 @@ Natural follow-up work included:
 - preserve current-reference and historical-evidence boundaries as the product
   evolves.
 
-### Record Details and Sources {/* #sprint-review-record-details-and-sources */}
+### Sources {/* #sprint-review-record-details-and-sources */}
 
 - **Ceremony:** Sprint 1 Review
 - **Occurrence:** Confirmed by the team
@@ -721,23 +577,11 @@ Natural follow-up work included:
 - **Team assessment:** Positive; the team confirms it was satisfied with the progress made
 - **Primary sources:** Team-confirmed recollection, Git/Gitea history, Sprint 1 goal, release evidence, and current-state reconciliation
 
-:::note[Reconstructed ceremony record]
-
-> This record was reconstructed after the ceremony from team recollection and
-> repository evidence because contemporaneous minutes were not retained.
-
-It is not a transcript. Exact statements, individual opinions, votes, the
-precise discussion sequence, and any unrecorded demonstration are not claimed.
-
-:::
-
 <a id="sprint-retrospective--exact-date-not-retained" />
 
 ## Sprint Retrospective — exact date not retained {/* #sprint-retrospective */}
 
 **Date:** Exact date not retained.
-
-> Historical reconstruction; exact meeting details were not retained.
 
 ### What Went Well {/* #sprint-retrospective-what-went-well */}
 
@@ -780,7 +624,7 @@ These are process themes, not attributed complaints from a particular person.
 
 - **Retain actual Review and Retrospective notes:** Dated record with participants, increment or themes, decisions/actions, and links created at the ceremony
 - **Capture stakeholder feedback when it happens:** Interaction record separating feedback, team evaluation, decision, owner, issue, and resulting change
-- **Run formal user testing:** Follow the [Sprint 2 user-testing plan](../../../testing/sprint-2-user-testing-plan.md) and retain sanitised observations and results
+- **Run formal user testing:** Follow the [testing strategy](../../../testing/testing-strategy.md#manual-and-field-validation) and retain sanitised observations and results
 - **Continue smaller reviewed vertical slices:** Focused issue and PR links with acceptance criteria, tests, documentation, and review evidence
 - **Continue improving CI reliability:** Named failure, measured intervention, exact workflow result, and any residual risk
 - **Preserve current/historical documentation boundaries:** Current reference updated without rewriting dated plans, decisions, or evidence records
@@ -805,7 +649,7 @@ record. Sprint 2 evidence must show the process being used: notes retained,
 feedback evaluated, tests run, issues created, changes reviewed, and outcomes
 linked.
 
-### Record Details and Sources {/* #sprint-retrospective-record-details-and-sources */}
+### Sources {/* #sprint-retrospective-record-details-and-sources */}
 
 - **Ceremony:** Sprint 1 Retrospective
 - **Occurrence:** Confirmed by the team
@@ -814,16 +658,6 @@ linked.
 - **Overall theme:** The team was generally happy with Sprint 1 progress
 - **Sources:** Team-confirmed themes and repository evidence
 
-:::note[Reconstructed ceremony record]
-
-> This record was reconstructed after the ceremony from team recollection and
-> repository evidence because contemporaneous minutes were not retained.
-
-It records conservative themes rather than invented quotations, complaints,
-individual opinions, votes, conflict, attendance, or discussion order.
-
-:::
-
 ## Sources and Record Status
 
 The eight ceremony sections retain issue/PR references,
@@ -831,10 +665,13 @@ reporting windows, ownership, and original AI declarations. The planning and
 Daily Scrum photos follow the supplied filename order; image metadata does not
 establish dates or identities. No Review or Retrospective photo was supplied.
 See the [record and image provenance](../index.md#sprint-1-image-provenance) and
-[Sprint 1 evidence index](../../../testing/sprint-1-evidence-index.md).
+[Sprint 1 evidence index](evidence.md).
 
 ## AI declaration
 
 The original ceremony narratives used repository history, project documentation, and the supplied `vitaqsprint.pdf` layout reference with assistance from Codex[GPT-5], Codex-CLI[GPT-5], Codex[GPT-6].
 
-The records were consolidated into this report with assistance from Codex[GPT-6]. This edit creates no meeting, attendance, quotation, stakeholder acceptance, or test result; original dates, photo provenance, and reconstruction limits remain in the record.
+Report consolidation and simplification assisted by Codex[GPT-6]. Repeated
+agendas, workflow instructions, and source notices were removed; historical
+dates, photo provenance, and evidence limits are unchanged. No meeting,
+attendance, quotation, acceptance, or test result is inferred from this edit.

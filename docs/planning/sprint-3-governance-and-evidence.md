@@ -95,7 +95,7 @@ decision, implementation scope, issue, and validation.
 
 ## Coordination and retained evidence
 
-The [Sprint 3 Scrum set](scrum/index.md#sprint-3-record) mirrors Sprint 2:
+The [Sprint 3 report](scrum/sprint-3/report.md) mirrors Sprint 2:
 planning, four delivery checkpoints, refinement, review, and retrospective.
 The checkpoints summarize repository windows, and the review/retrospective
 capture release-readiness and process actions. Add actual meeting attendance,

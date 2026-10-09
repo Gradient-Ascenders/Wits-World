@@ -119,7 +119,7 @@ Passing automation can still leave usability, provider, or deployment failures
 unobserved. Participant retests, named-build acceptance, and stakeholder review
 must be recorded separately. The
 [release checklist](../testing/basic-tier-release-validation.md) and
-[Sprint 3 validation record](../testing/sprint-3-validation-status.md) identify
+[Sprint 3 validation record](scrum/sprint-3/evidence.md) identify
 the evidence boundaries. [AI review and disclosure](ai-use.md) address the
 additional risk of incorrect or unattributed generated work.
 

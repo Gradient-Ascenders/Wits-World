@@ -146,7 +146,7 @@ The Sprint 1 harness starts on ports 3001 and 5174 without reusing servers.
 Failure screenshots/traces are in `apps/web/playwright/test-results/`, with
 reports in `apps/web/playwright-report/`. Missing Chromium, occupied ports, or
 an unreachable PostGIS target are setup failures, not a passing test. Historical
-executions remain in the [Sprint 1 evidence](sprint-1-evidence-index.md).
+executions remain in the [Sprint 1 evidence](../planning/scrum/sprint-1/evidence.md).
 
 ## Focused browser suites
 

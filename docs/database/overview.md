@@ -126,7 +126,7 @@ restored, or monitored. Production evidence must identify the target safely,
 record the operator and time, and state the result without exposing the
 connection string.
 
-The [September review summary](../testing/sprint-2-validation-status.md#database-review--4-september)
+The [September review summary](../planning/scrum/sprint-2/evidence.md#database-review--4-september)
 records index cleanup and local verification. It does not establish the current
 production schema or workload.
 

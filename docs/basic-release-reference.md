@@ -124,8 +124,8 @@ extend the core game and have their own rules and validation requirements.
 | [Trust review](requirements/longitudinal-trust-policy.md) and [analytics](design/author-analytics.md)                                 | Review gameplay evidence and inspect protected Author reports.                                        |
 | [Developer API](architecture/developer-api.md)                                                                                        | Access supported resources through scoped developer credentials.                                      |
 
-The [Sprint 2 overview](sprint-2-overview.md) and
-[Sprint 3 overview](sprint-3-overview.md) connect these features to their delivery
+The [Sprint 2 overview](planning/scrum/sprint-2/evidence.md) and
+[Sprint 3 overview](planning/scrum/sprint-3/evidence.md) connect these features to their delivery
 and testing records.
 
 ## Accounts and accessibility
@@ -171,8 +171,8 @@ Implemented features and passing local tests do not establish production or
 stakeholder acceptance. Deployed gameplay, real Auth0 recovery and deletion,
 manual accessibility, campus-location testing, and operator checks require
 their own dated evidence. Later-sprint results are recorded in the
-[Sprint 2](testing/sprint-2-validation-status.md) and
-[Sprint 3](testing/sprint-3-validation-status.md) validation snapshots.
+[Sprint 2](planning/scrum/sprint-2/evidence.md) and
+[Sprint 3](planning/scrum/sprint-3/evidence.md) validation snapshots.
 
 Project workflow and attribution are documented in the
 [project and Git methodology](planning/project-and-git-methodology.md) and

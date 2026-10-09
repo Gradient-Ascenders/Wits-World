@@ -44,7 +44,7 @@ Timeouts are part of incorrect outcomes, not a third mutually exclusive category
 
 Date filters use the attempt's authoritative `completed_at`. The start boundary is inclusive and the end exclusive; attempt start time does not determine inclusion.
 
-See [Author analytics API](../architecture/advanced-analytics-api-contract.md#two-reporting-endpoints) for endpoint differences and filters, and [Question analytics queries](./question-performance-query.md) for query stages and supporting indexes.
+See [Author analytics API](../architecture/advanced-analytics-api-contract.md#two-reporting-endpoints) for endpoint differences and filters, and [Question analytics queries](question-performance-query.md) for query stages and supporting indexes.
 
 **AI declaration**
 

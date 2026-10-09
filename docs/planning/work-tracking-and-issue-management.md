@@ -62,7 +62,7 @@ A reproducible bug report includes:
 Gitea's `bug` label identifies defect work. Sprint 3 governance also allows
 reports originating in YouTrack to link to a Gitea implementation issue and PR.
 When two tools are involved, cross-links keep the report, fix, and retest aligned.
-The [Sprint 3 record](sprint-3-governance-and-evidence.md#feedback-workflow)
+The [project methodology](project-and-git-methodology.md)
 describes that relationship; it does not establish an audited YouTrack inventory.
 
 <a id="examples-of-the-tracker-in-use" />

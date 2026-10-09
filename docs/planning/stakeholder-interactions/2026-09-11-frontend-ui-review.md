@@ -73,7 +73,7 @@ change requested during the meeting requires its own finding and issue.
 The later formal user-feedback findings provide more specific UI evidence for
 battle clarity, deck validation, and first-time guidance. Those findings and
 their integration status are recorded in the
-[Sprint 2 user-feedback results](../../testing/sprint-2-user-feedback-results.md)
+[Sprint 2 user-feedback results](../scrum/sprint-2/feedback.md)
 and remain part of release issue
 [#167](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/167).
 
