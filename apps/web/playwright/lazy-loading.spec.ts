@@ -359,17 +359,22 @@ test('already-loaded emoji code remains usable offline without a second download
   await expect(trigger).toBeFocused();
 });
 
-test.describe('existing offline shell policy', () => {
+test.describe('offline shell and deferred module caching', () => {
   test.use({ serviceWorkers: 'allow' });
 
-  test('the unchanged precache includes deferred Author, Profile and emoji chunks', async ({
+  test('deferred Author, Profile and emoji chunks are cached on demand for offline reuse', async ({
     page,
     context,
   }) => {
     await installReads(context);
     await page.goto('/');
     await expect(page.locator('.hero')).toBeVisible();
-    const paths = await page.evaluate(async () => {
+    await expect
+      .poll(() =>
+        page.evaluate(() => Boolean(navigator.serviceWorker.controller)),
+      )
+      .toBe(true);
+    const initialPaths = await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
       const names = (await caches.keys()).filter((name) =>
         name.startsWith('wits-world-shell-'),
@@ -387,6 +392,25 @@ test.describe('existing offline shell policy', () => {
           /(?:Workspace|ProfilePage|StatusEmojiPicker)-.*\.js$/.test(path),
         );
     });
+    expect(initialPaths).toEqual([]);
+    const paths = await page.evaluate(async () => {
+      const source = await (await fetch('/sw.js')).text();
+      const start = source.indexOf('[{');
+      const manifest = JSON.parse(
+        source.slice(start, source.indexOf(']', start) + 1),
+      ) as Array<{ url: string }>;
+      const urls = manifest
+        .map((entry) => `/${entry.url}`)
+        .filter((url) =>
+          /(?:Workspace|ProfilePage|StatusEmojiPicker)-.*\.js$/.test(url),
+        );
+      const statuses = await Promise.all(
+        urls.map(async (url) => (await fetch(url)).status),
+      );
+      if (!statuses.every((status) => status === 200))
+        throw new Error('Deferred fixture module unavailable');
+      return urls;
+    });
     for (const feature of [
       'EventWorkspace',
       'CardWorkspace',
@@ -400,6 +424,23 @@ test.describe('existing offline shell policy', () => {
     ]) {
       expect(paths.some((path) => path.includes(`${feature}-`))).toBe(true);
     }
+    await expect
+      .poll(() =>
+        page.evaluate(async (urls) => {
+          const names = (await caches.keys()).filter((name) =>
+            name.startsWith('wits-world-shell-'),
+          );
+          const cached = await Promise.all(
+            names.map(async (name) =>
+              (await (await caches.open(name)).keys()).map(
+                (entry) => new URL(entry.url).pathname,
+              ),
+            ),
+          );
+          return urls.every((url) => cached.flat().includes(url));
+        }, paths),
+      )
+      .toBe(true);
     await context.setOffline(true);
     const statuses = await page.evaluate(
       async (urls) =>
