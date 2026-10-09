@@ -283,6 +283,59 @@ describe('starter selection API', () => {
 });
 
 describe('card collection API', () => {
+  it('passes a validated deck scope with only the authenticated owner', async () => {
+    const deckId = '00000000-0000-4000-8000-000000000901';
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/cards/collection?deckId=${deckId}`,
+      headers: { authorization: 'Bearer test-access-token' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(listOwnedCards).toHaveBeenCalledWith(
+      activeLocalPlayer.id,
+      false,
+      deckId,
+    );
+    expect(response.json()).toEqual({
+      cards: [],
+      requestId: expect.any(String),
+    });
+  });
+
+  it('supports unique selection within a deck scope', async () => {
+    const deckId = '00000000-0000-4000-8000-000000000901';
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/cards/collection?unique=true&deckId=${deckId}`,
+      headers: { authorization: 'Bearer test-access-token' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(listOwnedCards).toHaveBeenCalledWith(
+      activeLocalPlayer.id,
+      true,
+      deckId,
+    );
+  });
+
+  it('rejects an invalid deck scope before querying cards', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cards/collection?deckId=invalid',
+      headers: { authorization: 'Bearer test-access-token' },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(listOwnedCards).not.toHaveBeenCalled();
+  });
+
+  it('does not allow a deck-scoped read without authentication', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cards/collection?deckId=00000000-0000-4000-8000-000000000901',
+    });
+    expect(response.statusCode).toBe(401);
+    expect(listOwnedCards).not.toHaveBeenCalled();
+  });
+
   it('requests unique definitions for the authenticated owner', async () => {
     const response = await app.inject({
       method: 'GET',
