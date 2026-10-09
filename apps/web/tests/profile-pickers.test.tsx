@@ -517,6 +517,11 @@ describe('profile editor picker actions', () => {
     expect(
       within(dialog).getByRole('button', { name: 'Close profile editor' }),
     ).toHaveFocus();
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole('button', { name: 'Choose status emoji' }),
+      ).toBeEnabled(),
+    );
     await user.click(
       within(dialog).getByRole('button', { name: 'Choose status emoji' }),
     );

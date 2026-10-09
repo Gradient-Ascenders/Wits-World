@@ -638,6 +638,63 @@ or evidence of general application performance. Any broader benchmark must retai
 its scenario, data volume, environment, tooling, result, analysis, and resulting
 change before the documentation can claim an application performance improvement.
 
+### Author and Profile module loading
+
+Issue `#358` Workstream 7 keeps the existing lazy page routes and adds boundaries
+for the seven Author workspaces and the status editor's emoji catalogue. The
+console shell, sidebar, retained reads and navigation guard stay mounted while
+the destination workspace loads. Destination code starts alongside the console
+and identity checks; importing code does not authorize or initiate protected
+reads. Leaderboard imports its standings component independently of Profile.
+
+`apps/web/playwright/lazy-loading.spec.ts` tests the optimized production bundle,
+including direct routes, role denial, delayed and failed imports, reload recovery,
+focus restoration, cached navigation and the unchanged offline shell precache.
+The normal experience-regression CI command does not include this separate
+configuration. Run it explicitly alongside the relevant existing Author and
+Profile journeys. Some existing Author visual cases write screenshots under
+`.impeccable/`; preserve those files before running captures. For the existing
+Player review case, `PLAYER_REVIEW_CAPTURE=none` skips its optional screenshots
+while retaining the behavioral assertions. Existing component tests wait for the deferred emoji control to
+be enabled before interacting with it; the dialog and text input do not wait for
+the catalogue.
+
+For a safe local build, use the existing `basic-e2e` Auth0/runtime fixture aliases
+and synthetic public configuration; do not use real credentials or start an API:
+
+```powershell
+$env:VITE_API_BASE_URL = 'http://127.0.0.1:3999/api/v1'
+$env:VITE_AUTH0_AUDIENCE = 'https://lazy-e2e.invalid/api'
+$env:VITE_AUTH0_CLIENT_ID = 'lazy-e2e-client'
+$env:VITE_AUTH0_DOMAIN = 'lazy-e2e.invalid'
+$env:VITE_MAPBOX_ACCESS_TOKEN = 'pk.lazy-e2e-not-used'
+npm run build:bundle --workspace @wits-world/web -- --mode basic-e2e --manifest
+Set-Location apps/web
+npx playwright test --config=playwright/lazy-loading.config.ts
+```
+
+`LAZY_BUNDLE_DIRECTORY` optionally selects a preserved build outside the
+repository. `LAZY_MEASURE=1` enables the three-run navigation comparison;
+`LAZY_MEASUREMENT_FILE` selects its JSON artifact. Compare unchanged-main and
+feature builds with identical fixtures, independently and without concurrent
+tests/builds. The fixture responds to read-only API requests after 100 ms. Mobile
+uses 390 × 844, DPR 3, fourfold CPU throttling, 150 ms network latency and
+200,000 bytes/s download throughput; desktop uses 1440 × 1000, DPR 2, normal CPU
+and loopback networking. Readiness means visible Home, populated Profile,
+completed empty Battles summary, completed empty Author events, or completed
+Analytics overview. Repeated visits reuse loaded modules while making fresh
+route reads. Record incremental JavaScript requests/transfer and layout shifts.
+
+Route-demand measurements block service workers to separate page-critical code
+from background precaching. The existing service worker still precaches all
+built JavaScript/CSS, including deferred modules: this change reduces immediate
+route loading/evaluation, not total installed-shell bytes or background Author
+downloads. The offline test verifies cached shell/chunk delivery and an already
+loaded emoji picker; it does not imply offline Author API or Profile API support.
+Fixture timings and build sizes are not deployed Auth0/API performance evidence.
+
+This module-loading procedure was documented with assistance from Codex[GPT-6].
+
 ## Evidence and review rule
 
 Each report must distinguish:
