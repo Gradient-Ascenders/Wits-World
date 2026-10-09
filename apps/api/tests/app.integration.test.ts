@@ -124,4 +124,19 @@ describe('Fastify API application', () => {
     expect(document.paths).toHaveProperty('/health');
     expect(document.paths).toHaveProperty('/api/v1/');
   });
+
+  it('generates OpenAPI when a registered route has no schema', async () => {
+    app.get('/test/schema-less', async () => ({ ok: true }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/documentation/json',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().paths['/test/schema-less']).toHaveProperty('get');
+    expect(
+      response.json().paths['/test/schema-less'].get.responses,
+    ).not.toHaveProperty('429');
+  });
 });

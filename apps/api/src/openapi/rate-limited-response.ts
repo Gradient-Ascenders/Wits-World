@@ -56,7 +56,7 @@ export const rateLimitUnavailableResponseSchema = {
 } as const;
 
 export function documentVerifiedPlayerRateLimit(
-  schema: FastifySchema,
+  schema: FastifySchema = {},
 ): FastifySchema {
   const usesBearerAuthentication = schema.security?.some(
     (requirement) => 'bearerAuth' in requirement,
