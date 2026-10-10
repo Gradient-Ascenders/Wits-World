@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -31,6 +31,10 @@ import { TrustActivityRestrictedError } from '../src/trust/trust-restrictions.js
 import { createAsyncPvpDeadlineProcessor } from '../src/matches/asynchronous-pvp-deadline-processor.js';
 import { createSignedCursorCodec } from '../src/security/signed-cursor.js';
 import { createProgressionPersistence } from '../src/progression/progression-persistence.js';
+import {
+  observeSnapshotWrites,
+  type SnapshotMeasurement,
+} from './fixtures/pvp-deck-snapshot-legacy.js';
 
 const MIGRATION_NAME = '0028_create_asynchronous_pvp_persistence.sql';
 const INVALIDATION_MIGRATION_NAME =
@@ -470,6 +474,155 @@ describe.skipIf(!runIntegrationTests)(
       ).resolves.toMatchObject({ rows: [{ status: 'invalidated' }] });
     });
 
+    it.each([false, true])(
+      'preserves complete snapshot rows against frozen legacy writes (legacy=%s)',
+      async (legacy) => {
+        const measured = await runSnapshotJourney(pool, cardDefinitions, {
+          legacy,
+        });
+        expect(measured.create.acquisitions).toBe(1);
+        expect(measured.accept.acquisitions).toBe(1);
+        expect(measured.create.snapshotStatements).toBe(legacy ? 2 : 1);
+        expect(measured.accept.snapshotStatements).toBe(legacy ? 2 : 1);
+        expect(measured.accept.statements).toBe(legacy ? 16 : 15);
+      },
+    );
+
+    it.each(['challenger', 'recipient'] as const)(
+      'rolls back snapshot header and cards together on a %s card constraint failure',
+      async (failRole) => {
+        const challengerPlayerId = await insertPlayer(
+          pool,
+          'snapshot_rollback',
+        );
+        const recipientPlayerId = await insertPlayer(
+          pool,
+          'snapshot_recipient',
+        );
+        const challengerDeck = await createOwnedDeck(
+          pool,
+          challengerPlayerId,
+          cardDefinitions,
+        );
+        const recipientDeck = await createOwnedDeck(
+          pool,
+          recipientPlayerId,
+          cardDefinitions,
+        );
+        const recipient = await pool.query<{ player_name: string }>(
+          'select player_name from public.players where id = $1::uuid',
+          [recipientPlayerId],
+        );
+        const options = {
+          cursorCodec: createSignedCursorCodec(
+            'database-test-only-cursor-key-with-32-bytes',
+          ),
+          randomInt: () => 0,
+        };
+        const healthy = createUntimedAsyncPvpService(pool, options);
+        const failing = createUntimedAsyncPvpService(
+          observeSnapshotWrites(pool, { failRole }).database,
+          options,
+        );
+        const createInput = {
+          playerId: challengerPlayerId,
+          opponentPlayerName: recipient.rows[0]!.player_name,
+          deckId: challengerDeck.deckId,
+          initialCreatureId: challengerDeck.creatureId,
+          submissionId: randomUUID(),
+        };
+        if (failRole === 'challenger') {
+          await expect(
+            failing.createInvitation(createInput),
+          ).rejects.toMatchObject({ code: '23505' });
+          const remaining = await pool.query<{
+            invitations: number;
+            snapshots: number;
+            receipts: number;
+          }>(
+            `select
+             (select count(*)::integer from public.async_pvp_invitations where challenger_player_id = $1::uuid) as invitations,
+             (select count(*)::integer from private.async_pvp_deck_snapshots where player_id = $1::uuid) as snapshots,
+             (select count(*)::integer from private.async_pvp_submission_receipts where actor_player_id = $1::uuid) as receipts`,
+            [challengerPlayerId],
+          );
+          expect(remaining.rows).toEqual([
+            { invitations: 0, snapshots: 0, receipts: 0 },
+          ]);
+          await expect(
+            healthy.createInvitation(createInput),
+          ).resolves.toMatchObject({ status: 'pending' });
+        } else {
+          const invitation = await healthy.createInvitation(createInput);
+          const acceptInput = {
+            playerId: recipientPlayerId,
+            invitationId: invitation.invitationId,
+            deckId: recipientDeck.deckId,
+            initialCreatureId: recipientDeck.creatureId,
+            submissionId: randomUUID(),
+            expectedVersion: 0,
+          };
+          await expect(
+            failing.acceptInvitation(acceptInput),
+          ).rejects.toMatchObject({ code: '23505' });
+          expect(
+            await loadAcceptanceRecords(pool, invitation.invitationId),
+          ).toMatchObject({
+            status: 'pending',
+            version: 0,
+            matches: 0,
+            snapshots: 1,
+            receipts: 0,
+            response: null,
+          });
+          await expect(
+            healthy.acceptInvitation(acceptInput),
+          ).resolves.toMatchObject({ match: { status: 'active' } });
+        }
+      },
+    );
+
+    it.skipIf(!process.env.PVP_SNAPSHOT_MEASUREMENT_FILE)(
+      'measures alternating legacy and combined snapshot journeys',
+      async () => {
+        const samples: Array<{
+          legacy: boolean;
+          delayMs: number;
+          create: SnapshotMeasurement & { elapsedMs: number };
+          accept: SnapshotMeasurement & { elapsedMs: number };
+        }> = [];
+        // Prime connections and plans before either condition is measured.
+        await runSnapshotJourney(pool, cardDefinitions, { legacy: true });
+        await runSnapshotJourney(pool, cardDefinitions);
+        for (const delayMs of [0, 25]) {
+          for (let round = 0; round < 5; round += 1) {
+            for (const legacy of round % 2 === 0
+              ? [true, false]
+              : [false, true]) {
+              samples.push({
+                legacy,
+                delayMs,
+                ...(await runSnapshotJourney(pool, cardDefinitions, {
+                  legacy,
+                  delayMs,
+                })),
+              });
+            }
+          }
+        }
+        await writeFile(
+          process.env.PVP_SNAPSHOT_MEASUREMENT_FILE!,
+          JSON.stringify(samples, null, 2),
+        );
+        for (const sample of samples) {
+          expect(sample.create.acquisitions).toBe(1);
+          expect(sample.accept.acquisitions).toBe(1);
+          expect(sample.accept.statements).toBe(sample.legacy ? 16 : 15);
+        }
+      },
+      60_000,
+    );
+
     it('enforces deck, access, hidden-state, action, replay, and concurrency rules through the real service', async () => {
       const challengerPlayerId = await insertPlayer(pool, 'service_challenger');
       const recipientPlayerId = await insertPlayer(pool, 'service_recipient');
@@ -621,10 +774,10 @@ describe.skipIf(!runIntegrationTests)(
         acceptanceTiming,
       );
       // Includes BEGIN/COMMIT, validation, writes, and fresh response hydration.
-      expect(statementCount).toBe(16);
+      expect(statementCount).toBe(15);
       expect(acceptanceTiming.snapshot()).toMatchObject({
         initial_match_write_ms: expect.any(Number),
-        sql_statement_count: 16,
+        sql_statement_count: 15,
       });
       for (const phase of [
         'match_insert_ms',
@@ -1065,7 +1218,7 @@ describe.skipIf(!runIntegrationTests)(
         const statementCounts = timings
           .map((t) => t.snapshot().sql_statement_count!)
           .sort((a, b) => a - b);
-        expect(statementCounts).toEqual([5, 16]);
+        expect(statementCounts).toEqual([5, 15]);
         for (const timing of timings)
           expect(timing.snapshot()).toMatchObject({
             transaction_ms: expect.any(Number),
@@ -3304,6 +3457,104 @@ async function createPendingInvitation(
   } finally {
     client.release();
   }
+}
+
+async function runSnapshotJourney(
+  database: pg.Pool,
+  definitions: readonly CardDefinitionFixture[],
+  options: { legacy?: boolean; delayMs?: number } = {},
+) {
+  const challengerPlayerId = await insertPlayer(
+    database,
+    'snapshot_challenger',
+  );
+  const recipientPlayerId = await insertPlayer(database, 'snapshot_recipient');
+  const challengerDeck = await createOwnedDeck(
+    database,
+    challengerPlayerId,
+    definitions,
+  );
+  const recipientDeck = await createOwnedDeck(
+    database,
+    recipientPlayerId,
+    definitions,
+  );
+  const recipient = await database.query<{ player_name: string }>(
+    'select player_name from public.players where id = $1::uuid',
+    [recipientPlayerId],
+  );
+  const observed = observeSnapshotWrites(database, options);
+  const service = createUntimedAsyncPvpService(observed.database, {
+    cursorCodec: createSignedCursorCodec(
+      'database-test-only-cursor-key-with-32-bytes',
+    ),
+    randomInt: () => 0,
+  });
+  const createStarted = performance.now();
+  const invitation = await service.createInvitation({
+    playerId: challengerPlayerId,
+    opponentPlayerName: recipient.rows[0]!.player_name,
+    deckId: challengerDeck.deckId,
+    initialCreatureId: challengerDeck.creatureId,
+    submissionId: randomUUID(),
+  });
+  const create = {
+    ...observed.metrics,
+    elapsedMs: performance.now() - createStarted,
+  };
+  for (const key of Object.keys(observed.metrics) as Array<
+    keyof SnapshotMeasurement
+  >)
+    observed.metrics[key] = 0;
+  const acceptStarted = performance.now();
+  const match = await service.acceptInvitation({
+    playerId: recipientPlayerId,
+    invitationId: invitation.invitationId,
+    deckId: recipientDeck.deckId,
+    initialCreatureId: recipientDeck.creatureId,
+    submissionId: randomUUID(),
+    expectedVersion: 0,
+  });
+  const accept = {
+    ...observed.metrics,
+    elapsedMs: performance.now() - acceptStarted,
+  };
+  expect(match).toMatchObject({ match: { status: 'active' } });
+  expect(observed.snapshots).toHaveLength(2);
+  for (const parameters of observed.snapshots) {
+    const persisted = await database.query(
+      `select snapshot.invitation_id, snapshot.player_id, snapshot.participant_role,
+              snapshot.source_deck_id, snapshot.initial_creature_card_id, snapshot.created_at,
+              card.id, card.position, card.battle_card_id, card.source_owned_card_id,
+              card.source_card_definition_id, card.category, card.affinity, card.rarity, card.card_snapshot
+         from private.async_pvp_deck_snapshots snapshot
+         join private.async_pvp_deck_snapshot_cards card on card.snapshot_id = snapshot.id
+        where snapshot.id = $1::uuid order by card.position`,
+      [parameters[0]],
+    );
+    const expectedCards = JSON.parse(
+      parameters[7] as string,
+    ) as pg.QueryResultRow[];
+    expect(persisted.rows).toHaveLength(5);
+    for (const [index, row] of persisted.rows.entries()) {
+      expect(row).toEqual({
+        invitation_id: parameters[1],
+        player_id: parameters[2],
+        participant_role: parameters[3],
+        source_deck_id: parameters[4],
+        initial_creature_card_id: parameters[5],
+        created_at: parameters[6],
+        ...expectedCards[index],
+        source_owned_card_id: expectedCards[index]!.battle_card_id,
+      });
+    }
+    expect(
+      persisted.rows.some(
+        (row) => row.id === parameters[5] && row.category === 'creature',
+      ),
+    ).toBe(true);
+  }
+  return { create, accept };
 }
 
 async function createAcceptanceInput(
