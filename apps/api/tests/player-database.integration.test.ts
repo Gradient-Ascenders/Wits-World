@@ -226,6 +226,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0063_purge_deleted_player_progression.sql',
           '0064_create_player_profile_showcase.sql',
           '0065_constrain_cpu_match_json_shapes.sql',
+          '0066_notify_gameplay_work.sql',
         ],
       });
 
@@ -381,6 +382,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0063_purge_deleted_player_progression.sql',
           '0064_create_player_profile_showcase.sql',
           '0065_constrain_cpu_match_json_shapes.sql',
+          '0066_notify_gameplay_work.sql',
         ],
       });
 
