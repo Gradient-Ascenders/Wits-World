@@ -6,7 +6,6 @@ import {
   type Page,
   type Route,
 } from '@playwright/test';
-import path from 'node:path';
 
 import { buildStarterCards } from '../tests/fixtures/cards';
 import { buildSavedDeck } from '../tests/fixtures/decks';
@@ -26,10 +25,6 @@ import {
 } from '../tests/fixtures/pvp';
 import type { CpuMatch } from '../src/api/matches';
 
-const screenshotsDirectory = path.resolve(
-  process.cwd(),
-  '../../.pr-screenshots/issue-76',
-);
 const CURRENT_PLAYER_ID = '00000000-0000-4000-8000-000000009001';
 
 test('shows rarity frames and confirms an authoritative CPU forfeit', async ({
@@ -76,7 +71,7 @@ test('shows rarity frames and confirms an authoritative CPU forfeit', async ({
     )
     .toBeGreaterThan(1.01);
   await captureScreenshot(test.info(), page.locator('.battle-stage'), {
-    path: path.join(screenshotsDirectory, 'desktop-card-depth.png'),
+    path: 'desktop-card-depth.png',
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
   await page.mouse.move(0, 0);
@@ -100,7 +95,7 @@ test('shows rarity frames and confirms an authoritative CPU forfeit', async ({
     }),
   ).toHaveCount(0);
   await captureScreenshot(test.info(), page.locator('.battle-side-rail'), {
-    path: path.join(screenshotsDirectory, 'desktop-compact-rail.png'),
+    path: 'desktop-compact-rail.png',
   });
   await forfeit.click();
   const dialog = page.getByRole('alertdialog', {
@@ -274,7 +269,7 @@ test('hands mobile Creature sheet gestures between scrolling and dragging', asyn
   expect(await body.evaluate((node) => node.scrollTop)).toBe(0);
   expect((await sheet.boundingBox())!.height).toBeCloseTo(844 * 0.85, 0);
   await captureScreenshot(test.info(), page, {
-    path: path.join(screenshotsDirectory, '390-gesture-sheet.png'),
+    path: '390-gesture-sheet.png',
   });
   headerBox = (await header.boundingBox())!;
   await drag(160, headerBox.y + 25, 310);
@@ -343,7 +338,7 @@ test('opens Creature details from active and bench pictures', async ({
       dialog.getByRole('heading', { name: 'Moves', exact: true }),
     ).toBeVisible();
     await captureScreenshot(test.info(), dialog, {
-      path: path.join(screenshotsDirectory, `${width}-creature-details.png`),
+      path: `${width}-creature-details.png`,
     });
     if (width === 390) {
       await page.setViewportSize({ width, height: 260 });
@@ -842,10 +837,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
         await expect(page.locator('.site-header')).toBeVisible();
       }
       await captureScreenshot(test.info(), page.locator('.battle-page'), {
-        path: path.join(
-          screenshotsDirectory,
-          `${viewport.label}-opening-selection.png`,
-        ),
+        path: `${viewport.label}-opening-selection.png`,
         style: '.skip-link, .primary-navigation { display: none !important; }',
       });
     }
@@ -933,10 +925,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
         await expectBattleStageFirstDesktopLayout(page);
       }
       await captureScreenshot(test.info(), page.locator('.battle-page'), {
-        path: path.join(
-          screenshotsDirectory,
-          `${viewport.label}-power-actions.png`,
-        ),
+        path: `${viewport.label}-power-actions.png`,
         style: '.skip-link, .primary-navigation { display: none !important; }',
       });
     }
@@ -989,10 +978,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
         await expect(page.locator('.site-header')).toBeVisible();
       }
       await captureScreenshot(test.info(), page.locator('.battle-page'), {
-        path: path.join(
-          screenshotsDirectory,
-          `${viewport.label}-active-battle.png`,
-        ),
+        path: `${viewport.label}-active-battle.png`,
         style: '.skip-link, .primary-navigation { display: none !important; }',
       });
     }
@@ -1033,10 +1019,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
         await expectBattleStageFirstDesktopLayout(page);
       }
       await captureScreenshot(test.info(), page.locator('.battle-page'), {
-        path: path.join(
-          screenshotsDirectory,
-          `${viewport.label}-replacement.png`,
-        ),
+        path: `${viewport.label}-replacement.png`,
         style: '.skip-link, .primary-navigation { display: none !important; }',
       });
     }
@@ -1070,10 +1053,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
         await expectCompletedSideRailLayout(page);
       }
       await captureScreenshot(test.info(), page.locator('.battle-page'), {
-        path: path.join(
-          screenshotsDirectory,
-          `${viewport.label}-completed-battle.png`,
-        ),
+        path: `${viewport.label}-completed-battle.png`,
         style: '.skip-link, .primary-navigation { display: none !important; }',
       });
     }
@@ -1096,7 +1076,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       )
       .toBeLessThanOrEqual(0.5);
     await captureScreenshot(test.info(), page.locator('.battle-page'), {
-      path: path.join(screenshotsDirectory, '390-battle-log.png'),
+      path: '390-battle-log.png',
       style: '.skip-link, .primary-navigation { display: none !important; }',
     });
     expect(
@@ -1343,7 +1323,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
     }),
   ).toBeVisible();
   await captureScreenshot(test.info(), page.locator('.battle-page'), {
-    path: path.join(screenshotsDirectory, '390-compact-rail.png'),
+    path: '390-compact-rail.png',
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
 
@@ -1380,7 +1360,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
     page.locator('.battle-side-rail'),
   );
   await captureScreenshot(test.info(), page.locator('.battle-page'), {
-    path: path.join(screenshotsDirectory, '390-cpu-turn.png'),
+    path: '390-cpu-turn.png',
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
 
@@ -1400,7 +1380,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
       await expect(page.locator('.site-header')).toBeVisible();
     }
     await captureScreenshot(test.info(), page.locator('.battle-page'), {
-      path: path.join(screenshotsDirectory, `${viewport.label}-cpu-turn.png`),
+      path: `${viewport.label}-cpu-turn.png`,
       style: '.skip-link, .primary-navigation { display: none !important; }',
     });
   }
@@ -1554,7 +1534,7 @@ test('renders recent results and starts from the selected deck dashboard', async
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1024 });
     await captureScreenshot(test.info(), page.locator('.matches-page'), {
-      path: path.join(screenshotsDirectory, `${width}-match-hub.png`),
+      path: `${width}-match-hub.png`,
     });
   }
 
@@ -1614,7 +1594,7 @@ test('renders recent results and starts from the selected deck dashboard', async
       );
     }
     await captureScreenshot(test.info(), page.locator('.matches-page'), {
-      path: path.join(screenshotsDirectory, `${width}-match-history.png`),
+      path: `${width}-match-history.png`,
     });
   }
 
@@ -1771,7 +1751,7 @@ test('keeps the desktop battlefield stable when activity and bench expand', asyn
   await expect(reserveDetail).toBeInViewport();
   await expectNoHorizontalOverflow(page);
   await captureScreenshot(test.info(), page.locator('.battle-page'), {
-    path: path.join(screenshotsDirectory, '1440-expanded-sidebar.png'),
+    path: '1440-expanded-sidebar.png',
   });
   for (const width of [390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
@@ -1779,7 +1759,7 @@ test('keeps the desktop battlefield stable when activity and bench expand', asyn
     const history = page.locator('.battle-log');
     await history.locator('summary').click();
     await captureScreenshot(test.info(), history, {
-      path: path.join(screenshotsDirectory, `${width}-history.png`),
+      path: `${width}-history.png`,
     });
     await history.locator('summary').click();
     const pictures = page.locator('.battle-creature-artwork img');
@@ -1795,7 +1775,7 @@ test('keeps the desktop battlefield stable when activity and bench expand', asyn
       .toBe(true);
     await expectNoHorizontalOverflow(page);
     await captureScreenshot(test.info(), page.locator('.battle-page'), {
-      path: path.join(screenshotsDirectory, `${width}-creature-artwork.png`),
+      path: `${width}-creature-artwork.png`,
     });
   }
 });
@@ -2274,7 +2254,7 @@ test('shows existing artwork when choosing a replacement', async ({ page }) => {
     ).toBeDisabled();
     await expectNoHorizontalOverflow(page);
     await captureScreenshot(test.info(), choices, {
-      path: path.join(screenshotsDirectory, `${width}-replacement-artwork.png`),
+      path: `${width}-replacement-artwork.png`,
     });
   }
 });

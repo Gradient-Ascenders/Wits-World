@@ -1,6 +1,5 @@
 import { captureScreenshot } from './visual-capture';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import path from 'node:path';
 
 import { buildSavedDeck } from '../tests/fixtures/decks';
 import {
@@ -10,11 +9,6 @@ import {
   pvpMatch,
 } from '../tests/fixtures/pvp';
 import { historyItem, uuid } from '../tests/fixtures/matches';
-
-const screenshotsDirectory = path.resolve(
-  process.cwd(),
-  '../../.pr-screenshots/issue-228',
-);
 
 test.beforeEach(async ({ page }) => {
   // Keep the authoritative fixture deadline in the future without pausing UI timers.
@@ -84,7 +78,7 @@ test('centres Player Battles in the shared page loading layout', async ({
     await expectNoHorizontalOverflow(page);
     await captureScreenshot(test.info(), page, {
       fullPage: true,
-      path: path.join(screenshotsDirectory, `${width}-pvp-empty-full.png`),
+      path: `${width}-pvp-empty-full.png`,
     });
   }
 });
@@ -352,24 +346,18 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     }
     await expectNoHorizontalOverflow(page);
     await captureScreenshot(test.info(), page.locator('.pvp-hub'), {
-      path: path.join(screenshotsDirectory, `${viewport.label}-pvp-hub.png`),
+      path: `${viewport.label}-pvp-hub.png`,
       style: '.skip-link, .primary-navigation { display: none !important; }',
     });
     await captureScreenshot(test.info(), page, {
       fullPage: true,
-      path: path.join(
-        screenshotsDirectory,
-        `${viewport.label}-pvp-active-full.png`,
-      ),
+      path: `${viewport.label}-pvp-active-full.png`,
     });
 
     await page.getByRole('tab', { name: 'Invitations 1' }).click();
     await captureScreenshot(test.info(), page, {
       fullPage: true,
-      path: path.join(
-        screenshotsDirectory,
-        `${viewport.label}-pvp-invitations-full.png`,
-      ),
+      path: `${viewport.label}-pvp-invitations-full.png`,
     });
     await page
       .getByRole('button', { name: 'Cancel challenge to wits_wanderer' })
@@ -377,7 +365,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     await expect(page.getByRole('alertdialog')).toBeVisible();
     if (viewport.label === '390') {
       await captureScreenshot(test.info(), page, {
-        path: path.join(screenshotsDirectory, '390-cancel-confirmation.png'),
+        path: '390-cancel-confirmation.png',
         style: '.skip-link, .primary-navigation { display: none !important; }',
       });
     }
@@ -392,7 +380,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     await expectNoHorizontalOverflow(page);
     if (viewport.label === '390') {
       await captureScreenshot(test.info(), page.locator('.pvp-hub'), {
-        path: path.join(screenshotsDirectory, '390-cancelled-invitation.png'),
+        path: '390-cancelled-invitation.png',
         style: '.skip-link, .primary-navigation { display: none !important; }',
       });
     }
@@ -416,16 +404,10 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
       await page.evaluate(() => window.scrollTo(0, 0));
       await captureScreenshot(test.info(), page, {
         fullPage: true,
-        path: path.join(
-          screenshotsDirectory,
-          `${viewport.label}-pvp-challenge-full.png`,
-        ),
+        path: `${viewport.label}-pvp-challenge-full.png`,
       });
       await captureScreenshot(test.info(), page.locator('.pvp-hub'), {
-        path: path.join(
-          screenshotsDirectory,
-          `${viewport.label}-pvp-challenge.png`,
-        ),
+        path: `${viewport.label}-pvp-challenge.png`,
         style: '.skip-link, .primary-navigation { display: none !important; }',
       });
       await page.getByRole('button', { name: 'Close challenge' }).click();
@@ -450,10 +432,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
       new RegExp(pvpHistorySummary().opponent.playerName),
     );
     await captureScreenshot(test.info(), page.locator('.pvp-hub'), {
-      path: path.join(
-        screenshotsDirectory,
-        `${viewport.label}-pvp-history.png`,
-      ),
+      path: `${viewport.label}-pvp-history.png`,
       style: '.skip-link, .primary-navigation { display: none !important; }',
     });
 
@@ -465,7 +444,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     await expectNoHorizontalOverflow(page);
     if (viewport.label === '390') {
       await captureScreenshot(test.info(), page.locator('.pvp-hub'), {
-        path: path.join(screenshotsDirectory, '390-pvp-active.png'),
+        path: '390-pvp-active.png',
         style: '.skip-link, .primary-navigation { display: none !important; }',
       });
     }
@@ -491,7 +470,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   await page.evaluate(() => window.scrollTo(0, 0));
   await captureScreenshot(test.info(), page, {
     fullPage: true,
-    path: path.join(screenshotsDirectory, '390-pvp-own-turn.png'),
+    path: '390-pvp-own-turn.png',
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
 
@@ -505,7 +484,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   await expect(move).toBeDisabled();
   await captureScreenshot(test.info(), page, {
     fullPage: true,
-    path: path.join(screenshotsDirectory, '390-pvp-resolution.png'),
+    path: '390-pvp-resolution.png',
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
   await expect(
@@ -516,7 +495,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   await page.setViewportSize({ height: 800, width: 1440 });
   await expectNoHorizontalOverflow(page);
   await captureScreenshot(test.info(), page.locator('.battle-page'), {
-    path: path.join(screenshotsDirectory, '1440-pvp-opponent-turn.png'),
+    path: '1440-pvp-opponent-turn.png',
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
 
@@ -535,7 +514,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
 
   await forfeit.click();
   await captureScreenshot(test.info(), page, {
-    path: path.join(screenshotsDirectory, '1440-forfeit-confirmation.png'),
+    path: '1440-forfeit-confirmation.png',
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
   await page.getByRole('button', { name: 'Confirm forfeit' }).click();
@@ -549,7 +528,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   ).toHaveCount(0);
   await expect(page.locator('body')).not.toContainText('voluntary_resignation');
   await captureScreenshot(test.info(), page.locator('.battle-page'), {
-    path: path.join(screenshotsDirectory, '1440-own-forfeit-result.png'),
+    path: '1440-own-forfeit-result.png',
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
   expect(forfeitRequests).toBe(1);
@@ -612,14 +591,14 @@ test('keeps bench, forced replacement and results readable across battle layouts
     await expect(dialog).toContainText('Rare Creature · Wit affinity');
     if (width === 1440) {
       await captureScreenshot(test.info(), page, {
-        path: path.join(screenshotsDirectory, '1440-rare-creature-details.png'),
+        path: '1440-rare-creature-details.png',
       });
     }
     await page.getByRole('button', { name: 'Close Creature details' }).click();
     expect(submissions).toBe(submissionsBeforeInspection);
     await expectNoHorizontalOverflow(page);
     await captureScreenshot(test.info(), page.locator('.battle-page'), {
-      path: path.join(screenshotsDirectory, `${width}-bench.png`),
+      path: `${width}-bench.png`,
     });
     await bench.locator('summary').click();
 
@@ -644,7 +623,7 @@ test('keeps bench, forced replacement and results readable across battle layouts
     ).toHaveCount(1);
     await expectNoHorizontalOverflow(page);
     await captureScreenshot(test.info(), page.locator('.battle-page'), {
-      path: path.join(screenshotsDirectory, `${width}-pvp-replacement.png`),
+      path: `${width}-pvp-replacement.png`,
     });
     await page
       .locator('.creature-choice-control:enabled:not([aria-disabled="true"])')
@@ -663,7 +642,7 @@ test('keeps bench, forced replacement and results readable across battle layouts
       ).toHaveCount(0);
       await expectNoHorizontalOverflow(page);
       await captureScreenshot(test.info(), page.locator('.battle-page'), {
-        path: path.join(screenshotsDirectory, `${width}-pvp-${outcome}.png`),
+        path: `${width}-pvp-${outcome}.png`,
       });
     }
   }
@@ -821,7 +800,7 @@ test('reviews a completed battle and returns to its paginated history position',
     await page.evaluate(() => window.scrollTo(0, 0));
     await captureScreenshot(test.info(), page, {
       fullPage: true,
-      path: path.join(screenshotsDirectory, `${width}-pvp-report.png`),
+      path: `${width}-pvp-report.png`,
     });
     await page
       .locator('.battle-report__disclosure > summary')

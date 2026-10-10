@@ -20,6 +20,72 @@ import {
   visualCapturePath,
 } from '../playwright/visual-capture';
 
+// Fail closed for unverified aliases: optional captures must supply a relative
+// name (including relative joins) or explicitly use Playwright's outputPath.
+function isolatedCaptureName(node: ts.Expression): boolean {
+  if (ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) {
+    const name = ts.isTemplateExpression(node)
+      ? node.head.text +
+        node.templateSpans.map((span) => 'value' + span.literal.text).join('')
+      : node.text;
+    return (
+      !path.posix.isAbsolute(name) &&
+      !path.win32.isAbsolute(name) &&
+      !name
+        .split(/[\\/]/)
+        .some((part) =>
+          ['..', '.impeccable', '.pr-screenshots'].includes(part.toLowerCase()),
+        )
+    );
+  }
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression)
+  ) {
+    if (node.expression.name.text === 'outputPath') return true;
+    if (node.expression.getText() === 'path.join') {
+      return (
+        node.arguments.length > 0 && node.arguments.every(isolatedCaptureName)
+      );
+    }
+  }
+  return false;
+}
+
+function unsafeCaptureDestinations(file: ts.SourceFile): string[] {
+  const unsafe: string[] = [];
+  function visit(node: ts.Node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const helper = node.expression.text;
+      let destination: ts.Expression | undefined;
+      if (helper === 'captureScreenshot') {
+        const options = node.arguments[2];
+        if (options && ts.isObjectLiteralExpression(options)) {
+          const property = options.properties.find(
+            (entry) =>
+              ts.isPropertyAssignment(entry) &&
+              entry.name.getText(file) === 'path',
+          );
+          if (property && ts.isPropertyAssignment(property))
+            destination = property.initializer;
+        }
+      } else if (helper === 'captureArtifact') destination = node.arguments[1];
+      else if (helper === 'attachScreenshot') destination = node.arguments[2];
+      if (
+        ['captureScreenshot', 'captureArtifact', 'attachScreenshot'].includes(
+          helper,
+        ) &&
+        (!destination || !isolatedCaptureName(destination))
+      ) {
+        unsafe.push(destination?.getText(file) ?? node.getText(file));
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(file);
+  return unsafe;
+}
+
 const directories: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -149,6 +215,53 @@ describe('optional visual capture isolation', () => {
     ).toBe(original);
   });
 
+  it('rejects the external PR screenshot destination even when captures are disabled', async () => {
+    vi.stubEnv('PLAYWRIGHT_VISUAL_CAPTURE', '');
+    const { info, page, screenshot } = await setup();
+    await expect(
+      captureScreenshot(info, page, {
+        path: path.resolve(
+          '../../.pr-screenshots/issue-76/desktop-card-depth.png',
+        ),
+      }),
+    ).rejects.toThrow('isolated test output');
+    expect(screenshot).not.toHaveBeenCalled();
+  });
+
+  it('detects external joins and indirect aliases in optional capture destinations', () => {
+    const source = `
+      const directory = path.resolve(process.cwd(), '../../.pr-screenshots/issue-76');
+      const filename = path.join(directory, 'indirect.png');
+      captureScreenshot(info, page, { path: path.join(directory, 'direct.png') });
+      captureScreenshot(info, page, { path: filename });
+      captureScreenshot(info, page, { path: path.join('..', '..', '.pr-screenshots', 'split.png') });
+      captureArtifact(info, filename, produce);
+      attachScreenshot(info, page, filename);
+      captureScreenshot(info, page, { path: 'C:/external/screen.png' });
+      captureScreenshot(info, page, { path: '/external/screen.png' });
+      captureScreenshot(info, page, { path: path.resolve('screen.png') });
+      captureScreenshot(info, page, { path: 'relative/screen.png' });
+      captureScreenshot(info, page, { path: path.join('relative', 'screen.png') });
+      captureScreenshot(info, page, { path: info.outputPath('screen.png') });
+    `;
+    const file = ts.createSourceFile(
+      'fixture.ts',
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    expect(unsafeCaptureDestinations(file)).toEqual([
+      "path.join(directory, 'direct.png')",
+      'filename',
+      "path.join('..', '..', '.pr-screenshots', 'split.png')",
+      'filename',
+      'filename',
+      "'C:/external/screen.png'",
+      "'/external/screen.png'",
+      "path.resolve('screen.png')",
+    ]);
+  });
+
   it('keeps manual screenshots behind the shared helper and forbids protected test destinations', () => {
     const directory = path.resolve('playwright');
     for (const name of readdirSync(directory).filter(
@@ -163,6 +276,9 @@ describe('optional visual capture isolation', () => {
         ts.ScriptTarget.Latest,
         true,
       );
+      if (name !== 'visual-capture-safety.spec.ts') {
+        expect(unsafeCaptureDestinations(file), name).toEqual([]);
+      }
       function visit(node: ts.Node) {
         if (
           ts.isCallExpression(node) &&
