@@ -1,0 +1,244 @@
+{
+  "responseCount": 15,
+  "csvSubmissionDate": "2026-09-28",
+  "screenshotCollectionDateRange": null,
+  "testedBuild": null,
+  "uniqueParticipantCount": null,
+  "notes": [
+    "The CSV contains three identical answer rows; unique participants are not verified.",
+    "The screenshots agree with the existing 15-row CSV counts but do not establish their capture date or the tested build.",
+    "Question 1 is horizontally clipped; question 9 is vertically clipped; question 22 appears twice. Originals retain capture artefacts.",
+    "Only 23 complete visible comments are transcribed; partial clipped text and comments outside the viewport are not invented."
+  ],
+  "images": [
+    {
+      "file": "navigation-responsiveness-events.png",
+      "width": 797,
+      "height": 1098,
+      "sha256": "8635d2a6e63f7d543dbd8a00f2da88a207006b51d4389bc4bca78b56e5439b49",
+      "title": "Navigation, responsiveness, and event states",
+      "note": "Questions 1–3. Only Explore, Collection, Decks, and Battles are visible in the navigation grid; Leaderboard and Profile counts below come from the earlier CSV.",
+      "questions": [1, 2, 3]
+    },
+    {
+      "file": "ordering-trails-evolution.png",
+      "width": 780,
+      "height": 1085,
+      "sha256": "3cb5f0d725f12b20a74f7465bf67412d9adbade8235af7e030b024a21fa79b11",
+      "title": "Ordering questions, trails, and evolution availability",
+      "note": "Questions 4–6.",
+      "questions": [4, 5, 6]
+    },
+    {
+      "file": "evolution-battle-understanding.png",
+      "width": 798,
+      "height": 1083,
+      "sha256": "e6f1a7b151e0bf68528effbcc51b58d40c239a8488549049bb1609e699556faf",
+      "title": "Evolution consequences and battle understanding",
+      "note": "Questions 7–9. The bottom of the question 9 chart is clipped and capture artefacts cross question 7; the original screenshot is unchanged.",
+      "questions": [7, 8, 9]
+    },
+    {
+      "file": "battle-delay-swap-modes.png",
+      "width": 779,
+      "height": 1009,
+      "sha256": "bb2cbdeb6189a93239678ae59a7a8c23f37166d46951edc4e3a88823651b7286",
+      "title": "Battle delay, swapping, and multiplayer modes",
+      "note": "Questions 10–12.",
+      "questions": [10, 11, 12]
+    },
+    {
+      "file": "timer-recovery-progression.png",
+      "width": 781,
+      "height": 1082,
+      "sha256": "cc6361433e096b45d128a2d232f620e24d4b9298b39d87d74b974de04ca3e733",
+      "title": "Live timer, match recovery, and progression measures",
+      "note": "Questions 13–15. A capture artefact crosses the timer chart; the original screenshot is unchanged.",
+      "questions": [13, 14, 15]
+    },
+    {
+      "file": "seasons-zones-trades.png",
+      "width": 790,
+      "height": 1037,
+      "sha256": "a4e042be11c9b75a9f43cb54c2aabd874eecfea3c79d6664ed909b452de96616",
+      "title": "Seasons, campus zones, and trade consequences",
+      "note": "Questions 16–18. A capture artefact crosses the zone chart; the original screenshot is unchanged.",
+      "questions": [16, 17, 18]
+    },
+    {
+      "file": "author-experience.png",
+      "width": 797,
+      "height": 768,
+      "sha256": "f2a9b5fcd13cb3cee1e69de59455adff7202fef8062f33c06719fd37ebaa6a29",
+      "title": "Author package creation and review feedback",
+      "note": "Questions 19–20. Fourteen of 15 responses did not test either task.",
+      "questions": [19, 20]
+    },
+    {
+      "file": "written-session-feedback-bugs.png",
+      "width": 792,
+      "height": 913,
+      "sha256": "6fed3c34c58b4249f43eedf28fd380a516b6f5d3d2d4dc67a039d79ef888e284",
+      "title": "Session feedback and reported bugs",
+      "note": "Questions 21–22. Fifteen responses reported for question 21; six complete comments visible.",
+      "questions": [21, 22],
+      "questionText": "21. What was the most confusing or frustrating part of this session?",
+      "questionResponseCount": 15,
+      "comments": [
+        "The difference between progression points, campus standings, and competitive rating was not always obvious, and some next-step guidance felt easy to miss.",
+        "The main friction was finding the right area on the first attempt; once there, most battle interactions were straightforward.",
+        "The core flow was enjoyable once I got oriented, though a few labels and next steps could be clearer for first-time users.",
+        "The main challenge was learning where different systems lived at first; after exploring them, the flow became much easier to follow.",
+        "The app was straightforward for the main tasks. I was initially unsure about the difference between ratings and standings, but everything else was easy to navigate.",
+        "The core loop was engaging and the visuals made most actions easy to follow. I would have liked a little more guidance around trades and their outcomes."
+      ]
+    },
+    {
+      "file": "written-session-feedback-continuation.png",
+      "width": 799,
+      "height": 421,
+      "sha256": "960eb522aebf2fc439ed7d3089773f24e017d3bc04b0f20926ab80dc99893bb7",
+      "title": "Additional session feedback",
+      "note": "Supplied continuation of the session feedback. Six complete comments visible; the question header and response count are not shown.",
+      "questions": [],
+      "questionText": null,
+      "questionResponseCount": null,
+      "comments": [
+        "The app felt polished and the main actions were easy to complete. The turn timer could use a slightly clearer visual cue during Live play.",
+        "The core experience was enjoyable and easy to follow. The trail sequence took a moment to understand, but it became clear after checking the event details.",
+        "I found the experience easy to use and the battle flow was intuitive. The rankings information took a moment to interpret, but the rest of the app felt consistent.",
+        "Most of the session was clear and responsive; the only minor confusion was distinguishing the different competitive modes at first.",
+        "The navigation was extremely confusing and it was often unclear whether an action had worked or what I was expected to do next.",
+        "Some labels felt inconsistent, and I had to explore a few screens before understanding how the different progression systems connect."
+      ]
+    },
+    {
+      "file": "written-bug-descriptions.png",
+      "width": 786,
+      "height": 644,
+      "sha256": "eeae0b21a27b306d3aaff1dc9290e48bdc834b643c720e9058dc0659a0851724",
+      "title": "Reported bugs and their descriptions",
+      "note": "Questions 22 and 22a. The bug chart repeats question 22; count it once. Five responses reported for 22a; three complete comments visible.",
+      "questions": [22, "22a"],
+      "questionText": "22a. If you encountered a bug, briefly describe the steps and what happened.",
+      "questionResponseCount": 5,
+      "comments": [
+        "I was unsure whether some unclear state changes were intended behavior or a bug, especially when feedback after an action was limited.",
+        "Opening the battle screen and selecting an action sometimes left the interface unchanged, so I could not tell whether the action had registered.",
+        "A few actions appeared to do nothing on the first attempt, but I could not reproduce the behavior consistently."
+      ]
+    },
+    {
+      "file": "written-priorities-repeat-use.png",
+      "width": 808,
+      "height": 870,
+      "sha256": "b90a417a35ec99b11530b9a59d9b4d7717b37c4bf3c95d32c4a223ca2de04eca",
+      "title": "Requested improvements and repeat use",
+      "note": "Questions 23–24. Fifteen responses reported for question 23; eight complete comments visible.",
+      "questions": [23, 24],
+      "questionText": "23. What single improvement should we prioritise next?",
+      "questionResponseCount": 15,
+      "comments": [
+        "Make the current objective and the result of each action more prominent, with clearer status labels and immediate feedback.",
+        "Make entry points to key areas more consistent and add clearer first-time guidance for navigation.",
+        "Improve onboarding and make the next recommended action more visible without adding too much extra text.",
+        "Keep the navigation labels and action feedback consistent, especially when moving between collection, battles, and rankings.",
+        "Clarify the difference between ratings and standings near the relevant screens.",
+        "Add a clearer summary of what each player gives and receives before confirming a trade.",
+        "Show the evolution requirements more prominently before a card is selected.",
+        "Make the Live turn timer more prominent, especially when it is close to running out."
+      ]
+    }
+  ],
+  "focusedExcerpts": [
+    {
+      "file": "focused-action-results.svg",
+      "source": "written-bug-descriptions.png",
+      "finding": "Make action results unmistakable",
+      "bounds": {
+        "x": 33,
+        "y": 493,
+        "width": 720,
+        "height": 60
+      },
+      "commentIndices": [1],
+      "quotes": [
+        "Opening the battle screen and selecting an action sometimes left the interface unchanged, so I could not tell whether the action had registered."
+      ]
+    },
+    {
+      "file": "focused-recovery.svg",
+      "source": "timer-recovery-progression.png",
+      "finding": "Make match recovery clear and reliable",
+      "bounds": {
+        "x": 28,
+        "y": 352,
+        "width": 724,
+        "height": 310
+      },
+      "question": 14,
+      "caption": "Match recovery: 13 not tested/no disconnect; one resumed with help; one could not resume. No unaided success was reported."
+    },
+    {
+      "file": "focused-ratings-standings.svg",
+      "source": "written-priorities-repeat-use.png",
+      "finding": "Explain ratings, standings, and battle modes",
+      "bounds": {
+        "x": 30,
+        "y": 337,
+        "width": 704,
+        "height": 38
+      },
+      "commentIndices": [4],
+      "quotes": [
+        "Clarify the difference between ratings and standings near the relevant screens."
+      ]
+    },
+    {
+      "file": "focused-navigation.svg",
+      "source": "written-session-feedback-continuation.png",
+      "finding": "Make navigation and the next step easier to find",
+      "bounds": {
+        "x": 44,
+        "y": 266,
+        "width": 704,
+        "height": 60
+      },
+      "commentIndices": [4],
+      "quotes": [
+        "The navigation was extremely confusing and it was often unclear whether an action had worked or what I was expected to do next."
+      ]
+    },
+    {
+      "file": "focused-evolution-trades.svg",
+      "source": "written-priorities-repeat-use.png",
+      "finding": "Explain what evolution and trading will change",
+      "bounds": {
+        "x": 30,
+        "y": 379,
+        "width": 704,
+        "height": 84
+      },
+      "commentIndices": [5, 6],
+      "quotes": [
+        "Add a clearer summary of what each player gives and receives before confirming a trade.",
+        "Show the evolution requirements more prominently before a card is selected."
+      ]
+    },
+    {
+      "file": "focused-live-timer.svg",
+      "source": "written-priorities-repeat-use.png",
+      "finding": "Make the Live timer and battle effects easier to read",
+      "bounds": {
+        "x": 30,
+        "y": 467,
+        "width": 704,
+        "height": 32
+      },
+      "commentIndices": [7],
+      "quotes": [
+        "Make the Live turn timer more prominent, especially when it is close to running out."
+      ]
+    }
+  ]
+}

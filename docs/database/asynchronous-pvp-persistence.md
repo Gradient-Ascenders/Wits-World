@@ -1,166 +1,121 @@
 ---
-title: 'Player battle storage'
+title: 'Asynchronous player battle storage'
 ---
 
-# Player battle storage
+# Asynchronous player battle storage
 
-Migration `0028_create_asynchronous_pvp_persistence.sql` provides the durable
-data boundary for the asynchronous player-versus-player contract. It is an
-implementation input for issue `#180`; it does not add PvP HTTP routes,
-viewer-relative projections, polling, or deadline processing by itself.
+Async PvP persists invitations, complete deck snapshots, authoritative battle
+state, and retry receipts. The API resolves deadlines and serves a separate
+projection for each participant; polling reads committed state.
 
-## Public lifecycle and private battle state
+[Player battles](../requirements/player-asynchronous-pvp-journey.md) compares
+async and live play. The [async API contract](../architecture/asynchronous-pvp-api-contract.md)
+owns routes and response formats.
 
-The schema deliberately separates participant-visible lifecycle data from
-hidden battle material:
+## Stored model
 
-| Relation                                | Responsibility                                                                                        |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `async_pvp_invitations`                 | Challenger, recipient, lifecycle, 24-hour expiry, version, and accepted match identity                |
-| `async_pvp_matches`                     | Current actor, 24-hour decision deadline, version, terminal winner, completion reason, and timestamps |
-| `async_pvp_match_participants`          | Exactly two participants, engine-side mapping, immutable deck-snapshot reference, and final outcome   |
-| `async_pvp_match_actions`               | Legally revealed action intent and public result in stable sequence order                             |
-| `private.async_pvp_deck_snapshots`      | Participant-owned saved-deck and initial-Creature snapshot identity                                   |
-| `private.async_pvp_deck_snapshot_cards` | Five complete battle-ready card snapshots, including hidden unused cards                              |
-| `private.async_pvp_match_states`        | Current full authoritative battle state and matching version                                          |
-| `private.async_pvp_match_transitions`   | Immutable before/after state and authoritative result for each action                                 |
-| `private.async_pvp_submission_receipts` | Canonical payload hash and committed actor-relative response used for idempotent replay               |
+| Relations                                 | Responsibility                                                                |
+| ----------------------------------------- | ----------------------------------------------------------------------------- |
+| `async_pvp_invitations`                   | Challenger, recipient, status, version, expiry, and accepted match reference. |
+| `async_pvp_matches`                       | Current actor, deadline, version, winner, and terminal result.                |
+| `async_pvp_match_participants`            | Exactly 2 participants, engine sides, snapshot references, and outcomes.      |
+| `async_pvp_match_actions`                 | Ordered legally revealed actions and results.                                 |
+| Private deck snapshots and snapshot cards | Complete battle-ready decks, including unrevealed cards.                      |
+| `private.async_pvp_match_states`          | Full current battle state at the match version.                               |
+| `private.async_pvp_match_transitions`     | Immutable before/after state and authoritative action result.                 |
+| `private.async_pvp_submission_receipts`   | Canonical payload hash and committed actor-relative response.                 |
 
-The `private` relations are revoked from the PostgreSQL `PUBLIC` role. The API
-database role can use them for protected operations, but player-facing queries
-must construct the viewer-safe projection defined by the
-[asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md).
-No public invitation or match summary contains full state, unrevealed card
-identities, card positions, private transition state, or replay responses.
+A `public` schema name does not grant API access. Private relations have
+`PUBLIC` privileges revoked, and participant responses omit hidden opponent
+cards, full state, and private transition data.
 
-## Integrity rules
+## Invitation and match creation
 
-Database constraints and deferred validators reinforce these boundaries:
+<div className="diagram-scroll" role="region" aria-label="Async invitation, battle transitions, and completed progression" tabIndex={0}>
 
-- an invitation starts `pending` at version zero and transitions exactly once
-  to `accepted`, recipient-owned `declined`, challenger-owned `cancelled`,
-  time-owned `expired`, or account-deletion `invalidated`;
-- one pending invitation may exist for an unordered player pair, so reverse
-  concurrent challenges cannot both commit;
-- every invitation has one challenger snapshot and creation receipt;
-- acceptance atomically adds the recipient snapshot, two participants, one
-  private state, the match, and the acceptance receipt;
-- cancellation atomically adds exactly one challenger-owned
-  `invitation_cancel` receipt, retains the challenger snapshot, and adds no
-  recipient snapshot or match;
-- each snapshot contains exactly three Creature and two Power cards, costs at
-  most ten rarity points, and selects one Creature from that snapshot;
-- active matches have one current participant and an exact 24-hour deadline;
-- completed matches have one winner, one loser, and one of `defeat`,
-  `turn_forfeit`, `account_deletion_forfeit`, or `voluntary_resignation`;
-- match and private-state versions advance one step together;
-- every public action has one private transition and one matching submission
-  receipt;
-- a voluntarily resigned match has exactly one participant-owned
-  `match_resign` receipt, and no other terminal reason may have one; and
-- snapshots, actions, transitions, receipts, terminal invitations, completed
-  matches, participant outcomes, and progression awards cannot be rewritten.
+```mermaid
+flowchart TB
+    accTitle: Accepted invitations create a complete match before play begins
+    accDescr: A pending invitation retains the challenger snapshot. Acceptance atomically creates the recipient snapshot, both participants, match, private state, and receipt. Each action commits matching state and history. Terminal results commit both participant progression decisions.
 
-Cross-row validators are deferred until commit. This allows acceptance and
-action transactions to construct a coherent circular resource graph without
-making partial state observable. A transaction that omits a required snapshot,
-participant, state, transition, or receipt fails at commit.
+    Invitation[("Pending invitation<br/>Challenger snapshot and creation receipt")]
+    Accept[("Atomic acceptance<br/>Recipient snapshot, 2 participants,<br/>match, private state, and receipt")]
+    Action[("Versioned action<br/>Public action, private transition,<br/>state, and submission receipt")]
+    Finish[("Terminal result<br/>Winner, loser, and both progression decisions")]
+    Closed["Declined, cancelled,<br/>expired, or invalidated"]
 
-## Idempotency and indexing
+    Invitation -->|Accept| Accept
+    Invitation --> Closed
+    Accept --> Action
+    Action -->|Next decision| Action
+    Action -->|Final result| Finish
 
-Submission receipts are unique by authenticated actor, operation, and UUID
-submission identifier. They retain the canonical payload hash and committed
-response so issue `#180` can distinguish an identical replay from an ID reused
-with different intent. Match actions additionally enforce unique sequence and
-actor submission identifiers. Migration `0037` adds a per-match unique
-resignation-receipt index so a replay can return the committed response without
-creating a second terminal operation. Migration `0039` adds the corresponding
-per-invitation cancellation index and extends deferred receipt validation so a
-`cancelled` record has exactly one matching challenger-owned receipt and no
-competing accept or decline receipt.
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class Accept,Action,Finish authority;
+```
 
-Indexes support incoming and outgoing invitation pages, one-pair pending
-checks, bounded invitation expiry, participant match lookup, active pages,
-completed history, overdue decisions, action history, and receipt recovery.
-The deadline worker locks bounded due rows and rechecks status and time after
-locking; an index is not itself a concurrency policy.
+</div>
+
+Invitations start `pending` at version 0 with a **24-hour** expiry. A unique
+unordered-player-pair key prevents reverse concurrent invitations from both
+committing. Terminal invitation states cannot reopen.
+
+Acceptance creates the complete match graph in one transaction. Deferred checks
+require both valid deck snapshots, 2 participants, private state, and a matching
+receipt. Cancellation is challenger-owned and creates a cancellation receipt
+without a recipient snapshot or match.
+
+Source deck and owned-copy IDs in snapshots are historical values, rather than
+restrictive foreign keys to mutable player configuration.
+
+## Actions, deadlines, and replay
+
+An active match has 1 current participant and a **24-hour decision deadline**.
+Match and private-state versions advance together by 1. Every public action has
+a matching private transition and submission receipt.
+
+Receipts are unique by authenticated actor, operation, and submission UUID.
+The canonical payload hash distinguishes identical retries from conflicting
+reuse. A retry returns the committed actor-relative response instead of applying
+the action again.
+
+The service locks the authoritative resource and rechecks its deadline before
+accepting a mutation. Deadline workers select bounded due candidates and recheck
+after locking; reads also reconcile elapsed deadlines where required.
+
+Terminal reasons are `defeat`, `turn_forfeit`, `voluntary_resignation`, and
+`account_deletion_forfeit`. A completed match has 1 winner and 1 loser.
+Snapshots, terminal state, actions, transitions, and receipt history are immutable
+during normal operation.
 
 ## Progression
 
-Migration `0028` extends the progression source vocabulary with
-`asynchronous_pvp`. Every completed match produces one immutable source
-decision for each participant:
+Completion invokes `recordAsynchronousPvpCompletion` inside the terminal match
+transaction. It records 1 award decision per participant in canonical player-ID
+order under per-player locks. A progression failure rolls back the match result.
 
-| Completion               |    Winner | Loser or forfeiter |
-| ------------------------ | --------: | -----------------: |
-| Defeat                   | 25 points |           0 points |
-| Turn forfeit             | 25 points |           0 points |
-| Account-deletion forfeit | 25 points |           0 points |
-| Voluntary resignation    | 25 points |           0 points |
+Both decisions count as activity, including a zero-point result. Unique
+match/participant sources prevent repeat awards. Async results do not update
+live-ranked ratings or territory influence.
 
-Both decisions count as activity, including the zero-point outcome. No PvP
-achievement is introduced. Existing streak achievements may still unlock when
-the approved activity contributes to a three-day streak.
+[Progression storage](player-progression-persistence.md) owns award integrity;
+[Progression rules](../requirements/player-progression-rules.md#asynchronous-pvp-progression)
+owns values and achievement behaviour.
 
-`createProgressionPersistence()` exposes
-`recordAsynchronousPvpCompletion(client, matchId)`. The PostgreSQL function
-rejects unfinished matches, processes both participants in canonical player-ID
-order, takes the existing per-player advisory locks, and returns exactly two
-new-or-existing awards. A replay, action race, or deadline-worker retry
-therefore converges on the same `(match, participant)` rows.
+## Deletion and retention
 
-Issue `#180` invokes this operation inside the same transaction that makes the
-match terminal. A progression failure rolls that terminal transition back
-rather than leaving the match and progression out of sync.
+Account deletion closes pending invitations and completes active matches before
+removing personal data. An already-elapsed deadline takes precedence: the current
+actor loses by `turn_forfeit`; otherwise the deleting participant forfeits.
 
-## Retention and deletion boundary
+Completed shared matches retain profile-free historical actors and immutable
+battle snapshots. History displays **Deleted player** after account removal,
+and retained replay responses redact copied Player Names and old player IDs.
 
-Completed matches continue to reference profile-free historical actor keys.
-Snapshot source deck and owned-card identifiers are audit values,
-not foreign keys, so deleting player-owned decks and cards does not destroy or
-mutate the battle snapshot. Player-facing history must render a null Player Name
-as `Deleted player` and never expose these internal identifiers.
+There is no routine purge of terminal invitations. Account deletion has its
+separate cleanup boundary. See
+[Account retention](account-deletion-retention.md) for personal-data removal
+and shared records.
 
-Issue `#180` implements bounded deadline sweeps, expires pending invitations,
-invalidates not-yet-overdue invitations when account deletion begins, and records
-an `account_deletion_forfeit` for active matches whose deadline has not elapsed.
-For an already-overdue match, the current actor instead loses by `turn_forfeit`;
-account deletion cannot reverse that elapsed deadline outcome. No automated
-purge is added for declined, cancelled, or expired invitations because their
-retention period remains an explicitly unresolved product decision.
-
-## Verification and release
-
-`apps/api/tests/asynchronous-pvp-persistence.integration.test.ts` creates a
-database at the pre-`0028` schema, records existing CPU progression, applies
-`0028`, and verifies that history survives. It then covers private-state
-separation, indexes, unordered-pair uniqueness, complete snapshots, lifecycle
-and receipt constraints, immutable history, all completion reasons, concurrent
-replay, resignation/action/deletion races, deadline precedence, 25/0 awards,
-activity for both participants, cancellation authorization and replay,
-cancel/accept/decline/expiry/invalidation races, retained cancellation audit,
-pair reuse, pagination, and deadline-worker terminal skipping.
-
-The test is registered in the explicit database runner:
-
-```bash
-npm run test:database --workspace @wits-world/api
-```
-
-Apply migrations `0028` and `0033` before deploying issue `#180`. Migration
-`0033` adds the terminal `invalidated` invitation status used only by account
-deletion. Apply migration `0037` before the issue `#219` API; it adds the
-voluntary terminal reason, receipt invariants, and progression rules. Applying
-the migrations alone does not expose player-facing routes. Apply forward-only
-migration `0039_add_async_pvp_invitation_cancellation.sql` before the issue
-`#220` API. It adds `cancelled`, the `invitation_cancel` receipt operation and
-unique index, and replacement cross-row validators. Once a `cancelled` row has
-been stored, do not roll the API back to a build whose invitation status parser
-does not understand it; retain `0039` and roll the API/Web forward.
-
-The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and Codex[GPT-6].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
-
-This account-deletion update was edited with assistance from Codex[GPT-6].
+**AI declaration:** Prepared and updated with assistance from
+Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], Codex-CLI[GPT-6], and Codex[GPT-6].

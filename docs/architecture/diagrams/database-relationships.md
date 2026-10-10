@@ -1,60 +1,54 @@
 ---
-title: 'Database relationships'
+title: 'Data relationships'
 ---
 
-# Database relationships
+# Data relationships
 
-The database stores authoritative game state in PostgreSQL, with PostGIS for
-reported-location distance checks. These three views select important tables
-and foreign-key relationships for a presentation. They are **not a complete
-schema dump**: private answer keys, audit rows, campaign membership, battle
-snapshots, and other detail remain in the linked schema guides and migrations.
+These views show the main relationships behind events, cards, decks, and
+progression. Each includes selected columns; the linked database references
+define the full schema and constraints.
 
-**Legend:** `||` means exactly one, `o|` means zero or one, and `o{` means zero
-or many. `PK` marks a primary key; `FK` marks a foreign key. Only selected
-columns are shown. Compound keys and business limits are explained below each
-view rather than implied by the arrow alone.
+In the notation below, `||` means exactly 1, `o|` means 0 or 1, and `o{`
+means 0 or more. `PK` marks a primary key and `FK` marks a foreign key.
+Compound references are simplified in the diagrams and explained in the text.
 
-## 1. Events, challenges and completions
+## Events and challenge results
 
-<div className="diagram-scroll" role="region" aria-label="Database relationships — diagram 1" tabIndex={0}>
+<div className="diagram-scroll" role="region" aria-label="Events, attempts, completions, and reward records" tabIndex={0}>
 
 ```mermaid
 erDiagram
-    accTitle: Events, challenge attempts and completion records
-    accDescr: An event has challenge versions. Each player can start attempts, and an attempt belongs to one challenge and can produce one completion. Completions retain reward records.
+    direction TB
+    accTitle: Events connect challenge versions to player attempts and rewards
+    accDescr: Players start attempts for event challenge versions. An attempt can have one completion, which retains normal card reward records referring to card definitions. Direct player and event references are omitted where the chain already shows the relationship.
+
+    events ||--o{ event_challenges : versions
+    event_challenges ||--o{ challenge_attempts : attempted
     players ||--o{ challenge_attempts : starts
-    events ||--o{ event_challenges : has_versions
-    event_challenges ||--o{ challenge_attempts : played_as
-    challenge_attempts ||--o| event_completions : finalised_as
+    challenge_attempts ||--o| event_completions : completes
     event_completions ||--o{ event_completion_card_rewards : records
-    card_definitions ||--o{ event_completion_card_rewards : awarded_definition
-    players {
-        uuid id PK
-        text player_name
-    }
+    card_definitions ||--o{ event_completion_card_rewards : awarded
+
     events {
         uuid id PK
         geography location
-        integer radius_metres
     }
     event_challenges {
         uuid id PK
         uuid event_id FK
-        text format
         text status
+    }
+    players {
+        uuid id PK
     }
     challenge_attempts {
         uuid id PK
         uuid player_id FK
-        uuid event_id FK
         uuid challenge_id FK
     }
     event_completions {
         uuid id PK
         uuid attempt_id FK
-        uuid player_id FK
-        uuid event_id FK
     }
     event_completion_card_rewards {
         uuid completion_id PK, FK
@@ -63,59 +57,60 @@ erDiagram
     }
     card_definitions {
         uuid id PK
-        text name
-        text rarity
     }
 ```
 
 </div>
 
-An event may retain several challenge versions, but only one may be published.
-A player has at most one attempt and one completion per event. Composite foreign
-keys keep the attempt's event/challenge and the completion's player/event tied
-together. The corresponding direct event/player links are omitted from the
-picture to keep it readable.
+An event can retain several challenge versions, with at most 1 published
+version. A player has at most 1 attempt and 1 completion per event. Compound
+foreign keys bind each attempt to the correct event and challenge, and each
+completion to the same player and event.
 
-The API snapshots the selected questions and locks accepted answers. It creates
-the completion, reward record, owned copies, and progression changes atomically.
-A completion may award zero, one, or two cards under the current score policy.
-The reward record preserves what was awarded even if an owned copy is later
-consumed by evolution.
+Finalisation stores the normal reward records and owned card copies together.
+The reward record preserves the original award if a copy is later consumed or
+traded. Territory owner bonuses use separate decision records linked to the
+completion.
 
-Sources: [challenge and reward schema](../../database/challenge-reward-persistence-design.md),
-[attempt contract](../challenge-attempt-api-contract.md), and migrations
-`0005`–`0008`, `0024` (retained reward records), and later reviewed-content changes.
+See [challenge and reward storage](../../database/challenge-reward-persistence-design.md)
+and [territory storage](../../database/contested-campus-territory-persistence.md).
 
-## 2. Card definitions, owned copies and decks
+## Card ownership and decks
 
-<div className="diagram-scroll" role="region" aria-label="Database relationships — diagram 2" tabIndex={0}>
+<div className="diagram-scroll" role="region" aria-label="Card definitions, owned copies, and saved decks" tabIndex={0}>
 
 ```mermaid
 erDiagram
-    accTitle: Card ownership and saved decks
-    accDescr: Players own individual copies of shared card definitions. Deck slots reference those owned copies. A player may select one active deck.
+    direction TB
+    accTitle: Saved decks reference individual owned card copies
+    accDescr: Players own copies of card definitions and save decks. Deck slots reference owned copies belonging to that deck's player. A selection record identifies the player's active deck.
+
     players ||--o{ player_cards : owns
     card_definitions ||--o{ player_cards : describes
     players ||--o{ player_decks : saves
-    player_decks ||--o{ player_deck_cards : contains
+    player_decks ||--o{ player_deck_cards : slots
     player_cards ||--o{ player_deck_cards : used_in
     players ||--o| player_deck_selections : selects
     player_decks ||--o| player_deck_selections : active_as
+
+    players {
+        uuid id PK
+    }
+    card_definitions {
+        uuid id PK
+    }
     player_cards {
         uuid id PK
         uuid player_id FK
         uuid card_definition_id FK
-        uuid source_completion_id FK
     }
     player_decks {
         uuid id PK
         uuid player_id FK
-        text name
     }
     player_deck_cards {
         uuid deck_id PK, FK
         smallint position PK
-        uuid player_id FK
         uuid owned_card_id FK
     }
     player_deck_selections {
@@ -126,52 +121,57 @@ erDiagram
 
 </div>
 
-A definition describes a card; `player_cards` represents a particular owned
-copy. Two copies of the same definition remain separate assets. Deck slots
-reference copy IDs, with compound foreign keys enforcing that the deck and the
-copy belong to the same player. One copy may appear in several saved decks, but
-only once in any one deck.
+A definition describes a card; `player_cards` identifies a particular owned
+copy. Copies of the same definition remain separate assets. Compound foreign
+keys ensure that a deck and its referenced copies belong to the same player.
 
-The diagram shows storage relationships. Battle validity additionally requires
-five cards: three Creatures, two Powers, and at most ten rarity points. A saved
-deck's current usability must be checked by the server. Card evolution uses its
-own transaction and consumption history, documented in the
-[evolution rules](../../requirements/card-evolution-rules.md); historical
-consumed-copy IDs should not be mistaken for live ownership rows.
+A copy can appear in several saved decks, but only once in a particular deck.
+The API checks current ownership and deck legality before battle; a saved deck
+is not automatically playable. Battle snapshots preserve the cards used even
+when later collection changes affect the source deck.
 
-Sources: [deck schema and API](../../database/saved-deck-persistence-design.md),
-[card storage](../../database/challenge-reward-persistence-design.md), and
-migrations `0011` and `0042`.
+See [saved decks](../../database/saved-deck-persistence-design.md),
+[evolution](../../requirements/card-evolution-rules.md), and
+[trading storage](../../database/card-trading-persistence.md).
 
-## 3. Permanent progression and achievements
+## Progression and achievements
 
-<div className="diagram-scroll" role="region" aria-label="Database relationships — diagram 3" tabIndex={0}>
+<div className="diagram-scroll" role="region" aria-label="Point awards, progression summaries, and achievement unlocks" tabIndex={0}>
 
 ```mermaid
 erDiagram
-    accTitle: Progression points and achievements
-    accDescr: Players earn point awards under versioned rules. They have a progression summary and achievement unlocks tied to shared achievement definitions.
+    direction TB
+    accTitle: Point awards drive progression summaries and achievements
+    accDescr: Players receive point awards under versioned rules. Progression state summarises those awards, while achievement unlocks refer to shared definitions and the award that earned them.
+
     players ||--o{ player_point_awards : earns
     progression_point_rules ||--o{ player_point_awards : governs
-    players ||--o| player_progression_state : summarised_by
+    players ||--o| player_progression_state : summary
     players ||--o{ player_achievement_unlocks : unlocks
     achievement_definitions ||--o{ player_achievement_unlocks : defines
+    player_point_awards ||--o{ player_achievement_unlocks : source
+
+    players {
+        uuid id PK
+    }
+    progression_point_rules {
+        text rule_code PK
+        integer version PK
+    }
     player_point_awards {
         uuid id PK
         uuid player_id FK
         text rule_code FK
         integer rule_version FK
     }
-    progression_point_rules {
-        text rule_code PK
-        integer version PK
-    }
     player_progression_state {
         uuid player_id PK, FK
+        integer total_points
     }
     player_achievement_unlocks {
         uuid player_id PK, FK
         text achievement_code PK, FK
+        uuid source_award_id FK
     }
     achievement_definitions {
         text code PK
@@ -180,36 +180,65 @@ erDiagram
 
 </div>
 
-The point-award ledger is distinct from the player's progression summary.
-Rules are versioned, and source relationships plus uniqueness constraints
-prevent repeat requests from earning the same award twice. Current progression
-uses permanent points. Applied legacy coin tables remain in migration history;
-they are not the current game economy.
+The point-award ledger records each earned award; progression summaries support
+all-time totals, monthly views, and streaks. Versioned rules and source
+uniqueness prevent a repeated request from earning the same award twice.
 
-Sources: [progression storage](../../database/player-progression-persistence.md),
-[progression rules](../../requirements/player-progression-rules.md), and
-migration `0026`.
+Permanent points are separate from ranked seasonal ratings. The current game
+does not use the legacy coin economy.
 
-## More database diagrams
+See [progression storage](../../database/player-progression-persistence.md)
+and [progression rules](../../requirements/player-progression-rules.md).
 
-- [Events, challenges and ordered-trail membership](../../database/event-schema.md).
-- [CPU and asynchronous player battle relationships](database-battles.md).
+## Ordered trails
 
-## Other important data
+<div className="diagram-scroll" role="region" aria-label="Ordered trail membership and event content" tabIndex={0}>
 
-| Area                  | Storage model and reference                                                                                                                                                                                                                                                              |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ordered trails        | `trail_events` links `trails` to `events` in order. Progress is derived from the player's event completions; there is no authoritative browser progress cursor. See [trail storage](../../database/ordered-trails-persistence.md).                                                       |
-| Battles               | CPU matches and asynchronous PvP use match-owned state and snapshots so later collection/deck edits do not rewrite a running match. See [CPU match storage](../../database/cpu-match-persistence-design.md) and [player battle storage](../../database/asynchronous-pvp-persistence.md). |
-| Identity and deletion | Players are identified by validated issuer and subject, with local role/lifecycle controls. See [player identity](../../database/player-schema.md) and [deletion retention](../../database/account-deletion-retention.md).                                                               |
+```mermaid
+erDiagram
+    direction LR
+    accTitle: Trails order existing events through membership rows
+    accDescr: Trail membership links a trail to events and assigns each event a position. Player progress is calculated from completions rather than stored as a trail cursor.
 
-For exact column types, constraints and later changes, use the
-[database guide](../../database/overview.md) and the checked-in
-[migration directory](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/database/migrations).
-These diagrams describe structure, not proof that production migrations or a
-recovery rehearsal passed.
+    trails ||--o{ trail_events : orders
+    events ||--o{ trail_events : included
 
-## AI declaration
+    trails {
+        uuid id PK
+        text status
+    }
+    trail_events {
+        uuid trail_id PK, FK
+        uuid event_id PK, FK
+        smallint position
+    }
+    events {
+        uuid id PK
+    }
+```
 
-Prepared from repository migrations and persistence contracts with assistance
-from Codex-CLI[GPT-6].
+</div>
+
+Trail progress is derived from ordered membership and the player's completed
+events. Campaigns group events and trails through separate membership tables
+and apply their own publication and schedule rules. Automatically placed
+events also have assignment history; their effective location can differ from
+the authored location or exist when that location is unset.
+
+See [trail storage](../../database/ordered-trails-persistence.md),
+[campaign storage](../../database/campaign-scheduling-persistence.md), and
+[placement storage](../../database/automatic-event-placement-persistence.md).
+
+## Related data
+
+[Battle relationships](database-battles.md) covers match snapshots, actions,
+connections, and ranked settlements. The [database guide](../../database/overview.md)
+links the remaining domains, including profile, identity, moderation, and analytics.
+
+Account deletion removes player-owned records according to the
+[deletion contract](../../database/account-deletion-retention.md). Retained shared
+history uses a separate, profile-free historical actor; a historical actor is
+not an active player account.
+
+**AI declaration:** Prepared and updated with assistance from Codex-CLI[GPT-6]
+and Codex[GPT-6].

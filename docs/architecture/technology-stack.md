@@ -1,256 +1,193 @@
 ---
 title: 'Technology stack'
+toc_max_heading_level: 4
 ---
 
 # Technology stack
 
-## Purpose
+Wits World uses TypeScript across the Web application, API, shared packages,
+and documentation configuration. npm workspaces manage these projects from
+the repository root while keeping their builds separate.
 
-This document records the initial Wits World technology stack and explains how
-each technology supports the Wits Quest product and course requirements.
+The repository specifies **Node.js 24.14.1** and **npm 11.18.0**.
+Use the checked-in `.nvmrc` and `packageManager` setting for a compatible setup.
 
-The stack is intended to support independently deployable applications, a
-hand-written HTTP API, geospatial event checks, established authentication,
-automated testing, CI/CD, and public documentation.
+## Overview
 
-## Repository and runtime
+- **[Web application](#web-application):** React, Vite, and Wouter provide the
+  screens and navigation. Interface components, Mapbox, and offline storage
+  support interaction, campus maps, and pending attempts.
+- **[API and database](#api-and-database):** Fastify handles requests,
+  PostgreSQL and PostGIS store game state and perform spatial calculations,
+  and Sharp processes images.
+- **[Shared services](#shared-services):** Auth0 connects browser sign-in with
+  API authentication. Redis supports shared quotas and gameplay coordination
+  across API processes.
+- **[Shared packages](#shared-packages):** Common battle rules and Player Name
+  validation keep application behaviour consistent.
+- **Project tools:** [Verification tools](#development-and-verification) check
+  the implementation, and [Docusaurus](#documentation) publishes the documentation.
 
-| Technology      | Purpose                                                               | Motivation                                                                                                                        |
-| --------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Git and Gitea   | Version control, issues, pull requests, reviews, and project tracking | Provides the required Git-compliant workflow and keeps development evidence linked to code changes                                |
-| npm workspaces  | Monorepo package and application management                           | Allows the web, API, documentation, and shared packages to be managed from one repository while remaining independently buildable |
-| Node.js 24.14.1 | JavaScript and TypeScript runtime                                     | Matches the version documented by the current repository setup                                                                    |
-| npm 11.18.0     | Dependency and workspace management                                   | Matches the package-manager version documented by the current repository setup                                                    |
-| TypeScript      | Static typing across applications and shared packages                 | Reduces integration mistakes and allows contracts to be shared without removing runtime validation                                |
+## Application stack
 
-Runtime and package-manager versions should remain pinned and documented so all
-team members and CI use compatible environments.
+### Web application
 
-## Web application
+#### React, Vite, and Wouter
 
-| Technology                     | Purpose                                         | Motivation                                                                            |
-| ------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------- |
-| React                          | Player and author interfaces                    | Supports reusable components and clear separation of interface responsibilities       |
-| Vite                           | Development server and production build tooling | Provides fast local development and a straightforward browser application build       |
-| Wouter 3.10.0                  | Client-side routing                             | Supports public and protected application routes                                      |
-| Runtime environment validation | Validation of browser-visible configuration     | Prevents the application from starting with malformed or missing public configuration |
+React 19 provides the component model for Player and Author screens. Shared
+components let forms, card displays, navigation, and loading states follow the
+same patterns across features.
 
-The web application is located in `apps/web`.
+Vite 8 runs the Web development server and builds the production browser
+bundle. Wouter maps application URLs to screens and supports navigation within
+the single-page application. Together, they keep interface development and
+routing in the Web workspace.
 
-It is responsible for presentation, browser interaction, map rendering,
-geolocation requests, and displaying API decisions.
+#### Interface components
 
-It is not authoritative for identity, event eligibility, rewards, card
-ownership, or game outcomes.
+React Aria Components supplies controls with keyboard interaction, focus
+management, and accessible semantics. `@internationalized/date` provides
+structured date and time values used by the Author scheduling controls.
+Application styling and date/time policy remain in Wits World.
 
-## API application
+Phosphor Icons provides a consistent icon set. Motion supports transitions
+such as card evolution, with reduced-motion handling, while Sonner presents
+toast notifications. Persistent results and validation messages also appear
+in the relevant screen.
 
-| Technology                     | Purpose                                              | Motivation                                                                                                                                  |
-| ------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fastify                        | Hand-written HTTP API                                | Provides explicit route registration, validation integration, plugin boundaries, structured logging, and test injection                     |
-| `@fastify/websocket` / `ws`    | Live PvP realtime transport                          | Adds bounded WebSocket upgrade/message handling to the existing Fastify process without making socket memory authoritative for battle state |
-| TypeScript                     | API types and implementation safety                  | Keeps route, service, and database interfaces explicit                                                                                      |
-| OpenAPI                        | Machine-readable API documentation                   | Documents request schemas, response schemas, authentication requirements, and errors                                                        |
-| Runtime schema validation      | Validation of requests, responses, and configuration | TypeScript types alone do not validate untrusted runtime input                                                                              |
-| Structured request identifiers | Correlation of requests and failures                 | Supports safe debugging without exposing internal details to clients                                                                        |
+#### Mapbox GL JS
 
-The API is located in `apps/api`.
+Mapbox GL JS provides the interactive map renderer and 3D basemap support.
+A shared adapter lets Explore and Author maps reuse the same rendering code.
 
-All protected browser operations pass through versioned routes under `/api/v1`.
+[Mapbox integration](external-integrations.md#mapbox) covers styles, overlays,
+and provider behaviour.
 
-The API is authoritative for:
+#### Offline storage and service worker
 
-- validated player identity;
-- application authorisation;
-- event publication and availability;
-- location-claim validation;
-- event eligibility;
-- challenge and reward rules;
-- card and deck ownership;
-- battle rules and outcomes; and
-- safe error responses.
+IndexedDB stores issued challenge packs, local attempts, and reconciliation
+receipts. The `idb` library provides an asynchronous interface and transactions
+for those related records, helping the Web recover pending work after a reload.
 
-## Database and geospatial processing
+`vite-plugin-pwa` integrates the application's service worker and installable
+manifest with the Vite build. The worker caches the application shell and
+build assets; challenge records use their separate IndexedDB store.
+[Offline play](offline-challenge-play.md) defines how pending attempts are
+reconciled with the API.
 
-| Technology                                                             | Purpose                                         | Motivation                                                                                    |
-| ---------------------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| node-postgres (`pg`)                                                   | PostgreSQL connection and parameterised queries | Matches the implemented API database layer and retains explicit control over SQL              |
-| Repository SQL migration runner                                        | Applies ordered SQL migrations                  | Matches the implemented migration approach and keeps database changes explicit and reviewable |
-| Parameterised PostGIS SQL                                              | Geospatial storage and calculations             | Keeps protected distance calculations server-side and prevents SQL injection                  |
-| PostgreSQL/PostGIS stores the authoritative event location and radius. |
+### API and database
 
-The browser submits a location claim. The API validates the claim and uses
-PostGIS-backed logic to determine distance and eligibility.
+#### Fastify and API plugins
 
-Critical integrity rules must also be protected using database constraints and
-transactions rather than relying only on the user interface.
+Fastify 5 hosts the HTTP API. Routes define request and response schemas,
+while feature services handle gameplay and persistence. This structure makes
+routes testable through Fastify's request-injection interface.
 
-## Authentication
+The Swagger plugins generate OpenAPI documentation from the route schemas,
+keeping the HTTP reference connected to the implementation. The CORS plugin
+controls permitted browser origins. The WebSocket plugin adds live battle
+connections to the same API application.
 
-The project uses Auth0 under ADR-005. The provider supports:
+TypeScript checks the API code during development and builds. `tsx` runs
+the TypeScript development server. Runtime schemas still validate incoming
+requests; compile-time types alone cannot check network input.
 
-- registration;
-- sign-in;
-- password reset;
-- account-deletion capabilities;
-- browser application integration;
-- API access tokens;
-- issuer and audience validation; and
-- documented token-verification mechanisms.
+#### PostgreSQL, PostGIS, and `pg`
 
-The API validates Auth0 access tokens and resolves local player identity and
-roles from validated issuer and subject claims. The application does not trust
-browser-supplied identity or role values.
+PostgreSQL stores relational game data, including ownership, challenge
+attempts, and match history. Foreign keys, uniqueness constraints, transactions,
+and locks support operations that must keep several records consistent.
 
-Wits World does not store passwords. Account-deletion persistence and retention
-are implemented server-side; issue `#161` adds the player-facing deletion entry
-point and delegates database password recovery to Auth0's hosted capability.
+PostGIS adds spatial types and queries for event distance, reviewed placement
+sites, and campus boundaries. Geography-based distance calculations support
+metre-based rules in the API.
 
-Public browser configuration may include:
+The `pg` driver gives services direct control over parameterised SQL,
+connection pools, and transaction boundaries. Schema changes use versioned
+SQL migrations. The [database overview](../database/overview.md) links the
+domain designs.
 
-- authentication domain or issuer;
-- public browser client identifier;
-- API audience; and
-- redirect URLs.
+#### Sharp
 
-Private authentication secrets must remain outside browser bundles and the Git
-repository.
+Sharp processes uploaded profile images on the API. The implementation checks
+the input, applies orientation, crops and resizes it, and produces a consistent
+256 × 256 JPEG before storing the profile image.
 
-## Maps and location
+Repository artwork scripts also use Sharp. Keeping this processing on the
+server or in tooling gives the application a consistent image format and size.
 
-| Technology                   | Purpose                           | Motivation                                                                               |
-| ---------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------- |
-| Mapbox GL JS 3.28.1          | Interactive browser map rendering | Provides Mapbox Standard 3D presentation without determining protected game outcomes     |
-| Mapbox Standard              | Public basemap style              | Supplies the dusk/night-capable visual presentation and 3D basemap configuration         |
-| Licensed Wits campus dataset | Optional project-owned map layer  | Adds verified campus features only after licensing and provenance review                 |
-| Browser Geolocation API      | Device location claim             | Allows the player to submit latitude, longitude, reported accuracy, and acquisition time |
+### Shared services
 
-Mapbox GL JS with Mapbox Standard is the current implementation from issue #92.
-The team confirms it as an allowed team-selected integration within the
-project's implementation discretion. This does not claim that Calvin or the
-lecturer approved Mapbox by name. Production token/CSP/privacy review,
-licensing and cost ownership, usage monitoring, and any licensed Wits campus
-dataset remain to be confirmed operationally.
+#### Auth0 and token verification
 
-Map rendering is not authoritative. A marker appearing near an event does not
-grant access to that event.
+The Auth0 React SDK provides browser authentication support; `jose` handles
+JWT verification in the API. Using maintained authentication libraries keeps
+this code focused on Wits World account and permission rules.
 
-The API and PostgreSQL/PostGIS determine event eligibility.
+[Auth0 integration](external-integrations.md#auth0) covers authentication flows,
+client configuration, and account-management requests; [Security](trust-boundaries.md)
+covers validation and permissions.
 
-## Testing
+#### Upstash Redis
 
-The current test layers, commands, CI boundaries, and evidence rules are
-maintained in the [testing strategy and policy](../testing/testing-strategy.md).
+The Upstash SDKs connect the API to Redis-backed request limits and gameplay
+coordination. Shared counters allow quotas to apply across API instances.
 
-| Technology              | Purpose                                 | Motivation                                                                 |
-| ----------------------- | --------------------------------------- | -------------------------------------------------------------------------- |
-| Vitest                  | Unit and integration tests              | Works effectively with the TypeScript and Vite ecosystem                   |
-| React Testing Library   | Web interface behaviour tests           | Encourages testing accessible behaviour rather than implementation details |
-| Fastify injection       | API integration tests                   | Tests routes without requiring an external network listener                |
-| Playwright              | End-to-end browser journeys             | Validates deployed or locally integrated player flows                      |
-| Dedicated test database | Migration, query, and integration tests | Prevents tests from modifying normal development data                      |
-
-Testing is part of implementation rather than a final-stage activity.
-The durable strategy distinguishes unit, component, route, database, browser,
-manual, field, and deployed evidence so historical Sprint 1 checks are not
-mistaken for the complete current release policy.
-
-## Documentation
-
-| Technology       | Purpose                                 | Motivation                                                             |
-| ---------------- | --------------------------------------- | ---------------------------------------------------------------------- |
-| Markdown and MDX | Version-controlled documentation source | Keeps documentation reviewable alongside code                          |
-| Docusaurus       | Public documentation website            | Provides a static, account-free site generated from repository content |
-| Mermaid          | Architecture and process diagrams       | Keeps diagrams version-controlled and editable as text                 |
-
-The documentation application is located in `apps/docs`.
-
-Source material may remain organised under the repository-level `docs`
-directory and be incorporated into the public site through the documentation
-build process.
-
-## CI/CD
-
-The current Gitea Actions workflows run clean dependency installation,
-formatting, linting, TypeScript checking, Web/API coverage tests, and Web, API,
-and documentation builds for pull requests and `main`. Main deployment uses
-verified Web/API artifacts and health checks; documentation has a separate
-path-filtered Cloudflare Pages workflow.
-
-The current CI test job does not invoke the database integration runner,
-Playwright E2E, or the shared-package test scripts directly. Those checks are
-run separately when the change or release requires them. Exact workflow
-triggers, runners, artifacts, and measured timings are documented in
-[Continuous integration](../testing/continuous-integration.md).
-
-Deployment must keep the web application, API, and documentation application
-independently deployable.
-
-Secrets must be supplied through repository or platform-managed secret storage.
-
-## Deployment
-
-The current deployment uses:
-
-- Azure App Service for independently deployed `apps/web` and `apps/api`;
-- Neon for production PostgreSQL/PostGIS;
-- Cloudflare Pages for the Docusaurus `apps/docs` site;
-- Auth0 for authentication; and
-- Mapbox GL JS with Mapbox Standard for browser map presentation.
-
-The deployment workflows and platform configuration document these selections.
-Mapbox is a confirmed team technology choice, but licensing/terms, token
-restrictions, privacy, usage, cost ownership, and campus-data readiness are not
-implied merely by implementation.
+[Upstash Redis integration](external-integrations.md#upstash-redis) covers the
+exchanged records and operational links; [Rate limits](rate-limiting.md)
+defines the operation-specific policies.
 
 ## Shared packages
 
-The monorepo currently contains these first-party supporting packages:
+`packages/game-rules` contains the battle engine used by CPU, asynchronous,
+and live matches. It operates on validated snapshots and returns transitions;
+API services supply its inputs and persist the results. Keeping battle
+transitions in one package avoids separate implementations for each match mode.
 
-| Package                   | Responsibility                                                 |
-| ------------------------- | -------------------------------------------------------------- |
-| `packages/game-rules`     | Pure card, deck, and battle rules                              |
-| `packages/account-policy` | Shared Auth0-compatible Player Name policy used by Web and API |
+`packages/account-policy` contains Player Name validation shared by the Web
+and API. Browser feedback and server validation therefore use the same naming
+rules.
 
-Shared packages must not combine the web and API into a single deployable
-application.
+Build the shared packages before dependent applications.
+[Getting started](../development/getting-started.md) gives the setup commands.
 
-Runtime validation remains necessary even where TypeScript types are shared.
+## Development and verification
 
-## Technology constraints
+TypeScript checks application and package types. ESLint applies static code
+rules, and Prettier keeps formatting consistent across workspaces.
 
-The project must not:
+Vitest runs unit, component, route, and database tests within the TypeScript
+toolchain. React Testing Library and jsdom exercise Web interface behaviour;
+Fastify injection exercises HTTP routes. `fake-indexeddb` provides controlled
+offline-storage tests.
 
-- generate its required application API through a backend-as-a-service platform;
-- trust browser-calculated eligibility;
-- store private secrets in `VITE_` environment variables;
-- implement custom password storage;
-- expose database credentials to the browser;
-- allow the map provider to determine protected outcomes; or
-- couple the web and API so tightly that they cannot be built independently.
+Database integration tests use isolated PostGIS databases. PR validation
+supplies PostgreSQL 17 with PostGIS 3.5. Playwright covers real-browser journeys,
+where browser behaviour and interactions need their own checks.
 
-## Open technology decisions
+[Testing strategy](../testing/testing-strategy.md) and
+[Continuous integration](../testing/continuous-integration.md) define commands
+and test scope.
 
-The following remain to be confirmed or reviewed:
+## Documentation
 
-- Mapbox licensing/terms, production token/CSP/privacy, cost ownership, usage,
-  and campus-data readiness evidence;
-- production logging and monitoring services;
-- ongoing credential rotation and least-privilege controls; and
-- operational approval and evidence for backup and recovery.
+Docusaurus builds the public site from Markdown and MDX. It supplies navigation,
+page rendering, and a separate static build, allowing documentation changes to
+be reviewed alongside application changes.
 
-Each significant selection should be captured in an architecture decision
-record.
+Mermaid keeps diagrams editable as text next to their supporting references.
+Local search generates its index with the site and runs queries in the browser.
 
----
+## Dependency versions
 
-The preceding document was planned and generated with the assistance of
-ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
-edited for Sprint 1 release validation with assistance from
-ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
-Codex-CLI[gpt-5.6-sol medium].
+Workspace `package.json` files declare dependencies; `package-lock.json`
+records resolved versions. Use `npm ci` for a reproducible installation.
+Those files remain the complete dependency and version reference.
 
-Page title clarified with assistance from Codex-CLI[GPT-6].
+See [System architecture](overview.md) for application responsibilities and
+hosting, and [Integrations](external-integrations.md) for external service
+connections.
 
-Live PvP realtime transport documented with assistance from
-ChatGPT-Web[GPT-5.6 Sol].
+**AI declaration:** Prepared and updated with assistance from
+ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex-CLI[GPT-5],
+Codex[GPT-5], Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-6], and Codex[GPT-6].

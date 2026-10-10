@@ -1,497 +1,105 @@
 ---
-title: 'Longitudinal trust and proportionate enforcement'
+title: 'Moderation and trust'
 ---
 
-# Longitudinal trust and proportionate enforcement
-
-## Status and purpose
-
-This document is the issue `#254` policy contract for Advanced-tier trust
-scoring and proportionate enforcement. Issue `#257` implements persistence for
-derived signals, score snapshots, cases, restrictions, appeals, and decisions
-through migration `0046_persist_longitudinal_trust.sql`. Issue `#258` implements
-the deterministic `trust-v1` scoring service, authoritative signal ingestion,
-periodic decay/recovery evaluation, and server-side enforcement of previously
-reviewed restrictions. Migration
-`0048_implement_trust_scoring_and_enforcement.sql` adds only forward schema
-hardening needed by that runtime. Issue `#260` adds the Author-only review and
-audit API over that persistence, and issue `#256` adds the reviewer console.
-Player appeal submission and appeal resolution remain later work; score
-internals remain private.
-
-The policy builds an explainable picture from weak indicators over time. A
-signal means that authoritative application data matched a review condition; it
-does not prove cheating or intent. The score prioritises human review and never
-changes gameplay by itself. No single signal, score, or automated process may
-suspend an account or permanently ban a player.
-
-## Authority and terminology
-
-The API and PostgreSQL derive every signal from authoritative operations. The
-browser cannot submit a signal, score, severity, case, restriction, reviewer
-decision, or enforcement result.
-
-This policy uses a **risk score** from `0` through `100`, where a higher value
-means that the account should receive earlier human review. It is not a
-probability, guilt percentage, public reputation, or player ranking. The score
-and detector thresholds are not exposed to players or other players.
-
-The initial immutable policy version is `trust-v1`. Every signal, score
-snapshot, case transition, reviewer decision, restriction, and appeal records
-the policy version that produced it. A later policy version does not rewrite
-historical evidence or decisions.
-
-## Derived signal contract
-
-Each immutable derived signal contains only:
-
-- a random signal identifier;
-- the server-resolved local player identifier;
-- one closed signal type and severity;
-- base points under the recorded policy version;
-- server-observed time and expiry time;
-- an opaque source type, source identifier, and deduplication key; and
-- creation metadata needed for audit and concurrency control.
-
-The source identifier proves which authoritative operation produced the signal
-without copying its sensitive payload. Trust records never contain precise
-coordinates, exact journey distance or speed, reported accuracy, submitted
-answers, bearer tokens, access-token claims, hidden cards, or complete match
-state.
-
-### Impossible-movement signals
-
-Only an authoritative movement-eligibility decision with outcome `too_fast`
-may create an impossible-movement signal. Baseline, same-event, plausible,
-unreachable, accuracy-retry, malformed, stale, and unauthenticated requests do
-not create one.
-
-The existing journey calculation remains authoritative and accounts for both
-reported accuracy radii and server receipt time. At the moment the `too_fast`
-decision commits, the signal service compares its already-derived required
-speed with the configured maximum-speed snapshot:
-
-| Condition                                     | Severity   | Base points |
-| --------------------------------------------- | ---------- | ----------- |
-| More than `1x` and at most `2x` the threshold | `moderate` | 15          |
-| More than `2x` the threshold                  | `strong`   | 25          |
-
-The signal retains the severity band but not either speed value, coordinates,
-distance, accuracy, prior event, current event, or path. It is deduplicated by
-the immutable movement-decision source identifier. Online and accepted offline
-eligibility paths use the same rule.
-
-Precise movement evidence and its journey decision retain their existing
-short-lived expiry and account-deletion cascade. Deleting those rows does not
-erase the separate non-precise signal before its own expiry.
-
-### Submission-conflict signals
-
-Normal distributed-system retries must not look like cheating. These events
-produce no signal:
-
-- an identical idempotency identifier and canonical payload replay;
-- a retry after a response was lost;
-- an ordinary duplicate read;
-- a stale expected version;
-- a completed-resource response;
-- a rate-limit response; or
-- a malformed request rejected before an authoritative operation can resolve
-  the player and submission context.
-
-Reusing one submission or message identifier for a different canonical payload
-at an authoritative mutation boundary creates one
-`idempotency_payload_conflict` signal worth 10 points. The signal is
-deduplicated by actor, operation, resource, and conflicting submission
-identifier, so repeated delivery of the same conflict cannot inflate the
-score.
-
-Three or more distinct payload-conflict signals within a rolling 24-hour period
-create one additional `submission_conflict_pattern` signal worth 10 points.
-Only one pattern signal may exist for the player and UTC 24-hour evaluation
-bucket under one policy version. Conflicts already counted in one pattern do
-not create another pattern signal in the same bucket.
-
-Repeated wrong answers, low quiz scores, legal rapid play, choosing the same
-move, losing matches, or ordinary user mistakes are not submission-conflict
-signals.
-
-### Repeated-opponent and collusion-review signals
-
-Repeated opponents are a weak social indicator and never prove collusion.
-Only completed player-versus-player matches are considered; CPU matches,
-cancelled invitations, declined invitations, expired invitations, and
-unstarted matches are excluded.
-
-A reciprocal `opponent_concentration` signal worth 20 points is created for
-both players only when, in the same rolling 30-day evaluation window:
-
-- each player has at least six completed PvP matches; and
-- matches between the pair represent at least 80% of each player's completed
-  PvP matches.
-
-A further `one_sided_outcome_pattern` signal worth 10 points is created for
-both players when at least four matches in a rolling seven-day window end with
-the same player winning through voluntary resignation, turn-timeout forfeit, or
-live abandonment forfeit. Account-deletion forfeits and ordinary defeats are
-excluded from this pattern.
-
-Each signal is deduplicated by signal type, both canonical player identifiers,
-policy version, and UTC calendar week. The weekly key permits a continuing
-pattern to remain reviewable while the category cap prevents weekly evaluation
-from producing an unbounded score. Reviewers must consider legitimate friends,
-classmates, demonstrations, and a small current PvP population before taking
-action.
-
-## Versioned score calculation
-
-Signals decay linearly to zero over 90 days. `trust-v1` defines:
-
-```text
-decay seconds = 90 * 24 * 60 * 60 = 7,776,000
-age seconds = max(0, database evaluation time - observed time)
-remaining seconds = max(0, decay seconds - age seconds)
-effective signal points = floor(base points * remaining seconds / decay seconds)
-```
-
-The calculation uses authoritative PostgreSQL time. Its inputs are the player,
-evaluation timestamp, active immutable signals, reviewed signal adjustments,
-and policy version. Given those same inputs, every implementation must produce
-the same result.
-
-After decay, sum each category and apply these caps:
-
-| Category               | Maximum contribution |
-| ---------------------- | -------------------- |
-| Impossible movement    | 50                   |
-| Submission conflicts   | 30                   |
-| Opponent concentration | 30                   |
-
-The final score is the sum of capped category totals, clamped from `0` through
-`100`. A reviewed false-positive adjustment contributes zero from its effective
-time onward but does not delete or rewrite the original signal.
-
-Each score snapshot records the evaluation time, policy version, category
-totals, final score, review band, and source-signal set or stable calculation
-digest. It does not duplicate sensitive source payloads.
-
-## Review bands and case lifecycle
-
-| Score    | Band              | System response                              |
-| -------- | ----------------- | -------------------------------------------- |
-| `0–24`   | `normal`          | Retain active signals; open no case          |
-| `25–49`  | `observe`         | Open or update a low-priority review case    |
-| `50–74`  | `review_required` | Prioritise the case for human review         |
-| `75–100` | `urgent_review`   | Place the case at the urgent review priority |
-
-Crossing a band creates or updates a case and append-only audit entry. It does
-not automatically restrict challenges, rewards, matches, account access, or
-any other feature, even at a score of `100`.
-
-A case has one of these states:
-
-```text
-open -> under_review -> resolved
-open -> resolved as decayed
-```
-
-Only one non-terminal case may exist for a player. New evidence updates its
-latest score and priority without deleting prior snapshots. A case that remains
-below 25 for seven continuous days may resolve as `decayed` through an
-append-only system decision only when it has no active restriction, reviewer
-lock, or unfinished case-review work. Later evidence may create a new case.
-
-Appeals are a lifecycle of the challenged restriction decision, not case
-states. A restriction decision moves from appeal `eligible` to `submitted` and
-then `resolved`, or becomes `ineligible` when its 30-day post-expiry window
-ends without a submission. A case may therefore resolve while an unused appeal
-window remains or while a submitted appeal is awaiting resolution. A late
-appeal does not reopen the historical case, create another non-terminal case,
-or rewrite its score snapshots.
-
-An appeal resolution appends to the challenged decision. Any resulting
-false-positive adjustments take effect at the appeal-resolution time and cause
-a new current score calculation under the normal policy. If the player has a
-newer non-terminal case, that case receives the new snapshot; the resolved
-historical case remains terminal. A case with an active restriction remains
-`under_review` until the restriction expires or is overturned and its remaining
-case-review work is resolved.
-
-## Runtime evaluation and enforcement
-
-The API implements `trust-v1` as a pure deterministic calculation over the
-persisted signal set. Signal-triggered evaluations and the maintenance sweep use
-PostgreSQL `clock_timestamp()` as the authoritative evaluation time. The
-maintenance sweep revisits active signals/non-terminal cases for decay and
-recovery. Completed asynchronous and live PvP operations also attempt pattern derivation
-after completion commits; maintenance rotates through recent completed matches so
-opponent-pattern signals remain retry-safe and eventually derived after a
-transient failure or process restart.
-
-A human-resolved historical case is not reopened merely because its existing
-signals still score above 25. A later derived signal, recorded after that
-resolution, may open a new case. `under_review` cases are never auto-resolved by
-the decay worker; this prevents automated maintenance from racing reviewer work.
-
-Runtime restrictions are capability checks over persisted human decisions and
-authoritative database time. The implemented boundaries are:
-
-- new offline-pack issuance for `online_verification_required` and
-  `location_reward_challenge_hold`;
-- creation of a new reward-bearing challenge attempt for
-  `location_reward_challenge_hold`; and
-- asynchronous PvP invitation creation/acceptance for
-  `new_competitive_match_hold`.
-
-Already-created attempts and existing PvP matches continue. CPU play and live
-match reconnect/access are not blocked. The current repository has no separate
-live-match queue/join operation; a future implementation must reuse the same
-restriction service at that new-operation boundary instead of inferring access
-from the browser.
-
-Player-facing denials use the neutral `ACTIVITY_REVIEW_RESTRICTION` API code and
-do not include score, band, signal, threshold, reviewer note, opponent identity,
-or detector detail.
-
-## Author review boundary
-
-The existing `author` application role is the trust-review role for this
-delivery. No new Administrator role is introduced. Ordinary players cannot
-access another player's signals, score, case, notes, restrictions, or appeal.
-
-An Author case view may contain:
-
-- the current Player Name and local opaque player identifier;
-- current score, band, policy version, and category totals;
-- signal type, severity, points, observed time, decay state, and safe source
-  category;
-- prior case transitions, reviewer decisions, restrictions, and appeals; and
-- safe aggregate PvP counts needed to assess an opponent pattern.
-
-Every newly recorded opponent-pattern signal must retain that reviewer-safe
-aggregate summary. If a legacy signal predates summary retention, the API marks
-its explanation unavailable rather than reconstructing historical facts. The
-case is not reviewable while that unexplained evidence still contributes points
-and remains unadjusted. A fresh detector evaluation of the same signal type
-restores reviewability only while its valid summary is effective and unadjusted;
-the original evidence remains immutable.
-
-It must not contain Auth0 issuer/subject, email, precise location, exact speed,
-distance, accuracy, submitted answers, access tokens, hidden cards, another
-player's private history, or raw application logs.
-
-Every reviewer mutation includes an expected case version and runs under an
-authoritative lock. A decision records the local Author, timestamp, policy
-version, previous and resulting case states, bounded reason, affected signals,
-restriction scopes and duration, and resulting score snapshot. Decisions are
-append-only. Concurrent stale decisions fail rather than overwrite one
-another.
-
-An Author cannot review, restrict, dismiss, adjust a signal for, or resolve an
-appeal concerning their own player account. A server-side object-authorisation
-check enforces this independently from the UI.
-
-Issue `#256` exposes the queue at `/author/player-review` and a case detail at
-`/author/player-review/:caseId`. Search, status, band, pagination, score
-explanation, evidence state, and audit history come from the API. The browser
-does not calculate scores, severity, restrictions, or outcomes. Severity and
-priority use text and icons as well as colour, and temporary restrictions
-require a separate confirmation step. A stale expected case version returns an
-HTTP `409` conflict and the reviewer must load the latest case before deciding
-again. The investigation view consumes the full pageable privacy-safe evidence,
-restriction, and audit projections, including retained opponent-pattern
-aggregates, and offers the API's bounded 100-record-per-collection JSON export.
-Reviewer-safe opponent aggregates expose evaluation windows, counts, and the
-observed concentration ratio, but never detector thresholds. Destructive
-restriction confirmation separates the authoritative current case status and
-active restriction scopes from the proposed capabilities, duration, and reason.
-Evidence selection is required in the interface for false-positive adjustments;
-other decisions require reason and context without a mandatory evidence
-checklist.
-
-The first reviewer delivery is deliberately limited to `trust-v1`: the three
-documented restriction scopes, durations of 1 through 168 hours, a reason of 1
-through 1,000 characters, and at most 100 queue rows per page. It does not create
-`trust-v2` card-trade holds, accept player appeals, resolve appeals, display raw
-location, or perform automatic enforcement decisions.
-
-## Proportionate human decisions
-
-Reviewers may:
-
-- dismiss a case with no restriction;
-- mark one or more signals as reviewed false positives without deleting them;
-- continue monitoring with no player-visible restriction;
-- require online verification for new location-based challenge activity;
-- prevent the player from starting new reward-bearing location challenges; or
-- prevent the player from creating, accepting, queueing for, or joining new
-  competitive PvP matches.
-
-One decision may combine the three restriction scopes. Every restriction:
-
-- begins at the committed reviewer-decision time;
-- lasts no longer than seven days;
-- expires automatically against authoritative database time;
-- requires a new reasoned decision to renew;
-- is checked at the affected server-side operation rather than only hidden in
-  the UI; and
-- returns a neutral, non-accusatory player response.
-
-`online_verification_required` prevents issuing new offline challenge packs and
-requires the normal fresh online location-eligibility path for a newly started
-location challenge. `location_reward_challenge_hold` prevents starting a new
-reward-bearing location challenge. `new_competitive_match_hold` prevents new
-PvP invitations, invitation acceptance, live queue entry, and live match join.
-
-Restrictions never:
-
-- block sign-in, account deletion, map/event browsing, collection, deck
-  management, CPU play, case notice, or appeal access;
-- cancel an attempt or match that authoritatively started before the
-  restriction committed;
-- forfeit an active match;
-- remove cards, points, achievements, ratings, or already committed rewards;
-- rewrite completed attempts or matches; or
-- suspend or permanently ban an account.
-
-An offline pack or match already authoritatively created before the restriction
-commits may complete under its original contract. This avoids retroactive
-punishment and keeps concurrency outcomes deterministic.
-
-The approved [card-trading policy](card-trading-policy.md) defines a separate
-`card_trade_hold`. Migration `0055_persist_versioned_card_trades.sql` adds the
-scope under immutable `trust-v2` persistence and invalidates unfinished offers
-when an immediately effective hold is inserted, releasing their reservations
-without reversing completed trades or changing the three `trust-v1` scopes
-above. Existing `trust-v1` decisions remain unchanged, and the automated trust
-scoring runtime still uses `trust-v1`; a reviewer workflow that creates the new
-hold must therefore create its case and decision consistently under `trust-v2`.
-The scope retains the human-review, seven-day maximum, neutral notice, and
-appeal boundary used by the existing restrictions.
-
-## Player notice and appeal
-
-A restricted player receives a safe notice containing:
-
-- the affected capability;
-- restriction start and expiry times;
-- a neutral reason category such as `activity_review`;
-- appeal availability and status; and
-- a request identifier.
-
-The notice does not expose the risk score, thresholds, weights, detector
-details, another player's identity, source identifiers, reviewer notes, or raw
-evidence.
-
-Each restriction decision permits one appeal while the restriction is active
-or within 30 days after it expires. Appeal text is bounded to 1,000 characters
-and instructs the player not to include passwords, tokens, or precise location.
-Submitting an appeal does not automatically pause the restriction.
-
-The Author who made the challenged decision cannot resolve its appeal. A
-different Author resolves it as:
-
-- `upheld`, leaving the original expiry unchanged;
-- `shortened`, committing an earlier expiry; or
-- `overturned`, ending active scopes immediately and recording any reviewed
-  false-positive adjustments.
-
-Appeal resolution never deletes the original decision or evidence summary.
-
-## Privacy, retention, and account deletion
-
-Trust storage uses the minimum information required for scoring, review,
-deduplication, and audit:
-
-| Record                                                                 | Retention                                         |
-| ---------------------------------------------------------------------- | ------------------------------------------------- |
-| Precise movement evidence and journey decisions                        | Existing provisional 24-hour boundary and cleanup |
-| Derived trust signals                                                  | 90 days from observed time                        |
-| Score snapshots                                                        | 12 months from calculation                        |
-| Closed cases, evidence summaries, decisions, restrictions, and appeals | 12 months after final resolution                  |
-| Open cases and active restrictions                                     | Until resolved or account deletion                |
-| Unfinished case review/audit history after account deletion            | 90 days from deletion completion                  |
-
-When a signal expires, a case already opened from it retains only the immutable
-non-sensitive evidence summary required to explain a decision. It does not
-extend the source system's raw-data retention.
-
-When account deletion enters `deletion_pending`, active signals are removed and
-formal cases, evidence, restriction and appeal history remain against a new
-opaque historical actor UUID after completion. Unfinished cases retained solely
-because of deletion expire 90 days after completion. Retained restrictions are
-audit history, not active capability holds. The player account and Auth0
-identity are removed at completion. A later registration gets a new player UUID
-and does not inherit an old trust score or restriction.
-
-Trust logs contain only safe case or signal identifiers, policy version, review
-band, restriction scope, expiry, transition result, and aggregate counts. They
-exclude score inputs, precise movement, player names where unnecessary,
-opponent identities, appeal text, and reviewer notes.
-
-## Deterministic examples
-
-### Harmless retry
-
-An action is replayed with the same submission identifier and canonical payload
-after its first response is lost. The service returns the stored result. No
-signal or score change occurs.
-
-### Payload conflicts
-
-A player reuses three different submission identifiers with conflicting
-payloads in one 24-hour bucket. The three source conflicts contribute 30 base
-points, capped at the submission category maximum of 30. One additional
-10-point pattern signal is recorded but cannot increase that capped category.
-The score reaches `observe`; no gameplay restriction occurs automatically.
-
-### Movement decay
-
-A strong impossible-movement signal starts at 25 points and opens an `observe`
-case. After 45 complete days its effective value is 12 points under the fixed
-floor calculation. With no other evidence, the score returns to `normal`. The
-case may resolve as `decayed` after remaining below 25 for seven days.
-
-### Combined review priority
-
-Two current strong impossible-movement signals contribute the movement cap of 50. A current reciprocal opponent-concentration signal contributes 20. The
-score is 70 and the case is `review_required`. An Author must still review the
-derived evidence before any restriction is applied.
-
-### Score of 100
-
-Capped movement, submission, and opponent contributions total more than 100.
-The final score is 100 and the case becomes `urgent_review`. Sign-in and
-gameplay remain unchanged until an Author commits a permitted decision.
-
-## Implementation and verification requirements
-
-Issues `#257` and `#258` must turn this policy into focused database and service
-tests covering:
-
-- unique source and pattern deduplication under concurrent ingestion;
-- identical retries versus conflicting payloads;
-- movement severity derivation without retaining precise values;
-- exact 90-day fixed-point decay and category caps;
-- all review-band boundaries;
-- reciprocal opponent thresholds and excluded match outcomes;
-- deterministic score snapshots by policy version and evaluation time;
-- no automatic restrictions at every score;
-- stale reviewer decisions and self-review rejection;
-- seven-day restriction bounds, expiry, renewal, and server-side enforcement;
-- pre-existing attempts and matches surviving a later restriction;
-- one appeal per decision and different-Author resolution;
-- a post-expiry appeal submitted after its related case has resolved, without
-  reopening that case or creating a second non-terminal case;
-- raw movement expiry without loss of non-sensitive case explanation; and
-- account deletion, anonymisation, and retention expiry.
-
-For issue `#254`, formatting and the documentation build are the meaningful
-automated checks. It does not add implementation-mirroring production tests.
+# Moderation and trust
+
+Authors use **Player review** to investigate unusual activity and, where justified, apply a temporary restriction. The server's trust score prioritises cases for review. It does not prove cheating or apply restrictions automatically, even at the maximum score.
+
+Content approval is a separate workflow: see [Review and publish content](../architecture/diagrams/content-review.md).
+
+## Review a player
+
+1. Open `/author/player-review`. Filter the queue by case status, review band, signal type, restriction state, or date.
+2. Open a case and read its evidence, score breakdown, active restrictions, and decision history.
+3. Compare the signal with its context. Repeated matches between friends or location errors can have legitimate explanations.
+4. Choose a decision, record a reason, and submit it against the current case version.
+
+Only authenticated, active Authors can review cases. An Author cannot make decisions about their own account. Player-facing responses do not disclose trust scores, detector details, evidence, or reviewer notes.
+
+Evidence summaries show the signal's policy version, observation and expiry times, remaining contribution, and any false-positive adjustment. Opponent-pattern summaries include the relevant match counts and time window without exposing private match state.
+
+Some older opponent-pattern records lack an explanatory summary. The server blocks review while such a record still contributes to the case. Expired or adjusted records do not block review; fresh explainable evidence can replace a contributing legacy record.
+
+## Scores and signals
+
+The current scoring policy is `trust-v1`. Its risk score ranges from 0 to 100 and measures review priority. It is separate from XP, league rating, reputation, and battle skill.
+
+| Signal                        | Authoritative trigger                                                                                        | Base points |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------: |
+| Impossible movement           | A server movement check returns `too_fast`; severity determines the weight                                   |    15 or 25 |
+| Conflicting submission        | A reused idempotency key carries a different payload for the same mutation                                   |          10 |
+| Repeated submission conflicts | At least 3 distinct conflicts within 24 hours                                                                |          10 |
+| Opponent concentration        | Both players have at least 6 completed PvP matches in 30 days, with at least 80% against each other          |          20 |
+| One-sided outcomes            | At least 4 matches in 7 days end with the same winner through resignation, turn timeout, or live abandonment |          10 |
+
+Signals come from committed server operations and are deduplicated. Identical retries, ordinary stale-version errors, wrong challenge answers, and normal battle defeats do not create these signals. CPU battles and unstarted or cancelled matches do not contribute to opponent patterns.
+
+Each signal's points decay linearly over 90 days, rounded down to a whole number. Category totals are capped at 50 for movement, 30 for submission conflicts, and 30 for opponent patterns. The final score is capped at 100. Marking a signal false positive removes its contribution from subsequent calculations while preserving the original evidence.
+
+| Score  | Review band         |
+| ------ | ------------------- |
+| 0–24   | Normal; no new case |
+| 25–49  | Observe             |
+| 50–74  | Review required     |
+| 75–100 | Urgent review       |
+
+The server permits one open or under-review case per player. An untouched open case can resolve after 7 continuous days below 25, provided it has no active restriction. Cases already under human review remain for an Author to resolve. New signals can create a later case; old evidence does not reopen a resolved case.
+
+## Reviewer decisions
+
+| Decision                        | Effect                                                                  |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| **Continue monitoring**         | Starts or continues human review without restricting activity           |
+| **Mark signals false positive** | Adjusts the selected active signals and recalculates the score          |
+| **Apply temporary restriction** | Adds one or more supported activity restrictions                        |
+| **Dismiss case**                | Resolves a case already under review, provided no restriction is active |
+
+For a newly opened case, start review before dismissing it. False-positive adjustments do not automatically end an existing restriction.
+
+Every decision needs a reason of 1–1,000 characters. A false-positive decision also needs selected evidence. A restriction needs at least one scope and a duration from 1 to 168 hours. The confirmation view shows the proposed scopes, duration, and reason alongside the current restrictions.
+
+The server records the decision, resulting case state, score, and restrictions atomically. Each submission includes `expectedVersion`; a stale version returns HTTP 409 and requires loading the current case. Previous decisions remain in the audit history.
+
+## Temporary restrictions
+
+The review console can apply these 3 scopes:
+
+| Console label                        | Current enforcement                                                                                         |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| **Require online verification**      | Blocks new offline challenge packs; online verification remains available                                   |
+| **Pause location reward challenges** | Blocks new reward-bearing challenge attempts and new offline packs                                          |
+| **Pause new competitive matches**    | Blocks asynchronous invitation creation/acceptance and ranked queue entry, proposal acceptance, and pairing |
+
+Restrictions begin at the committed decision time and expire using database time. Any extension needs a new reasoned decision; the original duration cannot exceed 7 days.
+
+Existing attempts, issued offline packs, and started matches can finish. Restrictions do not cancel matches, prevent live reconnection, remove earned cards or points, or recalculate historical ratings. CPU battles, sign-in, account deletion, and collection/deck access remain available.
+
+Gameplay denials use neutral messages. The shared activity error is `ACTIVITY_REVIEW_RESTRICTION`; ranked entry uses `RANKED_RESTRICTED`.
+
+The trading service also supports a `card_trade_hold`. The current review console can display that scope but cannot create it. See [Trading](card-trading-policy.md) for its effect on offers and card locks.
+
+## Appeals and audit access
+
+Appeal persistence exists, but player submission and Author appeal-resolution routes and screens are not implemented. The console displays the stored appeal status. The [trust storage contract](../database/trust-persistence.md) defines the appeal window and independent-review requirements.
+
+The Author API is rooted at `/api/v1/author/trust-cases`. It provides the queue, case detail, paginated evidence/restrictions/history, decisions, and a JSON export. Exports contain up to 100 records from each collection with totals and pagination metadata; they are not an unlimited dump of a case.
+
+## Privacy and retention
+
+Trust evidence retains derived categories and safe summaries. It does not copy precise coordinates, speed or distance, submitted answers, authentication tokens, hidden cards, or complete match state.
+
+| Record                                                      | Retention                                                               |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Derived signals                                             | 90 days after observation                                               |
+| Score snapshots                                             | 12 months after evaluation                                              |
+| Closed case, evidence, decisions, restrictions, and appeals | 12 months after governance is finalised, including the appeal lifecycle |
+| Unfinished cases after account deletion                     | 90 days after deletion completion                                       |
+
+Open cases otherwise remain until resolution. Account deletion removes active signals and replaces retained account references with an opaque audit actor. Free-text reasons and appeal text are redacted at completion; retained restrictions have no active effect. A new registration does not inherit the deleted account's trust state.
+
+See [Trust persistence](../database/trust-persistence.md) and [Account deletion and retention](../database/account-deletion-retention.md) for database rules and cleanup.
 
 ## AI declaration
 
-This policy was planned, generated, edited, and reviewed with the assistance of
-Codex[GPT-5.6 Sol], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-5].
-
-This account-deletion update was edited with assistance from Codex[GPT-6].
+This document was planned, generated, edited, and reviewed with assistance from Codex[GPT-5.6 Sol], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-5]. The current rewrite and implementation review used Codex[GPT-6].

@@ -1,98 +1,137 @@
 ---
-title: 'Ranked matchmaking API contract'
+title: Ranked matchmaking API
+description: Join the ranked queue, respond to proposals, and read seasonal ratings and settlements.
 ---
 
-# Ranked matchmaking API contract
+# Ranked matchmaking API
 
-Issue `#266` implements the server side of the approved
-[ranked-v1 policy](../requirements/ranked-competition-policy.md). Ranked play
-uses the existing [live PvP transport](live-pvp-api-contract.md) once both
-players accept. All routes require a bearer token and an active local player.
-The server derives identity from the token; request bodies cannot choose a
-rating, opponent, season, result, or queue status.
+Ranked matchmaking pairs eligible players and creates a live match after both
+accept a proposal. The API supplies queue state, seasonal ratings, standings,
+and each participant's settlement. Clients cannot select an opponent, rating,
+season, or result.
 
-## Queue and proposal
+See [Ranked competition](../requirements/ranked-competition-policy.md) for
+eligibility, search ranges, cooldowns, rating calculations, and season rules.
+[Live PvP](live-pvp-api-contract.md) covers the battle connection after matching;
+[Territories](contested-campus-territory-api-contract.md) covers optional zone
+claims and influence feedback.
 
-| Method and path                                     | Request                | Successful response                                                               |
-| --------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------- |
-| `POST /api/v1/ranked/queue`                         | `{ "deckId": "uuid" }` | Private queue state; joining the same active entry is idempotent.                 |
-| `GET /api/v1/ranked/queue`                          | None                   | Private queue state; does not extend a lease.                                     |
-| `POST /api/v1/ranked/queue/heartbeat`               | None                   | Private queue state; an unexpired searching entry receives a new 30-second lease. |
-| `DELETE /api/v1/ranked/queue`                       | None                   | Cancels searching, or declines a pending proposal.                                |
-| `POST /api/v1/ranked/proposals/:proposalId/accept`  | None                   | Private queue state; after both accept, includes the committed live match ID.     |
-| `POST /api/v1/ranked/proposals/:proposalId/decline` | None                   | Private queue state after resolution.                                             |
+## Access and queue routes
 
-Queue state includes `status`, `queueEntryId`, `seasonId`, `joinedAt`,
-`leaseExpiresAt`, `searchRange`, `proposalId`, `acceptanceDeadline`, `accepted`,
-and `matchId`. Unavailable values are `null`. A proposal discloses no opponent
-identity, deck, rating, or candidate list. The client should heartbeat at least
-every 10 seconds while searching. It should stop heartbeats after leaving
-search or receiving a proposal. A status read is suitable for reconnect and
-for observing the result of a retry.
+All routes require bearer authentication and an active player account. Successful
+responses return the objects described below directly. Errors use the shared
+[API format](../api-reference.md#responses-and-retries).
 
-The worker selects the oldest searching anchor with an eligible pair. Both
-players must fit each other's widening range. Claim, proposal creation, and
-queue transition commit together. A proposal expires 20 seconds after creation.
-Acceptance does not extend it. Decline or timeout applies a 30-second cooldown
-to a non-accepting player; an accepting player keeps the original join time
-and receives a fresh lease only after a fresh eligibility check. An accepted
-player whose deck or account fails that check leaves search; invalid deck or
-restriction failures receive the same cooldown. Season closure cancels queue
-state without a cooldown. A same-proposal accept retry after match creation
-returns the original persisted match ID.
+Routes below begin with `/api/v1` and return `200` on success.
 
-Queue cancellation serializes with proposal acceptance, decline, and expiry.
-If another resolution requeues the caller first, cancellation leaves that
-searching entry in the same transaction. A match already committed before
-cancellation remains matched.
+| Method | Route                                   | Request and result                                                                                                     |
+| ------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/ranked/queue`                         | Send `{ deckId }` to join; returns your queue state. Optional `territoryClaim` is described in the territory contract. |
+| GET    | `/ranked/queue`                         | Read your queue state without renewing its lease.                                                                      |
+| POST   | `/ranked/queue/heartbeat`               | Renew an unexpired searching lease; no body is required.                                                               |
+| DELETE | `/ranked/queue`                         | Leave searching or decline your pending proposal; returns the resolved queue state.                                    |
+| POST   | `/ranked/proposals/:proposalId/accept`  | Accept your proposal; no body is required.                                                                             |
+| POST   | `/ranked/proposals/:proposalId/decline` | Decline your proposal; no body is required.                                                                            |
 
-## Rating and standings reads
+Joining uses the gameplay quota; other ranked requests use the general
+[request quota](rate-limiting.md). A deck ID must identify the caller's valid
+saved deck. Extra join-body fields are rejected.
 
-| Method and path                                                      | Response                                                                                             |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/ranked/me`                                              | Own current season, rating, wins, losses, settled count, provisional flag, and remaining placements. |
-| `GET /api/v1/ranked/matches/:matchId/settlement`                     | Own ranked result, or `pending` while the match is active. Other players receive a neutral 404.      |
-| `GET /api/v1/ranked/seasons/current`                                 | `{ "season": null }` when none is active or closing; otherwise season dates and policy version.      |
-| `GET /api/v1/ranked/standings?limit=25&cursor=...`                   | Established current season standings and optional next cursor.                                       |
-| `GET /api/v1/ranked/seasons/:seasonId/standings?limit=25&cursor=...` | Immutable competitive facts for a closed season, with current safe display names.                    |
+## Queue state and deadlines
 
-Page size is 1–100. Both standings cursors are signed and bound to the viewer.
-Current standings create a private, ten-minute competitive snapshot on the
-first page, then page by stable ordinal. Player Names resolve from the current
-player record on every page; deleted or deletion-pending accounts are omitted
-from current standings. An expired or foreign cursor returns 400 and the client
-starts a fresh traversal. Personal archive entries are removed on deletion;
-shared match outcomes can render a deleted participant as `Deleted player`.
+| Fields                                         | Meaning                                                                                              |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `status`                                       | `idle`, `searching`, `proposed`, `matched`, `cancelled`, `expired`, `restricted`, or `invalid_deck`. |
+| `queueEntryId`, `seasonId`, `joinedAt`         | Queue identity, season, and original join time.                                                      |
+| `leaseExpiresAt`, `searchRange`                | Searching lease deadline and current rating range.                                                   |
+| `proposalId`, `acceptanceDeadline`, `accepted` | Pending proposal, its deadline, and whether you have accepted.                                       |
+| `matchId`                                      | The committed live match ID after matching.                                                          |
 
-Provisional ratings are private and never enter current standings before five
-settled matches. Rating settlement is part of the existing authoritative live
-terminal transaction. CPU, asynchronous PvP, and casual live matches have no
-ranked receipt and do not settle a ranked rating.
+Unavailable values are null. Proposals hide the opponent's name, deck, and
+rating. A proposed pair is not yet a match.
 
-## Operational boundary
+While `searching`, heartbeat at least every 10 seconds to maintain the
+30-second lease. GET requests do not extend it, and a heartbeat cannot revive
+an expired entry. Stop heartbeats when leaving search or receiving a proposal.
 
-Deploy migrations `0047`, `0050`, `0051`, and `0052` before an API version that registers these
-routes and the ranked worker. The worker is safe to run on every API instance;
-database locks serialize claims and season changes. No season is created by
-deployment. An operator schedules seasons as described in
-[ranked operations](../deployment/ranked-operations.md).
+A proposal gives both players 20 seconds to accept. Acceptance does not extend
+the deadline. If only 1 player accepts, no match starts. Decline or expiry can
+return an eligible accepting player to searching with their original join time;
+the other player may enter the policy's cooldown. Render the returned state
+rather than assuming a proposal always ends in a match.
 
-With shared gameplay coordination configured, ranked API mutations publish a
-durable activity intent before database writes. If publication or intent
-validation fails, the mutation returns `503 GAMEPLAY_COORDINATION_UNAVAILABLE`
-without committing its change; the client can retry. Ordinary queue/profile
-reads do not publish intents. Activity detection does not extend queue leases
-or proposal deadlines. During coordination outages, season transitions and
-new pairing pause; queue/proposal expiry and existing territory maintenance
-continue with PostgreSQL fencing alone. The operations guide describes the required staged
-rollout before enabling long idle database sleeps.
+Once `status` is `matched`, open `matchId` through the live API. Cancelling a
+queue does not cancel a match that has already committed. Use live resignation
+when conceding an active battle.
+
+## Rating and season reads
+
+| Route                                            | Returned object                                                                                            |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/ranked/me`                          | `season`, `rating`, `wins`, `losses`, `settledMatchCount`, `placementMatchesRemaining`, and `provisional`. |
+| `GET /api/v1/ranked/matches/:matchId/settlement` | Your match outcome, rating change, and optional territory result.                                          |
+| `GET /api/v1/ranked/seasons/current`             | `{ season }`; null when no season is active or closing.                                                    |
+| `GET /api/v1/ranked/standings`                   | Current-season `{ season, entries, nextCursor }`.                                                          |
+| `GET /api/v1/ranked/seasons/:seasonId/standings` | Closed-season `{ season, entries, nextCursor }`.                                                           |
+
+Season objects include `seasonId`, `name`, `status`, `policyVersion`,
+`activatedAt`, `activeEndsAt`, and `closedAt`. A closing season can still be
+read, while new queue entries require an active season. Profile `rating` can
+be null when no seasonal rating exists.
+
+Settlement includes `matchId`, `seasonId`, `status: pending|settled`,
+`completionReason`, `outcome`, `ratingBefore`, `ratingAfter`, `appliedDelta`,
+`settledAt`, and `territory`. Fields awaiting settlement can be null. A missing
+match and another player's settlement return a neutral
+`404 RANKED_MATCH_UNAVAILABLE`. Read `territory` using the
+[contribution contract](contested-campus-territory-api-contract.md#match-contribution-feedback).
+
+Only ranked live matches have ranked settlement. A completed battle is not
+permission to calculate or write a rating locally; completion and settlement
+commit together on the server.
+
+## Standings pagination and privacy
+
+Use `limit` from 1–100 (default 25) and the returned opaque `cursor`. Entries
+contain `playerName`, `rank`, `rating`, `wins`, `losses`, and `settledMatchCount`.
+`nextCursor: null` marks the end.
+
+Current standings hold competitive values stable for a 10-minute traversal.
+An invalid, foreign, or expired cursor returns `400 RANKED_CURSOR_INVALID`;
+restart from the first page. Names resolve from current account records on each
+page, and unavailable accounts are omitted. Closed-season competitive values
+are fixed, while display names can change and personal entries can be removed
+by account deletion.
+
+Provisional ratings remain private until the player has completed the required
+placements. Standings do not expose private queue candidates or decks.
+
+## Conflicts and recovery
+
+Ranked commands use the queue or proposal identity rather than a caller-supplied
+submission UUID. Rejoining the same active selection returns the existing entry;
+changing the deck or territory selection conflicts. Repeating acceptance for a
+matched proposal returns its committed match ID.
+
+After a timeout or lost response, read `/ranked/queue` before deciding what to
+submit next. A cancellation racing with proposal resolution returns the
+resolved state; it cannot undo an already created match.
+
+| Response                                | Caller action                                                                 |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| `409 RANKED_STATE_CONFLICT`             | Read queue state before changing the selection.                               |
+| `409 RANKED_DECK_INVALID`               | Choose a valid saved deck.                                                    |
+| `409 RANKED_COOLDOWN`                   | Wait before rejoining; follow the competition policy.                         |
+| `409 RANKED_ALREADY_PLAYING`            | Return to the existing active battle.                                         |
+| `409 RANKED_UNAVAILABLE`                | Refresh season availability before joining.                                   |
+| `403 RANKED_RESTRICTED`                 | Show the safe access message; repeated joining cannot bypass the restriction. |
+| `404 RANKED_PROPOSAL_UNAVAILABLE`       | Refresh queue state rather than acting on the old proposal.                   |
+| `503 GAMEPLAY_COORDINATION_UNAVAILABLE` | Keep current state, use a bounded retry delay, and refresh before continuing. |
+
+Temporary service failures do not extend leases or proposal deadlines.
 
 ## AI declaration
 
-This document was created and reviewed with assistance from Codex (GPT-5).
-
-This account-deletion update was edited with assistance from Codex[GPT-6].
-
-Durable scheduling availability documented with assistance from Codex-CLI[GPT-5].
-
-Existing-work outage recovery documented with assistance from Codex-CLI[GPT-5].
+Rewritten with assistance from Codex[GPT-6], using ranked route schemas, queue
+handling, and read projections. Earlier versions also used Codex[GPT-5] and
+Codex-CLI[GPT-5].

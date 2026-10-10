@@ -303,7 +303,6 @@ Clearly distinguish confirmed decisions, recommendations, unresolved questions, 
 - Technology-stack list and motivation
 - Three-sprint roadmap
 - Initial risk register
-- Architecture decision records for major choices
 
 ## Not included
 
@@ -329,7 +328,7 @@ Clearly distinguish confirmed decisions, recommendations, unresolved questions, 
 
 - [ ] Members 2 and 3 review the architecture
 - [ ] At least one other team member reviews the diagrams for clarity
-- [ ] Identified architecture risks become linked issues or decision records
+- [ ] Identified architecture risks become linked issues with supporting evidence
 
 ## Documentation
 
@@ -337,7 +336,6 @@ Clearly distinguish confirmed decisions, recommendations, unresolved questions, 
 - [ ] Add technology-stack motivation
 - [ ] Add the delivery roadmap
 - [ ] Add the initial risk register
-- [ ] Add architecture decision records where needed
 
 ## Completion requirements
 
@@ -768,7 +766,7 @@ Choose an established authentication solution without creating a custom password
 
 Compare suitable authentication providers or established libraries against the project requirements, free-tier constraints, React integration, Fastify token validation, local development, and account lifecycle support.
 
-Record the selected option in an architecture decision record and configure a development application or tenant.
+Document the selected authentication service and configure a development application or tenant.
 
 ## Included
 
@@ -783,7 +781,6 @@ Record the selected option in an architecture decision record and configure a de
 - Development configuration
 - Token issuer and audience settings
 - Initial role or claim strategy
-- Architecture decision record
 
 ## Not included
 
@@ -796,7 +793,7 @@ Record the selected option in an architecture decision record and configure a de
 ## Acceptance criteria
 
 - [ ] The selected solution supports registration, sign-in, password reset, and account deletion capabilities
-- [ ] The choice is motivated in an architecture decision record
+- [ ] The documentation explains the technology choice
 - [ ] Required web and API configuration is documented
 - [ ] A development tenant or application exists
 - [ ] No private client secret is exposed to browser code
@@ -812,7 +809,7 @@ Record the selected option in an architecture decision record and configure a de
 
 ## Documentation
 
-- [ ] Add the authentication architecture decision
+- [ ] Document authentication and its service boundaries
 - [ ] Document local authentication setup
 - [ ] Document required environment variables
 - [ ] Record account-lifecycle limitations or follow-up work

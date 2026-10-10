@@ -4,157 +4,144 @@ title: 'Card trading persistence'
 
 # Card trading persistence
 
-## Scope
+Trading stores versioned offers, exact-copy reservations, participant approvals,
+and immutable settlement provenance in the `private` schema. PostgreSQL makes
+the exchange atomic; participant collections remain separate.
 
-Migration `0055_persist_versioned_card_trades.sql` implements the durable
-persistence boundary for issue `#275`. It follows the approved
-[card-trading and anti-drain policy](../requirements/card-trading-policy.md).
-Migration `0056_add_card_trade_submission_receipts.sql` extends that boundary
-with private durable command-idempotency receipts for issue `#272`. The
-authenticated HTTP routes are now implemented by `#272`; the player trading UI
-remains follow-up work in `#274`.
+The [Trading guide](../requirements/card-trading-policy.md) owns player journeys,
+numeric limits, and consent rules. This page covers persistence and concurrency.
 
-The database remains authoritative for exact-copy reservations, immutable offer
-history, terminal lifecycle, and the all-or-nothing settlement record. The API
-trade service operates inside PostgreSQL transactions and locks players and
-owned-card rows in stable order before mutating trade state.
+## Offer model
 
-## Tables and versioning
+| Relation                                                 | Responsibility                                                           |
+| -------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `card_trade_policy_versions`                             | Immutable limits used by an offer and its settlement.                    |
+| `card_trades`                                            | Participants, current version, policy, original deadline, and lifecycle. |
+| `card_trade_versions`                                    | Immutable published revisions of the offer.                              |
+| `card_trade_version_items`                               | Exact offered copies and acquisition snapshots.                          |
+| `card_trade_version_requests`                            | Requested definitions and quantities.                                    |
+| `card_trade_acceptances`                                 | Participant approvals for a particular version.                          |
+| `card_trade_imbalance_acknowledgements`                  | Version-specific rarity-warning consent.                                 |
+| `card_trade_reservations`                                | Current open offer's reserved owned copies.                              |
+| `card_trade_submission_receipts`                         | Durable command-idempotency keys and digests.                            |
+| `card_trade_settlement_receipts`, `card_trade_movements` | Completed exchange and per-copy transfer provenance.                     |
 
-`private.card_trade_policy_versions` stores immutable server policy values. The
-initial `card-trade-v1` row records the approved defaults: 24-hour minimum
-account age, five open offers, one-to-five copies per side, five completed
-trades per rolling 24 hours, a 24-hour original offer lifetime, a two-point
-rarity warning threshold, and post-trade minimums of three Creature and two
-Power cards.
+An open offer can become `completed`, `declined`, `cancelled`, `expired`,
+or `invalidated`. Terminal offers cannot reopen. Participant identity, policy,
+creation time, and original expiry remain fixed.
 
-`private.card_trades` is the aggregate root. It identifies the two participants,
-current version, original deadline, and lifecycle. Its terminal states are
-`completed`, `declined`, `cancelled`, `expired`, and `invalidated`. The original
-participant identities, policy version, creation time, and deadline cannot be
-rewritten. A terminal row cannot return to `open`.
+Each counteroffer appends a version. Approvals and warning acknowledgements are
+keyed by trade, version, and participant, so an old approval cannot authorise a
+new offer. Earlier versions remain as history.
 
-Each counter creates a new row in `private.card_trade_versions`. Exact offered
-copies and requested card-definition quantities are persisted in
-`private.card_trade_version_items` and `private.card_trade_version_requests`.
-Acceptances and imbalance acknowledgements are keyed by trade, version, and
-participant. Therefore changing the current version makes every approval from
-an earlier version unusable without deleting its audit history.
+## Reservations and cross-feature locks
 
-`private.card_trade_submission_receipts` records one immutable idempotency key
-per actor, operation, and submission UUID together with a SHA-256 command digest
-and affected trade. The API takes a transaction advisory lock for that key; an
-identical retry returns the canonical trade, while different intent under the
-same key is rejected. The table never stores access or reauthentication tokens.
-It cascades with purged non-completed trades and remains with completed trade
-provenance.
+`card_trade_reservations.owned_card_id` is the primary key. One live copy can
+therefore be reserved by at most 1 offer. Closing an offer releases its
+reservations.
 
-`private.card_trade_reservations` is the mutable projection for the current
-open version. `owned_card_id` is its primary key, so one exact owned copy cannot
-be reserved by two active trades. The deck, evolution, and battle-deck paths
-lock the same `player_cards` rows before checking reservations. This prevents a
-race where a copy is simultaneously reserved and committed to another
-operation.
+The trade service locks participants and owned copies in stable order. Before
+reserving or settling it rechecks saved-deck membership, pending async invitations,
+active CPU/async/live battle commitments, and other reservations. Completed
+battle snapshots do not lock a copy.
 
-## Settlement and provenance
+Deck mutation, evolution, and battle commitment lock the same ownership rows
+before checking trade reservations. This prevents a copy from being reserved
+while another transaction commits it to an incompatible operation.
 
-The second valid acceptance settles in one transaction. The service rechecks
-participants, deadline, current version, approvals, imbalance acknowledgements,
-trade holds, rolling completion caps, exact ownership, reservations, card
-definition state, saved-deck/gameplay protection, and post-trade inventory
-minimums before any ownership transfer commits.
+[Deck storage](saved-deck-persistence-design.md) and
+[Evolution rules](../requirements/card-evolution-rules.md) define those related
+boundaries.
 
-Settlement never rewrites `player_cards.player_id`. Each outgoing ownership row
-is consumed and a new recipient-owned row is created with
-`acquisition_kind = 'trade'` and `source_trade_movement_id`. One immutable
-`private.card_trade_settlement_receipts` row records the completed exchange and
-the effective policy values. One immutable `private.card_trade_movements` row
-per transferred copy snapshots the source copy identifier, definition,
-acquisition kind, acquisition time, and original provenance, including
-territory-owner-bonus provenance where present. The historical source owned-card
-identifier is intentionally not a foreign key to the live ownership row.
+## Settlement transaction
 
-A deferred constraint trigger requires every movement to create exactly one
-matching recipient-owned copy. The one-receipt-per-trade and one-new-copy-per-
-movement constraints make settlement replay safe. If any statement fails, the
-transaction rolls back the receipt, movements, source deletions, grants,
-acceptance that triggered settlement, and terminal transition together.
+<div className="diagram-scroll" role="region" aria-label="Versioned acceptance and atomic card exchange" tabIndex={0}>
 
-## Cross-feature locks
+```mermaid
+flowchart TB
+    accTitle: Both current-version acceptances lead to one atomic exchange
+    accDescr: The second valid acceptance locks and rechecks the current offer. The transaction saves a settlement receipt and copy movements, consumes outgoing ownership rows, creates new recipient copies, releases reservations, and marks the offer completed. All changes roll back together on failure.
 
-A selected trade copy is unavailable while it is referenced by any saved deck,
-a pending asynchronous PvP invitation, an active CPU/asynchronous/live match,
-another unfinished trade, or a concurrent authoritative ownership operation.
-Completed match history does not lock the copy.
+    Approvals["Both participants accept<br/>the current version"]
+    Checks["Lock and recheck<br/>Version, deadline, consent,<br/>eligibility, ownership, and protections"]
+    Receipt[("Immutable settlement receipt<br/>and per-copy movement snapshots")]
+    Copies["Consume outgoing copies<br/>Create recipient copies with new UUIDs"]
+    Complete[("Release reservations<br/>Mark trade completed")]
 
-The inverse protections are also enforced:
+    Approvals --> Checks
+    Checks --> Receipt
+    Receipt --> Copies
+    Copies --> Complete
 
-- saved-deck creation/update locks selected ownership rows, then rejects any
-  active trade reservation;
-- battle-deck commitment locks its ownership rows, then rejects any active trade
-  reservation before a match snapshot can be created;
-- evolution locks candidate ownership rows, rechecks trade reservations after
-  the lock, excludes reserved copies from the preview, and refuses to consume a
-  reserved copy.
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class Receipt,Complete authority;
+```
 
-## Trust hold and deletion lifecycle
+</div>
 
-Migration `0055` adds the new `card_trade_hold` restriction scope under the
-immutable `trust-v2` policy identifier. Existing `trust-v1` rows retain their
-historical meaning. The current automated trust scoring implementation remains
-on `trust-v1`; an authoring/governance workflow that creates a
-`card_trade_hold` must create its case and reviewer decision consistently under
-`trust-v2`. This limitation is intentional so `#275` does not silently migrate
-or reinterpret open `trust-v1` cases.
+All steps after acceptance share one transaction. Settlement rechecks effective
+trade holds, rolling completion caps, matching requests, reservations, definition
+availability, and post-exchange inventory minimums.
 
-An immediately effective `card_trade_hold` invalidates that player's open trade
-offers and releases their reservations in the same database transaction as the
-restriction insert. Trade operations also recheck currently effective holds.
-The scope does not block collection browsing, ordinary deck management, CPU
-play, or account deletion.
+A transfer consumes the outgoing `player_cards` row and creates a new
+recipient-owned row with `acquisition_kind = 'trade'` and
+`source_trade_movement_id`. It does not change the original row's owner.
 
-When a player changes from `active` to `deletion_pending`, a lifecycle trigger
-invalidates every unfinished trade involving the player before live owned cards
-are removed. Completed settlement receipts and movements remain against the
-profile-free historical actor key; no Player Name, Auth0 token, reauthentication
-claim, email address, or precise location is copied into trade history.
+Each movement snapshots the source copy ID, definition, acquisition time and
+kind, and original provenance, including any territory owner bonus. The source
+copy ID is historical data, not a foreign key to live ownership.
 
-## Retention and maintenance
+A unique settlement receipt per trade and unique recipient copy per movement
+prevent duplicate settlement. Deferred validation requires each committed
+movement to produce exactly 1 matching new copy. A failure rolls back ownership,
+receipt, movements, triggering acceptance, reservation release, and terminal
+transition together.
 
-`private.expire_card_trades(...)` closes open offers whose original deadline
-has passed. `private.purge_terminal_card_trades(...)` may remove non-completed
-terminal offer detail after 30 days. Completed trade versions, approvals,
-settlement receipts, and movements are retained as immutable ownership
-provenance and are excluded from this purge.
+## Command idempotency
 
-The persistence service exposes maintenance operations. Issue `#272` starts a
-non-overlapping API maintenance scheduler immediately at runtime and then at the
-configured `CARD_TRADE_MAINTENANCE_INTERVAL_MS` cadence (30 minutes by default).
-Individual trade reads/actions still enforce the exact deadline transactionally,
-so scheduler cadence never extends an offer lifetime.
+Submission receipts are unique by actor, operation, and submission UUID. An
+advisory transaction lock serialises requests for that key.
 
-## Verification
+The receipt saves a SHA-256 command digest and affected trade. An identical retry
+returns the canonical trade; conflicting intent under the same key is rejected.
+Receipts store no access or reauthentication tokens.
 
-`apps/api/tests/card-trading-persistence.integration.test.ts` applies the
-repository through migration `0054`, seeds existing ownership and deck
-references, then applies `0055` and `0056`. It covers migration safety, durable create and
-revision idempotency, conflicting
-reservations, version-scoped acceptance, concurrent reservation attempts,
-final-acceptance/cancellation serialization, saved-deck exclusion, exactly-once
-settlement and provenance, transaction rollback after an injected grant failure,
-committed expiry and reservation release, `trust-v2` trade-hold invalidation,
-terminal immutability, and deletion-pending invalidation. The existing
-card-catalogue integration suite also covers evolution preview/consumption while
-an exact copy is reserved by a trade, and `player-battle-deck.test.ts` verifies
-that a reservation blocks a new match commitment after ownership rows are
-locked.
+These command receipts differ from settlement receipts: command replay identifies
+the operation, while settlement records the completed ownership exchange.
 
-The focused non-database policy tests are in
-`apps/api/tests/card-trade-policy.test.ts`. Existing deck, card-evolution,
-match, trust, account-deletion, and migration suites remain regression coverage
-for the shared boundaries changed by this migration.
+## Holds and account deletion
 
-The preceding document was generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Sol].
+The schema supports `card_trade_hold` under `trust-v2`. Automated scoring and
+the current Author review API still use `trust-v1`; the review API cannot create
+a trade hold. A valid governance decision must use the matching policy.
 
-This account-deletion update was edited with assistance from Codex[GPT-6].
+An immediately effective trade hold invalidates open offers and releases their
+reservations in the restriction transaction. Trade operations also check
+effective holds. Completed exchanges are not reversed.
+
+Entering `deletion_pending` invalidates unfinished offers before personal owned
+cards are removed. Completed provenance remains against a fresh profile-free
+historical actor. It stores no Player Name, Auth0 identity, email, or precise
+location.
+
+See [Trust storage](trust-persistence.md) and
+[Account retention](account-deletion-retention.md) for governance and deletion.
+
+## Retention and reads
+
+The maintenance worker expires overdue offers and purges non-completed terminal
+offer detail after **30 days**. It starts immediately and runs every **30 minutes**
+by default. Reads and actions enforce the original deadline transactionally;
+a delayed sweep cannot extend the offer.
+
+Completed versions, approvals, command receipts, settlement receipts, and
+movements remain as ownership provenance, with no automatic expiry. Purged
+non-completed trades also remove their command receipts.
+
+Only participants can read an offer and its history. Settlement projections
+identify exchanged copies and movements, but omit their original completion,
+starter-grant, evolution, and territory-bonus source IDs. The
+[Trading API](../architecture/card-trading-api-contract.md) owns route and response details.
+
+**AI declaration:** Prepared and updated with assistance from
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-6].

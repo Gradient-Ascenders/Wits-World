@@ -1,121 +1,123 @@
 ---
-title: Automatic event placement persistence
+title: 'Event placement storage'
 ---
 
-# Automatic event placement persistence
+# Event placement storage
 
-Migration `0045_create_event_placement_persistence.sql` supplies the durable
-PostgreSQL/PostGIS boundary for the automatic-placement policy. Migration
-`0049_enable_event_placement_services.sql` extends it for the placement
-service, Author operations, and player location resolution. The service flow
-is documented in [Automatic event placement service](../architecture/automatic-event-placement-service.md).
+Automatic placement stores reviewed sites, event portability, planning
+decisions, and assignment history in PostgreSQL/PostGIS. An assignment supplies
+an event's effective point without changing its published content.
+
+The [placement rules](../requirements/automatic-event-placement-policy.md)
+define coverage, separation, rotation, and override limits. The
+[Author placement guide](../architecture/automatic-event-placement-service.md)
+covers preview and apply controls.
 
 ## Stored model
 
-| Relation                          | Responsibility                                                                     |
-| --------------------------------- | ---------------------------------------------------------------------------------- |
-| `event_placement_policy_versions` | Immutable snapshots of reviewed placement limits and rotation settings             |
-| `event_placement_zones`           | Reviewed PostGIS multipolygons and zone lifecycle                                  |
-| `event_placement_sites`           | Reviewed PostGIS points, source evidence, maximum event radius, and site lifecycle |
-| `event_placement_portability`     | Effective-period history for explicit event opt-in under one policy version        |
-| `event_placement_state`           | Singleton current policy, applied plan, and optimistic-concurrency version         |
-| `event_placement_plans`           | Preview, applied, degraded, expired, and failed planning decisions                 |
-| `event_placement_plan_entries`    | Exact event, site, and zone choices in one plan                                    |
-| `event_placement_assignments`     | Effective event-to-site history and end reasons                                    |
-| `event_placement_overrides`       | Bounded pins, site exclusions, and automation pauses                               |
-| `event_placement_audit`           | Immutable Author or scheduler operation evidence                                   |
+| Relation                          | Responsibility                                                              |
+| --------------------------------- | --------------------------------------------------------------------------- |
+| `event_placement_policy_versions` | Immutable policy values used by decisions.                                  |
+| `event_placement_zones`           | Reviewed coverage geometry and lifecycle.                                   |
+| `event_placement_sites`           | Reviewed points, zone membership, radius limits, and lifecycle.             |
+| `event_placement_portability`     | Event opt-in and effective-period history under a policy.                   |
+| `event_placement_state`           | Current policy, committed plan, and state version.                          |
+| `event_placement_plans`           | Preview decisions, input digest, version, expiry, outcome, and predecessor. |
+| `event_placement_plan_entries`    | Proposed event, site, and zone relationships.                               |
+| `event_placement_assignments`     | Committed event-to-site periods and end reasons.                            |
+| `event_placement_overrides`       | Temporary pins, exclusions, and pauses.                                     |
+| `event_placement_audit`           | Author and scheduler operation history.                                     |
 
-Policy rows, reviewed geometry, plan entries, terminal plans, and audit records
-cannot be rewritten. An assignment or portability approval may only move from
-current to ended once. Retiring a site or zone retains every policy, plan,
-assignment, and audit reference.
+Plan entries use foreign keys rather than a free-form list of assignments.
+Policy values, reviewed geometry, committed decision fields, and audit records
+retain their original meaning.
 
-## Spatial authority
+## Spatial constraints
 
-Candidate locations use `geography(Point, 4326)`, while coverage areas use
-`geometry(MultiPolygon, 4326)`. GiST indexes support distance, separation, and
-coverage queries. Deferred validators require an active site to:
+Sites use `geography(Point, 4326)`; zones use
+`geometry(MultiPolygon, 4326)`. GiST indexes support distance and coverage
+queries.
 
-- have completed review evidence;
-- reference an active zone from the same policy;
-- fall within its declared zone; and
-- fall within exactly one active zone for that policy.
+An active site must have completed review evidence and belong to an active zone
+under the same policy. Its point must lie inside exactly 1 active zone for that
+policy. A current assignment must also match the event's portability, publication,
+and radius constraints.
 
-The initial `placement-v1` zone geometries are conservative unions of
-60-metre catchments around the eleven reviewed site points. They are an
-operational coverage model, not walking routes, cadastral boundaries,
-accessibility guarantees, opening-hours evidence, or safety claims.
+Suspending or retiring a site or zone requires affected assignments to end in
+the same transaction. Their historical references remain intact. Placement
+coverage zones are separate from player-owned territory zones.
 
-Only active sites and zones may receive an assignment. Suspending or retiring
-either cannot commit while an assignment there remains current. The service
-must close affected assignments in the same transaction, preserving the
-policy requirement without allowing a hidden trigger to invent an actor,
-reason, or end time.
+## Portability and event authoring
 
-## Policy and catalogue seed
+The event editor's automatic-placement choice updates portability history,
+placement state, and audit records within the event transaction. Publication
+and retirement also update placement eligibility.
 
-Repeatable seed `0003_event_placement_catalogue.sql` records:
+An automatically placed event may have no authored coordinate. Deferred
+validation requires a non-retired event with `events.location = null` to
+retain active portability. Changing draft content still follows the event's
+own version and lifecycle contract.
 
-- immutable policy `placement-v1`;
-- three active zones and eleven active reviewed sites from issue `#259`;
-- source URLs and `controlled_policy` review provenance;
-- a 60-metre supported maximum interaction radius per site; and
-- placement state version zero with no current plan.
+Landmark-specific content remains fixed unless a suitable replacement is
+reviewed. Campaign membership alone does not enable automatic placement.
 
-The seed does not create portable-event approvals or assignments. Existing
-published Wits content remains fixed because the approved policy says that
-landmark-specific content cannot silently become portable. A separately
-reviewed event replacement must be opted in under the active policy.
+## Preview, apply, and concurrency
 
-## Plans, assignments, and concurrency
+<div className="diagram-scroll" role="region" aria-label="Placement preview and transactional assignment changes" tabIndex={0}>
 
-Plans retain their policy version, Johannesburg rotation bucket, deterministic
-input digest, expected and committed state versions, counts, exceptions,
-failure code, predecessor, and rollback source. Only one applied or degraded
-plan can commit for one policy and rotation bucket.
+```mermaid
+flowchart TB
+    accTitle: A preview becomes assignment history only after validated apply
+    accDescr: The service reads policy, content, sites, overrides, and assignment history to save a preview. Apply locks current state and revalidates the preview. It commits ended and new assignment periods together with the state version and audit record.
 
-Migration `0049` keeps scheduled plans unique per policy and bucket while
-allowing audited manual and reconciliation plans in that bucket. State-version
-increments may retain the current committed plan after an override or lifecycle
-change; selecting a different current plan requires its committed version to
-match the new state version.
+    Inputs["Policy, content, and reviewed sites<br/>Overrides and assignment history"]
+    Preview["Stored preview<br/>Entries, input digest, version, and expiry"]
+    Check["Apply checks<br/>Lock state and revalidate"]
+    History[("Assignment history<br/>End replaced rows and append new rows")]
+    State[("Current state and audit<br/>Committed plan and version")]
 
-Plan entries use relational foreign keys rather than an unvalidated JSON list.
-Current assignment uniqueness prevents one event from appearing at two sites
-or one site from hosting two events. Assignments also verify policy consistency,
-active reviewed lifecycle, current portability approval, publication state,
-and the site's maximum radius. Effective periods use `[starts_at, ends_at)`
-semantics; their decision fields remain immutable after insertion.
+    Inputs --> Preview
+    Preview -->|"Explicit apply or scheduled plan"| Check
+    Check --> History
+    History -->|"Same transaction"| State
 
-Pins, exclusions, and pauses store a canonical request hash and an
-Author-scoped idempotency key. Their maximum durations come from the referenced
-policy version: seven days for pins and pauses, and thirty days for site
-exclusions. The API must still use the singleton state version and row locking
-when applying a plan or override. Migration `0049` also adds the optional
-`challenge_attempts.placement_assignment_id` reference and a database
-resolver for effective event locations. A managed event without a valid
-assignment is unavailable rather than falling back to its authored point.
-
-## Privacy and release
-
-Placement persistence contains curated operational data only. It stores no
-player coordinates, movement evidence, attendance history, challenge answers,
-or completion-density input. Player-facing APIs must not expose review notes,
-source evidence, policy internals, or placement history.
-
-The focused integration suite creates disposable databases and verifies clean
-and upgrade migration paths, exact seed content, spatial membership and
-indexes, lifecycle failures, assignment history, uniqueness, override bounds,
-and policy immutability:
-
-```bash
-npm run test:database --workspace @wits-world/api
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class History,State authority;
 ```
 
-Apply migrations through `0049`, then run the normal seed release step to
-install `placement-v1`, before deploying the placement-enabled API. The seed
-does not approve any portable events or create assignments. These migrations
-do not rewrite authored coordinates or historical attempts.
+</div>
 
-The preceding document was generated and edited with the assistance of:
-Codex[GPT-5.6 Sol] and Codex[GPT-5].
+Previews retain the policy, rotation bucket, requesting actor, input digest,
+expected state version, and proposed entries. Applying locks the singleton
+state row and rejects stale or expired inputs before committing changes.
+
+Uniqueness constraints permit at most 1 current assignment per event and per
+site. Unchanged valid assignments can remain; replaced assignments receive an
+end time and reason, and new assignments are appended. Scheduled retries
+cannot create duplicate plans for the same policy and rotation bucket.
+
+Overrides use an Author-scoped idempotency key and request hash. Plan application,
+overrides, and lifecycle changes advance placement state and retain audit
+records. Rollback creates a new decision under current rules rather than
+rewriting past assignments.
+
+## Effective location and saved gameplay
+
+`resolve_event_placement_location(event_id, evaluated_at)` returns the effective
+point, assignment ID, and availability. An event with placement history needs
+an assignment and portability valid at that time; losing them does not cause
+a fallback to an authored point.
+
+Assignment periods include their start and exclude their end. Challenge attempts
+retain the assignment used at start. Offline reconciliation can resolve a
+historical assignment at its original evaluation time, subject to the
+[offline contract](../architecture/offline-challenge-play.md).
+
+Moving an event does not reset its event ID, player completion, or reward
+entitlement. Placement tables contain curated sites, content relationships,
+and decision history; planning does not use player movement or attendance data.
+Player responses expose effective event locations rather than private review
+notes or planning internals.
+
+**AI declaration:** Prepared and updated with assistance from Codex[GPT-5.6 Sol],
+Codex[GPT-5], and Codex[GPT-6].

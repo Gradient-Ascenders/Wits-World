@@ -302,7 +302,7 @@ identity contract.
 
 Automatic verification email for Wits World database-connection sign-ups is
 intentionally disabled in the Auth0 tenant. This is external tenant
-configuration, not application logic. The [deployment requirement](../../deployment/azure-deployment-setup.md#91-auth0-email-delivery-policy)
+configuration, not application logic. The [deployment requirement](../../architecture/external-integrations.md#auth0-email-policy)
 defines the required connection and email-template settings; it leaves Auth0
 password-reset/recovery email enabled and introduces no Wits World password
 handling.
@@ -581,7 +581,7 @@ Remaining authentication work still covers:
 ## Confirmation required
 
 The Basic-tier items below are tracked with named owners and evidence in the
-[Basic-tier decision register](../../requirements/basic-tier-decision-register.md).
+[Basic-tier decision register](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/docs/requirements/basic-tier-decision-register.md).
 The team must still confirm:
 
 - whether Wits SSO is available or required;

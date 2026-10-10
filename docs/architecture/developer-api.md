@@ -1,58 +1,43 @@
 ---
-title: 'External developer API'
+title: External developer API
+description: Read published events, card definitions, and progression standings using a revocable API key.
 ---
 
 # External developer API
 
-## Purpose
+The developer API gives external applications read-only access to published
+events, the public card catalogue, and progression standings. It suits campus
+event viewers, card guides, and backend integrations.
 
-Wits World exposes a deliberately limited, read-only developer API so external
-applications can consume public Wits Quest data without using the player Web
-application. It is intended for tools such as campus event viewers, card guides,
-leaderboard displays, server-side bots, Postman, `curl`, and assessment HTTP
-requests.
+A developer key grants access to these resources. It does not grant player or
+Author permissions, reveal private collections or battles, or allow gameplay
+writes. Use the [API reference](../api-reference.md#http-reference) for the
+interactive OpenAPI reference, exact schemas, and local API setup.
 
-The developer API does **not** turn a developer key into a player login. It
-cannot read a player's collection, decks, attempts, matches, private profile,
-trust information, or authoring data, and it cannot mutate gameplay state.
+## Get and protect a key
 
-The generated OpenAPI document remains the source of truth for exact schemas:
+Sign in and open **Account settings → Developer API access**. Give each key an
+application name so you can identify and revoke it later. An active account can
+have up to 5 active keys.
 
-- local interactive reference: `http://127.0.0.1:3000/documentation/`
-- local OpenAPI JSON: `http://127.0.0.1:3000/documentation/json`
+The complete credential appears only when creation succeeds. Save it then;
+later responses show metadata and a non-secret prefix. Keep the key in a
+server-side environment variable or secret store, outside source control,
+screenshots, URLs, and public frontend bundles.
 
-## Getting a developer API key
+Revoking a key blocks subsequent requests. Keys also stop working when the
+owning account becomes unavailable, including when account deletion begins.
+Revoked keys no longer count towards the active-key limit.
 
-An authenticated Wits World account can create keys from **Account settings →
-Developer API access**. A key has a human-readable name so separate applications
-can use separate credentials. An account may have at most five active keys.
+## Authenticate a resource request
 
-The complete credential is shown only in the successful creation response. Save
-it immediately. Later key-list responses expose only a non-secret prefix and
-metadata. Wits World stores a SHA-256 verifier of the machine-generated secret,
-not the complete key.
-
-Treat a developer key like a password:
-
-- keep it out of Git and screenshots;
-- do not put it in URLs or query parameters;
-- do not embed it in browser JavaScript or a public frontend bundle;
-- use a server-side environment variable or another appropriate secret store;
-- revoke it from Account settings if it may have been exposed.
-
-Revocation takes effect for subsequent developer requests. A key also stops
-working as soon as its owning Wits World account is no longer active, and its
-stored credential record is removed during local account-deletion cleanup.
-
-## Authentication
-
-Send the credential only in the `X-API-Key` request header:
+Send the complete credential in `X-API-Key`:
 
 ```http
-X-API-Key: ww_api_<public-id>_<secret>
+X-API-Key: <api-key>
 ```
 
-For example, with a local shell environment variable:
+For a local API instance:
 
 ```bash
 curl \
@@ -60,167 +45,144 @@ curl \
   "http://127.0.0.1:3000/api/v1/developer/cards"
 ```
 
-Missing, malformed, incorrect, revoked, or inactive-owner credentials receive a
-generic `401` response. The API does not reveal whether a particular public key
-identifier exists.
+External resource routes use this header. Key-management routes use an Auth0
+bearer token instead. A bearer token does not replace the developer key on
+external reads, and a developer key cannot authenticate player or Author routes.
 
-Auth0 bearer tokens and developer keys are separate authentication mechanisms.
-A bearer token does not satisfy the external developer endpoints, and a
-developer key does not satisfy ordinary player, author, or gameplay endpoints.
+Invalid, missing, revoked, and unavailable-account credentials all return
+`401 UNAUTHORIZED`, without revealing whether a particular key exists.
 
-## Read-only resources
+## Published events
 
-### Published events
+| Route                                   | Response                             |
+| --------------------------------------- | ------------------------------------ |
+| `GET /api/v1/developer/events`          | `{ events, pagination, requestId }`. |
+| `GET /api/v1/developer/events/:eventId` | `{ event, requestId }`.              |
 
-```http
-GET /api/v1/developer/events?page=1&pageSize=50
-GET /api/v1/developer/events/:eventId
-```
+Events contain `eventId`, `title`, `description`, `latitude`, `longitude`,
+`radiusMetres`, `startsAt`, `endsAt`, and `availability`. Availability is
+`active`, `upcoming`, or `ended`. Locations and times reflect the event's
+current effective placement and schedule; published data can change between
+requests.
 
-The collection is bounded to page sizes of at most 100. It reuses the same
-published-event discovery boundary as the player application and exposes only:
+The list accepts `page` (default 1) and `pageSize` (default 50, maximum 100).
+It follows the same published discovery boundary as the player application.
+Questions, accepted answers, player attempts, and eligibility evidence are
+excluded. Reading an event through this API does not record a player event view.
 
-- event ID;
-- title and public description;
-- effective latitude and longitude;
-- event radius;
-- effective start and end times; and
-- current `active`, `upcoming`, or `ended` availability.
+## Public card catalogue
 
-It does not expose challenge questions or accepted answers, author/reviewer
-metadata, placement-assignment internals, movement evidence, eligibility
-history, attempts, or anti-abuse information. Developer reads do not count as
-player event views in product analytics.
+| Route                                           | Response                                                            |
+| ----------------------------------------------- | ------------------------------------------------------------------- |
+| `GET /api/v1/developer/cards`                   | `{ cards, requestId }` containing the catalogue without pagination. |
+| `GET /api/v1/developer/cards/:cardDefinitionId` | `{ card, requestId }`.                                              |
 
-### Public card catalogue
+Only active, published ordinary card definitions are returned. Each card
+contains its definition ID, name, category, affinity, rarity, description,
+artwork fields, `hp`, `power`, and `deckPointCost`. Values that do not apply
+can be null.
 
-```http
-GET /api/v1/developer/cards
-GET /api/v1/developer/cards/:cardDefinitionId
-```
+Evolution fields are `evolvesFromCardDefinitionId` and `evolutionCopiesRequired`.
+`moves` contains `position`, `name`, `moveType`, `powerCost`, and `rulesText`;
+`effects` contains `position` and `rulesText`. These are public card descriptions,
+rather than private execution configuration or player-owned copies.
 
-Only active, published, ordinary catalogue cards are returned. The public
-projection contains player-visible card identity and game information such as
-name, rarity, category, affinity, HP/Power where applicable, artwork metadata,
-deck point cost, evolution relationship, and player-readable moves/effects.
-
-The endpoint does not expose authoring state, reward/starter/CPU eligibility
-flags, ownership, drop configuration, or internal effect execution/configuration
-metadata.
-
-### Public progression leaderboard
+## Progression standings
 
 ```http
 GET /api/v1/developer/leaderboard?period=all_time&page=1&pageSize=20
-GET /api/v1/developer/leaderboard?period=monthly&month=2026-09&page=1&pageSize=20
+GET /api/v1/developer/leaderboard?period=monthly&month=2026-10&page=1&pageSize=20
 ```
 
-This is the existing progression/points standing, not ranked-PvP rating. Entries
-contain only:
+The response is `{ period, month, entries, pagination, requestId }`. Entries
+contain only `playerName`, `points`, and `rank`. This is the progression-points
+leaderboard; ranked PvP ratings use the separate
+[ranked API](ranked-matchmaking-api-contract.md).
 
-- public Player Name;
-- points; and
-- rank.
+`period` defaults to `all_time`, with `month: null` in the response. For
+`monthly`, send `month` in `YYYY-MM` format. Omit `month` for all-time requests.
+`page` defaults to 1 and `pageSize` to 20, with a maximum of 100.
 
-Player UUIDs, Auth0 identity, streak/activity detail, locations, moderation,
-trust information, private match history, and private progression data are not
-part of this contract.
+Streaks, activity records, account identifiers, locations, and private gameplay
+history are excluded. See [Progression rules](../requirements/player-progression-rules.md)
+for the meaning of points and monthly standings.
 
-## Rate limiting
+## Pagination and responses
 
-Each validated developer key has an independent shared Upstash Redis
-sliding-window request limit. The default is **120 requests per 60 seconds**
-and can be changed by the
-API operator through:
+Successful resource reads return `200`. IDs in detail routes are UUIDs. Event
+and leaderboard pages include:
 
-```text
-DEVELOPER_API_RATE_LIMIT_MAX_REQUESTS
-DEVELOPER_API_RATE_LIMIT_WINDOW_MS
+```json
+{
+  "page": 1,
+  "pageSize": 20,
+  "totalItems": 0,
+  "totalPages": 0
+}
 ```
 
-Successful authenticated requests include `RateLimit-Limit` and
-`RateLimit-Remaining`. A request above the current window returns `429
-RATE_LIMITED` and a `Retry-After` header.
+`page` is an integer from 1 to 10,000 and `pageSize` from 1 to 100. A page beyond
+the available results returns an empty collection. Responses are current reads,
+rather than a frozen multi-page snapshot, so totals and entries can change
+between requests. Extra query parameters are rejected on paginated routes.
 
-The limiter shares state across API processes and restarts. This changes the
-former first-request-anchored fixed-window behavior; a burst near a window
-boundary may be treated differently. On Upstash timeout or outage, this
-developer read policy fails open and logs a safe degradation warning. It does
-not replace an edge/WAF denial-of-service control. See [API rate limiting](./rate-limiting.md).
+## Manage keys through HTTP
 
-## Browser CORS boundary
+These operations require `Authorization: Bearer <access-token>` for an active
+account. They manage only that account's keys.
 
-The deployed API keeps the existing exact-origin CORS policy for the Wits World
-Web application. The project does not add `X-API-Key` to arbitrary cross-origin
-browser access because a developer credential is a reusable secret and should
-not be shipped in public frontend code.
+| Method | Route                           | Request and response                                         |
+| ------ | ------------------------------- | ------------------------------------------------------------ |
+| GET    | `/api/v1/developer/keys`        | `200` with `{ keys, activeKeyLimit, requestId }`.            |
+| POST   | `/api/v1/developer/keys`        | Send `{ name }`; `201` returns `{ key, apiKey, requestId }`. |
+| DELETE | `/api/v1/developer/keys/:keyId` | `200` returns `{ key, requestId }` after revocation.         |
 
-CORS does not affect direct HTTP clients such as `curl`, Postman, backend
-services, or server-side bots. Swagger UI is served by the API itself and can be
-used to authorise with a developer key and exercise these endpoints.
+A name must contain non-whitespace text and be at most 80 characters; it is
+trimmed before saving. Key metadata contains `id`, `name`, `keyPrefix`,
+`createdAt`, `lastUsedAt`, `revokedAt`, and `status: active|revoked`. Usage time
+is approximate and can be null. Creation returns `Cache-Control: no-store`.
 
-## Key-management HTTP operations
+Revoking an already-revoked owned key is safe. Creation has no idempotency key:
+if its response is lost, list your keys and revoke the uncertain new key before
+creating a replacement. The secret cannot be recovered from a later list.
 
-Account settings use Auth0 bearer authentication for the credential lifecycle:
+## Limits and recovery
 
-```http
-GET    /api/v1/developer/keys
-POST   /api/v1/developer/keys
-DELETE /api/v1/developer/keys/:keyId
-```
+External reads have a quota per validated key. Key creation and revocation have
+separate account quotas. The [rate limits guide](rate-limiting.md) defines the
+current defaults, headers, and temporary-service behaviour; it also explains
+why revocation remains available when rate protection is unavailable.
 
-These operations are account management, not part of the external read-only
-resource surface. `POST` is the only operation that returns the complete API
-key. Revoking an already-revoked owned key is idempotent.
-Creation and revocation each have a 10-request-per-60-second sliding-window
-policy. Creation returns a safe `503 RATE_LIMIT_UNAVAILABLE` if the limiter is
-unavailable; revocation remains available during a limiter outage so a player
-can disable a compromised key. Both still return `429 RATE_LIMITED` on actual
-quota exhaustion, and both retain bearer authentication and ownership checks.
+Errors use the [standard API format](../api-reference.md#responses-and-retries).
+Keep the `requestId` when reporting a failure.
 
-## Error model
+| Response                              | Caller action                                                                    |
+| ------------------------------------- | -------------------------------------------------------------------------------- |
+| `400 VALIDATION_ERROR`                | Check parameter types, UUIDs, pagination bounds, and period/month combinations.  |
+| `401 UNAUTHORIZED`                    | Check the credential required by this route and whether the key is still active. |
+| `403 ACCOUNT_UNAVAILABLE`             | Key management is unavailable for this account.                                  |
+| `404 NOT_FOUND`                       | The public resource or owned key is unavailable.                                 |
+| `409 DEVELOPER_API_KEY_LIMIT_REACHED` | Revoke an existing key before creating another.                                  |
+| `429 RATE_LIMITED`                    | Wait for `Retry-After` before retrying.                                          |
+| `503 RATE_LIMIT_UNAVAILABLE`          | Delay before retrying key creation; no new key was issued by this rejection.     |
 
-Developer operations use the same problem-style envelope as the rest of the
-hand-written API. Common outcomes include:
+Read requests can be retried after transient connection or server failures.
+Follow the creation recovery steps above when a write's outcome is uncertain.
 
-| Status | Meaning                                                     |
-| ------ | ----------------------------------------------------------- |
-| `400`  | Request parameter/body validation failed.                   |
-| `401`  | A valid developer key is required for an external resource. |
-| `403`  | The authenticated account cannot manage keys.               |
-| `404`  | A requested public resource or owned key was not found.     |
-| `409`  | The account already has five active developer keys.         |
-| `429`  | The current developer-key rate-limit window is exhausted.   |
+## Browser integrations
 
-Unknown server failures remain generic to the caller and retain the normal
-request/correlation identifier for diagnosis.
+Use a backend to call the developer API on behalf of a public frontend, keeping
+the reusable key on the server. Arbitrary cross-origin browser requests are not
+supported by the API's CORS policy. CORS does not restrict direct HTTP clients
+such as backend services, Postman, or `curl`.
 
-## Security model summary
-
-```text
-Auth0 bearer token
-  -> active Wits World account
-  -> create/list/revoke that account's developer keys
-
-X-API-Key
-  -> active developer credential
-  -> per-key rate limit
-  -> GET published events / public cards / public leaderboard only
-```
-
-Raw developer keys are redacted from structured request logs and never stored
-in the database. External response DTOs are explicit allow-lists rather than
-raw database rows.
-
-## Related documentation
-
-- [API overview](./api-overview.md)
-- [Trust boundaries](./trust-boundaries.md)
-- [External integrations](./external-integrations.md)
-- [Developer API key persistence](../database/developer-api-keys.md)
-- [Account deletion and retained data](../database/account-deletion-retention.md)
+The interactive reference is served by the API and supports developer-key
+authorisation. For storage and account lifecycle details, see
+[key storage](../database/developer-api-keys.md) and
+[account retention](../database/account-deletion-retention.md).
 
 ## AI declaration
 
-This document was generated and edited with the assistance of:
-ChatGPT-Web[GPT-5.6 Sol].
+Rewritten with assistance from Codex[GPT-6], using developer routes,
+public response schemas, and key-management behaviour. Earlier documentation
+used ChatGPT-Web[GPT-5.6 Sol].

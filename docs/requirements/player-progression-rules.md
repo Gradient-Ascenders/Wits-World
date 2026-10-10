@@ -1,160 +1,114 @@
 ---
 title: 'Points, achievements and rankings'
+description: Earn progression points, unlock achievements, maintain a streak, and compare campus standings.
 ---
 
 # Points, achievements and rankings
 
-Issue `#171` defines the first Intermediate-tier progression rules. Progression
-points are the only active player progression measure. They are permanent and
-non-spendable, and the API and database remain authoritative for every award.
-Cards remain score-based challenge rewards. Coins, card selling for currency,
-and a card shop are deferred until all Advanced features are complete and time
-remains. Migration `0034_retire_coin_rewards.sql` implements issue `#193` by
-retiring the legacy wallet and coin-ledger behavior without rewriting applied
-migration history.
+Progression points record your completed challenges and battles. They accumulate
+without a seasonal reset and cannot be spent. Card rewards are separate; see
+[challenge rewards](basic-game-rules.md#card-rewards).
 
-The all-time and monthly rankings on this page rank permanent progression
-points. They are separate from the Advanced-tier seasonal competitive rating
-defined by the
-[ranked competition policy](ranked-competition-policy.md). That policy does not
-add a permanent-point award for ranked live matches, and neither value is
-calculated from the other.
+## View your progress
+
+Open **Profile** at `/profile` to see **Points**, **All-time rank**, **Current
+streak**, and **Best streak** beneath the activity calendar. Select an achievement
+to read its requirement and, if unearned, your progress toward it.
+
+Open **Leaderboard** at `/leaderboard` to compare campus standings. Choose
+**All time** or **This month**, then use **Previous** and **Next** to browse.
+Your own standing remains visible even when you are outside the current page.
 
 ## Point awards
 
-Challenge points use the final five-question score stored by the server:
+| Activity                    | Points                                      |
+| --------------------------- | ------------------------------------------- |
+| Completed challenge         | 10 per correct answer: 0–50 for 5 questions |
+| CPU victory                 | 25                                          |
+| CPU loss, including forfeit | 0                                           |
 
-| Correct answers | Points |
-| --------------- | -----: |
-| 0               |      0 |
-| 1               |     10 |
-| 2               |     20 |
-| 3               |     30 |
-| 4               |     40 |
-| 5               |     50 |
-
-A completed CPU victory awards `25` points. A CPU loss awards `0` points. A
-zero-point result is still recorded as a processed progression source so it can
-count as activity and so retries remain auditable and idempotent.
+Both multiple-choice and ordering challenges use the saved final score. For
+example, 3 correct answers award 30 points. Unfinished challenges and battles
+do not award points.
 
 ### Asynchronous PvP progression
 
-The approved asynchronous PvP rules use the same permanent, non-spendable point
-measure without treating a PvP result as a CPU match:
+A completed async battle awards **25 points to the winner** and **0 to the
+loser**. This applies to battle defeat, missed-deadline forfeit, voluntary
+forfeit, and account-unavailability forfeit.
 
-| Completion reason        | Winner | Loser or forfeiter |
-| ------------------------ | -----: | -----------------: |
-| Defeat                   |     25 |                  0 |
-| Turn forfeit             |     25 |                  0 |
-| Account-deletion forfeit |     25 |                  0 |
-| Voluntary resignation    |     25 |                  0 |
-
-Both participants receive an activity completion for every terminal result,
-including the zero-point participant. PvP introduces no achievement and does
-not increment the existing CPU-match or CPU-win achievement metrics. Because
-the completion counts as activity, it may contribute to the existing streak
-metric and `three_day_streak` achievement.
-
-Migration `0028` records one version-1 `asynchronous_pvp` source per match and
-participant. Migration `0037` adds version-1 voluntary-resignation win and loss
-rules without recalculating earlier awards. These rules are prospective and do
-not recalculate challenge or CPU awards. The API records both decisions
-atomically with the terminal match through the
-[PvP persistence adapter](../database/asynchronous-pvp-persistence.md#progression).
-
-Rules are versioned configuration. A new active version affects future awards;
-it never recalculates an existing ledger entry. Each entry retains the exact
-rule code, version, value, and authoritative completion or match that produced
-it. Achievements are badges and do not award additional points.
+Both participants' results count as activity. Async battles do not advance
+CPU-match or CPU-win achievements and have no dedicated achievement, but can
+contribute toward **On a Roll** through activity streaks.
 
 ## Daily activity and streaks
 
-Any completed event quiz or CPU match counts as activity, regardless of score
-or winner. Dates use the `Africa/Johannesburg` calendar derived from the
-server-persisted completion timestamp.
+A completed challenge, CPU battle, or async battle counts as activity even when
+it awards 0 points. Dates use **Johannesburg time** and the recorded completion
+time, rather than when you started playing.
 
-- Multiple completions on one local day count as one streak day.
-- Consecutive local dates increase the streak by one.
-- A gap of at least one complete local calendar day resets the next activity to
-  a streak of one.
-- The displayed current streak remains available during the day immediately
-  after the last activity, when it can still be continued. It displays as zero
-  after a complete day is missed.
-- The longest historical streak remains available even when the current streak
-  expires.
+- Complete an activity on consecutive calendar days to extend your streak.
+- Several completions on the same day count as 1 streak day; the profile
+  calendar still shows their completion count.
+- Your current streak remains visible on the day after your last activity,
+  giving you that day to continue it. After a complete day is missed, it shows 0.
+- Your next completion after a gap starts a new streak at 1. Your best streak
+  and already-earned achievements remain.
 
-Persisted activity days allow an out-of-order authoritative completion to
-reconstruct the correct streak instead of relying on processing order.
+For example, an activity on Monday keeps the streak available on Tuesday.
+Complete another activity on Tuesday to extend it. If Tuesday is missed,
+the current streak is 0 on Wednesday.
 
-## Initial achievements
+## Achievements
 
-| Code               | Display name    | Unlock condition                      |
-| ------------------ | --------------- | ------------------------------------- |
-| `first_quiz`       | First Quiz      | Complete one event quiz               |
-| `perfect_quiz`     | Perfect Quiz    | Complete one quiz with five correct   |
-| `five_quizzes`     | Campus Explorer | Complete five event quizzes           |
-| `first_cpu_win`    | First Victory   | Win one CPU match                     |
-| `five_cpu_matches` | Battle Tested   | Complete five CPU matches             |
-| `three_day_streak` | On a Roll       | Reach three consecutive activity days |
+| Achievement     | Requirement                                     |
+| --------------- | ----------------------------------------------- |
+| First Quiz      | Complete 1 event challenge                      |
+| Perfect Quiz    | Answer all 5 questions correctly in 1 challenge |
+| Campus Explorer | Complete 5 event challenges                     |
+| First Victory   | Win 1 CPU battle                                |
+| Battle Tested   | Complete 5 CPU battles, including losses        |
+| On a Roll       | Be active on 3 consecutive Johannesburg days    |
 
-Definitions are data-driven. An unlock is unique per player and achievement;
-concurrent completions cannot create duplicate badges.
+Achievements unlock automatically when their requirements are met. Each badge
+is earned once per account and awards no extra points.
 
-## Standings
+## Campus standings
 
-The first standings support all-time points and Johannesburg calendar months.
-Every active account participates, including a player with no activity or zero
-points in the selected month.
+**All time** ranks accumulated progression points. **This month** ranks points
+earned during the current Johannesburg calendar month; it does not erase your
+all-time total. The period filter does not reset streaks or achievements.
 
-Equal totals use competition ranking: `1, 2, 2, 4`. Tied rows retain the same
-rank and are displayed deterministically by Player Name and then internal
-player UUID. The UUID is an internal ordering key and is not an approved public
-profile field.
+Every active account participates, including players with 0 points. Equal
+totals share a rank: `1, 2, 2, 4`. Keeping your profile private does not remove
+you from standings, which are available to signed-in active players.
 
-The approved player-facing progression fields are Player Name, points, rank,
-current streak, longest streak, and earned achievement names. Email, Auth0
-identity, precise location, internal source IDs, and private gameplay records
-are excluded.
+### Other competitive measures
 
-Account deletion removes the player's progression and standings. A
-deletion-pending account does not occupy a live standing position.
+| Measure                                                | Earned through                               | Where to view it             |
+| ------------------------------------------------------ | -------------------------------------------- | ---------------------------- |
+| Progression points                                     | Challenges, CPU wins, and async wins         | Profile and Leaderboard      |
+| [Seasonal rating](ranked-competition-policy.md)        | Ranked live battle results                   | **Standings** in Live Ranked |
+| [Territory influence](contested-campus-zone-policy.md) | Eligible ranked wins while contesting a zone | **Territories** in Explore   |
 
-## Delivery boundary
+Live PvP does not award progression points or add progression activity days.
+Seasonal rating and territory influence are not converted into progression
+points. Each measure's rules are linked in the table above.
 
-Migration `0026_create_player_progression.sql` and the internal progression
-persistence adapter establish these rules and backfill retained completed
-history. Issue `#172` exposes authenticated profile and standings operations
-and wires challenge and CPU completion transactions to the progression adapter
-before commit. A progression failure therefore rolls the authoritative
-completion back rather than leaving gameplay and progression inconsistent.
-Neither issue may add or derive a spendable balance. Issue `#193` removes coin
-writes and player-facing fields while preserving historical completion, wallet,
-and ledger values under the documented retirement boundary.
+## How it works
 
-The current-player profile returns the stable achievement code, accessible title
-and description, earned status, current metric, and target for every active
-definition. It does not return award source IDs, unlock history, answers,
-matches, identity-provider data, or location. Live standings expose only Player
-Name, points, rank, current streak, and longest streak. Internal player UUIDs are
-used only to make tied ordering deterministic.
+The server saves points, activity, and achievement unlocks with the completed
+result. Reopening a result or retrying a request cannot award them again.
+Award rules are versioned; changing a rule affects future awards and does not
+recalculate saved ones.
 
-All-time standings are the default. Monthly standings select one `YYYY-MM`
-Johannesburg calendar month. Both use bounded page/page-size pagination and
-return the authenticated player's selected-period rank even when that player is
-outside the requested page. Pages are live read models rather than a frozen
-multi-request snapshot.
+Account deletion removes personal progression and standings. Registering again
+starts a new account without the previous points or achievements. See
+[account retention](../database/account-deletion-retention.md) for the full
+cleanup rules and [progression storage](../database/player-progression-persistence.md)
+for implementation details.
 
-Deleted and deletion-pending accounts remain excluded from live ranks.
-Shared historical results may present a deleted participant as `Deleted player`.
+---
 
-The asynchronous PvP service calls the progression adapter inside every defeat,
-deadline/account forfeit, and voluntary-resignation transaction. Match-result
-persistence without that atomic call would not satisfy the exactly-once
-progression criterion.
-
-The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
-
-This account-deletion update was edited with assistance from Codex[GPT-6].
+This page was prepared and edited with assistance from
+Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], Codex-CLI[GPT-6], and Codex[GPT-6].

@@ -91,7 +91,7 @@ Close the product decisions that cannot safely be invented before the remaining
 Basic journey is implemented.
 
 The working consolidation artifact is the
-[Basic-tier decision register](../requirements/basic-tier-decision-register.md),
+[Basic-tier decision register](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/docs/requirements/basic-tier-decision-register.md),
 with confirmed gameplay rules collected in
 [Wits Quest Basic Game Rules](../requirements/basic-game-rules.md).
 

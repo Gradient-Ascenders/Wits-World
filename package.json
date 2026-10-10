@@ -36,7 +36,8 @@
     "verify:automated": "node apps/api/scripts/run-verification.mjs",
     "verify:failure-probe": "node apps/api/scripts/run-verification.mjs --failure-probe",
     "type-check": "npm run prepare:api && npm run type-check --workspaces --if-present",
-    "verify": "npm run format && npm run format:check && npm run lint && npm run type-check && npm test && npm run build"
+    "verify": "npm run format && npm run format:check && npm run lint && npm run type-check && npm test && npm run build",
+    "docs": "npm run build --workspace @wits-world/docs && npm run serve --workspace @wits-world/docs -- --port 4173"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

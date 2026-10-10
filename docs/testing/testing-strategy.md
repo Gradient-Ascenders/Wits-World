@@ -1,427 +1,59 @@
 ---
-title: 'Test strategy, commands and policy'
+title: 'Testing strategy'
+description: Test layers, coverage priorities, and the role of manual validation.
 ---
 
-# Test strategy, commands and policy
+# Testing strategy
 
-## Question performance analytics
-
-Issue `#184` adds service, route, client, and Author-workspace coverage for the 10-answer flagging boundary, exact and just-below 70% incorrect rates with non-misleading decimal display, larger samples, MCQ and ordering aggregation, part-way timeout exclusion of unseen snapshots, timeout counts, composed filters, genuine empty results, stale-page recovery to the last valid page, malformed filters, Author authorization, page bounds, closed aggregate response parsing, keyboard-accessible horizontal results, and edit navigation. The Author-only response deliberately retains exact small-sample aggregates; its residual narrow-filter inference risk and the remaining database query-plan gate are documented in [Question performance analytics](../database/question-performance-analytics.md).
-
-## Advanced operational analytics
-
-Issue `#278` adds focused service and Author-route tests for date/page validation,
-authentication and Author authorization, event-location suppression, easy/problematic
-question classification, immutable reward-ledger issuance, secondary rarity
-suppression, and analytics writes that neither fail nor delay player responses.
-`advanced-analytics-database.integration.test.ts` covers atomic concurrent hourly
-aggregation, authoritative start/completion joins, ignored-location semantics, card
-issuance independent of current ownership, rarity-inference suppression, and
-representative query plans. Run that focused database suite locally after migration tests; the complete
-database runner remains the Gitea PR gate.
-
-Issue `#280` adds the protected Web presentation boundary. Focused component and
-client tests cover the three advanced endpoints, strict privacy/suppression parsing,
-server location modes and question classifications, inclusive UI date conversion to
-the exclusive API boundary, composable question filters, server-provided rarity
-summaries, accessible horizontal table equivalents for charts, independent
-loading/empty/error recovery, and an explicit ordinary-Player denial regression for
-`/author/analytics`. These are Web/API-contract tests only; they do not replace the
-issue `#278` database integration and query-plan evidence.
-
-## Purpose
-
-Wits World uses the smallest test boundary that can reliably demonstrate a
-behaviour, then adds broader integration or release evidence where a protected
-cross-system journey requires it. Tests are part of an issue's implementation
-and review; a passing unit suite is not treated as deployed, accessibility,
-field, stakeholder, or production evidence.
-
-## Player trust review
-
-Issue `#260` adds focused API route tests for authentication, active-Author
-authorisation, ordinary-player denial, queue filters, privacy-safe case detail,
-decision validation, self-review not-found camouflage, bounded export, and
-stale-version conflicts. Its disposable-database suite covers queue
-ordering/search, append-only restriction audit, false-positive score
-recalculation, and concurrent stale-decision rollback. That suite skips locally
-when `TEST_DATABASE_URL` is absent; the repository database runner remains the
-required integration gate.
-
-Web tests cover queue/search/filter behaviour, server-provided score and signal
-presentation, valid decisions, explicit restriction confirmation with current
-case/restriction state separated from the proposed change, validation focus,
-stale-conflict recovery, loading/empty/forbidden/API-error states,
-keyboard Escape and modal focus return, and route denial before any trust-case
-request for an ordinary player. Focused coverage also exercises pageable
-evidence, independent collection failures, privacy-safe opponent aggregates
-without detector thresholds,
-restriction and appeal state, audit context, bounded-export truncation notices,
-and the absence of a writable card-trade restriction control. These automated
-checks do not claim manual screen-reader, responsive-browser, deployed-role, or
-production-data review.
-
-This page records the practice implemented in the repository on 6 September 2026. It does not claim that an operator-run
-check is automated in CI.
-
-## Coverage profiles
-
-`npm run coverage` remains the fast, database-free profile. `npm run
-coverage:full` runs the same source coverage denominator and adds real
-PostgreSQL/PostGIS integration tests. PR and main coverage jobs use the full
-profile against their own ephemeral PostGIS service; database and Redis
-coordination gates remain independent correctness checks.
-
-For a local full run, explicitly supply the disposable PostGIS administration URL:
-
-```bash
-TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55434/postgres npm run coverage:full
-```
-
-The full API configuration refuses missing or remote test targets, bounds
-database concurrency to four workers, and makes the ordinary database URL
-unusable. Tests provision and drop their own databases. Do not use Neon or
-production credentials for coverage.
-
-Coverage summaries and LCOV are written under `coverage/<workspace>/`. The badge
-uses total covered lines divided by total measured lines across all five
-workspaces, not the average of their percentages. No source exclusions or lower
-thresholds are used to raise a score. A percentage counts executed code, not
-assertion quality or proof that every branch is correct.
-
-The disposable administration role needs permission to create databases and
-install PostGIS. Fixture-only timestamp setup also uses transaction-local
-`session_replication_role`; the local container and CI service provide that
-permission. These are isolated test-administration privileges, not permissions
-required by the production application role. Services execute with integrity
-triggers enabled; the timestamp helpers restore the normal mode before the
-behaviour under test.
-
-The pre-change baseline on 8 October 2026, at `e04bf0c`, was:
-
-| Scope                                   | Line coverage |
-| --------------------------------------- | ------------: |
-| API, database-free                      |        65.12% |
-| API, PostGIS-integrated                 |        83.95% |
-| Web                                     |        82.74% |
-| Game rules                              |        88.95% |
-| Documentation and account policy        |          100% |
-| Weighted repository, database-free      |        75.42% |
-| Weighted repository, PostGIS-integrated |        83.40% |
-
-The clean Web baseline passed 951 tests; the integrated API baseline passed
-1,955 tests with seven environment-gated tests skipped. An earlier concurrent
-profiling run timed out two existing Web tests; the sequential rerun passed.
-Do not describe coverage gained by including already-existing database tests as
-new test coverage: compare the integrated baseline with the integrated result.
-
-The added regression scope covers database CLI target selection and failures,
-Redis activity validation and safe errors, API startup/resource cleanup, live
-PvP connection authority and persisted transitions, atomic trading and placement
-rejections, ranked queue and season lifecycle, territory visibility/bonuses,
-offline submissions, Author client contracts, profile editing, and mobile sheet
-and save-bar interactions.
-
-### Measured coverage improvement
-
-The local result on 8 October 2026 (UTC) was measured on
-`test/improve-application-coverage`, based on `e04bf0c`, with the branch changes
-still uncommitted. The environment used Node.js 24.15.0, npm 11.12.1, and the
-disposable local PostgreSQL 17 / PostGIS 3.5 container. npm was older than the repository's
-specified 11.18.0; dependencies and the lockfile were not changed.
-
-| Scope                           | Covered / measured lines | Line coverage | Passing Vitest tests |
-| ------------------------------- | -----------------------: | ------------: | -------------------: |
-| API, PostGIS-integrated         |           9,893 / 10,954 |        90.31% |                2,068 |
-| Web                             |          12,832 / 14,321 |        89.60% |                1,165 |
-| Game rules                      |                481 / 507 |        94.87% |                   49 |
-| Documentation                   |                  10 / 10 |          100% |                    5 |
-| Account policy                  |                  28 / 28 |          100% |                   16 |
-| Weighted repository, full suite |          23,244 / 25,820 |        90.02% |                3,303 |
-
-On the unchanged 25,820-line denominator, this is an increase from 83.40% to
-90.02%, with 1,709 additional covered lines and 344 additional test cases.
-Combined statement coverage is 88.60%, branch coverage 81.63%, and function
-coverage 91.79%; the 90.02% figure is specifically **line** coverage.
-
-The API run passed 195 files with seven Redis-coordination tests skipped; those
-tests require the independent PostgreSQL/Redis gate. The Web run passed 102
-files, and its three native static-server tests also passed. The three native
-deployment-guard tests passed separately. The tests assert authoritative
-results, rollback and release, rejected intent, recovery without duplicate
-mutations, draft-loss prevention, and keyboard interaction; the application
-source, schema, coverage exclusions, and thresholds were unchanged.
-
-The full coverage scope can be reproduced using the command above. The local
-measurement used the API full-profile step, the Web coverage step, and the
-three shared-workspace coverage steps, then `npm run coverage:badge`. Inspect
-`coverage/<workspace>/coverage-summary.json` and `lcov.info` for the measured
-source, and `coverage/coverage.svg` for the generated 90.0% badge. The
-database-free profile is a different execution scope and must not be presented
-as the full-suite result. These are local results; the changed Gitea coverage
-jobs have not yet run remotely.
-
-### Post-rebase verification
-
-On 8 October 2026 (UTC), the coverage branch was rebased onto `main` at
-`827937e`. Its code/test commit `c03b4a9` was checked again after the upstream
-artwork change. Web coverage passed 104 files and 1,169 tests, plus the three
-native static-server tests, and measured **89.61%** (12,853 / 14,342 lines).
-The API and shared-package source/tests were unchanged by the rebase, so their
-verified reports above were retained.
-
-The combined result is **90.03%** (23,265 / 25,841 lines), and regenerating the
-badge produced **90.0%**. The additional 21 measured Web lines come from the
-upstream artwork implementation, not a change to coverage exclusions. Preserve
-the original baseline comparison above; this follow-up is not a claim that
-upstream tests or coverage gains were added by this branch. These remain local
-results; live badge publication requires successful main-branch CI after merge.
-
-### Remaining test boundaries
-
-- Auth0, Upstash and other external provider behaviour is simulated at public
-  boundaries in application tests. Disposable PostgreSQL/Redis coordination
-  tests and configured deployed smoke tests provide separate integration evidence.
-- jsdom tests do not prove browser layout, touch-device rendering, canvas pixels,
-  screen-reader quality or real map/geolocation behaviour. Keep Playwright,
-  accessibility and campus field checks separate.
-- V8 reports TypeScript execution, not SQL statement or migration coverage.
-  Database constraint, rollback, concurrency and migration assertions are the
-  evidence for SQL behaviour.
-- Coverage is not a production load test, security audit, backup restore test or
-  proof of behaviour during every possible multi-instance race or network failure.
+Wits World tests game rules, interface behaviour, API contracts, and persistence
+at the layer responsible for each decision. Integration and browser tests then
+check how those layers work together.
 
 ## Test layers
 
-| Layer                                   | Current repository practice                                                                                                                                                                                                                                                                                                                                                      | Principal evidence                                                                                                                                                                        |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pure unit tests                         | Vitest exercises domain rules, validation, configuration, timing, security policy, and deterministic state transitions without a browser or external service. The `account-policy` and `game-rules` packages have their own suites.                                                                                                                                              | `packages/*/tests`, focused files under `apps/api/tests` and `apps/web/tests`                                                                                                             |
-| Web component and client tests          | Vitest, jsdom, React Testing Library, `user-event`, and DOM matchers exercise rendered states, typed API clients, forms, focus movement, native keyboard interaction, and provider failure boundaries. Tests normally select controls by accessible role or name.                                                                                                                | `apps/web/tests` and `apps/web/vite.config.ts`                                                                                                                                            |
-| API route and service tests             | Vitest and Fastify injection exercise route schemas, authentication, authorisation, safe errors, request validation, OpenAPI output, service rules, idempotency, and failure handling without opening a network listener. Authentication tests generate local keys and tokens rather than using a live Auth0 tenant.                                                             | `apps/api/tests`, especially `*.integration.test.ts` route suites                                                                                                                         |
-| Database integration tests              | PR CI uses a per-job ephemeral PostGIS service with four workers. This covers migrations, constraints, transactions, concurrency, ownership, progression backfill, ordered trails, asynchronous PvP persistence, live PvP persistence, ranked competition persistence, longitudinal trust persistence, recovery, and geospatial behaviour without a shared remote test database. | `npm run test:database --workspace @wits-world/api` and `apps/api/scripts/run-database-tests.mjs`                                                                                         |
-| Browser end-to-end tests                | Playwright covers integrated Web/API journeys. The deterministic Basic runner migrates and seeds the test database, starts the real Fastify and Vite applications, and controls Auth0 and Mapbox at their network boundaries. Separate smoke specifications exist for real configured integrations and focused browser behaviour.                                                | [Basic-tier deterministic E2E](./basic-tier-deterministic-e2e.md) and `apps/web/playwright`                                                                                               |
-| Manual, accessibility, and field checks | Release records identify checks that require human judgement or physical context: responsive layout, touch, full keyboard and focus quality, screen-reader use, contrast, reduced motion, real Auth0/Mapbox behaviour, and campus location conditions.                                                                                                                           | [Basic release validation](./basic-tier-release-validation.md) and [location field-test protocol](../requirements/location-eligibility-field-test.md)                                     |
-| Deployment and release validation       | Gitea Actions validates repository changes. PRs run migration/database suites against isolated ephemeral PostGIS and deterministic Basic E2E in a separate isolated PostGIS job. Main deployment jobs verify artifacts and deployed Web/API health. Production database releases remain a separate guarded operation.                                                            | [Automated verification](./automated-verification.md), [Continuous integration](./continuous-integration.md), and [database release procedure](../database/database-release-procedure.md) |
+| Layer                      | Main checks                                                                                           |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Unit tests                 | Pure game rules, validation, timing, and state transitions                                            |
+| Web component tests        | Forms, API clients, rendering, focus, loading, and recovery                                           |
+| API tests                  | Authentication, permissions, request validation, response contracts, and service behaviour            |
+| Database integration tests | Migrations, constraints, transactions, concurrency, persistence, and PostGIS queries                  |
+| Browser tests              | Navigation and selected complete journeys in Chromium, including responsive and keyboard interactions |
+| Documentation tests        | Page navigation, sidebar coverage, homepage behaviour, and site configuration                         |
+| Runtime and tooling tests  | Static asset serving, caching, deployment guards, and verification utilities                          |
 
-## Choosing the test boundary
+Vitest runs the unit, component, and API tests. Web component tests use React
+Testing Library, API route tests use Fastify injection, and browser tests use
+Playwright. Database tests exercise PostgreSQL and PostGIS directly.
 
-- Put pure calculations, policies, and state transitions under unit tests.
-- Use Web component tests for interface behaviour that does not require a real
-  browser engine or service process.
-- Use Fastify injection for HTTP authentication, validation, response, error,
-  and OpenAPI contracts.
-- Use the database suite when correctness depends on PostgreSQL/PostGIS,
-  constraints, locks, transaction isolation, migration order, or SQL results.
-- Use Playwright when routing, browser interaction, responsive layout, touch,
-  keyboard behaviour, or the integrated player journey materially matters.
-- Use a deployed smoke check only for the deployed boundary; do not describe a
-  local result as production evidence.
-- Use a reviewed manual or field record when automation cannot establish the
-  quality being evaluated.
+## What receives particular attention
 
-Protected game rules are tested at the API, rules-package, or database boundary.
-The browser is tested for submitting player intent and rendering authoritative
-responses, not for independently deciding eligibility, marking, rewards, deck
-legality, trail progress, unlock state, or match outcomes.
+Tests cover both successful actions and the boundaries that protect game state:
 
-Card-evolution route tests cover bearer authentication, closed request schemas,
-server-derived player ownership, new-versus-replayed status codes, safe domain
-errors, and generated OpenAPI. The collection-client test accepts evolution
-provenance without implementing the separate player UI. The disposable card
-catalogue database suite covers migration `0042`, fixed target resolution,
-newest eligible server selection, exact three-copy consumption, evolved-card
-provenance and saved-deck point cost, invalid definitions, insufficient copies,
-idempotent replay, saved-deck protection, forced-failure rollback, and
-concurrent mutation serialization.
+- **Challenges and rewards:** location eligibility, saved answers, final marking,
+  and prevention of duplicate rewards.
+- **Cards and decks:** owned-copy selection, deck composition, evolution,
+  reservations, and atomic trading.
+- **Battles:** legal actions, persisted results, timeouts, reconnects, concurrent
+  requests, rankings, and territory settlement.
+- **Authoring and accounts:** permissions, content review, publication,
+  player restrictions, deletion, and retention.
+- **Interface behaviour:** keyboard controls, readable states, preserved drafts,
+  failed updates, and recovery.
+- **Offline and profiles:** saved-event storage, answer synchronisation,
+  service-worker updates, responsive artwork, avatar editing, activity, and
+  showcase ownership.
+- **Operations and integrations:** gameplay scheduling, coordination,
+  provider clients, API startup and cleanup, rate protection, static serving,
+  and deployment guards.
 
-Collection component tests cover progressive evolution discovery, authoritative
-owned/eligible/deck-locked quantities, preview and cancellation, explicit
-confirmation, single-result reconciliation plus collection refetch, insufficient
-and deck-locked states, stale conflict recovery, and recoverable API failures.
-Card-client tests reject inconsistent counts and unexpected fields rather than
-silently trusting or extending the server contract. Selling tests are not
-present because issue #193 retired and deferred the selling-for-currency model;
-there is no active selling API for the browser to exercise.
+The API and database enforce ownership, permissions, and game rules. Interface
+tests check that the browser sends player intent and presents the confirmed
+result.
 
-`apps/web/playwright/collection.config.ts` runs deterministic collection gallery
-and evolution browser checks using the existing authenticated fixture mode.
-Evolution coverage includes 390px, 768px, and 1440px layouts, reachable confirmation
-controls, focus trapping/return, cancellation, preview failure, confirmation
-failure, stale-copy recovery, saved-deck locks, and success with exact consumption.
-Component regressions distinguish pending refresh from completed refresh, retry a
-failed refresh without another mutation, and keep the sheet handle disabled during
-submission. Browser screenshots are temporary evidence under
-`/tmp/wits-world-collection-evidence`, not committed assets or live-backend proof.
+## Running the workspace checks
 
-Ordering-challenge web coverage validates the discriminated author and Player
-API contracts, exact four-item authoring, pointer reordering, keyboard-operable
-Move Up / Move Down controls and announcements, ordered submission intent,
-double-submit prevention, timeout reconciliation, malformed payload rejection,
-and API-supplied completed feedback. Server route, service, and database tests
-remain the evidence for shuffling, answer locking, exact-sequence marking,
-deadlines, score, completion, and explanation privacy.
-
-The issue `#165` verified-content integration test provisions an isolated
-database, applies the full migration history, and runs the content seed twice.
-It checks the exact 10-event/100-question shape, five challenges of each format,
-four public choices/items per question, private answer keys, source evidence,
-availability states, all difficulty/time-limit categories, non-repeating
-five-question selection, and compatibility with the canonical reward catalogue.
-Factual wording, point/radius placement, and presentation still require the
-documented independent manual review.
-
-Progression route tests verify authentication, Player Name setup, privacy
-allowlists, month and pagination validation, current rank outside the selected
-page, and closed OpenAPI schemas. Database tests verify points and achievement
-backfill, duplicate and concurrent awards, Johannesburg streak boundaries,
-competition ties, stable tie ordering, monthly/all-time reads, zero-point
-players, and deleted-player exclusion. Completion-service tests additionally
-prove that progression runs before commit and that an award failure rolls back
-the owning challenge or CPU-match completion.
-
-The asynchronous PvP database suite upgrades retained CPU progression through
-migration `0028`, verifies private-state separation and lifecycle constraints,
-and exercises unordered invitation uniqueness, immutable snapshots and history,
-deadline indexes, all terminal outcomes, concurrent replay, and the
-two-participant 25/0 activity awards. Issue `#220` adds cancellation actor,
-receipt, retention, pagination, worker-skip, and accept/decline/expiry/account-
-invalidation race coverage. Route and scheduler tests cover issue `#180`. Web client and component tests for issue `#181` cover closed privacy-safe
-parsing, all invitation states, Player Name challenge creation, deck/Creature
-selection with API validation errors, versioned actions, duplicate-click
-protection, bounded cursor navigation, polling, stale recovery,
-deadline/account forfeits, win/loss, hidden opponent information, and API
-retry. Existing CPU match tests remain in the same focused regression run
-because CPU and PvP share presentation without sharing their different
-lifecycle contracts.
-
-Author curation tests cover the five-state transition matrix across the four
-original content types plus campaigns, draft-only edits, latest-submitter self-review denial, required
-return reasons, readiness at approval and publication, optimistic concurrency,
-transactional audit rollback, safe queue/history schemas, and exclusion of every
-non-published state from Player paths. Database runs additionally cover migration
-`0029` backfill/constraints, seed provenance, dependency races, and preservation
-of attempts, rewards, ownership, decks, matches, and progression after
-retirement. These database checks require the dedicated disposable test target;
-they must not be redirected to development or production.
-
-Campaign database tests additionally cover start-inclusive/end-exclusive
-boundaries, effective event and trail windows, adjacent and overlapping member
-reuse, concurrent approvals, publication/retirement races, review history, and
-preservation of completed attempts and derived trail progress.
-
-Author Web component/client tests cover queue parent-route context, required
-return reasons and keyboard focus, lifecycle request bodies, lazy history reads,
-campaign schedule and membership submission, and preservation of campaign form
-input after a stale-version conflict. They also cover navigation-only queue
-summaries, authoritative refresh after `CONTENT_STATE_CONFLICT`, confirmed
-replacement of a preserved campaign draft, server-returned lifecycle feedback,
-and read-only non-draft campaign edit deep links. Issue `#184` added the first
-question-performance workspace coverage; issue `#280` extends that boundary with
-privacy-safe advanced location, question, and card analytics UI/client tests.
-
-The issue `#257` trust-persistence database suite upgrades a pre-`0046`
-database and also verifies a clean migration. It covers private-only trust
-relations, signal privacy/immutability, 90-day expiry, concurrent source
-deduplication, score caps/bands, one-active-case concurrency, case-version audit
-coupling, safe evidence surviving signal expiry, self-review denial,
-false-positive provenance, seven-day restriction bounds, one appeal per
-decision, different-Author appeal resolution, delayed audited governance
-finalization, account-deletion cleanup, anonymous governance retention, and
-retry-safe retention purge. It does not
-claim that issue `#258` score calculation or enforcement is implemented.
-
-Issue `#258` adds pure `trust-v1` policy tests for movement severity, exact
-90-day integer decay, category/final caps, all review-band boundaries,
-false-positive adjustments, deterministic calculation digests, and the rule
-that weak opponent evidence alone remains non-severe. Restriction tests verify
-neutral allow/deny capability checks, challenge-start tests prove a later hold
-does not cancel an existing attempt, and CPU-action tests distinguish an
-identical retry from conflicting submission-ID reuse only after rollback. The
-offline database suite stores the new canonical submission digest and verifies
-that reusing one client attempt identifier with changed payload is rejected and
-produces only one deduplicated trust signal.
-
-The `trust-scoring.integration.test.ts` disposable-database suite verifies
-migration `0047`, concurrent signal deduplication, the three-conflict pattern,
-score/case persistence without automatic restrictions, direct
-`trust_decision_evidence` constraints, human-authored restriction enforcement,
-resolved-case audit preservation, seven-day decay resolution, and reciprocal
-completed-PvP pattern deduplication. Movement database coverage also verifies
-that a committed `too_fast` decision produces only the non-precise derived
-signal. The periodic scheduler has focused tests for cadence, overlap avoidance,
-shutdown, and safe failure logging.
-
-Issue `#260` adds Fastify-injection coverage for authentication, ordinary-Player
-denial, default/explicit active and resolved queue semantics, safe Player Name
-search, bounded queue filters, closed privacy-safe response schemas, generic
-inaccessible-case errors, authenticated reviewer derivation, malformed bodies,
-stale-version conflicts, action-specific request schemas, and generated OpenAPI
-parameters, responses, limits, and security declarations. The
-`trust-review-service.integration.test.ts` disposable-database suite verifies
-stable filtering/pagination, `status=all`, exact UUID search, and date bounds,
-self-case exclusion, derived
-bounded detail previews, paginated evidence/restrictions, signal-time
-opponent-pattern aggregate projection, explicit legacy-summary unavailability
-and effective-evidence review blocking (including expiry and adjusted
-superseding evidence), bounded safe export, the reviewer transition matrix,
-append-only actor/time/reason/policy history, false-positive provenance, committed
-restriction timing, the 100-evidence limit, one winner for concurrent
-same-version decisions, late-failure rollback across every related write,
-atomic supported restrictions, active-restriction dismissal denial, and
-authoritative unrestricted dismissal.
-
-Database integration remains opt-in locally. A slow local database may use a
-larger Vitest timeout for an individual focused suite without changing the
-repository; the complete database runner and migration validation remain CI
-evidence on the ephemeral PostGIS service.
-
-Impossible-journey tests separate the pure uncertainty-adjusted speed rule from
-the PostgreSQL/PostGIS evidence path. API and Web tests cover neutral retries
-and direct challenge-start enforcement. The disposable database suite covers
-the forward migration, immutable audit, accepted-anchor selection, retention,
-account deletion, idempotency, and concurrent requests. Physical campus and
-transport-mode calibration remain manual evidence; automated tests do not prove
-that a chosen production threshold is appropriate.
-
-## Contested territory
-
-Issue `#270` adds focused unit/service coverage for `territory-v1` grant
-validation, authoritative contribution decisions, deterministic owner selection,
-canonical settlement digests, stale-settlement retries, owner-bonus outcomes,
-and privacy-safe territory routes. Ranked route/service regressions cover the
-optional territory claim while ordinary ranked queueing remains valid without a
-claim. These tests deliberately keep browser-supplied ownership and influence out
-of every request contract.
-
-The disposable PostGIS regression boundary remains
-`territory-persistence.integration.test.ts`: it applies migration `0054` after
-`0053` and verifies the runtime relations alongside the existing contribution,
-settlement, ownership, account-deletion, and concurrency invariants. Local
-database work should stay focused on this file (and any directly failing ranked
-integration suite); the complete multi-worker database runner remains Gitea CI
-evidence because it is substantially faster than the normal local test target.
-A passing automated suite does not replace physical field validation of campus
-boundaries or reported-accuracy behaviour.
-
-Issue `#271` adds the Player-facing read boundary. Web client tests reject
-unexpected fields, malformed polygons, open rings, and out-of-range coordinates;
-component tests cover lazy territory loading, the map-independent zone list,
-selection/focus synchronisation, owner and anonymous standings presentation,
-viewer-only influence, ownership history, and partial-detail recovery. Map
-provider tests cover GeoJSON source/layer updates, region selection, selected
-styling data, and bounded camera fitting. Ranked read/route tests cover the
-authenticated participant's accepted, lost, pending, excluded, and ordinary
-null contribution results, including the mapping from private exclusion reasons
-to the smaller player-safe contract.
-
-Responsive browser inspection at desktop and 390px mobile widths remains a
-separate visual-acceptance gate. Automated tests do not establish that the
-production Mapbox style, label density, real reviewed zone geometry, or physical
-campus boundaries are visually acceptable in the field.
-
-## Commands and data isolation
-
-The normal repository quality set is:
+After the [development setup](../development/getting-started.md), run these from
+the repository root:
 
 ```bash
 npm run format:check
@@ -431,212 +63,55 @@ npm test
 npm run build
 ```
 
-The root `npm test` command runs test scripts exposed by all workspaces. Database
-integration tests are deliberately opt-in because they require PostgreSQL and
-perform destructive setup inside a disposable database:
+The normal workspace test command does not enable the database integration or
+browser suites. The full catalogue and
+selection commands are covered in [Test suites](automated-verification.md).
 
-```bash
-npm run test:database --workspace @wits-world/api
-```
+## Coverage profiles
 
-The complete deterministic Basic browser journey is also opt-in:
+`npm run coverage` runs database-free workspace coverage. After configuring a
+disposable local PostgreSQL/PostGIS target, `npm run coverage:full` adds the
+full API integration scope and collects the other workspace reports. PR and
+main CI use the integrated API profile; its setup is covered in
+[Test suites](automated-verification.md#full-api-coverage).
 
-```bash
-npm run test:e2e:basic
-```
+Both profiles measure the same application source but execute different test
+scopes. The combined badge weights covered lines across workspaces rather than
+averaging their percentages. V8 measures TypeScript execution; database assertions
+provide the evidence for SQL constraints, rollback, and concurrency.
 
-It requires `TEST_DATABASE_URL` and must never be pointed at the development or
-production database. The runner applies migrations and the Basic fixture before
-starting the browser scenario.
+## Manual and field validation
 
-Real Auth0 Playwright flows use ignored local configuration and authentication
-state. Tokens, credentials, connection strings, precise location evidence, and
-browser auth state must not be committed or copied into reports.
+Automated checks are supplemented by real-device and human review for
+screen-reader output, visual quality, touch interaction, browser zoom, campus
+location behaviour, and external services.
 
-## What CI runs
+Deterministic browser suites use controlled authentication and service
+responses. Separate authenticated smoke checks exercise real sign-in, while
+field GPS accuracy and broader provider availability require their own checks. PostgreSQL/Redis coordination tests exercise local
+services; hosted-service reliability needs separate verification.
 
-Pull requests targeting `main` run static analysis, Web/API coverage,
-documentation tests, both shared-package test scripts, application builds, and
-the four-worker migration/database job against a per-job ephemeral PostGIS
-service, plus Basic Playwright E2E in a separate isolated PostGIS job, after
-clean `npm ci` installations.
-Pushes to `main` run the same non-database validation and explicitly execute
-both shared-package suites before artifact/deployment work.
+Manual observations should identify the tested revision, device, scenario, and
+outcome. The [Sprint 1 field evidence](../planning/scrum/sprint-1/evidence.md#on-campus-field-evidence)
+records the missing campus observations and links the historical protocol.
+Use current eligibility rules for new checks; completed observations belong in
+dated records.
 
-Coverage reports for the Web and API are retained as a workflow artifact, and a
-successful main run updates the coverage badge. The repository does not
-currently configure a minimum percentage threshold as a CI gate.
+For participant sessions, explain the purpose, voluntary participation, planned
+tasks, retention, and right to skip or stop. Obtain separate consent for recording,
+quotes, or screenshots. Use anonymous session codes and controlled test accounts;
+keep raw notes, consent records, credentials, and precise locations out of public
+evidence. Publish only sanitised summaries.
 
-The ordinary main-push CI test job directly runs the `account-policy` and
-`game-rules` package test scripts, but does not run the database or Basic
-Playwright E2E gates. Pull-request validation has a separate isolated
-PostgreSQL/PostGIS job that runs the complete database runner without remote
-credentials or cross-PR contention. Database evidence therefore comes from
-that named PR job.
+Observe tasks without coaching first, and record any assistance. Label each task
+complete, assisted, incomplete, or not run on the named build and device. Keep
+questionnaire self-reports separate from observed outcomes. Evaluate findings,
+record an accept/defer/reject decision, link accepted work to its issue and change,
+and retest the affected task. Stakeholder reviews should likewise record the
+demonstrated scope, feedback, decision, remaining conditions, and actual sign-off;
+an issue closure or planned review is not acceptance evidence.
 
-Basic E2E is required in PR validation, with sanitized failure diagnostics,
-and remains outside the main deployment workflow. There is no nightly or
-manually dispatched remote verification workflow. See the
-[automated verification matrix](./automated-verification.md) and
-[Continuous integration](./continuous-integration.md) for exact triggers,
-configuration, artifact privacy, and evidence limits.
-
-## Accessibility policy
-
-Accessibility is divided between deterministic checks and human evaluation.
-Current Web tests cover semantic names and roles, map-independent event access,
-status and error presentation, form feedback, keyboard activation, and selected
-focus behaviour. Focused Playwright scenarios cover real browser keyboard,
-touch, overflow, and responsive behaviour where implemented.
-
-The repository does not currently install or run `axe-core`, and it has no
-automated screen-reader, contrast, reduced-motion, or complete accessibility
-conformance suite. Those qualities require reviewed manual evidence at the
-release boundary. A passing component or E2E suite must not be reported as full
-accessibility acceptance.
-
-Issue `#265` adds focused placement-planner and Author-route assertions plus Web
-workspace tests for Author gating, server-provided coverage and separation
-diagnostics, current/proposed/excluded/overridden rendering, the semantic table
-fallback, confirmations, apply and override mutations, rollback, stale-state
-refresh, map failure, loading/error/empty states, and keyboard activation. CSS
-breakpoints keep the policy and controls before the map on narrow screens; the
-real-device, screen-reader, contrast, and deployed Mapbox checks remain manual
-release evidence.
-
-## Manual and field evidence
-
-Manual evidence should identify the commit or deployment, date, tester, device
-or viewport, state exercised, expected result, observed result, and resulting
-issue or decision. Sanitised screenshots or recordings may support the record,
-but they do not replace the written outcome.
-
-The location field-test protocol defines a repeatable real-device process, but
-the repository does not currently contain completed campus results. The seeded
-radius, location freshness, and accuracy-envelope interpretation remain
-provisional until reviewed evidence is recorded.
-
-Likewise, release documents list required screen-reader, keyboard, responsive,
-Auth0, Mapbox, database-operation, and production checks without pre-claiming
-their result.
-
-## Asynchronous PvP verification
-
-Asynchronous PvP changes require route tests for closed schemas, authentication,
-safe errors, object-relative identity, and forbidden browser result fields;
-service/database tests for real deck snapshots, replay receipts, hidden-state
-projection, versioned actions, terminal progression, invitation invalidation,
-voluntary-resignation replay and races, exact deadline precedence, and
-account-deletion rollback. Invitation cancellation additionally requires
-challenger-only authorization, exact replay/payload conflict, stale and terminal
-rejection, immutable audit, no-match guarantees, stable pagination, and races
-against acceptance, decline, expiry, and invalidation; scheduler tests cover immediate startup,
-non-overlap, safe failure containment, and clean shutdown. The explicit
-database runner uses only `TEST_DATABASE_URL`, provisions isolated temporary
-databases, and must cover migrations `0028`, `0033`, `0037`, and `0039`. Route, client,
-component, and Playwright coverage must also verify CORS-safelisted media-type
-negotiation, legacy fallback, overdue-detail finalization, capability gating,
-confirmation/focus behavior, repeated-click protection, and ambiguous-response
-recovery. Cancellation UI tests must also retain later-page items, disable
-duplicate submissions, treat absent `canCancel` as false, and reuse the same
-submission ID after ambiguous delivery. Production or shared
-database targets are not substitutes for this evidence.
-
-## Live PvP persistence verification
-
-Issue `#251` adds `apps/api/tests/live-pvp-persistence.integration.test.ts` to
-the disposable database runner. The focused suite exercises the migration
-upgrade path and rerun behavior, public/private separation, shared five-card
-deck-snapshot rules, immutable history, ticket redemption and reuse,
-participant connection-generation supersession, stale-generation rejection,
-same-version write races, idempotency receipts, terminal completion sources,
-account-deletion guards, transient cleanup boundaries, and recovery through a
-fresh database pool.
-
-Issue `#253` adds focused route, protocol, WebSocket-gateway,
-deadline-processor, scheduler, and PostgreSQL-notification tests around the
-realtime runtime. Gateway coverage includes synchronous handler attachment with
-bounded queuing while asynchronous ticket redemption completes, spectator
-mutation rejection, persisted-generation supersession, and participant intent
-forwarding without client-owned outcomes. The existing live persistence suite
-additionally exercises the runtime ticket service against the real database so
-a newer redemption supersedes an older participant generation. Together these
-cover closed client intent schemas, authenticated ticket routes, post-lock
-persisted generations, deadline convergence, cleanup scheduling, and
-multi-instance notification fan-out. Deployed WebSocket/proxy and two-instance
-infrastructure verification remain deployment evidence rather than something a
-unit test can claim.
-
-For normal development, the focused live-PvP database file may be run against
-`TEST_DATABASE_URL` before opening a draft pull request. The complete disposable
-database runner remains the regression gate in PR CI. A successful CI run is
-test-environment evidence only; it does not establish that migration `0044` or
-its cleanup primitive was executed in production.
-
-The live Web experience adds `apps/web/tests/live-client.test.ts` and
-`apps/web/tests/live-pages.test.tsx`. Their focused coverage verifies the closed
-participant/spectator parsers, authentication and requested-role handling,
-spectator private-field rejection, ranked queue entry, private match-link entry,
-no-active-season gating, visible ranked conflicts, server-returned turn ownership
-and legal actions, immediate pending locks, duplicate suppression, stale-version
-reconciliation, transport recovery through a fresh snapshot, opponent dropout,
-authoritative timeout/abandonment terminal state, and a visibly read-only
-spectator surface. The focused Playwright scenario checks the disabled
-no-season lobby and participant/spectator battle surfaces at mobile and desktop
-widths without horizontal overflow. Existing CPU and asynchronous PvP tests
-remain in the focused regression set to guard Basic and Intermediate behavior.
-
-These deterministic Web tests do not prove a deployed WebSocket/proxy path,
-multi-instance fan-out, Auth0 tenant behavior, real-device accessibility, or
-visual acceptance. The database suite still requires
-`RUN_DATABASE_INTEGRATION_TESTS=true` and the existing disposable
-`TEST_DATABASE_URL`; a skipped or unreachable database is reported as such and
-does not count as passing integration evidence.
-
-## Card-trade persistence verification
-
-Issues `#275` and `#272` use
-`apps/api/tests/card-trading-persistence.integration.test.ts` for the private
-persistence and durable idempotency boundaries. The focused database suite
-upgrades a pre-`0055` database containing existing ownership and deck references,
-then applies `0055` and `0056` and checks create/revision submission replay,
-conflicting submission reuse, exact-copy reservation conflicts, immutable offer-version approval
-semantics, concurrent reservation attempts, final-acceptance/cancellation
-serialization, saved-deck exclusion, exactly-once settlement/provenance, rollback
-after an injected database failure, expiry and reservation release, `trust-v2` trade-hold invalidation, terminal immutability,
-and account-deletion cleanup. The existing card-catalogue integration suite
-adds regression coverage that trade-reserved copies are excluded from evolution
-preview and destructive consumption until the reservation is released.
-
-`apps/api/tests/card-trade-policy.test.ts` covers the pure rarity-point mapping
-and input invariants without a database.
-`apps/api/tests/card-trades-routes.test.ts` covers authenticated identity, closed
-request schemas, recent-authentication acceptance proof, participant-safe
-responses, neutral object-level authorization errors, and participant-only
-listing. `apps/api/tests/card-trade-maintenance-scheduler.test.ts` covers startup
-maintenance, cadence validation, and non-overlapping sweeps. During local development, run the
-focused persistence suite against `TEST_DATABASE_URL` after migration tests and
-then only the affected deck/evolution/match/trust/deletion regressions. The full
-database runner remains the Gitea PR gate; this documentation does not claim
-those checks passed until their execution evidence is recorded.
-
-## Performance and reliability evidence
-
-The repository contains measured CI and deployment timing comparisons in
-[Continuous integration](./continuous-integration.md). Those measurements led
-to disabling a failing Gitea npm-cache path and moving Web/API artifact creation
-to the higher-capacity validation runner. They are delivery-pipeline performance
-evidence, not application latency, throughput, rendering, or database-query
-benchmarks.
-
-No general application performance baseline or load-test result is currently
-recorded. Issue `#278` is narrower: its advanced-analytics database suite defines a
-repository target of less than 1,000 ms PostgreSQL execution time for each
-representative query on its disposable fixture and requires indexed access for a
-selective product-event date read. That focused target is not a production HTTP SLA
-or evidence of general application performance. Any broader benchmark must retain
-its scenario, data volume, environment, tooling, result, analysis, and resulting
-change before the documentation can claim an application performance improvement.
+## Focused loading and caching checks
 
 ### Author and Profile module loading
 
@@ -652,24 +127,25 @@ including direct routes, role denial, delayed and failed imports, reload recover
 focus restoration, cached navigation and demand-cached deferred modules.
 The normal experience-regression CI command does not include this separate
 configuration. Run it explicitly alongside the relevant existing Author and
-Profile journeys. Optional screenshots and visual metrics are disabled by default
-across the Playwright suites. Set `PLAYWRIGHT_VISUAL_CAPTURE=1` explicitly to
-capture review artifacts through `playwright/visual-capture.ts`; all destinations
-must resolve inside the current test's `testInfo.outputPath(...)` directory.
-The helper rejects `.impeccable/`, escaped output paths and symbolic links into
-protected directories, even when captures are disabled. Playwright's existing
-failure screenshots and traces remain isolated in its configured test output.
-`PLAYER_REVIEW_CAPTURE` can further filter enabled Player review captures.
-Generating an artifact does not approve or promote a visual baseline: copying any
-image into a permanent baseline requires separate explicit approval. Never run
-legacy commands that write into `.impeccable/`.
+Profile journeys. Optional screenshots and visual metrics are disabled by
+default across the Playwright suites. Set `PLAYWRIGHT_VISUAL_CAPTURE=1`
+explicitly to capture review artifacts through `playwright/visual-capture.ts`;
+all destinations must resolve inside the current test's
+`testInfo.outputPath(...)` directory. The helper rejects `.impeccable/`, escaped
+output paths, and symbolic links into protected directories, even when captures
+are disabled. Playwright's existing failure screenshots and traces remain
+isolated in its configured test output. `PLAYER_REVIEW_CAPTURE` can further
+filter enabled Player review captures. Generating an artifact does not approve
+or promote a visual baseline: copying any image into a permanent baseline
+requires separate explicit approval. Never run legacy commands that write into
+`.impeccable/`.
 
 Run `npx playwright test --config=playwright/visual-capture.config.ts` from
 `apps/web` for the isolated capture safety checks. The focused unit tests in
 `tests/visual-capture.test.ts` also reject direct screenshot calls outside the
 shared helper. Existing component tests wait for the deferred emoji control to
-be enabled before interacting with it; the dialog and text input do not wait for
-the catalogue.
+be enabled before interacting with it; the dialog and text input do not wait
+for the catalogue.
 
 For a safe local build, use the existing `basic-e2e` Auth0/runtime fixture aliases
 and synthetic public configuration; do not use real credentials or start an API:
@@ -750,33 +226,15 @@ new tests independently verify persisted answers, retry and confirmed receipts.
 This cache-policy verification procedure was documented with Codex[GPT-6]
 assistance.
 
-## Evidence and review rule
+## Interpreting results
 
-Each report must distinguish:
+A passing check supports the behaviour and environment it exercised. Test counts
+and coverage percentages alone do not establish user acceptance, accessibility
+conformance, or production performance. Coverage thresholds are configured
+minimums; measured coverage comes from a completed run.
 
-- an automated test that was actually executed;
-- a CI run for a named commit;
-- a deployed smoke check;
-- a manual or field observation;
-- stakeholder or user acceptance; and
-- a planned check that has not yet run.
+[CI workflows](continuous-integration.md) describes how the automated checks run
+for pull requests and releases. Dated results remain separate from this strategy.
 
-Known gaps stay explicit. Tests are added for material regressions, but the
-repository does not pursue a test count or coverage percentage as a substitute
-for demonstrating the acceptance criteria and protected invariants.
-
-## AI declaration
-
-This testing strategy was generated, edited, and reviewed with the assistance
-of Codex[GPT-6], Codex[GPT-5], Codex[gpt-5.6-sol], Codex-CLI[GPT-5], and
-Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-6], and
-ChatGPT-Web[GPT-5.6 Sol].
-Repository paths and workflow claims were checked against the current source;
-this declaration is not test evidence.
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
-
-Coverage profiles and regression scope updated with assistance from Codex[GPT-5] and
-Luna subagents[gpt-6-luna].
-
-Optional capture isolation guidance updated with assistance from Codex[GPT-6].
+AI declaration: Rewritten with assistance from Codex[GPT-6]. Conflict
+reconciliation was completed with assistance from Codex[GPT-5].

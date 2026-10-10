@@ -9,7 +9,10 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      '@docusaurus/Head': fixture('DocusaurusHead.tsx'),
       '@docusaurus/Link': fixture('DocusaurusLink.tsx'),
+      '@docusaurus/router': fixture('DocusaurusRouter.tsx'),
+      '@docusaurus/useBaseUrl': fixture('useBaseUrl.ts'),
       '@theme/Heading': fixture('ThemeHeading.tsx'),
       '@theme/Layout': fixture('ThemeLayout.tsx'),
     },

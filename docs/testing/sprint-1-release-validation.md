@@ -199,7 +199,7 @@ exists; do not invent an attachment URL.
 - Follow the operator-run [database release procedure](../database/database-release-procedure.md).
   Local migration tests do not prove production migration or seed execution.
 - Link the reviewed, sanitised
-  [PostGIS recovery rehearsal](../database/postgis-recovery-rehearsal.md)
+  [Migration recovery checks](../testing/automated-verification.md#database-integration)
   evidence from [#48](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/48).
 - Link the deployed Auth0/CORS/location-privacy review from
   [#45](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/45).

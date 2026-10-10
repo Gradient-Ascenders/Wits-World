@@ -4,102 +4,155 @@ title: 'External services and data sharing'
 
 # External services and data sharing
 
-## Purpose
+This page identifies the data exchanged with external services.
+[Security](trust-boundaries.md) covers validation and privacy controls;
+[Stack](technology-stack.md) explains technology choices.
 
-Wits Quest depends on external identity, map, database, hosting, and delivery
-services, but it keeps protected game authority inside the API and database.
-This page shows where each integration crosses the system boundary, what data
-crosses it, and what a local automated test does or does not prove.
+## Runtime exchanges
 
-For the selection and motivation of the software and services themselves, see
-[Third-party software and services](./third-party-software-and-services.md).
+| Service                         | Connection          | Data exchanged                                                                                                        |
+| ------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Auth0                           | Browser/API ↔ Auth0 | Authentication, token issuance, public signing keys, and account-management requests.                                 |
+| Mapbox                          | Browser → Mapbox    | Public token, style/tile/font requests, and the requested map area. Application event overlays are assembled locally. |
+| [Neon](#neon)                   | API → PostgreSQL    | SQL and stored application data over a TLS database connection. The browser has no direct database connection.        |
+| [Upstash Redis](#upstash-redis) | API → Upstash       | Request-limit keys, counters, and gameplay coordination records.                                                      |
 
-## Runtime integrations
+The browser's Geolocation API supplies device readings through its permission
+flow. Location-dependent requests go to the Wits World API.
 
-| Integration                      | Direction and data                                                                                                                                                                                                                                          | Authority and privacy boundary                                                                                                                                                                                                                                                                                                           | Failure behaviour and evidence                                                                                                                                                                                                                                                   |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth0 authentication             | The browser uses the Auth0 React SDK for hosted authentication and token acquisition. The API uses the configured issuer and JWKS to validate bearer tokens. Account-lifecycle backend code also has a separately configured Auth0 Management API boundary. | Auth0 authenticates the external identity and issues tokens. Wits World derives the local player and role only after token validation. Passwords, management credentials, and complete tokens are not stored in the repository or normal evidence.                                                                                       | The Web handles authentication loading and failure states; the API returns safe `401` responses. Tests use local keys and controlled SDK boundaries. Real tenant, DNS, callback, refresh, and Management API behaviour requires deployed operator evidence.                      |
-| Mapbox GL JS and Mapbox Standard | The browser loads the public style, tiles, glyphs, and attribution with a URL-restricted public `pk.` token.                                                                                                                                                | Mapbox is a confirmed team-selected presentation integration. It does not authenticate players or decide event publication, distance, eligibility, challenges, or rewards. Reported player coordinates are not placed in a Mapbox source, marker, URL, or provider request; the map's player indicator is a transient local DOM overlay. | The semantic event list and coordinate form remain available if map loading fails. Controlled tests substitute the renderer boundary. Token restrictions, CSP/privacy, licensing/terms, cost/usage monitoring, attribution, and campus-data checks remain deployed/manual gates. |
-| Browser Geolocation API          | While Explore is active, the browser may provide latitude, longitude, reported accuracy, and acquisition time after the documented permission and player-action rules. Claims go to the Wits World API.                                                     | A device reading is an untrusted **reported location**, not verified presence. The API validates structure, freshness, accuracy, event state, and PostGIS distance. The current eligibility and challenge-start paths do not persist exact claims as a location history.                                                                 | Permission denial, timeout, unavailable, stale, and poor-accuracy states are represented in tests. Real campus conditions require the field-test protocol and reviewed device evidence.                                                                                          |
-| Neon PostgreSQL/PostGIS          | Only the API and operator tooling connect through `pg` using environment-supplied TLS connection strings. PostGIS stores event points and performs metre-based distance calculations.                                                                       | The browser has no database credentials or direct database access. PostgreSQL stores authoritative gameplay state; constraints, locks, transactions, and private answer-key storage reinforce the service boundary.                                                                                                                      | Readiness checks verify PostGIS. Database suites use a disposable database beneath a separate test target. Production migration, backup, recovery, plan limits, and restore evidence remain operator-owned.                                                                      |
+## Auth0
 
-## Delivery and hosting integrations
+Auth0 provides hosted registration, sign-in, password recovery, and token
+issuance. The integration has 3 distinct parts:
 
-| Integration                | Current use                                                                                                                                                   | Boundary                                                                                                                                                                                              |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Azure App Service          | Independently hosts the compiled Web and API applications. Gitea Actions deploys verified SHA-named artifacts through an Azure runner using managed identity. | API runtime secrets remain in App Service settings. Browser `VITE_*` values are public build-time configuration. Main deployment performs health checks but does not migrate the production database. |
-| Cloudflare Pages           | Hosts the static Docusaurus documentation site. A path-filtered Gitea workflow builds and deploys documentation after relevant pushes to `main`.              | Cloudflare deployment credentials are Gitea secrets scoped to the deployment step. Documentation is public and has no game authority.                                                                 |
-| Wits SDP Gitea and Actions | Hosts Git, issues, pull requests, reviews, artifacts, and the CI/CD workflows.                                                                                | Validation containers and the host-only Azure runner have different responsibilities. Repository or platform-managed secrets must not enter source, artifacts, screenshots, or routine logs.          |
+| Part                    | Purpose                                                                                                                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web application client  | The Auth0 React SDK starts hosted authentication, returns the user to the Web application, and obtains or renews access tokens. Its client ID is public browser configuration.      |
+| Wits World API resource | Defines the audience requested by the Web and accepted by the API. An access token identifies which API it is intended for; an ID token describes the signed-in user to the client. |
+| Management API client   | A separate server-side application obtains a machine-to-machine token for identity-management operations. The current backend uses it for account deletion.                         |
 
-Azure, Cloudflare, and Gitea are delivery integrations rather than participants
-in gameplay decisions. Their current topology is shown in the
-[deployment diagram](./diagrams/deployment.md), and their exact workflow is
-documented under [Continuous integration](../testing/continuous-integration.md).
+The Web client and API must agree on the authentication domain and API
+audience. Auth0's allowed callback, logout, and Web origins must also match the
+configured application origins. Local values are described in
+[Getting started](../development/getting-started.md#configure-the-game).
 
-## Inbound developer integration
+The API retrieves Auth0's public signing keys and validates access tokens
+locally. It then resolves the corresponding Wits World account; game data and
+application permissions remain in the local database. See
+[Identity and permissions](trust-boundaries.md#identity-and-permissions) for
+validation and access rules.
 
-Wits World also acts as an API provider to external developers. Authenticated
-server-side clients can send an `X-API-Key` credential to the read-only
-`/api/v1/developer/*` resource routes. The API returns intentionally public
-published-event, card-catalogue, and progression-leaderboard projections; the
-key never becomes a player principal and cannot access or mutate private
-player/gameplay state.
+Management requests use separate credentials and an Auth0 Management API
+audience. These credentials remain on the server. Account deletion coordinates
+local cleanup with external identity removal and records pending work for retry;
+the [deletion contract](../database/account-deletion-retention.md) defines that
+lifecycle.
 
-Developer credentials are generated by an authenticated Wits World account,
-shown in full only at creation, stored as a verifier rather than a retrievable
-secret, revocable, and rate-limited per key. The existing exact-origin browser
-CORS policy is deliberately not widened for reusable developer secrets. See
-[External developer API](./developer-api.md).
+### Auth0 email policy
 
-## Boundary rules
+Wits World does not require email verification for account access. The tenant
+configuration should disable automatic signup verification and verification
+emails while retaining password-recovery delivery. The repository does not
+manage these tenant settings; an authorised administrator configures them and
+checks signup, sign-in, and password recovery with a test account.
 
-- The Web calls the Wits World API for protected state; it does not call the
-  database directly.
-- Auth0 tokens establish an external principal only after API validation; they
-  do not let the browser select a local role or player ID.
-- Mapbox output is visual evidence only. PostGIS remains the distance authority.
-- Browser geolocation is never described as proof of physical presence.
-- Third-party outages must produce safe errors or a documented fallback rather
-  than shifting authority to the browser.
-- External credentials and database URLs stay outside Git and browser-visible
-  configuration.
-- A mocked or controlled integration test proves Wits World's side of the
-  boundary, not the external provider's live configuration or acceptance.
+## Mapbox
 
-## Evidence status
+Explore and Author maps use a shared rendering adapter. Desktop Explore,
+Author maps, and mobile Explore with **Detailed 3D map** enabled use Mapbox
+Standard. Default mobile Explore uses Streets v12 with a flat camera.
 
-Current repository evidence includes:
+The adapter overlays API-supplied events, trail steps, event radii, territories,
+and Author placement previews. It also renders the reported-location indicator
+as a local DOM marker. PostGIS supplies the authoritative distance and
+eligibility results.
 
-- provider selection ADRs and evaluations for Auth0, PostgreSQL/PostGIS, and the
-  map boundary;
-- implementation and automated tests for token validation, exact-origin CORS,
-  provider-safe failures, database isolation, and map-independent access;
-- a dated deployed Auth0/CORS/privacy boundary review;
-- Azure, Cloudflare, Neon, and Mapbox operational documentation; and
-- the deterministic Basic E2E with Auth0 and Mapbox deliberately controlled.
+Desktop layer controls change visibility without changing game state. Standard
+lighting follows fixed dawn, day, dusk, and night periods in Johannesburg time.
+The renderer respects reduced-motion preferences, keeps attribution visible,
+and disables optional performance-metrics collection. The text event list
+remains available alongside the map.
 
-The team confirms Mapbox as an allowed implementation choice under the
-project's broad technology discretion; no separate explicit approval by Calvin
-or the lecturer is claimed. The repository does not yet contain a completed
-campus field-test record, application-wide live-provider E2E evidence for a
-named release, final Mapbox licensing/token/privacy/usage evidence, or final
-operator evidence for database backup/recovery and production observability.
-Those remain evidence needs, not implicit passes.
+Buildings come from the basemap; a project-owned campus dataset is not currently
+configured. See [location privacy](trust-boundaries.md#location-and-privacy) for
+device readings and retention.
 
-## Related documentation
+### Mapbox configuration
 
-- [System context](./diagrams/system-context.md)
-- [Trust boundaries](./trust-boundaries.md)
-- [Auth0 ADR](./decisions/ADR-005-auth0-authentication.md)
-- [Mapbox integration boundary](./mapbox-standard-migration.md)
-- [Mapbox operations](../deployment/mapbox-operations.md)
-- [Neon/PostGIS setup](../database/neon-postgis-setup.md)
-- [Deployed authentication, CORS, and privacy review](../testing/deployed-auth-cors-privacy-review.md)
+The Web build reads `VITE_MAPBOX_ACCESS_TOKEN`. Use a dedicated public `pk.`
+token with `styles:read` and `fonts:read`, restricted to the intended Web
+origins. Use separate development and production tokens; a default public
+token cannot have URL restrictions. Never embed a secret token in the browser.
+See [Mapbox token guidance](https://docs.mapbox.com/accounts/guides/tokens/)
+for scopes, restrictions, and rotation.
 
-## AI declaration
+Check the deployed browser's Content Security Policy against the selected
+style, tile and font requests, and GL JS worker requirements. Confirm that maps
+load from each intended origin and that the event list remains usable when
+rendering fails. Token changes require a new Web build.
 
-This integration overview was generated, edited, and reviewed with the
-assistance of Codex[GPT-5] and ChatGPT-Web[GPT-5.6 Sol]. It distinguishes repository-controlled evidence
-from provider, operator, and stakeholder evidence that has not been recorded.
+The adapter updates event overlays without recreating the map. Monitor
+map-load usage in the provider account and review current service
+terms before changing usage or enabling additional Mapbox APIs.
 
-Page title clarified with assistance from Codex-CLI[GPT-6].
+## Neon
+
+Neon hosts the deployed PostgreSQL database. The API sends parameterised SQL
+and receives query results over a TLS connection. Stored data includes player
+accounts, card ownership, challenge attempts, battle results, and authored
+content. Browser requests reach this data through the API, which checks
+permissions and game rules.
+
+`DATABASE_URL` is server-only configuration and can use a pooled Neon endpoint
+for ordinary queries. PostgreSQL notification listeners use
+`LISTENER_DATABASE_URL`, a direct, non-pooled connection to the same database.
+Both connections retain `sslmode=require`; database credentials stay out of
+browser builds.
+
+Development and test environments use separate databases or Neon branches.
+[Neon and PostGIS setup](../database/neon-postgis-setup.md) covers connection
+configuration and initialisation; the
+[database release procedure](../database/database-release-procedure.md) covers
+production migrations.
+
+## Upstash Redis
+
+The API connects to Upstash Redis over HTTPS using the server-only
+`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. API instances sharing
+the service can enforce a common request quota and observe gameplay activity
+across processes.
+
+Rate-limit records contain policy keys, counters, and server-resolved player or
+developer-key identifiers. Raw access tokens, developer API keys, and IP
+addresses are not used as Redis keys. Gameplay coordination uses a separate
+keyspace for activity snapshots and persistent records that announce work
+before a database write. PostgreSQL remains the authoritative game-state store.
+
+The gameplay scheduler defaults to polling PostgreSQL. Its optional Upstash
+mode uses shared activity records to wake workers and reduce database probes
+while idle. [Rate limits](rate-limiting.md) defines quotas and availability
+policies; [Gameplay workers](../deployment/ranked-operations.md) covers
+scheduler configuration and recovery.
+
+## Hosting and delivery
+
+Gitea Actions sends Web and API build artifacts to Azure and static
+documentation to Cloudflare Pages. Browser artifacts contain public
+configuration; game secrets are supplied through server configuration.
+The [deployment diagram](diagrams/deployment.md) and
+[CI guide](../testing/continuous-integration.md) describe these transfers.
+
+Documentation search does not send queries to an external search service.
+
+## External applications using Wits World
+
+Server-side clients can use the [Developer API](developer-api.md) with a
+revocable API key. Its published-event, card-catalogue, and progression
+leaderboard responses are deliberately public projections.
+
+These clients cannot use that key to access private player state or perform
+gameplay mutations. Reusable developer credentials belong in the integrating
+application's server configuration.
+
+**AI declaration:** Prepared and updated with assistance from Codex[GPT-5],
+ChatGPT-Web[GPT-5.6 Sol], Codex-CLI[GPT-5], Codex-CLI[GPT-6], and Codex[GPT-6].

@@ -93,7 +93,8 @@ publish only sanitised findings.
 3. Ask the participant to work naturally and optionally think aloud. The
    facilitator observes without leading, then records any assistance given.
 4. Run applicable core tasks in a consistent order, allowing safety or
-   environment constraints to omit a task honestly.
+   environment constraints to omit a task honestly. Ask neutral prompts such
+   as “What do you expect to happen?” and record any coaching after a block.
 5. Ask the short feedback questions after the journey.
 6. Review notes immediately, remove sensitive data, separate observation from
    interpretation, and create candidate findings.
@@ -104,7 +105,7 @@ publish only sanitised findings.
 
 Use outcome-focused prompts rather than naming the exact control to press:
 
-1. Sign in and identify where to begin playing.
+1. Register or create a safe test account, sign in, and identify where to begin playing.
 2. Explain what the Explore experience appears to offer.
 3. Find and inspect an event using the available map and text information.
 4. Use the reported-location/eligibility interaction where practical and
@@ -115,10 +116,10 @@ Use outcome-focused prompts rather than naming the exact control to press:
 7. Create or update a valid deck and select it for play.
 8. Start and complete a CPU battle, then find the stored result or history.
 9. Use player profile/account, password-reset, and account-deletion entry points
-   once those capabilities are actually available and safe to test.
+   where safe and within the agreed session scope; include logout.
 
-Do not treat unavailable account/profile work as a failed participant task. It
-must remain explicitly not run until the capability exists.
+Record unavailable or unsafe tasks as not run with a reason. A facilitator
++completing a blocked task is not independent participant completion.
 
 ## Observations to record
 
@@ -212,9 +213,75 @@ severity, team evaluation, and decision.
 - Follow-up testing records whether the same task improved, remained, or
   regressed. It does not overwrite the original observation.
 
+Use dispositions `Accepted`, `Postponed`, `Rejected with reason`, or
+`Unresolved`; accepted means scheduled for action, not fixed. Preserve original
+severity and observations. Retest the smallest reliable automated regression
+and the relevant original participant/device/field task against a named fix
+release. Record `Resolved`, `Improved but open`, `Not resolved`, `Regressed`, or
+`Not run`, with evidence and limitations. Accepted Critical/High findings need
+a real fix and retest before a release-blocking conclusion can be cleared.
+Reference UT-S2-01–UT-S2-05 when following up the existing questionnaire rather
+than counting the same observation again.
+
 Publish a sanitised results summary only after sessions occur. Separate what
 participants did, what they said, the team's interpretation, the decision, and
 the resulting change.
+
+## Safe failure-state probes
+
+Where feasible, observe denied permission, inaccurate/stale/timed-out location,
+unavailable map, upcoming/expired/completed event, challenge/API failure, poor
+connectivity, invalid deck/action, and sign-in/session recovery. Record the
+expected recovery and actual observation. Do not alter production services,
+weaken security, expose account data, or direct participants into unsafe areas.
+An infeasible probe is not run, with its reason recorded.
+
+## Accessibility and device review
+
+Check the core journey on mobile, tablet, and desktop with the relevant touch,
+keyboard, and named screen-reader combinations. Cover navigation, labels and
+landmarks, visible/logical focus, Escape and focus restoration in overlays,
+status announcements, non-colour meaning, measured contrast, reduced motion,
+200% zoom/enlarged text, touch targets, mobile keyboard/scrolling, and usable
+map-independent completion. For each completed check, record release, date,
+route/state, device/browser/input/assistive technology, expected and observed
+behaviour, result (`Pass`, `Fail`, `Limited`, `Not run`), and finding/evidence.
+
+Automated semantic/component and browser assertions are supporting evidence.
+They do not replace full manual review. The existing named automated outcomes
+are in [Sprint 2 results](sprint-2-validation-status.md#accessibility-checks--24-september).
+
+## Stakeholder release review
+
+Prepare the review from earlier [stakeholder records](../planning/stakeholder-interactions/index.md)
+and accepted user findings. Record the target release, review date, represented
+roles, facilitator, environment, and limitations. Demonstrate account/recovery,
+Explore and eligibility, challenge formats and feedback, reward/collection,
+legal decks, CPU battle/history, failure recovery, accessibility, and the
+deployed Web/API/database/documentation boundary. Address known field,
+operational, content, and gameplay gaps explicitly. Poor-GPS alternative proof
+remains unimplemented; this review does not approve QR proof by implication.
+
+Record `Confirmed`, `Change requested`, or `Unresolved` only after an explicit
+stakeholder response. Separate feedback, decision, requested change, open
+question, owner/follow-up, and real finding/issue references. State acceptance
+scope and conditions, severe findings requiring fix/retest, and whether the
+notes were reviewed by the stakeholder. Silence and a prepared agenda are not
+approval. Keep attendance/consent details private where needed.
+
+## Publishing session evidence
+
+Publish one sanitised record per genuinely completed session with an anonymous
+ID, date/time zone, release, broad environment/device/browser/input context,
+task outcomes, assistance, limitations, finding IDs, and safe evidence links.
+Keep consent and raw notes outside the repository. A useful summary counts
+independent completion, difficulty, failure, and tasks not attempted with
+reasons; it does not infer successful sessions from aggregate survey answers.
+
+Screenshots must show the relevant task/state without faces, credentials,
+tokens, private account data, or unnecessary precise coordinates. Temporary
+captures remain in ignored `.pr-screenshots/`; publish only reviewed evidence.
+Blank session, finding, accessibility, and review forms remain repository tools.
 
 ## AI declaration
 
@@ -223,3 +290,5 @@ with the assistance of Codex[GPT-5]. It contains no fabricated participants,
 sessions, observations, quotations, or results.
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Unique session, stakeholder-review, accessibility, and retest procedures consolidated with assistance from Codex[GPT-6]. Original forms were generated with Codex[GPT-5] and cross-referenced with Codex-CLI[GPT-6]; no sessions or results were created by this edit.

@@ -52,8 +52,8 @@ allowed team-selected integration within the project's broad implementation
 discretion. No separate explicit client/lecturer approval of Mapbox by name is
 required or claimed. Production token/CSP/privacy review, licensing/terms,
 usage and cost ownership, and confirmation of any licensed Wits campus dataset
-remain operational or data-evidence requirements. See the [Mapbox Standard
-migration boundary](../mapbox-standard-migration.md).
+remain operational or data-evidence requirements. See the
+[Mapbox integration](../external-integrations.md#mapbox).
 
 The current provider comparison and Wits-campus trial requirements are recorded
 in the [map-provider evaluation](../map-provider-evaluation.md). That evaluation

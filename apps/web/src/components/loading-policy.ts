@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-// Visibility gates, never minimum operation durations. See docs/loading-policy.md.
+// Visibility gates, never minimum operation durations. See docs/design/state-review.md#loading.
 export const LOADING_DELAY_MS = 150;
 export const LONG_WAIT_MS = 8_000;
 export const READ_TIMEOUT_MS = 20_000;

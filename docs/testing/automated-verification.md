@@ -1,161 +1,223 @@
 ---
-title: 'Database and end-to-end test gates'
+title: 'Test suites'
+description: Workspace, database, browser, offline, visual, and authenticated test suites and how to select them.
 ---
 
-# Database and end-to-end test gates
+# Test suites
 
-## Rate-limit test isolation
+Wits World has workspace tests, database integration tests, integrated browser
+journeys, and focused browser suites. The catalogue below describes what is
+available. [CI workflows](continuous-integration.md) identifies the subset run
+automatically; a suite's presence does not mean it ran for a particular revision.
 
-The API rate-limit unit and Fastify integration tests inject a deterministic
-fake limiter. They cover named policy selection, authenticated player and
-developer-key isolation, a shared counter across two app instances, quota
-responses, timeout/error policy behavior, and `/health` exclusion without
-contacting Upstash. The production server constructs the Upstash client only
-when it starts with server-only credentials; explicit non-production `local`
-mode uses a separate process-local backend without network access. Real Upstash latency, outages,
-multi-instance behavior, and stress performance require controlled deployment
-verification; the local fake does not establish those outcomes.
+## Workspace suites
 
-Issue `#166` adds pull-request verification for the shared packages,
-PostgreSQL/PostGIS migrations and integration suites, and the deterministic
-Basic Playwright journey. The jobs use isolated PostGIS services and do not
-receive the repository database secret or permit a production fallback.
+The repository-root `npm test` prepares shared API dependencies, runs the
+deployment-guard tests, and then runs workspace tests:
 
-## Verification matrix
+| Suite             | Coverage                                                                                                                                 |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Account policy    | Player Name normalisation, validation, and provider naming rules                                                                         |
+| Game rules        | Battle actions, effects, type matchups, costs, and turn resolution                                                                       |
+| Web               | API clients, pages, forms, map behaviour, offline storage and synchronisation, accessibility preferences, focus, loading, and recovery   |
+| API               | Routes, authentication, permissions, game services, Author workflows, schedulers, cleanup, analytics, configuration, and error contracts |
+| Documentation     | Sidebar coverage, site configuration, and homepage behaviour                                                                             |
+| Web static server | Asset compression, caching, navigation fallback, and missing-file handling                                                               |
+| Deployment guard  | Current-main validation and handling of superseded deployment revisions                                                                  |
 
-| Behaviour                                                  | Pull-request gate                                  |
-| ---------------------------------------------------------- | -------------------------------------------------- |
-| Trigger                                                    | Every pull request targeting `main`                |
-| Formatting, lint, types, application/docs coverage, builds | Required in `pr-validation.yml`                    |
-| `account-policy` package coverage gate                     | Explicitly required                                |
-| `game-rules` package coverage gate                         | Explicitly required                                |
-| PostgreSQL/PostGIS target                                  | Per-job ephemeral `postgis/postgis:17-3.5` service |
-| Database readiness, migrations, and integration suite      | Required with four workers                         |
-| Deterministic Basic Playwright E2E                         | Required in its own isolated PostGIS job           |
-| Candidate identity guard                                   | Pull-request checkout                              |
-| Sanitized verification summary artifact                    | Always for the Basic E2E job, including failure    |
+Vitest runs application and shared-package tests. Node's test runner handles the
+Web static server and deployment guard. Some API tests use Fastify injection with
+controlled services; an `integration.test` filename does not by itself mean the
+test connects to PostgreSQL.
 
-Pushes to `main` continue to run the normal validation, artifact, deployment,
-and health-check pipeline. Its application-test job now executes both shared
-package suites explicitly. The shared mutable test database and Basic E2E are
-not added to that deployment path. Pull requests use their own ephemeral
-PostGIS services, so validation does not queue on or mutate a shared remote
-test database.
+The ordinary workspace command does not enable opt-in database tests or launch
+browser suites. Use the relevant commands below for those layers.
 
-## Pull-request database isolation
+## Database integration
 
-Each `database-validation` PR job starts `postgis/postgis:17-3.5` inside that
-job's isolated service network. It uses fixed, non-production container
-credentials, an unreachable `DATABASE_URL` guard, and
-`DATABASE_TEST_WORKERS=4`. The job prepares the shared API dependencies, checks
-the ephemeral PostGIS target, and runs the complete database integration and
-migration-test runner. It does not receive the remote database secret, target fingerprint, or remote
-advisory lock.
+The database runner applies migrations and checks persistence, constraints,
+transactions, concurrent actions, and spatial queries against PostgreSQL/PostGIS.
+Its selected suites cover events, challenges, cards, decks, battles, progression,
+Author content, trading, trust, analytics, territories, placement, and cleanup.
 
-Concurrent pull requests cannot race because every job gets a separate PostGIS
-container and network namespace. Parallel workers only share the disposable
-service within their own job, and the existing database runner provisions a
-different temporary child database for each suite.
+Set `TEST_DATABASE_URL` to a dedicated test instance. Its account needs permission
+to create temporary databases. Selected integration suites create and migrate
+child databases, then remove them after the run.
 
-## Pull-request Basic E2E
-
-A separate parallel `basic-e2e` job owns another ephemeral PostGIS service and
-runs `npm run verify:automated -- --profile pr-e2e`. The final PR validation gate
-requires this job as well as database validation. It installs Chromium and its
-system dependencies, prepares shared API dependencies, checks database readiness,
-and runs the existing Basic E2E runner, which migrates/seeds the database and
-starts the API and web harness. No remote database secret is supplied.
-
-Readiness builds the API once; the PR profile passes `--api-build-prepared` so
-migration and seeding reuse those compiled entrypoints. The seven Basic browser
-tests run with four workers in CI. Only the canonical journey writes to the
-database; the six shell/Explore tests intercept every API request within their
-own browser contexts. Its 21 dependent steps stay sequential. Action waits are
-capped at 15 seconds so a missing control does not consume an entire test budget.
-
-The profile validates the pinned isolated-service fingerprint and unreachable
-ordinary-database guard, but skips shared package tests and the full database
-integration suite because those run in separate PR jobs. It retains sanitized
-summaries and Playwright failure diagnostics. The job has a 20-minute timeout.
-
-There is no nightly or manually dispatched remote verification workflow.
-
-## Failure evidence and artifact privacy
-
-The uploaded `summary.json` contains a schema version, profile, commit SHA,
-overall status, fixed check names, fixed statuses, integer durations, and—only
-when Playwright diagnostics were written—the fixed relative filename
-`playwright-diagnostics.json`. Raw logs, environment dumps, connection strings,
-database rows, accepted answers, exact player locations, browser authentication
-state, screenshots, video, and traces are deliberately excluded. In Gitea, raw
-child-process output remains suppressed and is replaced with the fixed check
-name and status.
-
-For PR Basic E2E, the wrapper asks a repository-owned Playwright reporter to
-write a temporary machine-readable structural report. On failure
-the wrapper creates `playwright-diagnostics.json` from an explicit allowlist and
-deletes the temporary report before artifact upload. Each verification run also
-removes stale diagnostics before any checks begin, and the workflow uploads the
-sanitized file alongside `summary.json` only when it exists.
-
-The sanitized file contains failed test and `test.step` titles, a fixed failure
-category and reason, integer duration, project name, shortened test-declaration
-location, and safe attachment basenames/content types. Schema version 3 also
-records a structural failure phase, a fixed known hook/fixture title when one is
-available, a fixed exception category, and the error-source file basename with
-line and column. Failure phases distinguish `beforeAll`, `beforeEach`,
-fixture/setup, test body, `afterEach`, `afterAll`, runner/web-server setup, and an
-explicit unknown phase. Known exception categories distinguish missing browser
-executables, browser launch/closure, refused connections, network timeouts, and
-assertion errors without copying their messages. Unknown values collapse to
-fixed generic categories rather than being retained.
-
-The Playwright error message, stack, snippet, actual/expected values, DOM or
-accessibility snapshot, request/response content, stdout, stderr, attachment
-bodies, and absolute paths are never copied into the sanitized artifact. The
-transient reporter uses error text or stack only to derive a fixed exception
-category and source coordinates; neither input is written to its structural
-report. Retained structured labels and filenames are bounded and still pass
-through defensive credential, token and precise-location redaction. If the
-structural report is missing or malformed, the artifact records only the fixed
-collection-failure category and reason.
-
-Playwright remains configured with screenshots, video, and tracing off for this
-deterministic journey, so attachment metadata is normally empty. Operators can
-use the sanitized test, step, category and source fields to reproduce a failure
-locally without exposing the unrestricted child report.
-
-For a controlled local proof that failure is enforced, run:
+From the repository root:
 
 ```bash
-npm run verify:failure-probe
+npm run prepare:api
+npm run test:database --workspace @wits-world/api
 ```
 
-The probe writes a sanitized summary and exits non-zero before validating or
-connecting to a database. Its expected failure must never be described as a
-passing verification run.
+The standalone runner uses an explicit file list. Profile and developer-API
+persistence suites are selected by the full coverage profile used in PR and main
+CI, although they are not in this standalone runner's list. They can also be
+selected directly with the same test-database setup:
 
-## Runner duration and cost implications
+```bash
+RUN_DATABASE_INTEGRATION_TESTS=true npm test --workspace @wits-world/api -- tests/player-profile-database.integration.test.ts tests/developer-api-persistence.integration.test.ts
+```
 
-The normal PR/main C220 validation baseline was previously about 2 minutes 20
-seconds wall-clock. The PR database job adds one clean dependency install and
-the four-worker suite against a local ephemeral service, in parallel with the
-other PR jobs. This restores the pre-#166 architecture and should return PR
-database feedback to its earlier few-minute range; actual Gitea duration must
-be measured after this change rather than inferred from local timings.
+### Full API coverage
 
-The PR Basic E2E job adds a clean install, browser installation, readiness,
-migration/seed preparation, and the browser journey in parallel with the other
-PR jobs. A previous local Basic gate completed in about 4 minutes 42 seconds;
-this is not a CI duration estimate. Measure the first Gitea runs before tuning
-the 20-minute job timeout or runner capacity.
+The full profile runs API unit and opt-in PostgreSQL/PostGIS tests in one coverage
+report, including profile and developer-API persistence. PR and main coverage
+jobs provide their own isolated PostGIS services.
 
-## AI declaration
+For a local run, explicitly configure `TEST_DATABASE_URL` for disposable local
+PostgreSQL/PostGIS, with permission to create databases and install extensions:
 
-This issue implementation and operational guide were generated and reviewed
-with the assistance of Codex[GPT-5] and Codex-CLI[GPT-6]. The declaration is not verification
-evidence.
+```bash
+npm run validate:api:coverage:full
+```
 
-Page title clarified with assistance from Codex-CLI[GPT-6].
+This profile accepts local or isolated CI targets and rejects remote database
+hosts. It does not fall back to the normal application database. Redis coordination
+requires its separate service configuration and remains a separate CI check.
 
-Coverage-gate wording updated with assistance from Codex-CLI[GPT-5].
+### Gameplay coordination
+
+A separate integration suite exercises durable gameplay coordination using both
+PostgreSQL and Redis, including competing workers and recovery boundaries.
+Pull-request CI runs it with isolated services in the database job. It requires
+its own service configuration and is additional to the general database command.
+It does not establish hosted Redis availability or production performance.
+
+## Integrated browser journeys
+
+### Basic journey
+
+The Basic suite starts the Web application and an API test harness backed by
+PostgreSQL/PostGIS. Its main journey covers discovery, eligibility, challenges,
+rewards, starter cards, saved decks, CPU battles, history, and Author publication.
+Additional shell and Explore cases use mocked API responses.
+
+Configure `TEST_DATABASE_URL` for a dedicated disposable database, then run from
+the repository root:
+
+```bash
+npm run prepare:api
+npx playwright install chromium
+npm run test:e2e:basic
+```
+
+The runner builds the API, applies migrations, prepares test content, and starts
+its servers. It prepares the configured database directly rather than creating
+a child database for every suite. Use a test database without development or
+production data. Authentication is controlled by the harness, and external
+providers are excluded.
+
+The canonical scenario has 21 sequential `test.step` blocks, described in the
+[acceptance checklist](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/01a364f8af736f5de8f5ffb66b3d7b3bc7a5bfa6/docs/testing/basic-tier-release-validation.md#the-21-step-journey).
+It uses a fixed clock, controlled reward and CPU selection, and a unique
+player/Author identity. The real HTTP, authorization, service, and database
+boundaries remain exercised. The local token verifier and Mapbox module are
+substitutes; this does not verify production Auth0, Mapbox, DNS, or deployment.
+
+The seven tests comprise one database-backed scenario and six cases whose API
+requests are intercepted in separate browser contexts. They run with four
+workers in CI and two locally. Action and navigation limits are 15 and 30
+seconds; ordinary tests have two minutes and the canonical journey eight.
+
+Standalone preparation builds the API once, then uses compiled migration and
+seed entrypoints with `--test`. CI can pass `--api-build-prepared` after preparing
+the API; a missing prepared build fails before database preparation. Test source:
+`apps/web/playwright/basic.deterministic.spec.ts`; API harness:
+`apps/api/e2e/basic-server.ts`.
+
+### Sprint 1 journey
+
+`npm run test:e2e:sprint1` retains the earlier location/exploration slice.
+It prepares `TEST_DATABASE_URL` with migrations and the idempotent Basic fixture,
+then starts Fastify and Vite. It verifies published event discovery, reachable
+and unreachable PostGIS results, denied permission, and the usable text list.
+The configured test database is used directly and must be disposable and
+separate from development and production.
+
+Browser geolocation uses controlled coordinates, and the harness fixes the
+clock and acquisition time. Auth0 verification and Mapbox are controlled;
+unexpected provider requests fail the suite. The React application, HTTP/CORS,
+local identity resolution, event services, and PostGIS remain real. The current
+PR integration gate uses the broader Basic journey.
+
+The Sprint 1 harness starts on ports 3001 and 5174 without reusing servers.
+Failure screenshots/traces are in `apps/web/playwright/test-results/`, with
+reports in `apps/web/playwright-report/`. Missing Chromium, occupied ports, or
+an unreachable PostGIS target are setup failures, not a passing test. Historical
+executions remain in the [Sprint 1 evidence](../planning/scrum/sprint-1/evidence.md).
+
+## Focused browser suites
+
+These suites use controlled authentication and API responses to exercise browser
+behaviour without a live API database. Offline tests additionally build a preview
+and use a real service worker. The configuration paths below are relative to
+`apps/web`.
+
+| Suite                      | Main checks                                                                                                         | Configuration                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Explore                    | Discovery, map/list interaction, location feedback, trails, and territories                                         | `playwright/explore.config.ts`     |
+| Trails                     | Focused trail discovery and detail                                                                                  | `playwright/trails.config.ts`      |
+| Author                     | Editors, publication controls, retained drafts, review, and analytics                                               | `playwright/author.config.ts`      |
+| Account                    | Preferences, account controls, confirmation dialogs, and recovery                                                   | `playwright/account.config.ts`     |
+| Collection and evolution   | Gallery presentation, card inspection, and evolution flows                                                          | `playwright/collection.config.ts`  |
+| Starters and deck overview | Starter selection, affinity artwork, collection, and saved-deck overview                                            | `playwright.starter.config.ts`     |
+| Trading                    | Trade lists, card inspection, and offer interactions                                                                | `playwright/trades.config.ts`      |
+| Profile and progression    | Showcase editing, activity, achievements, and progression views                                                     | `playwright/progression.config.ts` |
+| Battles                    | CPU, asynchronous player, and live battle interaction                                                               | `playwright.battle.config.ts`      |
+| Offline and game artwork   | Offline shell and answers, sync recovery, responsive artwork, enlarged-text image quality, and achievement previews | `playwright/offline.config.ts`     |
+| Typography                 | Font loading, reading preferences, enlarged text, and dialog reflow                                                 | `playwright/typography.config.ts`  |
+| Card frames                | Rarity treatments across collection, inspection, decks, and battles                                                 | `playwright/card-frames.config.ts` |
+| Loading                    | Startup, slow reads, retained refreshes, failed modules, and recovery                                               | `playwright/loading.config.ts`     |
+| Feedback states            | Empty results, errors, permissions, retries, and confirmations                                                      | `playwright/states.config.ts`      |
+
+After preparing the workspace and installing Chromium, select a configuration.
+For example, from the repository root:
+
+```bash
+npm exec --workspace @wits-world/web -- playwright test --config playwright/loading.config.ts
+```
+
+Explore, Author, and Account also have a combined command used by pull-request CI:
+
+```bash
+npm run test:e2e:experience-regressions
+```
+
+A file labelled `visual` can include layout assertions and captured images.
+That label alone does not imply automated screenshot-baseline comparison or
+complete accessibility verification.
+
+## Authenticated smoke checks
+
+The default Playwright configuration supports real Auth0 sign-in against the
+local Web and API services. It includes authenticated application smoke checks,
+session restoration, Author access, and deck-management scenarios. Some of those
+scenarios mock selected API responses after sign-in.
+
+It requires the normal local services and ignored E2E account configuration.
+Select a named test using the default configuration, for example:
+
+```bash
+npm exec --workspace @wits-world/web -- playwright test authenticated.smoke.spec.ts
+```
+
+The authentication setup supplies saved browser state, and session-restoration
+checks run afterward. Saved authentication state and account credentials remain
+local. These checks are separate from the deterministic PR browser gate.
+
+## Results and privacy
+
+Pull-request CI uploads a sanitised Basic verification summary and structural
+failure diagnostics when available. The Basic journey disables screenshots,
+video, and traces; focused suites can produce local images or traces, which are
+not included in that summary upload.
+
+Record the selected suite, revision, and environment with any result. See
+[Testing strategy](testing-strategy.md) for evidence limits and manual validation,
+and [CI workflows](continuous-integration.md) for automatic coverage.
+
+AI declaration: Rewritten and expanded with assistance from Codex[GPT-6].
+
+Integrated journey scope and setup consolidated with assistance from Codex[GPT-6], preserving the original Codex[GPT-5] and ChatGPT-Web[GPT-5.6 Sol] test-documentation attribution.
