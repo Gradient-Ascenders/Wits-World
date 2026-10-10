@@ -49,11 +49,12 @@ permissions, versioning, and retry behaviour:
 
 | Area                  | Contract                                                                                                                                                                                                  |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Players and cards     | [Profiles](architecture/player-profile-api-contract.md), [trading](architecture/card-trading-api-contract.md)                                                                                             |
+| Players and cards     | [Profiles](architecture/player-profile-api-contract.md), [cards and decks](architecture/cards-decks-api-contract.md), [trading](architecture/card-trading-api-contract.md)                                |
 | Challenges            | [Attempts and answers](architecture/challenge-attempt-api-contract.md), [offline play](architecture/offline-challenge-play.md)                                                                            |
-| Player battles        | [Asynchronous PvP](architecture/asynchronous-pvp-api-contract.md), [live PvP](architecture/live-pvp-api-contract.md)                                                                                      |
+| Player battles        | [CPU battles](architecture/cpu-match-api-contract.md), [asynchronous PvP](architecture/asynchronous-pvp-api-contract.md), [live PvP](architecture/live-pvp-api-contract.md)                               |
 | Competition           | [Ranked matchmaking](architecture/ranked-matchmaking-api-contract.md), [territories](architecture/contested-campus-territory-api-contract.md)                                                             |
 | Author content        | [Events and questions](architecture/author-curation-api-contract.md), [campaigns](architecture/campaign-scheduling-api-contract.md), [event placement](architecture/automatic-event-placement-service.md) |
+| Author moderation     | [Trust review](architecture/trust-review-api-contract.md)                                                                                                                                                 |
 | Author reporting      | [Analytics API](architecture/advanced-analytics-api-contract.md)                                                                                                                                          |
 | External applications | [Developer API](architecture/developer-api.md)                                                                                                                                                            |
 

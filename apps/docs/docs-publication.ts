@@ -31,7 +31,6 @@ export const repositoryOnlyDocs = [
   'database/architecture-review-2026-09.md',
   'database/basic-demo-seed.md',
   'database/data-quality-and-structure.md',
-  'development/documentation-site.md',
   'planning/delivery-roadmap-baseline.md',
   'planning/risk-register-baseline.md',
   'planning/scrum/sprint-1/backlog-refinement.md',

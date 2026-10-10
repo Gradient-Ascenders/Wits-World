@@ -143,12 +143,14 @@ const sidebars: SidebarsConfig = {
         category('Setup', [
           doc('development/getting-started', 'Getting started'),
           doc('database/neon-postgis-setup', 'Neon and PostGIS'),
+          doc('development/documentation-site', 'Documentation site'),
         ]),
         category(
           'Architecture',
           [
             doc('architecture/technology-stack', 'Stack'),
             doc('architecture/data-flow', 'Data flow'),
+            doc('architecture/key-decisions', 'Decisions'),
             doc('architecture/trust-boundaries', 'Security'),
             doc('architecture/external-integrations', 'Integrations'),
             category('Diagrams', [
@@ -251,11 +253,10 @@ const sidebars: SidebarsConfig = {
       },
       items: [
         doc('architecture/rate-limiting', 'Rate limits'),
-        category('Players and cards', [
+        category('Players', [
           doc('architecture/player-profile-api-contract', 'Profiles'),
+          doc('architecture/cards-decks-api-contract', 'Cards and decks'),
           doc('architecture/card-trading-api-contract', 'Trading'),
-        ]),
-        category('Challenges', [
           doc(
             'architecture/challenge-attempt-api-contract',
             'Challenges and answers',
@@ -263,6 +264,7 @@ const sidebars: SidebarsConfig = {
           doc('architecture/offline-challenge-play', 'Offline play'),
         ]),
         category('Battles and competition', [
+          doc('architecture/cpu-match-api-contract', 'CPU battles'),
           doc('architecture/asynchronous-pvp-api-contract', 'Player battles'),
           doc('architecture/live-pvp-api-contract', 'Live PvP'),
           doc(
@@ -274,7 +276,10 @@ const sidebars: SidebarsConfig = {
             'Territories',
           ),
         ]),
-        doc('architecture/advanced-analytics-api-contract', 'Author analytics'),
+        category('Authors', [
+          doc('architecture/trust-review-api-contract', 'Moderation'),
+          doc('architecture/advanced-analytics-api-contract', 'Analytics'),
+        ]),
         doc('architecture/developer-api', 'External developer API'),
       ],
     },

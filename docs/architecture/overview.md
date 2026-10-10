@@ -59,6 +59,7 @@ Configuration and operating procedures belong in
 
 - [Stack](technology-stack.md): technologies, shared packages, and selection rationale.
 - [Data flow](data-flow.md): how requests become saved results.
+- [Decisions](key-decisions.md): accepted boundaries and unresolved proposals.
 - [Security](trust-boundaries.md): identity, permissions, and protected data.
 
 **AI declaration:** Prepared and updated with assistance from
