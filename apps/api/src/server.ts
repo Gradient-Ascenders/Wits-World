@@ -486,26 +486,32 @@ async function startServer(): Promise<void> {
   );
 
   app.addHook('onClose', async () => {
-    await postgresCoordination?.stop();
-    await gameplayCoordination?.stop();
-    await placementScheduler.stop();
-    await livePvpRuntimeScheduler.stop();
-    await rankedScheduler.stop();
-    try {
-      await livePvpNotificationListener.stop();
-    } finally {
+    const cleanupSteps = [
+      () => postgresCoordination?.stop(),
+      () => gameplayCoordination?.stop(),
+      () => placementScheduler.stop(),
+      () => livePvpRuntimeScheduler.stop(),
+      () => rankedScheduler.stop(),
+      () => livePvpNotificationListener.stop(),
+      () => listenerDatabase.end(),
+      () => livePvpGateway.closeAll(),
+      () => accountDeletionRetryScheduler.stop(),
+      () => movementEvidenceCleanupScheduler.stop(),
+      () => trustEvaluationScheduler.stop(),
+      () => asyncPvpDeadlineScheduler.stop(),
+      () => cardTradeMaintenanceScheduler.stop(),
+      () => database.end(),
+    ];
+    const errors: unknown[] = [];
+    for (const cleanup of cleanupSteps) {
       try {
-        await listenerDatabase.end();
-      } finally {
-        await livePvpGateway.closeAll();
-        await accountDeletionRetryScheduler.stop();
-        await movementEvidenceCleanupScheduler.stop();
-        await trustEvaluationScheduler.stop();
-        await asyncPvpDeadlineScheduler.stop();
-        await cardTradeMaintenanceScheduler.stop();
-        await database.end();
+        await cleanup();
+      } catch (error) {
+        errors.push(error);
       }
     }
+    // Finish every cleanup step before propagating the original shutdown error.
+    if (errors.length > 0) throw errors[0];
   });
 
   try {

@@ -382,6 +382,43 @@ describe('API server bootstrap', () => {
     expect(mocks.database.end).toHaveBeenCalledOnce();
   });
 
+  it.each(['none', 'listener', 'listener pool'])(
+    'finishes shutdown after PostgreSQL coordination fails, with %s additional failure',
+    async (additionalFailure) => {
+      mocks.config.postgresGameplayCoordinationEnabled = true;
+      await importServer();
+      const postgres = mocks.createPostgresCoordination.mock.results[0]!.value;
+      const shutdownError = new Error('coordination cleanup failed');
+      postgres.stop.mockRejectedValueOnce(shutdownError);
+      const laterError = new Error('later cleanup failed');
+      if (additionalFailure === 'listener') {
+        mocks.listener.stop.mockRejectedValueOnce(laterError);
+      } else if (additionalFailure === 'listener pool') {
+        mocks.listenerDatabase.end.mockRejectedValueOnce(laterError);
+      }
+      const app = await mocks.createApp.mock.results[0]!.value;
+
+      await expect(app.close()).rejects.toBe(shutdownError);
+
+      expect(postgres.stop).toHaveBeenCalledOnce();
+      for (const scheduler of Object.values(mocks.schedulers)) {
+        expect(scheduler.stop).toHaveBeenCalledOnce();
+      }
+      expect(mocks.listener.stop).toHaveBeenCalledOnce();
+      expect(mocks.listenerDatabase.end).toHaveBeenCalledOnce();
+      expect(mocks.gateway.closeAll).toHaveBeenCalledOnce();
+      expect(mocks.database.end).toHaveBeenCalledOnce();
+      expect(postgres.stop.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.schedulers.livePvpRuntime.stop.mock.invocationCallOrder[0]!,
+      );
+      expect(
+        mocks.schedulers.ranked.stop.mock.invocationCallOrder[0],
+      ).toBeLessThan(mocks.listenerDatabase.end.mock.invocationCallOrder[0]!);
+      expect(mocks.gateway.closeAll.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.database.end.mock.invocationCallOrder[0]!,
+      );
+    },
+  );
   it('wires gameplay wakes, notification connection preparation, and dependent-gameplay deletion finalization', async () => {
     await importServer();
 
