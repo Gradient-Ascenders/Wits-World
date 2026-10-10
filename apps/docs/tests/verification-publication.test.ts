@@ -35,6 +35,9 @@ const readRedirects = () =>
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => line.split(/\s+/));
 
+const retiredDocRoute = (path: string) =>
+  `/docs/${path.replace(/\/README\.md$/, '').replace(/\.md$/, '')}`;
+
 const headingAnchors = (markdown: string) =>
   [...markdown.matchAll(/^#{1,6}\s+(.+)$/gm)].map(([, heading]) => {
     const explicit = heading.match(/\{\/\*\s*#([^\s]+)\s*\*\/\}$/)?.[1];
@@ -82,7 +85,7 @@ describe('verification evidence publication', () => {
     };
 
     for (const path of repositoryOnlyDocs) {
-      expectRedirectPair(`/docs/${path.replace(/\.md$/, '')}`);
+      expectRedirectPair(retiredDocRoute(path));
     }
     for (const [route, destination] of retiredGeneratedIndexes) {
       expectRedirectPair(route, destination);

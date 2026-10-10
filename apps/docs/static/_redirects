@@ -69,8 +69,8 @@
 /docs/architecture/decisions/ADR-005-auth0-authentication/ /docs/architecture/key-decisions#auth0-authentication 301
 /docs/architecture/decisions/ADR-006-poor-gps-presence-fallback /docs/architecture/key-decisions#poor-gps-fallback-remains-proposed 301
 /docs/architecture/decisions/ADR-006-poor-gps-presence-fallback/ /docs/architecture/key-decisions#poor-gps-fallback-remains-proposed 301
-/docs/architecture/decisions/README /docs/architecture/key-decisions 301
-/docs/architecture/decisions/README/ /docs/architecture/key-decisions 301
+/docs/architecture/decisions /docs/architecture/key-decisions 301
+/docs/architecture/decisions/ /docs/architecture/key-decisions 301
 /docs/architecture/map-provider-evaluation /docs/architecture/key-decisions#map-presentation-boundary 301
 /docs/architecture/map-provider-evaluation/ /docs/architecture/key-decisions#map-presentation-boundary 301
 /docs/database/architecture-review-2026-09 /docs/database/overview#known-evidence-gaps 301
