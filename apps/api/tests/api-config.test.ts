@@ -101,6 +101,7 @@ describe('API configuration', () => {
         DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       rankedSweepIntervalMs: 1000,
       gameplaySchedulerBackend: 'polling',
+      postgresGameplayCoordinationEnabled: false,
       gameplaySchedulerNamespace: undefined,
       movementEvidenceCleanupIntervalMs:
         DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
@@ -175,6 +176,39 @@ describe('API configuration', () => {
     });
     expect(config.gameplaySchedulerBackend).toBe('upstash');
     expect(config.gameplaySchedulerNamespace).toBe('shared-test-db');
+  });
+
+  it('keeps PostgreSQL cutover off by default and retains Redis producer prerequisites', () => {
+    expect(
+      buildApiConfig({ env: validEnvironment })
+        .postgresGameplayCoordinationEnabled,
+    ).toBe(false);
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          GAMEPLAY_COORDINATION_POSTGRES_ENABLED: 'yes',
+        },
+      }),
+    ).toThrow(/GAMEPLAY_COORDINATION_POSTGRES_ENABLED/u);
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          GAMEPLAY_COORDINATION_POSTGRES_ENABLED: 'true',
+        },
+      }),
+    ).toThrow(/UPSTASH_REDIS_REST_URL/u);
+    expect(
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          GAMEPLAY_COORDINATION_POSTGRES_ENABLED: 'true',
+          UPSTASH_REDIS_REST_URL: 'https://redis.example.test',
+          UPSTASH_REDIS_REST_TOKEN: 'test-only',
+        },
+      }).postgresGameplayCoordinationEnabled,
+    ).toBe(true);
   });
 
   it.each([

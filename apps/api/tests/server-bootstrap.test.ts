@@ -87,6 +87,14 @@ const mocks = vi.hoisted(() => {
         return gateway;
       },
     ),
+    createPostgresCoordination: vi.fn(() => ({
+      start: vi.fn(async () => undefined),
+      stop: vi.fn(async () => undefined),
+      observeActive: vi.fn(),
+      wake: vi.fn(),
+      ready: vi.fn(),
+      unavailable: vi.fn(),
+    })),
     createListener: vi.fn(() => listener),
     createLifecycle: vi.fn(
       (_database: unknown, options: AccountDeletionLifecycleOptions) => {
@@ -101,6 +109,7 @@ const mocks = vi.hoisted(() => {
       port: 4321,
       rateLimitBackend: 'local' as 'local' | 'upstash',
       gameplaySchedulerBackend: 'polling' as 'polling' | 'upstash',
+      postgresGameplayCoordinationEnabled: false,
       rateLimitPolicies: {},
       rateLimitTimeoutMs: 25,
       upstashRedisRestUrl: 'https://redis.example.test',
@@ -180,6 +189,9 @@ vi.mock('../src/matches/gameplay-coordination.js', () => ({
   createGameplayMutationGuard: () => vi.fn(),
   gameplayCoordinationNamespace: () => 'derived-namespace',
 }));
+vi.mock('../src/matches/postgres-gameplay-coordination.js', () => ({
+  createPostgresGameplayCoordination: mocks.createPostgresCoordination,
+}));
 vi.mock('../src/matches/live-pvp-gateway.js', () => ({
   createLivePvpGateway: mocks.createGateway,
 }));
@@ -252,6 +264,7 @@ describe('API server bootstrap', () => {
     mocks.gateway.connectionCount.mockReturnValue(0);
     mocks.config.rateLimitBackend = 'local';
     mocks.config.gameplaySchedulerBackend = 'polling';
+    mocks.config.postgresGameplayCoordinationEnabled = false;
     process.exitCode = originalExitCode;
     vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
     vi.stubEnv('OFFLINE_PACK_SIGNING_KEY', '');
@@ -322,6 +335,30 @@ describe('API server bootstrap', () => {
     expect(mocks.createCoordination).toHaveBeenCalledOnce();
     expect(mocks.schedulers.livePvpRuntime.start).toHaveBeenCalledOnce();
     expect(mocks.schedulers.ranked.start).toHaveBeenCalledOnce();
+  });
+
+  it('enables only the reviewed PostgreSQL consumer and preserves Redis producers and active cadence', async () => {
+    mocks.config.rateLimitBackend = 'upstash';
+    mocks.config.gameplaySchedulerBackend = 'upstash';
+    mocks.config.postgresGameplayCoordinationEnabled = true;
+    await importServer();
+    expect(mocks.upstashActivityStore).toHaveBeenCalledOnce();
+    expect(mocks.createCoordination).not.toHaveBeenCalled();
+    expect(mocks.createPostgresCoordination).toHaveBeenCalledOnce();
+    const postgres = mocks.createPostgresCoordination.mock.results[0]!.value;
+    expect(postgres.start).toHaveBeenCalledOnce();
+    expect(mocks.state.liveSchedulerOptions?.coordinatedIdle).toBe(true);
+    expect(mocks.state.liveSchedulerOptions?.deadlineSweepIntervalMs).toBe(
+      1000,
+    );
+    expect(mocks.state.rankedSchedulerOptions?.coordinatedIdle).toBe(true);
+    mocks.database.query.mockResolvedValue({ rows: [{ pending: false }] });
+    await mocks.state.liveSchedulerOptions!.hasActiveWork!();
+    expect(postgres.observeActive).toHaveBeenCalledWith('live', false);
+    const app = await mocks.createApp.mock.results[0]!.value;
+    await app.close();
+    expect(postgres.stop).toHaveBeenCalledOnce();
+    expect(mocks.listenerDatabase.end).toHaveBeenCalledOnce();
   });
 
   it('starts maintenance schedulers and closes coordinated workers, listener, gateway, and both pools', async () => {

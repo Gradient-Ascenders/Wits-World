@@ -34,6 +34,7 @@ export interface ApiConfig {
   rankedSweepIntervalMs: number;
   gameplaySchedulerBackend: 'polling' | 'upstash';
   gameplaySchedulerNamespace?: string;
+  postgresGameplayCoordinationEnabled: boolean;
   movementEvidenceCleanupIntervalMs: number;
   movementEvidenceRetentionMs: number;
   maxPlausibleJourneySpeedMetresPerSecond: number;
@@ -100,6 +101,13 @@ export function buildApiConfig({
   );
   const gameplaySchedulerBackend =
     env.GAMEPLAY_SCHEDULER_BACKEND?.trim() ?? 'polling';
+  const postgresFlag =
+    env.GAMEPLAY_COORDINATION_POSTGRES_ENABLED?.trim() ?? 'false';
+  if (!['true', 'false'].includes(postgresFlag))
+    throw new Error(
+      'GAMEPLAY_COORDINATION_POSTGRES_ENABLED must be true or false.',
+    );
+  const postgresGameplayCoordinationEnabled = postgresFlag === 'true';
   const gameplaySchedulerNamespace =
     env.GAMEPLAY_SCHEDULER_NAMESPACE?.trim() || undefined;
   if (!['polling', 'upstash'].includes(gameplaySchedulerBackend)) {
@@ -295,7 +303,8 @@ export function buildApiConfig({
   }
   if (
     rateLimitBackend === 'upstash' ||
-    gameplaySchedulerBackend === 'upstash'
+    gameplaySchedulerBackend === 'upstash' ||
+    postgresGameplayCoordinationEnabled
   ) {
     let parsed: URL;
     try {
@@ -369,6 +378,7 @@ export function buildApiConfig({
     rankedSweepIntervalMs,
     gameplaySchedulerBackend: gameplaySchedulerBackend as 'polling' | 'upstash',
     gameplaySchedulerNamespace,
+    postgresGameplayCoordinationEnabled,
     movementEvidenceCleanupIntervalMs,
     movementEvidenceRetentionMs,
     maxPlausibleJourneySpeedMetresPerSecond,
