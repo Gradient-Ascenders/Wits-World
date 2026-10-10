@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type BrowserContext } from '@playwright/test';
 
 const apiBaseUrl = 'http://localhost:3000/api/v1';
@@ -104,7 +105,7 @@ test('the author form remains keyboard-usable without map interaction at respons
     await expect(title).toBeVisible();
     await expect(page.getByLabel('Latitude')).toBeVisible();
     await expect(page.getByLabel('Longitude')).toBeVisible();
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`author-${viewport.width}.png`),
     });

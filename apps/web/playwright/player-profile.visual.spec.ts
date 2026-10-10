@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { buildCard } from '../tests/fixtures/cards';
@@ -242,7 +243,9 @@ test.describe('favourite card editing', () => {
           (element) => element.scrollWidth <= element.clientWidth,
         ),
       ).toBe(true);
-      await page.screenshot({ path: `/tmp/profile-favourites-${width}.png` });
+      await captureScreenshot(test.info(), page, {
+        path: `visual/profile-favourites-${width}.png`,
+      });
     }
     await dialog.getByRole('button', { name: 'Show more cards' }).click();
     await expect(dialog.locator('.profile-picker-card')).toHaveCount(20);
@@ -392,7 +395,9 @@ test.describe('profile picture crop', () => {
       await page.getByRole('button', { name: 'Reset crop' }).click();
       await expect(preview).toHaveAttribute('src', initial!);
       await stage.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: `/tmp/profile-crop-${width}.png` });
+      await captureScreenshot(test.info(), page, {
+        path: `visual/profile-crop-${width}.png`,
+      });
       const close = (await page
         .getByRole('button', { name: 'Close profile editor' })
         .boundingBox())!;
@@ -624,8 +629,8 @@ test('player showcase, editor and visitor view work across screen sizes', async 
     expect(cell.width).toBeGreaterThanOrEqual(width < 768 ? 12 : 18);
     if (width < 768) expect(cell.width).toBeLessThanOrEqual(14);
     expect(Math.abs(cell.width - cell.height)).toBeLessThan(1);
-    await page.locator('.showcase-activity').screenshot({
-      path: `/tmp/profile-activity-year-${width}.png`,
+    await captureScreenshot(test.info(), page.locator('.showcase-activity'), {
+      path: `visual/profile-activity-year-${width}.png`,
     });
     await lastDay.click();
     await expect(page.getByRole('tooltip')).toContainText('2 October 2026');
@@ -640,19 +645,21 @@ test('player showcase, editor and visitor view work across screen sizes', async 
       (await page.locator('.activity-days button').last().boundingBox())!.width,
     ).toBe(cell.width);
     await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
-      path: `/tmp/profile-showcase-${width}.png`,
+      path: `visual/profile-showcase-${width}.png`,
     });
     const activityDay = page.locator('.activity-day[data-day-index="90"]');
     await activityDay.scrollIntoViewIfNeeded();
     await activityDay.focus();
     await expect(page.getByRole('tooltip')).toContainText('completed');
-    await page.screenshot({
-      path: `/tmp/profile-activity-tooltip-${width}.png`,
+    await captureScreenshot(test.info(), page, {
+      path: `visual/profile-activity-tooltip-${width}.png`,
     });
     const calendar = page.locator('.showcase-activity');
-    await calendar.screenshot({ path: `/tmp/profile-activity-${width}.png` });
+    await captureScreenshot(test.info(), calendar, {
+      path: `visual/profile-activity-${width}.png`,
+    });
     await page.keyboard.press('Escape');
     await expect(page.getByRole('tooltip')).toHaveCount(0);
     const badge = page.getByRole('button', {
@@ -666,7 +673,9 @@ test('player showcase, editor and visitor view work across screen sizes', async 
     await expect(
       page.getByRole('button', { name: 'Close First Quiz details' }),
     ).toBeFocused();
-    await page.screenshot({ path: `/tmp/profile-achievement-${width}.png` });
+    await captureScreenshot(test.info(), page, {
+      path: `visual/profile-achievement-${width}.png`,
+    });
     await page.keyboard.press('Tab');
     await expect(
       page.getByRole('button', { name: 'Close First Quiz details' }),
@@ -688,8 +697,8 @@ test('player showcase, editor and visitor view work across screen sizes', async 
       }),
     ).toBeVisible();
     if (width === 390)
-      await page.screenshot({
-        path: '/tmp/profile-achievement-progress-mobile.png',
+      await captureScreenshot(test.info(), page, {
+        path: 'visual/profile-achievement-progress-mobile.png',
       });
     await page.keyboard.press('Escape');
     await page
@@ -700,7 +709,9 @@ test('player showcase, editor and visitor view work across screen sizes', async 
     ).toBeVisible();
     await expectNoOverflow(page);
     if (width === 390)
-      await page.screenshot({ path: '/tmp/profile-editor-mobile.png' });
+      await captureScreenshot(test.info(), page, {
+        path: 'visual/profile-editor-mobile.png',
+      });
     await page.keyboard.press('Escape');
     await expect(
       page.getByRole('button', { name: 'Edit profile', exact: true }),
@@ -747,7 +758,9 @@ test('player showcase, editor and visitor view work across screen sizes', async 
     ).toBeFocused();
     await page.keyboard.press('Shift+Tab');
     await expect(emojiFilter).toBeFocused();
-    await page.screenshot({ path: `/tmp/profile-emoji-picker-${width}.png` });
+    await captureScreenshot(test.info(), page, {
+      path: `visual/profile-emoji-picker-${width}.png`,
+    });
     await emojiFilter.fill('books');
     await page.keyboard.press('Enter');
     await expect(emojiTrigger).toBeFocused();
@@ -784,7 +797,9 @@ test('player showcase, editor and visitor view work across screen sizes', async 
       .evaluate((dialog) => {
         dialog.scrollTop = 0;
       });
-    await page.screenshot({ path: `/tmp/profile-editor-picture-${width}.png` });
+    await captureScreenshot(test.info(), page, {
+      path: `visual/profile-editor-picture-${width}.png`,
+    });
   }
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -818,7 +833,9 @@ test('player showcase, editor and visitor view work across screen sizes', async 
         dialog.getBoundingClientRect().top -
         16;
     });
-  await page.screenshot({ path: '/tmp/profile-card-picker-mobile.png' });
+  await captureScreenshot(test.info(), page, {
+    path: 'visual/profile-card-picker-mobile.png',
+  });
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(
@@ -864,16 +881,18 @@ test('player showcase, editor and visitor view work across screen sizes', async 
         );
       }),
     ).toBe(true);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
-      path: `/tmp/profile-status-empty-page-${width}.png`,
+      path: `visual/profile-status-empty-page-${width}.png`,
     });
-    await status.screenshot({ path: `/tmp/profile-status-empty-${width}.png` });
+    await captureScreenshot(test.info(), status, {
+      path: `visual/profile-status-empty-${width}.png`,
+    });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page
-    .locator('.showcase-identity')
-    .screenshot({ path: '/tmp/profile-header-empty.png' });
+  await captureScreenshot(test.info(), page.locator('.showcase-identity'), {
+    path: 'visual/profile-header-empty.png',
+  });
   profile.status = { emoji: '📚', text: '', expiresAt: null };
   await page.goto('/players/another-player');
   await expect(

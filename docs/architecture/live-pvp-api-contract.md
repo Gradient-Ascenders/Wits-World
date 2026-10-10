@@ -559,8 +559,15 @@ local wake; the Redis interval is for cross-instance observation and remains
 below the 30-second lease and 20-second proposal window. A continuously
 running API instance makes about 259,200 snapshot reads per 30-day month;
 multiply by replica count and budget for mutation/initialization Lua commands
-and rate-limit traffic on the same Redis. Initialization EVAL is only needed
-when the epoch is absent. Startup scans persisted work
+and rate-limit traffic on the same Redis. With SDK automatic deserialization
+disabled, the reader maps the five ordered `HMGET` values explicitly. An entirely
+missing state initializes through EVAL with both workers active; partial or
+malformed state fails safely and retains fast scans instead of declaring idle.
+Initialization EVAL is only needed when the state is missing. Coordination errors
+include fixed `activity_error_category` values (`transport`, `timeout`,
+`invalid_response`, or `unknown`) and a `coordination_stage`; idle errors also
+identify the fixed worker category. Raw provider errors, state values, keys,
+credentials and URLs are not logged. Startup scans persisted work
 immediately and marks discovered work active. PostgreSQL listeners remain disconnected while there is no persisted
 active match and no local gateway socket. `LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS`
 schedules the idempotent 24-hour transient-data purge without changing the
@@ -759,3 +766,5 @@ and Codex-CLI[gpt-6-luna], based on source inspection and user direction.
 The durable activity-store and staged scheduler guidance was updated with
 assistance from Codex[GPT-5], based on user-provided implementation requirements.
 Existing-work outage behavior was clarified with assistance from Codex-CLI[gpt-6-luna].
+
+Raw SDK response handling and safe coordination diagnostics documented with assistance from Codex[GPT-6].

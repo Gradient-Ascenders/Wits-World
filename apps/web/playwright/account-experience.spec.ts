@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { buildCard, buildStarterOptions } from '../tests/fixtures/cards';
 import { activeMatch, MATCH_ID } from '../tests/fixtures/matches';
@@ -49,7 +50,7 @@ for (const width of [390, 1280]) {
     await email.fill('player@example.test');
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`${width}-reset-form.png`),
     });
@@ -79,7 +80,7 @@ for (const width of [390, 1280]) {
       ),
     ).toBeVisible();
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`${width}-reset-confirmation.png`),
     });
@@ -224,7 +225,7 @@ test('uses desktop space without exposing federated credentials', async ({
   await expect(
     page.getByRole('option', { name: 'Use device setting' }),
   ).toHaveAttribute('aria-selected', 'true');
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('1440-account-dropdown.png'),
   });
   await page.keyboard.press('Escape');
@@ -262,7 +263,7 @@ test('keeps accessibility choices usable and contained across device widths', as
   await expect(
     page.getByRole('option', { name: 'Use device setting' }),
   ).toHaveAttribute('aria-selected', 'true');
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('390-account-dropdown.png'),
   });
   await page.keyboard.press('Escape');
@@ -294,7 +295,7 @@ test('keeps accessibility choices usable and contained across device widths', as
         );
       }
     }
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`${width}-accessibility.png`),
     });
@@ -319,7 +320,7 @@ test('keeps accessibility choices usable and contained across device widths', as
   await expect(
     page.getByRole('button', { name: 'Read page' }).locator('svg'),
   ).toHaveCount(1);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
     path: testInfo.outputPath('390-home-accessibility.png'),
   });
@@ -475,7 +476,7 @@ test('keeps collection and battle content readable with large high-contrast UI',
         .locator(':scope > li'),
     ).toHaveCount(1);
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`${width}-collection-accessibility.png`),
     });
@@ -521,7 +522,7 @@ test('keeps collection and battle content readable with large high-contrast UI',
       });
       expect(fits).toBe(true);
     }
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`${width}-battle-accessibility.png`),
     });
@@ -624,12 +625,12 @@ async function captureAccountScreenshot(
 ) {
   await page.evaluate(() => window.scrollTo(0, 0));
   const showsDialog = await page.getByRole('alertdialog').isVisible();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: !showsDialog,
     path: testInfo.outputPath(name),
   });
   if (!showsDialog) {
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: false,
       path: testInfo.outputPath(name.replace('.png', '-viewport.png')),
     });

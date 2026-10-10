@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type Route } from '@playwright/test';
 
 import { buildCard, buildUuid } from '../tests/fixtures/cards';
@@ -39,7 +40,7 @@ test('renders the approved Wit starter cards and production artwork', async ({
       )
       .toBe(1024);
   }
-  await gallery.screenshot({
+  await captureScreenshot(test.info(), gallery, {
     path: testInfo.outputPath('wit-starter-gallery.png'),
   });
 
@@ -79,7 +80,7 @@ test('renders the approved Wit starter cards and production artwork', async ({
       }
     `,
   });
-  await card.screenshot({
+  await captureScreenshot(test.info(), card, {
     path: testInfo.outputPath('quillip-card-example.png'),
   });
 });

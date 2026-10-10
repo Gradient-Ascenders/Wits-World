@@ -1,3 +1,4 @@
+import { captureScreenshot, captureArtifact } from './visual-capture';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -185,7 +186,7 @@ for (const width of [1280, 1440, 1694]) {
     expect(
       state.calls.filter((url) => url.includes('/author/analytics/')).length,
     ).toBe(1);
-    await mkdir('.impeccable/review/analytics', { recursive: true });
+
     for (const [label, report] of [
       ['Overview', 'Event attention results'],
       ['Locations', 'Location analytics results'],
@@ -213,8 +214,8 @@ for (const width of [1280, 1440, 1694]) {
       }));
       expect(geometry.scroll).toBeLessThanOrEqual(geometry.width + 1);
       await page.evaluate(() => window.scrollTo(0, 0));
-      await page.screenshot({
-        path: `.impeccable/review/analytics/${label.toLowerCase()}-${width}.png`,
+      await captureScreenshot(test.info(), page, {
+        path: `author/analytics/${label.toLowerCase()}-${width}.png`,
         fullPage: true,
       });
     }
@@ -393,16 +394,21 @@ test('desktop reports keep controls reachable at native 200% browser zoom', asyn
         expandedFocus.navigationTop,
       );
       if (report === 'Questions') {
-        const focusSession = await context.newCDPSession(page);
-        const focusedCapture = await focusSession.send(
-          'Page.captureScreenshot',
-          { format: 'png' },
+        await captureArtifact(
+          test.info(),
+          'author/analytics/report-tabs-zoom200-focus.png',
+          async () => {
+            const session = await context.newCDPSession(page);
+            try {
+              const capture = await session.send('Page.captureScreenshot', {
+                format: 'png',
+              });
+              return Buffer.from(capture.data, 'base64');
+            } finally {
+              await session.detach();
+            }
+          },
         );
-        await writeFile(
-          '.impeccable/review/analytics/report-tabs-zoom200-focus.png',
-          Buffer.from(focusedCapture.data, 'base64'),
-        );
-        await focusSession.detach();
       }
       const width = await page.evaluate(() => ({
         viewport: window.innerWidth,
@@ -412,32 +418,40 @@ test('desktop reports keep controls reachable at native 200% browser zoom', asyn
       await page.evaluate(() => window.scrollTo(0, 0));
       // Playwright's full-page clip uses CSS pixels and crops native zoom;
       // capture the complete device-pixel content through Chromium instead.
-      const session = await context.newCDPSession(page);
-      const metrics = await session.send('Page.getLayoutMetrics');
-      const capture = await session.send('Page.captureScreenshot', {
-        format: 'png',
-        captureBeyondViewport: true,
-        clip: {
-          x: 0,
-          y: 0,
-          width: metrics.contentSize.width,
-          height: metrics.contentSize.height,
-          scale: 1,
+      await captureArtifact(
+        test.info(),
+        `author/analytics/${report.toLowerCase()}-zoom200.png`,
+        async () => {
+          const session = await context.newCDPSession(page);
+          try {
+            const metrics = await session.send('Page.getLayoutMetrics');
+            const capture = await session.send('Page.captureScreenshot', {
+              format: 'png',
+              captureBeyondViewport: true,
+              clip: {
+                x: 0,
+                y: 0,
+                width: metrics.contentSize.width,
+                height: metrics.contentSize.height,
+                scale: 1,
+              },
+            });
+            await captureArtifact(
+              test.info(),
+              `author/analytics/${report.toLowerCase()}-zoom-metrics.json`,
+              async () =>
+                JSON.stringify(
+                  { zoom, width, metrics, focusBounds, expandedFocus },
+                  null,
+                  2,
+                ),
+            );
+            return Buffer.from(capture.data, 'base64');
+          } finally {
+            await session.detach();
+          }
         },
-      });
-      await writeFile(
-        `.impeccable/review/analytics/${report.toLowerCase()}-zoom200.png`,
-        Buffer.from(capture.data, 'base64'),
       );
-      await writeFile(
-        `.impeccable/review/analytics/${report.toLowerCase()}-zoom-metrics.json`,
-        JSON.stringify(
-          { zoom, width, metrics, focusBounds, expandedFocus },
-          null,
-          2,
-        ),
-      );
-      await session.detach();
       await page
         .getByRole('button', { name: 'Apply period', exact: true })
         .click();
@@ -504,7 +518,7 @@ test('charts enlarge their text and geometry for comfortable reading', async ({
     await chart.focus();
     await expect(chart).toBeFocused();
     await page.keyboard.press('End');
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: test.info().outputPath(`${width}-150-chart.png`),
     });
   }
@@ -539,7 +553,7 @@ test('Author reports retain previous-query content through a delayed failed upda
   await expect(
     page.getByRole('link', { name: 'Events', exact: true }),
   ).toBeVisible();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: test.info().outputPath('author-retained-query.png'),
     fullPage: true,
   });
