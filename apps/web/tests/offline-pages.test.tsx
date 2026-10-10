@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route, Router } from 'wouter';
 import {
@@ -172,6 +178,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
   vi.restoreAllMocks();
   window.localStorage.clear();
@@ -179,58 +186,180 @@ afterEach(() => {
 });
 
 describe('offline saved pages', () => {
-  it('lists cached events and opens a saved challenge after location is available', async () => {
-    renderPage('explore');
-
+  it('offers retry saving, never GPS, when arrival-policy finalisation cannot write to storage', async () => {
+    const cached = makePack();
+    cached.pack.locationPolicy = 'arrival-v1';
+    const attempt = makeAttempt(cached, {
+      answers: cached.pack.questions.map((question) => ({
+        questionId: question.id,
+        optionIds: [question.options[0]!.id],
+        answeredAt: new Date().toISOString(),
+      })),
+    });
+    localState.attempts = [attempt];
+    mocks.finishAttempt.mockRejectedValueOnce(
+      new DOMException('Storage unavailable'),
+    );
+    renderPage('attempt');
     expect(
-      await screen.findByRole('heading', { name: 'Saved campus events' }),
+      await screen.findByText(/completed attempt could not be finalised/),
     ).toBeVisible();
-    expect(screen.getByText('Saved for Ari. No connection.')).toBeVisible();
-    expect(
-      screen.getByRole('img', { name: /Relative positions of saved events/ }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/not a walking route/)).toBeVisible();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Open saved challenge' }),
+    expect(screen.queryByRole('button', { name: 'Retry location' })).toBeNull();
+    expect(mocks.requestLocation).not.toHaveBeenCalled();
+    mocks.finishAttempt.mockImplementationOnce(async () => {
+      attempt.status = 'pending';
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry saving' }));
+    await screen.findByText(
+      'Saved on this device. Pending server validation; no reward confirmed.',
     );
-
-    await waitFor(() =>
-      expect(mocks.createAttempt).toHaveBeenCalledWith(
-        localState.packs[0],
-        location,
-      ),
-    );
-    await waitFor(() =>
-      expect(window.location.pathname).toBe(
-        '/offline-attempts/local-attempt-1',
-      ),
-    );
+    expect(mocks.requestLocation).not.toHaveBeenCalled();
+    expect(attempt.answers).toHaveLength(5);
   });
 
-  it('keeps a not-yet-open cached event unavailable and explains unsupported location', async () => {
-    const futurePack = makePack();
-    futurePack.pack.validFrom = new Date(Date.now() + 60_000).toISOString();
-    localState.packs = [futurePack];
-    const view = renderPage('explore');
-
+  it('keeps completed answers after a failed finish and clears the error during retry', async () => {
+    vi.useFakeTimers();
+    const attempt = makeAttempt(makePack(), {
+      startedAt: new Date(Date.now() - 119_000).toISOString(),
+      answers: makePack().pack.questions.map((question) => ({
+        questionId: question.id,
+        optionIds: ['first'],
+        answeredAt: new Date().toISOString(),
+      })),
+    });
+    localState.attempts = [attempt];
+    mocks.requestLocation.mockRejectedValueOnce(
+      new BrowserLocationError('timeout'),
+    );
+    let finishRetry!: (value: LocationClaim) => void;
+    mocks.requestLocation.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRetry = resolve;
+        }),
+    );
+    mocks.finishAttempt.mockImplementation(async () => {
+      attempt.status = 'pending';
+    });
+    renderPage('attempt');
+    await act(async () => {});
     expect(
-      await screen.findByRole('button', { name: 'Open saved challenge' }),
-    ).toBeDisabled();
-    expect(mocks.createAttempt).not.toHaveBeenCalled();
+      screen.getByText(
+        /Your answers are saved. Your reported location took too long/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Retry location' }),
+    ).toBeEnabled();
+    expect(mocks.finishAttempt).not.toHaveBeenCalled();
+    expect(attempt.answers).toHaveLength(5);
 
+    // Crossing the deadline after a failed final-answer sample must not retry automatically.
+    await act(() => vi.advanceTimersByTimeAsync(2_000));
+    expect(mocks.requestLocation).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry location' }));
+    expect(
+      screen.getByRole('button', { name: 'Getting location…' }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByText(/reported location took too long/),
+    ).not.toBeInTheDocument();
+    await act(async () => finishRetry(location));
+    expect(
+      screen.getByText(
+        'Saved on this device. Pending server validation; no reward confirmed.',
+      ),
+    ).toBeVisible();
+    expect(mocks.finishAttempt).toHaveBeenCalledOnce();
+    expect(attempt.answers).toHaveLength(5);
+  });
+
+  it('cancels a finish sample on unmount without committing its late result', async () => {
+    localState.attempts = [
+      makeAttempt(makePack(), {
+        startedAt: new Date(Date.now() - 130_000).toISOString(),
+      }),
+    ];
+    let lateSuccess!: (value: LocationClaim) => void;
+    let signal: AbortSignal | undefined;
+    mocks.requestLocation.mockImplementationOnce((value: AbortSignal) => {
+      signal = value;
+      return new Promise((resolve) => {
+        lateSuccess = resolve;
+      });
+    });
+    const view = renderPage('attempt');
+    await screen.findByRole('button', { name: 'Getting location…' });
     view.unmount();
-    futurePack.pack.validFrom = new Date(Date.now() - 60_000).toISOString();
-    mocks.requestLocation.mockRejectedValue(
-      new BrowserLocationError('unsupported'),
-    );
+    expect(signal?.aborted).toBe(true);
+    await act(async () => lateSuccess(location));
+    expect(mocks.finishAttempt).not.toHaveBeenCalled();
+  });
+  it('keeps downloads secondary and never starts a challenge or requests GPS from this page', async () => {
     renderPage('explore');
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Open saved challenge' }),
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Downloads & saved attempts',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('link', { name: 'Back to Explore' }),
+    ).toHaveAttribute('href', '/explore');
+    expect(screen.getByRole('link', { name: 'Explore' })).toHaveAttribute(
+      'href',
+      '/explore?event=event-1',
     );
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'This browser cannot provide location',
-    );
+    expect(
+      screen.queryByRole('button', { name: 'Open saved challenge' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Check my location' }),
+    ).toBeNull();
+    expect(mocks.requestLocation).not.toHaveBeenCalled();
     expect(mocks.createAttempt).not.toHaveBeenCalled();
+  });
+
+  it('filters downloaded events and exposes opening time, radius and timer', async () => {
+    renderPage('explore');
+    await screen.findByRole('heading', { name: 'Great Hall Quest' });
+    expect(screen.getByText(/Start within 75 metres/)).toHaveTextContent(
+      '5 questions',
+    );
+    fireEvent.change(
+      screen.getByRole('searchbox', { name: 'Search saved events' }),
+      { target: { value: 'missing event' } },
+    );
+    expect(
+      screen.queryByRole('heading', { name: 'Great Hall Quest' }),
+    ).toBeNull();
+    expect(
+      screen.getByText('No saved events match your search.'),
+    ).toBeVisible();
+  });
+
+  it('completes signed arrival-policy attempts without a finishing GPS request', async () => {
+    const cached = makePack();
+    cached.pack.locationPolicy = 'arrival-v1';
+    const attempt = makeAttempt(cached, {
+      answers: cached.pack.questions.map((question) => ({
+        questionId: question.id,
+        optionIds: [question.options[0]!.id],
+        answeredAt: new Date().toISOString(),
+      })),
+    });
+    localState.attempts = [attempt];
+    mocks.finishAttempt.mockImplementation(async () => {
+      attempt.status = 'pending';
+    });
+    renderPage('attempt');
+    await waitFor(() =>
+      expect(mocks.finishAttempt).toHaveBeenCalledWith(
+        attempt.clientAttemptId,
+        undefined,
+      ),
+    );
+    expect(mocks.requestLocation).not.toHaveBeenCalled();
+    expect(attempt.answers).toHaveLength(5);
   });
 
   it('shows the current multiple-choice question and refuses to submit without an answer', async () => {
@@ -333,8 +462,8 @@ describe('offline saved pages', () => {
       'Saved locally — pending server validation; no reward confirmed.',
     );
     expect(
-      screen.getByRole('button', { name: 'Sync saved attempts' }),
-    ).toBeDisabled();
+      screen.queryByRole('button', { name: 'Sync saved attempts' }),
+    ).toBeNull();
 
     localState.attempts = [];
     localState.receipts = [

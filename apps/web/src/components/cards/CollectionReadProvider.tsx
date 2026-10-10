@@ -4,7 +4,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   type ReactNode,
 } from 'react';
 import type { OwnedCard } from '../../api/cards';
@@ -21,43 +20,59 @@ interface CollectionReads {
 
 const CollectionReadContext = createContext<CollectionReads | null>(null);
 
-// Mounted inside the confirmed-player boundary. A session/role change destroys
-// the snapshot; this provider never stores account data in persistent storage.
-export function CollectionReadProvider({ children }: { children: ReactNode }) {
-  const snapshot = useRef<{
-    apiBaseUrl: string;
-    cards: OwnedCard[];
-    savedAt: number;
-  } | null>(null);
-  const invalidatedIdentity = useRef(false);
-  const readCards = useCallback((apiBaseUrl: string) => {
-    const saved = snapshot.current;
-    if (
-      invalidatedIdentity.current ||
-      !saved ||
-      saved.apiBaseUrl !== apiBaseUrl ||
-      Date.now() - saved.savedAt > RETENTION_MS
-    ) {
-      snapshot.current = null;
-      return undefined;
-    }
-    return saved.cards;
-  }, []);
+// A session/role change destroys only the in-memory snapshot, not the page.
+// Recreating the whole shell would restart offline location waits on every
+// session-recovery retry. Account data never enters persistent storage.
+export function CollectionReadProvider({
+  children,
+  scope,
+}: {
+  children: ReactNode;
+  scope?: string;
+}) {
+  const cache = useMemo(
+    () => ({
+      snapshot: null as {
+        apiBaseUrl: string;
+        cards: OwnedCard[];
+        savedAt: number;
+      } | null,
+      invalidatedIdentity: false,
+    }),
+    [scope],
+  );
+  const readCards = useCallback(
+    (apiBaseUrl: string) => {
+      const saved = cache.snapshot;
+      if (
+        cache.invalidatedIdentity ||
+        !saved ||
+        saved.apiBaseUrl !== apiBaseUrl ||
+        Date.now() - saved.savedAt > RETENTION_MS
+      ) {
+        cache.snapshot = null;
+        return undefined;
+      }
+      return saved.cards;
+    },
+    [cache],
+  );
   const rememberCards = useCallback(
     (apiBaseUrl: string, cards: OwnedCard[]) => {
-      snapshot.current =
-        !invalidatedIdentity.current && cards.length <= MAX_RETAINED_CARDS
+      cache.snapshot =
+        !cache.invalidatedIdentity && cards.length <= MAX_RETAINED_CARDS
           ? { apiBaseUrl, cards, savedAt: Date.now() }
           : null;
     },
-    [],
+    [cache],
   );
   const clearCards = useCallback(() => {
-    snapshot.current = null;
-  }, []);
+    cache.snapshot = null;
+  }, [cache]);
   useEffect(() => {
+    cache.invalidatedIdentity = false;
     const invalidateIdentity = () => {
-      invalidatedIdentity.current = true;
+      cache.invalidatedIdentity = true;
       clearCards();
     };
     const storageChanged = (event: StorageEvent) => {
@@ -67,13 +82,14 @@ export function CollectionReadProvider({ children }: { children: ReactNode }) {
     window.addEventListener('wits-player-binding-change', invalidateIdentity);
     window.addEventListener('storage', storageChanged);
     return () => {
+      invalidateIdentity();
       window.removeEventListener(
         'wits-player-binding-change',
         invalidateIdentity,
       );
       window.removeEventListener('storage', storageChanged);
     };
-  }, [clearCards]);
+  }, [cache, clearCards]);
   const value = useMemo(
     () => ({ readCards, rememberCards, clearCards }),
     [readCards, rememberCards, clearCards],

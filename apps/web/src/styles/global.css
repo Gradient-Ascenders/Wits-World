@@ -326,6 +326,33 @@ a:hover {
   color: var(--colour-text-primary);
 }
 
+.account-control--offline {
+  max-width: 30rem;
+}
+
+.account-control--offline .account-control__identity {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 47.99rem) {
+  .site-frame .site-header__inner .account-control--offline {
+    max-width: min(100%, 15rem);
+  }
+
+  .account-control--offline
+    .account-disclosure__trigger
+    .account-control__identity {
+    display: grid;
+    gap: 0;
+    text-align: start;
+    font-size: var(--text-xs);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 .account-control__error {
   flex-basis: 100%;
   color: var(--colour-text-primary);

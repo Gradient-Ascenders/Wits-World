@@ -1,5 +1,5 @@
 import {
-  useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -39,7 +39,7 @@ export function OrderingChallengeQuestion({
   const activePointer = useRef<ActivePointer | null>(null);
   const orderRef = useRef(itemIds);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     orderRef.current = itemIds;
   }, [itemIds]);
 

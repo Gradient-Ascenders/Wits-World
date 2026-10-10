@@ -93,6 +93,40 @@ function worker({ failedInstall = false, failedPut = false } = {}) {
 }
 
 describe('service worker shell cache', () => {
+  it('reports readiness only when all essential files are present', async () => {
+    const state = worker();
+    const postMessage = vi.fn();
+    await state.dispatch('message', {
+      data: 'CHECK_OFFLINE_SHELL',
+      ports: [{ postMessage }],
+    });
+    expect(postMessage).toHaveBeenLastCalledWith({ ready: false });
+    await state.dispatch('install');
+    await state.dispatch('message', {
+      data: 'CHECK_OFFLINE_SHELL',
+      ports: [{ postMessage }],
+    });
+    expect(postMessage).toHaveBeenLastCalledWith({ ready: true });
+    state.stored.delete(`${origin}/assets/offline-abc.js`);
+    await state.dispatch('message', {
+      data: 'CHECK_OFFLINE_SHELL',
+      ports: [{ postMessage }],
+    });
+    expect(postMessage).toHaveBeenLastCalledWith({ ready: false });
+  });
+
+  it('opens saved navigation immediately without waiting for the network', async () => {
+    const state = worker();
+    await state.dispatch('install');
+    state.fetch.mockImplementation(() => new Promise(() => {}));
+    const request = {
+      method: 'GET',
+      mode: 'navigate',
+      url: `${origin}/explore`,
+    };
+    expect((await state.dispatch('fetch', { request }))?.status).toBe(200);
+    expect(state.fetch).not.toHaveBeenCalled();
+  });
   it('installs only offline-essential assets and reuses immutable HTTP cache', async () => {
     const state = worker();
     await state.dispatch('install');

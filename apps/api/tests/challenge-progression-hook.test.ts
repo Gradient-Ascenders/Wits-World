@@ -12,6 +12,86 @@ const COMPLETION_ID = '17230000-0000-4000-8000-000000000001';
 const COMPLETED_AT = new Date('2026-08-29T08:00:00.000Z');
 
 describe('challenge progression completion hook', () => {
+  it('uses the signed offline catalogue even when those cards are no longer active', async () => {
+    const cardId = '17250000-0000-4000-8000-000000000001';
+    const base = completionQuery('in_progress');
+    const query = vi.fn<ChallengeAnswerSubmissionQueryable['query']>(
+      async <T extends pg.QueryResultRow>(
+        sql: string,
+        values: unknown[],
+      ): Promise<{ rows: T[] }> => {
+        if (sql.includes('from public.card_definitions')) {
+          expect(sql).not.toContain('is_active');
+          expect(values).toEqual([[cardId]]);
+          return {
+            rows: [
+              { card_definition_id: cardId, rarity: 'common' },
+            ] as unknown as T[],
+          };
+        }
+        return (base as ChallengeAnswerSubmissionQueryable['query'])<T>(
+          sql,
+          values,
+        );
+      },
+    );
+    const finalizer = createChallengeAttemptCompletionFinalizer({
+      progressionPersistence: progressionMock(),
+      randomInt: () => 0,
+    });
+    await finalizer.finalizeAttempt(
+      { query: query as ChallengeAnswerSubmissionQueryable['query'] },
+      {
+        ...input(),
+        scoreCorrect: 3,
+        offlineRewardContext: {
+          policyVersion: 'points-cards-v2',
+          cards: [{ cardDefinitionId: cardId, rarity: 'common' }],
+        },
+      },
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'insert into public.event_completion_card_rewards',
+      ),
+      [COMPLETION_ID, 1, cardId, COMPLETED_AT],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('insert into public.event_completions'),
+      expect.arrayContaining(['points-cards-v2']),
+    );
+  });
+
+  it('does not substitute current rewards when a saved policy or card is unavailable', async () => {
+    for (const policyVersion of ['future-policy', 'points-cards-v2']) {
+      const query = completionQuery('in_progress');
+      const finalizer = createChallengeAttemptCompletionFinalizer({
+        progressionPersistence: progressionMock(),
+      });
+      await expect(
+        finalizer.finalizeAttempt(
+          { query: query as ChallengeAnswerSubmissionQueryable['query'] },
+          {
+            ...input(),
+            scoreCorrect: 3,
+            offlineRewardContext: {
+              policyVersion,
+              cards: [
+                {
+                  cardDefinitionId: '17250000-0000-4000-8000-000000000001',
+                  rarity: 'common',
+                },
+              ],
+            },
+          },
+        ),
+      ).rejects.toThrow(/saved reward/);
+      expect(executedSql(query)).not.toContain(
+        'insert into public.event_completions',
+      );
+    }
+  });
+
   it('records progression after a new authoritative completion is finalized', async () => {
     const query = completionQuery('in_progress');
     const database = {

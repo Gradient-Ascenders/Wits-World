@@ -1,5 +1,9 @@
 import { openDB, type DBSchema } from 'idb';
 import type { LocationClaim } from '../browser-location';
+import type { PlayerEvent } from '../api/events';
+
+export const OFFLINE_CONTENT_BUDGET_BYTES = 4 * 1024 * 1024;
+export const OFFLINE_ARRIVAL_WINDOW_MS = 5 * 60 * 1000;
 
 export interface OfflinePack {
   version: 1;
@@ -9,6 +13,14 @@ export interface OfflinePack {
   validFrom: string;
   validUntil: string;
   placementAssignmentId?: string;
+  locationPolicy?: 'arrival-v1';
+  rewardContext?: {
+    policyVersion: string;
+    cards: Array<{
+      cardDefinitionId: string;
+      rarity: 'common' | 'rare' | 'epic' | 'legendary';
+    }>;
+  };
   event: {
     eventId: string;
     version: number;
@@ -56,6 +68,7 @@ export interface OfflineReceipt {
   outcome: string;
   attemptId?: string;
   receivedAt: number;
+  eventId?: string;
 }
 interface OfflineDB extends DBSchema {
   sessions: {
@@ -65,14 +78,24 @@ interface OfflineDB extends DBSchema {
   packs: { key: string; value: CachedPack };
   attempts: { key: string; value: LocalAttempt };
   receipts: { key: string; value: OfflineReceipt };
+  catalogues: {
+    key: string;
+    value: { playerId: string; events: PlayerEvent[]; savedAt: number };
+  };
 }
 const database = () =>
-  openDB<OfflineDB>('wits-world-offline', 1, {
+  openDB<OfflineDB>('wits-world-offline', 2, {
     upgrade(db) {
-      db.createObjectStore('sessions', { keyPath: 'playerId' });
-      db.createObjectStore('packs', { keyPath: 'pack.packId' });
-      db.createObjectStore('attempts', { keyPath: 'clientAttemptId' });
-      db.createObjectStore('receipts', { keyPath: 'clientAttemptId' });
+      if (!db.objectStoreNames.contains('sessions'))
+        db.createObjectStore('sessions', { keyPath: 'playerId' });
+      if (!db.objectStoreNames.contains('packs'))
+        db.createObjectStore('packs', { keyPath: 'pack.packId' });
+      if (!db.objectStoreNames.contains('attempts'))
+        db.createObjectStore('attempts', { keyPath: 'clientAttemptId' });
+      if (!db.objectStoreNames.contains('receipts'))
+        db.createObjectStore('receipts', { keyPath: 'clientAttemptId' });
+      if (!db.objectStoreNames.contains('catalogues'))
+        db.createObjectStore('catalogues', { keyPath: 'playerId' });
     },
   });
 
@@ -97,7 +120,7 @@ export async function readOfflineState() {
   const packs = (await db.getAll('packs')).filter(
     (item) =>
       item.pack.playerId === playerId &&
-      Date.parse(item.pack.validUntil) > Date.now(),
+      Number.isFinite(Date.parse(item.pack.validUntil)),
   );
   const attempts = (await db.getAll('attempts')).filter(
     (item) => item.playerId === playerId,
@@ -108,6 +131,27 @@ export async function readOfflineState() {
   if (boundOfflinePlayer() !== playerId)
     return { session: undefined, packs: [], attempts: [], receipts: [] };
   return { session, packs, attempts, receipts };
+}
+export async function saveOfflineCatalogue(
+  playerId: string,
+  events: PlayerEvent[],
+) {
+  if (boundOfflinePlayer() !== playerId) return;
+  if (
+    new TextEncoder().encode(JSON.stringify(events)).length >
+    OFFLINE_CONTENT_BUDGET_BYTES
+  )
+    throw new Error('The event catalogue exceeds the offline storage budget.');
+  const db = await database();
+  if (boundOfflinePlayer() !== playerId) return;
+  await db.put('catalogues', { playerId, events, savedAt: Date.now() });
+}
+export async function readOfflineCatalogue() {
+  const playerId = boundOfflinePlayer();
+  if (!playerId) return null;
+  const db = await database();
+  const value = await db.get('catalogues', playerId);
+  return boundOfflinePlayer() === playerId ? (value ?? null) : null;
 }
 export async function replacePacks(playerId: string, packs: CachedPack[]) {
   const db = await database();
@@ -120,9 +164,12 @@ export async function replacePacks(playerId: string, packs: CachedPack[]) {
     )
       await tx.objectStore('packs').delete(item.pack.packId);
   }
-  for (const item of packs.slice(0, 10)) {
-    if (item.pack.playerId === playerId)
-      await tx.objectStore('packs').put(item);
+  let bytes = 0;
+  for (const item of packs) {
+    if (item.pack.playerId !== playerId) continue;
+    bytes += new TextEncoder().encode(JSON.stringify(item)).length;
+    if (bytes > OFFLINE_CONTENT_BUDGET_BYTES) break;
+    await tx.objectStore('packs').put(item);
   }
   for (const receipt of await tx.objectStore('receipts').getAll()) {
     if (Date.now() - receipt.receivedAt > 7 * 86400_000)
@@ -137,6 +184,13 @@ export async function createLocalAttempt(
   const db = await database();
   if (boundOfflinePlayer() !== cached.pack.playerId)
     throw new Error('Sign in with the original account.');
+  if (
+    Date.now() < Date.parse(cached.pack.validFrom) ||
+    Date.now() >= Date.parse(cached.pack.validUntil)
+  )
+    throw new Error(
+      'This download is not currently available. Reconnect to refresh it.',
+    );
   const tx = db.transaction('attempts', 'readwrite');
   const existing = (await tx.store.getAll()).find(
     (item) =>
@@ -205,16 +259,20 @@ export async function saveLocalAnswer(
   await tx.done;
   return attempt;
 }
-export async function finishLocalAttempt(id: string, location: LocationClaim) {
+export async function finishLocalAttempt(id: string, location?: LocationClaim) {
   const db = await database();
   const tx = db.transaction('attempts', 'readwrite');
   const attempt = await tx.store.get(id);
   if (!attempt || attempt.playerId !== boundOfflinePlayer())
     throw new Error('Sign in with the original account.');
   if (attempt.status === 'active') {
+    if (!location && attempt.cached.pack.locationPolicy !== 'arrival-v1')
+      throw new Error(
+        'This older saved challenge still needs a finishing location.',
+      );
     attempt.status = 'pending';
     attempt.finishedAt = new Date().toISOString();
-    attempt.finishLocation = location;
+    if (location) attempt.finishLocation = location;
     await tx.store.put(attempt);
   }
   await tx.done;
@@ -234,6 +292,7 @@ export async function recordOfflineReceipt(
     outcome,
     attemptId,
     receivedAt: Date.now(),
+    eventId: attempt.cached.pack.event.eventId,
   });
   await tx.objectStore('attempts').delete(attempt.clientAttemptId);
   await tx.objectStore('packs').delete(attempt.cached.pack.packId);
@@ -242,7 +301,7 @@ export async function recordOfflineReceipt(
 export async function clearOfflineData(playerId?: string) {
   const db = await database();
   const tx = db.transaction(
-    ['sessions', 'packs', 'attempts', 'receipts'],
+    ['sessions', 'packs', 'attempts', 'receipts', 'catalogues'],
     'readwrite',
   );
   for (const name of Array.from(tx.objectStoreNames)) {

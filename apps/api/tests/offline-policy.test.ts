@@ -3,6 +3,7 @@ import {
   createOfflinePackCodec,
   OFFLINE_SYNC_GRACE_MS,
   validateOfflineTiming,
+  validateOfflineLocationTiming,
   type OfflinePack,
   type OfflineSubmission,
 } from '../src/challenges/offline-policy.js';
@@ -66,6 +67,28 @@ function submission(): OfflineSubmission {
   };
 }
 describe('offline contract integrity', () => {
+  it('allows five-minute event arrival without a finish sample only for signed arrival-policy packs', () => {
+    const input = submission();
+    input.startedAt = '2026-09-06T10:06:00Z';
+    input.startLocation.acquiredAt = '2026-09-06T10:01:00Z';
+    delete input.finishLocation;
+    const arrivalPack = { ...pack, locationPolicy: 'arrival-v1' as const };
+    expect(() =>
+      validateOfflineLocationTiming(arrivalPack, input),
+    ).not.toThrow();
+    input.startedAt = '2026-09-06T10:06:00.001Z';
+    expect(() => validateOfflineLocationTiming(arrivalPack, input)).toThrow();
+    input.startedAt = '2026-09-06T10:06:00Z';
+    expect(() => validateOfflineLocationTiming(pack, input)).toThrow();
+  });
+  it('rejects future arrivals and arrivals before the event or pack opens', () => {
+    const input = submission();
+    const arrivalPack = { ...pack, locationPolicy: 'arrival-v1' as const };
+    input.startLocation.acquiredAt = '2026-09-06T10:01:00.001Z';
+    expect(() => validateOfflineLocationTiming(arrivalPack, input)).toThrow();
+    input.startLocation.acquiredAt = '2026-09-06T09:59:59.999Z';
+    expect(() => validateOfflineLocationTiming(arrivalPack, input)).toThrow();
+  });
   it('binds signed packs to one player and rejects tampering and unknown keys', () => {
     const codec = createOfflinePackCodec('a'.repeat(32));
     const token = codec.encode(pack);

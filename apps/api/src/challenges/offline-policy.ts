@@ -1,9 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { evaluateLocationTiming } from '../events/location-claim.js';
 
 import type { ChallengeDifficulty } from './challenge-timing.js';
+import type { OfflineRewardContext } from './challenge-reward-policy.js';
 
 export const OFFLINE_PACK_LIFETIME_MS = 24 * 60 * 60 * 1000;
 export const OFFLINE_SYNC_GRACE_MS = 12 * 60 * 60 * 1000;
+export const OFFLINE_ARRIVAL_WINDOW_MS = 5 * 60 * 1000;
 
 export interface OfflinePack {
   version: 1;
@@ -13,6 +16,8 @@ export interface OfflinePack {
   validFrom: string;
   validUntil: string;
   placementAssignmentId?: string;
+  locationPolicy?: 'arrival-v1';
+  rewardContext?: OfflineRewardContext;
   event: {
     eventId: string;
     version: number;
@@ -53,7 +58,7 @@ export interface OfflineSubmission {
     optionIds: string[];
   }>;
   startLocation: OfflineLocation;
-  finishLocation: OfflineLocation;
+  finishLocation?: OfflineLocation;
 }
 
 export class OfflineRejection extends Error {
@@ -114,6 +119,8 @@ export function createOfflinePackCodec(key: string, previousKey?: string) {
       if (
         pack.version !== 1 ||
         pack.playerId !== playerId ||
+        (pack.locationPolicy !== undefined &&
+          pack.locationPolicy !== 'arrival-v1') ||
         pack.questions.length !== 5
       ) {
         throw new OfflineRejection('OFFLINE_INVALID_PACK');
@@ -121,6 +128,37 @@ export function createOfflinePackCodec(key: string, previousKey?: string) {
       return pack;
     },
   };
+}
+
+export function validateOfflineLocationTiming(
+  pack: OfflinePack,
+  input: OfflineSubmission,
+) {
+  const start = Date.parse(input.startedAt);
+  const acquired = Date.parse(input.startLocation.acquiredAt);
+  if (pack.locationPolicy === 'arrival-v1') {
+    const age = start - acquired;
+    if (
+      !Number.isFinite(age) ||
+      age < 0 ||
+      age > OFFLINE_ARRIVAL_WINDOW_MS ||
+      acquired < Date.parse(pack.validFrom)
+    )
+      throw new OfflineRejection('OFFLINE_LOCATION_UNVERIFIABLE');
+  } else {
+    const finish = input.finishLocation;
+    if (
+      evaluateLocationTiming(
+        input.startLocation.acquiredAt,
+        new Date(input.startedAt),
+      ).outcome !== 'valid' ||
+      !finish ||
+      evaluateLocationTiming(finish.acquiredAt, new Date(input.finishedAt))
+        .outcome !== 'valid' ||
+      Date.parse(finish.acquiredAt) < acquired
+    )
+      throw new OfflineRejection('OFFLINE_LOCATION_UNVERIFIABLE');
+  }
 }
 
 export function validateOfflineTiming(

@@ -5,17 +5,80 @@ title: 'Offline play and synchronisation'
 # Offline play and synchronisation
 
 Wits Quest supports prepared offline event challenges in both multiple-choice
-and ordering formats. A player must first sign in, allow location access and
-download nearby events while connected. The browser can then reopen the saved
-application, show an accessible event list and relative-position schematic,
-and save timed answers locally. Rewards and results appear only after the API
+and ordering formats in the ordinary `/explore` journey. The signed-in application
+prepares content automatically while connected; downloads never wait for GPS.
+The browser can reopen the saved application, browse downloaded event details,
+show campus paths, buildings and event markers, and save timed answers locally.
+Only previously downloaded challenges can be played without connectivity.
+Rewards and results appear only after the API
 validates the submitted attempt.
+
+## Player journey and recovery
+
+`/explore` keeps the same event list, selected-event details and mobile bottom
+sheet as connectivity changes. A calm banner explains offline operation without
+redirecting or interrupting an active challenge. Event details distinguish
+**Downloaded**, **Not downloaded** and **Expired**. **Play** starts a downloaded
+challenge directly; an existing attempt instead offers continuation or its saved
+status. An unavailable download cannot be created after disconnection.
+
+`/offline` is the secondary **Downloads & saved attempts** page. It shows readiness,
+download progress and failures, opening/expiry times, and pending or confirmed
+attempts. **Back to Explore** returns to play; event links select that event in
+Explore. Routine download, GPS-check and sync buttons are absent. Retry actions
+appear only when preparation, authentication or synchronisation needs recovery.
+
+**Ready for offline play** requires downloaded packs and confirmation from the
+controlling service worker that its essential application files are present.
+Saved questions alone do not establish that the browser can reopen offline.
+Preparation has a bounded timeout, keeps usable packs after failed or partial
+downloads, and never discards pending answers. Location failures at challenge
+start or finish explain recovery; an imprecise or distant start does not consume
+a local attempt. These browser checks are advisory; the server remains authoritative.
+
+New signed packs use `locationPolicy: arrival-v1`. An eligible reported arrival
+may be up to **five minutes before starting**, but must be within pack validity.
+The ordinary challenge timer then applies indoors without another finishing GPS
+reading. While Explore is open, its foreground location watcher records eligible
+arrivals in memory. **Play** reuses one, or obtains a fresh location when needed.
+An inaccurate or distant reading cannot start or consume an attempt. The arrival
+window is not alternative proof of presence: both location and time remain claims.
+
+One-shot requests have an application-controlled 10-second deadline, including
+permission waits. Legacy packs without the signed arrival policy retain their
+original fresh-start and finishing-GPS requirements; a failed finish leaves locked
+answers saved with **Retry location**. Late or cancelled callbacks cannot complete
+another attempt, and local completion does not wait for server synchronisation.
+Session recovery clears private collection snapshots without remounting the
+saved challenge page or restarting its location deadline.
+
+The header identifies the bound saved account as **Playing offline as…** while
+offline, including after a reload that cannot restore Auth0. This is a local
+identity, not online authentication: protected online content still requires a
+verified session. Reconnection offers **Restore online session** when needed.
+**Sign out on this device** retains the existing pending-work confirmation and
+clears the local identity and SDK cache without an Auth0 network redirect.
+
+Pack preparation batch-loads placements/challenges, published questions and
+selected options on one repeatable-read, read-only snapshot. For one to ten
+eligible packs, it uses seven database round trips including discovery and
+transaction boundaries, plus the existing trust-restriction checks when enabled.
+It does not perform per-event or per-question reads. This bounds query count;
+real download time still depends on authentication, database and network latency.
+
+Explore switches to saved data when the browser reports offline, when discovery
+fails or times out, or when a bound player's session cannot be restored. A connected
+network interface is not evidence of a usable API. Cached routes grant no online
+authorisation. Foreground reconnection retries identity restoration and downloads;
+if authentication is genuinely required, sign-in returns to the current route.
+Reopening a cached navigation uses the saved shell immediately.
 
 ## Contract and authority
 
 `POST /api/v1/offline-challenge-packs` takes `eventIds` (one to ten UUIDs).
 `POST /api/v1/offline-challenge-attempts` takes `clientAttemptId`, `packToken`,
-`startedAt`, `finishedAt`, `answers`, `startLocation` and `finishLocation`.
+`startedAt`, `finishedAt`, `answers` and `startLocation`. `finishLocation` is
+required for legacy packs and optional for signed `arrival-v1` packs.
 Both require an active authenticated player and
 `X-Wits-Offline-Contract-Version: 1`. Locations contain latitude, longitude,
 accuracyMetres and acquiredAt. Each answer contains questionId, answeredAt
@@ -24,9 +87,12 @@ and optionIds (one choice or a permutation of four ordering items).
 The server signs the player, event and challenge versions, five selected
 questions, shuffled options, issue/validity timestamps and existing challenge
 time limit. Packs contain no answer keys, explanations, correctness flags or
-reward outcomes. Pack issuance creates no database rows. The application keeps
-at most ten unstarted packs and stores attempts separately so refreshes cannot
-evict pending work. Packs expire at the earlier of the effective event end or
+reward outcomes. Pack issuance creates no database rows. Preparation requests all
+active or soon-opening eligible events in batches of ten under a **4 MiB serialized
+pack budget**; ten is a request limit, not an aggregate cache limit. Catalogues have
+their own 4 MiB guard. Downloads retain usable packs after partial failures, and
+attempts are stored separately so refreshes cannot evict pending work. Packs expire
+at the earlier of the effective event end or
 24 hours after issue. Attempts must start before that expiry; the ordinary
 90/120/150-second challenge timer still applies. Answers at the deadline are
 late. A partial attempt finishes as a timeout; missing answers receive no credit.
@@ -36,7 +102,10 @@ time, including delivery after the event ends. It checks historical publication
 and campaign availability, signature, source versions, answer membership,
 the [shared reported-point and accuracy policy](../database/event-eligibility.md#reported-accuracy-policy)
 and movement plausibility. Offline start must be inside the event radius, and
-both start and finish accuracy must be at most `min(150m, 2 × event radius)`. Coordinates and times remain
+arrival accuracy must be at most `min(150m, 2 × event radius)`. Legacy finishing
+accuracy uses the same bound. The server enforces the signed five-minute arrival
+window for new packs; legacy packs cannot opt into it through a submission field.
+Coordinates and times remain
 device claims. A signature authenticates the downloaded content, not when a
 person read it, answered it or physically visited a location. Cached questions
 can be inspected in browser storage; this is an accepted limitation of this
@@ -52,25 +121,40 @@ Accepted submissions create the existing canonical attempt, snapshots, answers,
 completion, card rewards and progression through the existing finalizer in one
 transaction. Retrying the same player/client-attempt/pack returns the existing
 result; another attempt for that event conflicts. No client result is trusted.
-Current server reward rules/catalogue apply when finalizing; offline play does
-not introduce a second reward engine or reserve cards when downloading packs.
+New packs also sign `rewardContext`: the reward-policy version and eligible
+card-definition IDs/rarities at preparation. The existing finalizer uses that
+catalogue even if a definition is later retired; published card content is
+immutable. A missing definition, changed rarity or unsupported saved policy
+causes a retryable server failure instead of silently substituting current
+rewards. No cards or reward outcomes are reserved when downloading. Previously
+issued version-1 packs without this optional context retain their legacy
+finalization behaviour for compatibility. Future policy releases must retain
+the saved policy implementation through pack lifetime and sync grace.
 
 Responses are 201 for first acceptance, 200 for replay, 409 for a conflict or
 contract upgrade, and 422 for a terminal validation rejection. Authentication,
 rate-limit, network and server failures keep the local attempt for retry.
-The web syncs pending attempts sequentially on start, reconnect, foreground and
-manual retry. Background Sync is not required.
+The web syncs pending attempts sequentially on start, reconnect and foreground,
+and automatically retries transient failures every 15 seconds while visible.
+Failure-only manual recovery remains available. A previously bound session with a transient connection failure
+is restored using foreground retries with exponential backoff capped at 30 seconds;
+identity and authorization failures are not treated as network failures.
+Background Sync is not required; upload is not guaranteed while the app is closed.
 
 ## Browser storage and privacy
 
-IndexedDB `wits-world-offline` stores sessions, packs, attempts and receipts.
+IndexedDB `wits-world-offline` stores sessions, event catalogues, packs, attempts
+and receipts. Its additive version-2 upgrade preserves existing attempts.
 The local player binding only gates access to cached data; it never grants API
 authorization. Another account cannot view or submit that partition. Explicit
 sign-out warns about pending work before clearing it. Account deletion also
 clears local data. Clearing browser storage or browser eviction can lose unsynced
 attempts; device storage is not a server backup.
 
-Each attempt captures start and finish location samples. Successful or terminally
+New attempts capture only arrival evidence; legacy attempts also capture a finishing
+sample. Foreground watcher samples and pre-start arrivals are ephemeral, not a
+stored location trail. Position is labelled **Last known location** after tracking
+fails or a displayed sample becomes more than two minutes old. Successful or terminally
 rejected sync removes the local attempt, answers and precise evidence, retaining
 only a safe receipt. Old receipts are pruned after seven days during preparation.
 The API stores only the accepted start sample under the existing movement
@@ -79,7 +163,19 @@ audit. Offline payloads are redacted from API logs.
 
 The service worker caches only application assets and navigation fallback.
 It never caches API, Auth0 or Mapbox traffic. It does not download commercial
-map tiles. Installation retains the entry/Home/saved-challenge JavaScript and
+map tiles. The downloaded campus map uses a bounded OpenStreetMap extract with
+paths, buildings and labels, attribution and recorded provenance. The committed
+compact dataset is **533,987 bytes**, below its 2 MiB generation guard; that is
+not the size of the entire application shell. It supports pan, zoom, keyboard
+operation and an accessible event list, but is not verified walking navigation.
+Provenance is recorded in `apps/web/src/offline/campus-map.provenance.md`; the
+build-time refresh script is `apps/web/scripts/generate-offline-campus-map.mjs`.
+The locally measured essential shell is approximately **4.12 MB before
+compression**, across 83 assets in the verified production build. A per-file gzip
+estimate is 2.22 MB; actual transfer size depends on deployment compression. This
+includes map code/data, fonts and other application assets, not just map geometry.
+These build measurements are not a fixed limit or a deployed performance claim.
+Installation retains the entry/Home/Explore/saved-challenge JavaScript and
 their static build dependencies, plus the existing CSS, fonts, branding and
 campus artwork. Other build-allowlisted JavaScript is cached on successful
 same-origin demand, rather than downloaded during installation. Previously
@@ -88,8 +184,9 @@ visit to an unrequested online-only route requires connectivity. This does not
 add offline Author/Profile API support or change the prepared-challenge contract.
 Hashed assets can reuse the browser HTTP cache during installation; revisioned
 public files are reloaded. A failed installation leaves the active shell intact.
-An update waits for user activation, and the UI blocks activation
-while a local challenge remains active. Pending IndexedDB data survives updates.
+Updates activate automatically at the public Home boundary only when no local
+challenge remains active and no text field is being edited. Pending IndexedDB
+data survives updates.
 
 ## Deployment and team setup
 
@@ -157,7 +254,9 @@ Run the production-shell browser regression with
 `dist-e2e` bundle with the existing fake-auth fixture, uses mocked API responses,
 and requires installed Playwright Chromium. It does not use real Auth0 or Neon.
 The test checks both formats, offline reload, answer persistence, transient sync
-failure and receipt recovery; database tests separately verify real marking and
+failure with automatic retry, receipt recovery and the same Explore layout while
+the browser still reports online but the API is unreachable. It also checks the
+new arrival policy needs no finishing GPS. Database tests separately verify real marking and
 one-time card issuance. Run the offline database suite via the existing
 `npm run test:database --workspace @wits-world/api` command.
 

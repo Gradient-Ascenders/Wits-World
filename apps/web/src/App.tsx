@@ -8,9 +8,11 @@ import { AppShell } from './components/AppShell';
 import {
   OfflineProvider,
   OfflineStatus,
+  OfflinePreparation,
   useOffline,
 } from './offline/OfflineProvider';
 import { ServiceWorkerUpdate } from './offline/ServiceWorkerUpdate';
+import { boundOfflinePlayer } from './offline/store';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingState } from './components/LoadingState';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -168,6 +170,7 @@ export function AppRoutes({
         <SessionCollectionShell apiBaseUrl={apiBaseUrl}>
           <AppToaster />
           <OfflineStatus />
+          <OfflinePreparation />
           <ServiceWorkerUpdate />
           <StartupSettler />
           <ErrorBoundary resetKey={pathname} withinShell>
@@ -176,18 +179,14 @@ export function AppRoutes({
                 <Route path="/" component={HomePage} />
                 <Route path="/explore">
                   <OfflineExploreGate>
-                    <ProtectedRoute>
-                      <ExplorePage
-                        apiBaseUrl={apiBaseUrl}
-                        locationClaimProvider={locationClaimProvider}
-                        locationObservationProvider={
-                          locationObservationProvider
-                        }
-                        locationPermissionProvider={locationPermissionProvider}
-                        mapFactory={mapFactory}
-                        mapboxAccessToken={mapboxAccessToken}
-                      />
-                    </ProtectedRoute>
+                    <ExplorePage
+                      apiBaseUrl={apiBaseUrl}
+                      locationClaimProvider={locationClaimProvider}
+                      locationObservationProvider={locationObservationProvider}
+                      locationPermissionProvider={locationPermissionProvider}
+                      mapFactory={mapFactory}
+                      mapboxAccessToken={mapboxAccessToken}
+                    />
                   </OfflineExploreGate>
                 </Route>
                 <Route path="/offline" component={OfflineExplorePage} />
@@ -353,15 +352,26 @@ function SessionCollectionShell({
       ? `${apiBaseUrl}:${state.player.id}:${state.player.role}`
       : `${apiBaseUrl}:${state.status}`;
   return (
-    <CollectionReadProvider key={scope}>
+    <CollectionReadProvider scope={scope}>
       <AppShell>{children}</AppShell>
     </CollectionReadProvider>
   );
 }
 
 function OfflineExploreGate({ children }: { children: ReactNode }) {
-  const { online } = useOffline();
-  return online ? children : <OfflineExplorePage />;
+  const { revision, offlineSession } = useOffline();
+  const { state } = useCurrentPlayer();
+  void revision;
+  const binding = boundOfflinePlayer();
+  // A local binding only opens cached exploration. It never authorizes API reads.
+  return binding &&
+    (state.status === 'ready'
+      ? state.player.id === binding && !state.player.playerNameSetupRequired
+      : offlineSession?.playerId === binding) ? (
+    children
+  ) : (
+    <ProtectedRoute>{children}</ProtectedRoute>
+  );
 }
 
 function DecksRoute({ apiBaseUrl }: { apiBaseUrl: string }) {

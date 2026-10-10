@@ -2,7 +2,7 @@ import { LoadingState, UpdatingIndicator } from '../components/LoadingState';
 import { createAppDateTimeFormatter } from '../date-time';
 import { StatusMessage } from '../components/StatusMessage';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useParams } from 'wouter';
+import { Link, useParams } from 'wouter';
 import {
   BrowserLocationError,
   requestBrowserLocation,
@@ -10,21 +10,21 @@ import {
 import { ChallengeQuestion } from '../components/challenge/ChallengeQuestion';
 import { OrderingChallengeQuestion } from '../components/challenge/OrderingChallengeQuestion';
 import { formatChallengeTime } from '../challenge-deadline';
-import { useOffline } from './OfflineProvider';
+import { OfflinePreparation, useOffline } from './OfflineProvider';
+import { SearchField } from '../components/fields/SearchField';
+import { checkOfflineLocation } from './location';
 import {
   boundOfflinePlayer,
-  createLocalAttempt,
   finishLocalAttempt,
   readOfflineState,
   saveLocalAnswer,
-  type CachedPack,
   type LocalAttempt,
 } from './store';
 import '../components/challenge/challenge.css';
 import './offline.css';
 
 type LocalState = Awaited<ReturnType<typeof readOfflineState>>;
-function useLocalState() {
+export function useLocalState() {
   const { revision } = useOffline();
   const [state, setState] = useState<LocalState | null>(null);
   const [error, setError] = useState('');
@@ -67,48 +67,54 @@ export function OfflineExplorePage() {
     syncing,
     syncFailed,
     attemptSync = {},
+    connectionFailed,
+    retryConnection,
   } = useOffline();
-  const [, navigate] = useLocation();
-  const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
-  async function start(cached: CachedPack) {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const location = await requestBrowserLocation();
-      if (
-        Date.now() < Date.parse(cached.pack.validFrom) ||
-        Date.now() >= Date.parse(cached.pack.validUntil)
-      )
-        throw new Error('This saved event is not currently open.');
-      const attempt = await createLocalAttempt(cached, location);
-      refresh();
-      navigate(`/offline-attempts/${attempt.clientAttemptId}`);
-    } catch (failure) {
-      setMessage(
-        failure instanceof BrowserLocationError
-          ? offlineLocationMessage(failure)
-          : failure instanceof Error && !(failure instanceof DOMException)
-            ? failure.message
-            : 'This saved event could not open. Try again or reconnect to play online.',
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [query, setQuery] = useState('');
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, []);
+  const events =
+    state?.packs.filter(
+      (cached) =>
+        !state.attempts.some(
+          (attempt) =>
+            attempt.cached.pack.event.eventId === cached.pack.event.eventId,
+        ) &&
+        `${cached.pack.event.title} ${cached.pack.event.description ?? ''}`
+          .toLocaleLowerCase()
+          .includes(query.toLocaleLowerCase().trim()),
+    ) ?? [];
   return (
     <section
       aria-labelledby="saved-events-title"
       className="challenge-page offline-page"
     >
-      <h1 id="saved-events-title">Saved campus events</h1>
+      <h1 id="saved-events-title">Downloads & saved attempts</h1>
+      <p>
+        <Link className="button" href="/explore">
+          Back to Explore
+        </Link>
+      </p>
+      <OfflinePreparation detailed />
+      {online && connectionFailed && (
+        <p>
+          {connectionFailed &&
+            'The server could not be reached. You can keep playing saved challenges. '}
+          <button className="button button--quiet" onClick={retryConnection}>
+            Retry connection
+          </button>
+        </p>
+      )}
       <p>
         Answers stay on this device until the server can check them. Reconnect
         within 12 hours of completing a challenge.
       </p>
-      {(error || message) && (
+      {error && (
         <StatusMessage tone="error">
-          {error || message}
+          {error}
           {error && (
             <button
               className="button button--secondary"
@@ -120,7 +126,7 @@ export function OfflineExplorePage() {
           )}
         </StatusMessage>
       )}
-      {(state?.session || syncing || syncFailed) && (
+      {((state?.attempts.length ?? 0) > 0 || syncing || syncFailed) && (
         <SyncFeedback label="Sync saved attempts" />
       )}
       {!state ? (
@@ -138,51 +144,11 @@ export function OfflineExplorePage() {
         </p>
       ) : (
         <>
-          <p>
-            Saved for {state.session.playerName}.{' '}
-            {online
-              ? 'Network detected; server connection not guaranteed.'
-              : 'No connection.'}
-          </p>
-          <UpdatingIndicator
-            active={reading}
-            label="Updating saved events"
-            onRetry={refresh}
-          />
-          <EventSchematic packs={state.packs} />
-          {state.packs.length === 0 && (
-            <p>
-              No current events are saved. Connect and allow location access to
-              prepare nearby events.
-            </p>
-          )}
-          <ul className="offline-events">
-            {state.packs.map((cached) => (
-              <li key={cached.pack.packId}>
-                <h2>{cached.pack.event.title}</h2>
-                <p>{cached.pack.event.description}</p>
-                <p>
-                  Available until{' '}
-                  {createAppDateTimeFormatter(undefined, {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  }).format(new Date(cached.pack.validUntil))}
-                  .
-                </p>
-                <button
-                  className="button"
-                  disabled={
-                    busy || Date.now() < Date.parse(cached.pack.validFrom)
-                  }
-                  onClick={() => void start(cached)}
-                  type="button"
-                >
-                  Open saved challenge
-                </button>
-              </li>
-            ))}
-          </ul>
+          <p>Downloads belong to {state.session.playerName} on this device.</p>
           <h2>Attempts on this device</h2>
+          {state.attempts.length === 0 && state.receipts.length === 0 && (
+            <p>No saved attempts yet.</p>
+          )}
           <ul>
             {state.attempts.map((attempt) => (
               <li key={attempt.clientAttemptId}>
@@ -211,6 +177,71 @@ export function OfflineExplorePage() {
               </li>
             ))}
           </ul>
+          <h2>Downloaded events</h2>
+          <UpdatingIndicator
+            active={reading}
+            label="Updating saved events"
+            onRetry={refresh}
+          />
+          <SearchField
+            label="Search saved events"
+            placeholder="Search saved events"
+            value={query}
+            onChange={setQuery}
+          />
+          {state.packs.length === 0 && (
+            <p>
+              No events are downloaded yet. Connect to prepare campus
+              exploration automatically. Location access is not needed for
+              downloads.
+            </p>
+          )}
+          <ul className="offline-events">
+            {events.map((cached) => (
+              <li key={cached.pack.packId}>
+                <h2>{cached.pack.event.title}</h2>
+                <p>{cached.pack.event.description}</p>
+                <p>
+                  {Date.parse(cached.pack.validUntil) <= now
+                    ? 'Expired. Opened '
+                    : Date.parse(cached.pack.validFrom) > now
+                      ? 'Opens '
+                      : 'Available now. Opened '}
+                  {createAppDateTimeFormatter(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  }).format(new Date(cached.pack.validFrom))}
+                  .
+                </p>
+                <p>
+                  Start within {cached.pack.event.radiusMetres} metres of the
+                  event. {cached.pack.questions.length} questions ·{' '}
+                  {cached.pack.timeLimitSeconds} seconds.
+                </p>
+                <p>
+                  Available until{' '}
+                  {createAppDateTimeFormatter(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  }).format(new Date(cached.pack.validUntil))}
+                  .
+                </p>
+                <p>
+                  {Date.parse(cached.pack.validUntil) <= now
+                    ? 'Expired. Reconnect to refresh this download.'
+                    : 'Downloaded.'}{' '}
+                  Open this event in{' '}
+                  <Link href={`/explore?event=${cached.pack.event.eventId}`}>
+                    Explore
+                  </Link>
+                  .
+                </p>
+              </li>
+            ))}
+          </ul>
+          {query && events.length === 0 && (
+            <p>No saved events match your search.</p>
+          )}
         </>
       )}
     </section>
@@ -218,8 +249,16 @@ export function OfflineExplorePage() {
 }
 
 function SyncFeedback({ label }: { label: string }) {
-  const { syncing, syncMessage, syncFailed, sync, cancelSync, online } =
-    useOffline();
+  const {
+    syncing,
+    syncMessage,
+    syncFailed,
+    sync,
+    cancelSync,
+    online,
+    canSync,
+    restoreSession,
+  } = useOffline();
   return (
     <div aria-busy={syncing}>
       {syncMessage && (
@@ -227,18 +266,28 @@ function SyncFeedback({ label }: { label: string }) {
           {syncMessage}
         </StatusMessage>
       )}
-      <button
-        className="button"
-        disabled={syncing || !online}
-        onClick={() => void sync()}
-        type="button"
-      >
-        {syncing
-          ? 'Syncing saved attempts…'
-          : syncFailed
-            ? 'Retry sync'
-            : label}
-      </button>
+      {online && !canSync ? (
+        <button
+          className="button"
+          onClick={() => void restoreSession()}
+          type="button"
+        >
+          Sign in to check answers
+        </button>
+      ) : syncFailed ? (
+        <button
+          className="button"
+          disabled={syncing || !online}
+          onClick={() => void sync()}
+          type="button"
+        >
+          {syncing
+            ? 'Syncing saved attempts…'
+            : syncFailed
+              ? 'Retry sync'
+              : label}
+        </button>
+      ) : null}
       {syncing && (
         <button
           className="button button--secondary"
@@ -248,54 +297,14 @@ function SyncFeedback({ label }: { label: string }) {
           Cancel sync
         </button>
       )}
-      {!online && <p>Reconnect to check saved attempts with the server.</p>}
+      {!syncFailed && (
+        <p>
+          {online
+            ? 'Saved answers are checked automatically when your account is connected.'
+            : 'Answers saved. We’ll check them when you reconnect.'}
+        </p>
+      )}
     </div>
-  );
-}
-
-function EventSchematic({ packs }: { packs: CachedPack[] }) {
-  if (!packs.length) return null;
-  const latitudes = packs.map((item) => item.pack.event.latitude);
-  const longitudes = packs.map((item) => item.pack.event.longitude);
-  const south = Math.min(...latitudes),
-    north = Math.max(...latitudes);
-  const west = Math.min(...longitudes),
-    east = Math.max(...longitudes);
-  return (
-    <figure>
-      <svg
-        viewBox="0 0 600 300"
-        role="img"
-        aria-label="Relative positions of saved events, north is up. Use the event list below for details."
-      >
-        <rect width="600" height="300" fill="#edf2ec" />
-        <text x="12" y="22" fill="#193b32">
-          N ↑
-        </text>
-        {packs.map(({ pack }, index) => {
-          const x =
-            50 +
-            ((pack.event.longitude - west) / Math.max(east - west, 0.001)) *
-              480;
-          const y =
-            250 -
-            ((pack.event.latitude - south) / Math.max(north - south, 0.001)) *
-              200;
-          return (
-            <g key={pack.packId}>
-              <circle cx={x} cy={y} r="9" fill="#193b32" />
-              <text x={x + 13} y={y + 5} fill="#193b32">
-                {index + 1}. {pack.event.title.slice(0, 24)}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-      <figcaption>
-        Saved event schematic. Relative positions only; this is not a walking
-        route.
-      </figcaption>
-    </figure>
   );
 }
 
@@ -315,13 +324,27 @@ export function OfflineAttemptPage() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const finishing = useRef(false);
+  const finishRequest = useRef<AbortController | null>(null);
+  const automaticFinish = useRef<string | null>(null);
   const question = attempt?.cached.pack.questions[attempt.answers.length];
   const deadline = attempt
     ? Date.parse(attempt.startedAt) +
       attempt.cached.pack.timeLimitSeconds * 1000
     : 0;
   const expired = now >= deadline;
+  const needsFinishLocation =
+    attempt?.cached.pack.locationPolicy !== 'arrival-v1';
   const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    automaticFinish.current = null;
+    setBusy(false);
+    setMessage('');
+    return () => {
+      finishRequest.current?.abort();
+      finishRequest.current = null;
+      finishing.current = false;
+    };
+  }, [clientAttemptId]);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -334,29 +357,65 @@ export function OfflineAttemptPage() {
   async function finish(value: LocalAttempt) {
     if (finishing.current) return;
     finishing.current = true;
+    const controller = new AbortController();
+    finishRequest.current = controller;
     setBusy(true);
+    const requiresLocation = value.cached.pack.locationPolicy !== 'arrival-v1';
+    setMessage(
+      requiresLocation
+        ? 'Getting your location. Your answers are saved on this device.'
+        : 'Saving your completed attempt. Your answers are saved on this device.',
+    );
     try {
-      const location = await requestBrowserLocation();
+      const location = requiresLocation
+        ? await requestBrowserLocation(controller.signal)
+        : undefined;
+      controller.signal.throwIfAborted();
+      if (location)
+        checkOfflineLocation(location, value.cached.pack.event, false);
       await finishLocalAttempt(value.clientAttemptId, location);
-      refresh();
-      await sync();
-    } catch {
+      controller.signal.throwIfAborted();
       setMessage(
-        'Your answers are saved. Location is needed to finish verification; retry when a location is available.',
+        'Answers saved on this device. Waiting for server validation.',
+      );
+      refresh();
+      // A slow server must not keep the local location step busy.
+      void sync();
+    } catch (failure) {
+      if (controller.signal.aborted) return;
+      setMessage(
+        failure instanceof BrowserLocationError
+          ? `Your answers are saved. ${offlineLocationMessage(failure)}`
+          : failure instanceof Error && !(failure instanceof DOMException)
+            ? failure.message
+            : requiresLocation
+              ? 'Your answers are saved. Location is needed to finish verification; retry when a location is available.'
+              : 'Your answers are saved, but the completed attempt could not be finalised on this device. Retry saving.',
       );
     } finally {
-      finishing.current = false;
-      setBusy(false);
+      if (finishRequest.current === controller) {
+        finishRequest.current = null;
+        finishing.current = false;
+        setBusy(false);
+      }
     }
   }
   useEffect(() => {
     if (
       attempt?.status === 'active' &&
-      (expired || attempt.answers.length === 5)
-    )
+      (expired || attempt.answers.length === 5) &&
+      automaticFinish.current !== attempt.clientAttemptId
+    ) {
+      automaticFinish.current = attempt.clientAttemptId;
       void finish(attempt);
-    // Each deadline or answer-count transition requests at most one finish sample.
-  }, [attempt?.status, attempt?.answers.length, expired]);
+    }
+    // A failed automatic sample waits for an explicit retry, not another tick.
+  }, [
+    attempt?.clientAttemptId,
+    attempt?.status,
+    attempt?.answers.length,
+    expired,
+  ]);
   async function answer() {
     if (!attempt || !question || busy) return;
     setBusy(true);
@@ -441,14 +500,28 @@ export function OfflineAttemptPage() {
         </>
       ) : expired || !question ? (
         <>
-          <p>Answers locked. Completing location evidence…</p>
+          <p>
+            {needsFinishLocation
+              ? busy
+                ? 'Answers locked. Completing location evidence…'
+                : 'Answers locked and saved. Location is still needed to finish.'
+              : busy
+                ? 'Answers locked. Saving your attempt…'
+                : 'Answers locked and saved. Retry saving to complete this attempt on your device.'}
+          </p>
           <button
             className="button"
             disabled={busy}
             onClick={() => void finish(attempt)}
             type="button"
           >
-            Retry location
+            {needsFinishLocation
+              ? busy
+                ? 'Getting location…'
+                : 'Retry location'
+              : busy
+                ? 'Saving attempt…'
+                : 'Retry saving'}
           </button>
         </>
       ) : (

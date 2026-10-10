@@ -44,13 +44,13 @@ describe('connectivity feedback', () => {
   it('retains saved-event access on the home page when offline', () => {
     renderStatus('/', false);
     expect(
-      screen.getByRole('link', { name: /You are offline/ }),
+      screen.getByRole('link', { name: 'View downloads' }),
     ).toHaveAttribute('href', '/offline');
   });
   it('retains saved-event access on product routes when offline', () => {
     renderStatus('/explore', false);
     expect(
-      screen.getByRole('link', { name: /You are offline/ }),
+      screen.getByRole('link', { name: 'View downloads' }),
     ).toHaveAttribute('href', '/offline');
   });
 });

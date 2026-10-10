@@ -2,7 +2,7 @@ import type { OutputBundle } from 'rolldown';
 import { describe, expect, it } from 'vitest';
 import { createPrecachePolicy } from '../precache-policy';
 
-function buildPolicy(omit?: string) {
+function buildPolicy(omit?: string, empty?: string) {
   const policy = createPrecachePolicy();
   const bundle = Object.fromEntries(
     [
@@ -10,6 +10,7 @@ function buildPolicy(omit?: string) {
       ['main.js', '/project/src/main.tsx', ['boot.js']],
       ['home.js', '/project/src/pages/HomePage.tsx', ['main.js']],
       ['offline.js', '/project/src/offline/OfflinePages.tsx', ['question.js']],
+      ['explore.js', '/project/src/pages/ExplorePage.tsx', ['common.js']],
       ['question.js', null, ['common.js']],
       ['common.js', null, ['main.js']],
       [
@@ -25,6 +26,7 @@ function buildPolicy(omit?: string) {
         fileName,
         {
           type: 'chunk',
+          code: fileName === empty ? '' : '/* emitted JavaScript */',
           fileName,
           facadeModuleId,
           imports,
@@ -45,12 +47,30 @@ function buildPolicy(omit?: string) {
 }
 
 describe('offline shell dependency selection', () => {
+  it('keeps dependencies of CSS-only chunks without requiring phantom JavaScript files', async () => {
+    const entries = [
+      'boot.js',
+      'main.js',
+      'home.js',
+      'offline.js',
+      'explore.js',
+      'common.js',
+      'question.css',
+    ].map((url) => ({ url, revision: null }));
+    const { manifest } = await buildPolicy(undefined, 'question.js').transform(
+      entries,
+    );
+    expect(manifest.map((entry) => entry.url)).toEqual(
+      entries.map((entry) => entry.url),
+    );
+  });
   it('retains transitive static dependencies and cycles without importing unrelated lazy routes', async () => {
     const urls = [
       'boot.js',
       'main.js',
       'home.js',
       'offline.js',
+      'explore.js',
       'question.js',
       'common.js',
       'author.js',
@@ -110,6 +130,7 @@ describe('offline shell dependency selection', () => {
       'main.js',
       'home.js',
       'offline.js',
+      'explore.js',
       'question.js',
       'common.js',
     ].map((url) => ({ url, revision: null }));

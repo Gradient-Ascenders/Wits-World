@@ -11,6 +11,8 @@ import {
   replacePacks,
   saveLocalAnswer,
   saveOfflineSession,
+  saveOfflineCatalogue,
+  readOfflineCatalogue,
   type CachedPack,
 } from '../src/offline/store';
 
@@ -61,6 +63,41 @@ beforeEach(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 describe('durable offline state', () => {
+  it('stores more than ten packs without evicting pending work', async () => {
+    const attempt = await createLocalAttempt(cached, location);
+    const packs = Array.from({ length: 12 }, (_, index) => ({
+      ...cached,
+      pack: {
+        ...cached.pack,
+        packId: `pack-${index}`,
+        event: { ...cached.pack.event, eventId: `event-${index}` },
+      },
+    }));
+    await replacePacks('player', packs);
+    const state = await readOfflineState();
+    expect(state.packs).toHaveLength(12);
+    expect(state.attempts[0]?.clientAttemptId).toBe(attempt.clientAttemptId);
+  });
+  it('persists an account-scoped event catalogue and removes it on sign out', async () => {
+    const events = [
+      {
+        ...cached.pack.event,
+        availability: 'active' as const,
+        startsAt: cached.pack.validFrom,
+        endsAt: cached.pack.validUntil,
+      },
+    ];
+    await saveOfflineCatalogue('player', events);
+    expect((await readOfflineCatalogue())?.events).toEqual(events);
+    localStorage.setItem(
+      'wits-world.authenticated-player-id',
+      'another-player',
+    );
+    expect(await readOfflineCatalogue()).toBeNull();
+    localStorage.setItem('wits-world.authenticated-player-id', 'player');
+    await clearOfflineData('player');
+    expect(await readOfflineCatalogue()).toBeNull();
+  });
   it('does not discard data when only the generic binding is cleared', async () => {
     await createLocalAttempt(cached, location);
     clearAuthenticatedPlayerBinding();

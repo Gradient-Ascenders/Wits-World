@@ -169,7 +169,7 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
           })),
         };
         now = new Date('2026-09-06T12:00:00Z');
-        for (const sample of ['startLocation', 'finishLocation'] as const) {
+        for (const sample of ['startLocation'] as const) {
           await expect(
             service.submit(playerId, {
               ...input,
@@ -178,6 +178,8 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
             }),
           ).rejects.toMatchObject({ code: 'OFFLINE_LOCATION_UNVERIFIABLE' });
         }
+        // The signed arrival policy permits indoor completion without finishing GPS.
+        delete input.finishLocation;
 
         // Rejected GPS observations on either side of the offline start must
         // not become trusted movement anchors.

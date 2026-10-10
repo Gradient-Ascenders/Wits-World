@@ -14,7 +14,7 @@ export default defineConfig({
     ...devices['Desktop Chrome'],
     baseURL: 'http://127.0.0.1:4180',
     permissions: ['geolocation'],
-    geolocation: { latitude: -26, longitude: 28, accuracy: 10 },
+    geolocation: { latitude: -26.19205, longitude: 28.03038, accuracy: 10 },
     serviceWorkers: 'allow',
     trace: 'off',
     screenshot: 'only-on-failure',

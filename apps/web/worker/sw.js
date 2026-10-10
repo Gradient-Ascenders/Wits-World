@@ -36,6 +36,21 @@ self.addEventListener('install', (event) => {
 });
 self.addEventListener('message', (event) => {
   if (event.data === 'ACTIVATE_UPDATE') self.skipWaiting();
+  if (event.data === 'CHECK_OFFLINE_SHELL' && event.ports?.[0]) {
+    event.waitUntil(
+      name
+        .then(async (key) => {
+          const cache = await caches.open(key);
+          const files = await Promise.all(
+            manifest
+              .filter((entry) => entry.precache !== false)
+              .map((entry) => cache.match(entry.url, { ignoreVary: true })),
+          );
+          event.ports[0].postMessage({ ready: files.every(Boolean) });
+        })
+        .catch(() => event.ports[0].postMessage({ ready: false })),
+    );
+  }
 });
 self.addEventListener('activate', (event) => {
   event.waitUntil(
@@ -58,10 +73,13 @@ self.addEventListener('fetch', (event) => {
     return;
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(async () => {
+      // The saved application must open even when a connected network stalls.
+      // Assets are versioned and worker updates check for a newer shell.
+      (async () => {
         const cache = await caches.open(await name);
-        return (await cache.match('index.html')) || Response.error();
-      }),
+        const shell = await cache.match('index.html');
+        return shell || fetch(event.request);
+      })(),
     );
   } else if (paths.has(url.pathname)) {
     event.respondWith(

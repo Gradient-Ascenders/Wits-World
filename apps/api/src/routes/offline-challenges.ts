@@ -75,6 +75,30 @@ const packSchema = {
     validFrom: timestamp,
     validUntil: timestamp,
     placementAssignmentId: uuid,
+    locationPolicy: { type: 'string', enum: ['arrival-v1'] },
+    rewardContext: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['policyVersion', 'cards'],
+      properties: {
+        policyVersion: { type: 'string' },
+        cards: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['cardDefinitionId', 'rarity'],
+            properties: {
+              cardDefinitionId: uuid,
+              rarity: {
+                type: 'string',
+                enum: ['common', 'rare', 'epic', 'legendary'],
+              },
+            },
+          },
+        },
+      },
+    },
     challengeId: uuid,
     challengeVersion: { type: 'integer' },
     format: { type: 'string', enum: ['multiple_choice', 'ordering'] },
@@ -240,7 +264,6 @@ export const offlineChallengeRoutes: FastifyPluginAsync<{
             'finishedAt',
             'answers',
             'startLocation',
-            'finishLocation',
           ],
           properties: {
             clientAttemptId: uuid,

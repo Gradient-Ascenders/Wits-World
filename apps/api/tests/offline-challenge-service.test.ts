@@ -114,10 +114,205 @@ describe('offline challenge service', () => {
     mocks.scoreAttempt.mockResolvedValue({ scoreCorrect: 5 });
   });
 
+  it.each([1, 10])(
+    'prepares %i mixed-format events without per-question reads',
+    async (count) => {
+      const events = Array.from({ length: count }, () => ({
+        eventId: randomUUID(),
+        title: 'Batch event',
+        description: null,
+        latitude: -26.1929,
+        longitude: 28.0305,
+        radiusMetres: 75,
+        startsAt: '2026-09-28T09:00:00.000Z',
+        endsAt: '2026-09-28T12:00:00.000Z',
+        availability: 'active',
+      }));
+      mocks.listEvents.mockResolvedValue(events);
+      const sources = events.map((event, index) => ({
+        id: randomUUID(),
+        event_id: event.eventId,
+        version: 3,
+        event_version: 4,
+        format: index % 2 ? 'ordering' : 'multiple_choice',
+        placement_assignment_id: index % 2 ? randomUUID() : null,
+        next_boundary: new Date('2026-09-28T11:00:00.000Z'),
+      }));
+      const questions = sources.flatMap((source) =>
+        Array.from({ length: 6 }, (_, index) => ({
+          id: randomUUID(),
+          challenge_id: source.id,
+          version: 2,
+          prompt: `${source.format} question ${index}`,
+          difficulty: 1,
+        })),
+      );
+      const items = questions.flatMap((question) =>
+        Array.from({ length: 4 }, (_, index) => ({
+          id: randomUUID(),
+          question_id: question.id,
+          text: `${question.prompt} option ${index}`,
+        })),
+      );
+      const ids = (value: unknown) => (Array.isArray(value) ? value : [value]);
+      const fixture = databaseWith((sql, values = []) => {
+        if (sql.includes('from public.event_challenges'))
+          return {
+            rows: sources.filter((row) =>
+              ids(values[0]).includes(row.event_id),
+            ),
+          };
+        if (sql.includes('event_placement_state'))
+          return {
+            rows: sources.filter((row) =>
+              ids(values[0]).includes(row.event_id),
+            ),
+          };
+        if (sql.includes('from public.challenge_questions'))
+          return {
+            rows: questions.filter((row) =>
+              ids(values[0]).includes(row.challenge_id),
+            ),
+          };
+        if (
+          sql.includes('from public.challenge_choices') ||
+          sql.includes('from public.challenge_ordering_items')
+        ) {
+          const requested = [...ids(values[0]), ...ids(values[1])];
+          return {
+            rows: items.filter((row) => requested.includes(row.question_id)),
+          };
+        }
+        return { rows: [] };
+      });
+      const prepared = await createOfflineChallengeService(
+        fixture.database,
+        options(),
+      ).packs(
+        playerId,
+        events.map((event) => event.eventId),
+      );
+      expect(prepared).toHaveLength(count);
+      for (const { pack } of prepared) {
+        const source = sources.find(
+          (row) => row.event_id === pack.event.eventId,
+        )!;
+        expect(pack.format).toBe(source.format);
+        expect(pack.event.version).toBe(4);
+        expect(pack.questions).toHaveLength(5);
+        expect(
+          pack.questions.every((question) => !('challenge_id' in question)),
+        ).toBe(true);
+        expect(pack.validUntil).toBe(
+          source.placement_assignment_id
+            ? '2026-09-28T11:00:00.000Z'
+            : '2026-09-28T12:00:00.000Z',
+        );
+        for (const question of pack.questions) {
+          expect(
+            questions.find((row) => row.id === question.id)?.challenge_id,
+          ).toBe(source.id);
+          expect(question.options).toHaveLength(4);
+          for (const item of question.options)
+            expect(items.find((row) => row.id === item.id)?.question_id).toBe(
+              question.id,
+            );
+        }
+      }
+      // Event discovery is mocked here; real preparation adds its single query.
+      expect(fixture.query).toHaveBeenCalledTimes(6);
+      const optionRead = fixture.query.mock.calls.find(([sql]) =>
+        sql.includes('union all'),
+      )!;
+      const [choiceIds, orderingIds] = optionRead[1] as string[][];
+      expect(choiceIds).toHaveLength(Math.ceil(count / 2) * 5);
+      expect(orderingIds).toHaveLength(Math.floor(count / 2) * 5);
+      expect(optionRead[0]).not.toContain('private.');
+    },
+  );
+
+  it.each([
+    'no events',
+    'no challenges',
+    'insufficient questions',
+    'invalid options',
+  ])('keeps snapshot and cleanup behaviour for %s', async (scenario) => {
+    if (scenario === 'no events') mocks.listEvents.mockResolvedValue([]);
+    const questionIds = Array.from(
+      { length: scenario === 'insufficient questions' ? 4 : 5 },
+      () => randomUUID(),
+    );
+    const fixture = databaseWith((sql) => {
+      if (sql.includes('from public.event_challenges'))
+        return {
+          rows:
+            scenario === 'no challenges'
+              ? []
+              : [
+                  {
+                    id: challengeId,
+                    event_id: eventId,
+                    version: 1,
+                    event_version: 1,
+                    format: 'multiple_choice',
+                    placement_assignment_id: null,
+                    next_boundary: null,
+                  },
+                ],
+        };
+      if (sql.includes('from public.challenge_questions'))
+        return {
+          rows: questionIds.map((id) => ({
+            id,
+            challenge_id: challengeId,
+            version: 1,
+            prompt: 'Question',
+            difficulty: 1,
+          })),
+        };
+      if (sql.includes('from public.challenge_choices'))
+        return {
+          rows: questionIds.flatMap((question_id) =>
+            Array.from({ length: 3 }, () => ({
+              id: randomUUID(),
+              question_id,
+              text: 'Option',
+            })),
+          ),
+        };
+      return { rows: [] };
+    });
+    const result = createOfflineChallengeService(
+      fixture.database,
+      options(),
+    ).packs(playerId, [eventId]);
+    if (scenario === 'invalid options') {
+      await expect(result).rejects.toThrow('invalid options');
+      expect(fixture.query).toHaveBeenCalledWith('rollback');
+      expect(fixture.query).not.toHaveBeenCalledWith('commit');
+    } else {
+      await expect(result).resolves.toEqual([]);
+      expect(fixture.query).toHaveBeenCalledWith('commit');
+    }
+    expect(fixture.query).toHaveBeenCalledWith(
+      'begin isolation level repeatable read read only',
+    );
+    expect(fixture.release).toHaveBeenCalledOnce();
+  });
+
   it('issues a signed pack and persists a valid delayed submission atomically', async () => {
     const questionIds = Array.from({ length: 5 }, () => randomUUID());
     const fixture = databaseWith((sql) => {
-      if (sql.includes('event_placement_state')) {
+      if (sql.includes('from public.card_definitions'))
+        return {
+          rows: [
+            { id: '17250000-0000-4000-8000-000000000001', rarity: 'common' },
+          ],
+        };
+      if (
+        sql.includes('event_placement_state') &&
+        !sql.includes('from public.event_challenges')
+      ) {
         return {
           rows: [
             {
@@ -132,21 +327,21 @@ describe('offline challenge service', () => {
           rows: [
             {
               id: challengeId,
+              event_id: eventId,
               version: 3,
               event_version: 4,
               format: 'multiple_choice',
+              placement_assignment_id: null,
+              next_boundary: null,
             },
           ],
         };
       }
-      if (
-        sql.includes(
-          'from public.challenge_questions\n            where challenge_id',
-        )
-      ) {
+      if (sql.includes('from public.challenge_questions')) {
         return {
           rows: questionIds.map((id, index) => ({
             id,
+            challenge_id: challengeId,
             version: 1,
             prompt: `Question ${index + 1}`,
             difficulty: 1,
@@ -155,10 +350,13 @@ describe('offline challenge service', () => {
       }
       if (sql.includes('from public.challenge_choices')) {
         return {
-          rows: Array.from({ length: 4 }, (_, index) => ({
-            id: randomUUID(),
-            text: `Choice ${index + 1}`,
-          })),
+          rows: questionIds.flatMap((question_id) =>
+            Array.from({ length: 4 }, (_, index) => ({
+              id: randomUUID(),
+              question_id,
+              text: `Choice ${index + 1}`,
+            })),
+          ),
         };
       }
       if (sql.includes('from public.players'))
@@ -194,6 +392,15 @@ describe('offline challenge service', () => {
 
     expect(packs).toHaveLength(1);
     expect(packs[0]!.pack.questions).toHaveLength(5);
+    expect(packs[0]!.pack.rewardContext).toEqual({
+      policyVersion: 'points-cards-v2',
+      cards: [
+        {
+          cardDefinitionId: '17250000-0000-4000-8000-000000000001',
+          rarity: 'common',
+        },
+      ],
+    });
     expect(packs[0]!.packToken).not.toContain(challengeId);
     expect(
       serviceOptions.trustRestrictions.assertAllowed,
@@ -212,6 +419,7 @@ describe('offline challenge service', () => {
         playerId,
         completionReason: 'answered',
         scoreCorrect: 5,
+        offlineRewardContext: packs[0]!.pack.rewardContext,
       }),
     );
     expect(
@@ -224,8 +432,12 @@ describe('offline challenge service', () => {
   });
 
   it('returns an existing attempt for an identical retry', async () => {
+    const questionIds = Array.from({ length: 5 }, () => randomUUID());
     const packFixture = databaseWith((sql) => {
-      if (sql.includes('event_placement_state')) {
+      if (
+        sql.includes('event_placement_state') &&
+        !sql.includes('from public.event_challenges')
+      ) {
         return {
           rows: [
             {
@@ -240,21 +452,21 @@ describe('offline challenge service', () => {
           rows: [
             {
               id: challengeId,
+              event_id: eventId,
               version: 1,
               event_version: 1,
               format: 'multiple_choice',
+              placement_assignment_id: null,
+              next_boundary: null,
             },
           ],
         };
       }
-      if (
-        sql.includes(
-          'from public.challenge_questions\n            where challenge_id',
-        )
-      ) {
+      if (sql.includes('from public.challenge_questions')) {
         return {
-          rows: Array.from({ length: 5 }, (_, index) => ({
-            id: randomUUID(),
+          rows: questionIds.map((id, index) => ({
+            id,
+            challenge_id: challengeId,
             version: 1,
             prompt: `Question ${index + 1}`,
             difficulty: 1,
@@ -263,10 +475,13 @@ describe('offline challenge service', () => {
       }
       if (sql.includes('from public.challenge_choices')) {
         return {
-          rows: Array.from({ length: 4 }, (_, index) => ({
-            id: randomUUID(),
-            text: `Choice ${index + 1}`,
-          })),
+          rows: questionIds.flatMap((question_id) =>
+            Array.from({ length: 4 }, (_, index) => ({
+              id: randomUUID(),
+              question_id,
+              text: `Choice ${index + 1}`,
+            })),
+          ),
         };
       }
       return { rows: [] };

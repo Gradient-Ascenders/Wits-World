@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth0 } from '@auth0/auth0-react';
+import { useLocation } from 'wouter';
 
 import { ChallengeApiError, startChallengeAttempt } from '../api/challenges';
 import {
@@ -49,6 +51,14 @@ import type {
 } from '../components/exploration/map-provider';
 import { useTerritoryDiscovery } from '../components/exploration/useTerritoryDiscovery';
 import { selectReportedLocation } from '../reported-location-selection';
+import { useOffline } from '../offline/OfflineProvider';
+import { useOfflineExploration } from '../offline/useOfflineExploration';
+import { checkOfflineLocation } from '../offline/location';
+import {
+  createLocalAttempt,
+  OFFLINE_ARRIVAL_WINDOW_MS,
+} from '../offline/store';
+import { READ_TIMEOUT_MS } from '../components/loading-policy';
 
 const CAMPUS_MAP_CONFIGURATION: MapConfiguration = {
   accessToken: '',
@@ -178,6 +188,23 @@ export default function ExplorePage({
   onChallengeStarted = navigateToChallenge,
 }: ExplorePageProps) {
   const getAccessToken = useApiAccessToken();
+  const { isAuthenticated } = useAuth0();
+  const { reportConnectionFailure, online, connectionFailed, refresh } =
+    useOffline();
+  const saved = useOfflineExploration();
+  const [, navigate] = useLocation();
+  const usingSaved = !online || connectionFailed || !isAuthenticated;
+  const savedRef = useRef(saved);
+  savedRef.current = saved;
+  const offlineModeRef = useRef(usingSaved);
+  offlineModeRef.current = usingSaved;
+  const arrivalsRef = useRef(new Map<string, LocationClaim>());
+  const [savedStartMessage, setSavedStartMessage] = useState('');
+  const [clock, setClock] = useState(Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 5_000);
+    return () => clearInterval(timer);
+  }, []);
   const [attempt, setAttempt] = useState(0);
   const [discovery, setDiscovery] = useState<EventDiscoveryState>({
     status: 'loading',
@@ -199,7 +226,9 @@ export default function ExplorePage({
     string | null
   >(null);
   const [startingEventId, setStartingEventId] = useState<string | null>(null);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get('event'),
+  );
   const [selectedTerritoryId, setSelectedTerritoryId] = useState<string | null>(
     null,
   );
@@ -254,14 +283,24 @@ export default function ExplorePage({
   }, []);
   const territory = useTerritoryDiscovery({
     apiBaseUrl,
-    enabled: exploreMode === 'territories',
+    enabled: exploreMode === 'territories' && !usingSaved,
     getAccessToken,
     onSelectedZoneUnavailable: clearTerritorySelection,
     selectedZoneId: selectedTerritoryId,
   });
 
   useEffect(() => {
+    if (!online || !isAuthenticated) return;
     const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      controller.abort();
+      reportConnectionFailure();
+      setDiscovery({
+        status: 'error',
+        message:
+          'The server took too long to respond. Open saved events or retry when connected.',
+      });
+    }, READ_TIMEOUT_MS);
     setDiscovery((current) =>
       current.status === 'ready' || current.status === 'empty'
         ? { ...current, refreshing: true, refreshError: undefined }
@@ -274,12 +313,19 @@ export default function ExplorePage({
       signal: controller.signal,
     })
       .then((events) => {
+        clearTimeout(timer);
         if (!controller.signal.aborted) {
           setDiscovery(toDiscoveryState(events));
         }
       })
       .catch((error: unknown) => {
+        clearTimeout(timer);
         if (!controller.signal.aborted) {
+          if (
+            error instanceof EventDiscoveryError &&
+            error.failure === 'unavailable'
+          )
+            reportConnectionFailure();
           setDiscovery((current) =>
             !(
               error instanceof EventDiscoveryError &&
@@ -296,8 +342,28 @@ export default function ExplorePage({
         }
       });
 
-    return () => controller.abort();
-  }, [apiBaseUrl, attempt, getAccessToken]);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    apiBaseUrl,
+    attempt,
+    getAccessToken,
+    reportConnectionFailure,
+    online,
+    isAuthenticated,
+  ]);
+  useEffect(() => {
+    if (usingSaved) {
+      setExploreMode('discover');
+      eligibilityRequest.current?.abort();
+      trailListRequest.current?.abort();
+      trailDetailRequest.current?.abort();
+      nearbyRequest.current?.abort();
+      setCheckingEventId(null);
+    }
+  }, [usingSaved]);
 
   const loadTrails = useCallback((): void => {
     trailListRequest.current?.abort();
@@ -472,6 +538,7 @@ export default function ExplorePage({
 
   const queueEligibility = useCallback(
     (eventId: string, claim: LocationClaim, force = false): void => {
+      if (offlineModeRef.current) return;
       if (!isActiveEvent(discoveryRef.current, eventId)) {
         return;
       }
@@ -521,6 +588,19 @@ export default function ExplorePage({
         ? { samples: [claim], selected: claim }
         : selectReportedLocation(locationSamplesRef.current, claim);
       latestClaimRef.current = claim;
+      for (const { pack } of savedRef.current.local?.packs ?? []) {
+        if (
+          pack.locationPolicy !== 'arrival-v1' ||
+          Date.parse(claim.acquiredAt) < Date.parse(pack.validFrom)
+        )
+          continue;
+        try {
+          checkOfflineLocation(claim, pack.event, true);
+          arrivalsRef.current.set(pack.packId, claim);
+        } catch {
+          /* A location outside this event never records arrival. */
+        }
+      }
       locationSamplesRef.current = selection.samples;
 
       if (displayedClaimRef.current !== selection.selected) {
@@ -922,6 +1002,81 @@ export default function ExplorePage({
         return;
       }
 
+      const local = savedRef.current.local;
+      const existing = local?.attempts.find(
+        (item) => item.cached.pack.event.eventId === eventId,
+      );
+      if (existing) {
+        navigate(`/offline-attempts/${existing.clientAttemptId}`);
+        return;
+      }
+      const cached = local?.packs.find(
+        (item) =>
+          item.pack.event.eventId === eventId &&
+          Date.parse(item.pack.validFrom) <= Date.now() &&
+          Date.parse(item.pack.validUntil) > Date.now(),
+      );
+      if (cached) {
+        setStartingEventId(eventId);
+        setSavedStartMessage('Checking arrival…');
+        try {
+          const arrival =
+            arrivalsRef.current.get(cached.pack.packId) ??
+            latestClaimRef.current;
+          const age = arrival
+            ? Date.now() - Date.parse(arrival.acquiredAt)
+            : Infinity;
+          const maximumAge =
+            cached.pack.locationPolicy === 'arrival-v1'
+              ? OFFLINE_ARRIVAL_WINDOW_MS
+              : MAX_REUSABLE_CHALLENGE_LOCATION_AGE_MS;
+          let usable = false;
+          if (
+            arrival &&
+            age >= 0 &&
+            age <= maximumAge &&
+            Date.parse(arrival.acquiredAt) >= Date.parse(cached.pack.validFrom)
+          ) {
+            try {
+              checkOfflineLocation(arrival, cached.pack.event, true);
+              usable = true;
+            } catch {
+              /* Try a new acquisition. */
+            }
+          }
+          const claim =
+            usable && arrival
+              ? arrival
+              : await acquireNewerReportedLocation(latestClaimRef.current);
+          if (!mounted.current) return;
+          checkOfflineLocation(claim, cached.pack.event, true);
+          const value = await createLocalAttempt(cached, claim);
+          if (!mounted.current) return;
+          refresh();
+          navigate(`/offline-attempts/${value.clientAttemptId}`);
+        } catch (error) {
+          if (mounted.current)
+            setSavedStartMessage(
+              error instanceof BrowserLocationError
+                ? error.failure === 'denied'
+                  ? 'Allow location access in your browser settings to record arrival.'
+                  : 'Your arrival could not be recorded. Move to an open area and try Play again.'
+                : error instanceof Error
+                  ? error.message
+                  : 'This challenge could not open. Your saved attempts are kept.',
+            );
+        } finally {
+          if (mounted.current) setStartingEventId(null);
+        }
+        return;
+      }
+      if (offlineModeRef.current) {
+        setSavedStartMessage(
+          'This challenge was not downloaded. Reconnect to prepare it.',
+        );
+        return;
+      }
+
       const controller = new AbortController();
       challengeStartRequest.current = controller;
       setStartingEventId(eventId);
@@ -988,6 +1143,8 @@ export default function ExplorePage({
       acquireNewerReportedLocation,
       onChallengeStarted,
       startingEventId,
+      navigate,
+      refresh,
     ],
   );
 
@@ -1000,16 +1157,99 @@ export default function ExplorePage({
           accuracyMetres: displayedClaimRef.current.accuracyMetres,
         };
 
+  const locationStale =
+    locationState !== 'tracking' ||
+    !displayedClaimRef.current ||
+    clock - Date.parse(displayedClaimRef.current.acquiredAt) > 120_000;
+  const catalogue =
+    usingSaved || discovery.status !== 'ready'
+      ? saved.events.map((event) => ({ ...event, id: event.eventId }))
+      : discovery.events;
+  const presentedEvents = catalogue.map((event) => {
+    const pack = saved.local?.packs.find(
+      (item) => item.pack.event.eventId === event.id,
+    );
+    return {
+      ...event,
+      availability: !usingSaved
+        ? event.availability
+        : Date.parse(event.endsAt) <= clock
+          ? ('ended' as const)
+          : Date.parse(event.startsAt) > clock
+            ? ('upcoming' as const)
+            : ('active' as const),
+      offlineStatus: pack
+        ? Date.parse(pack.pack.validUntil) > clock
+          ? ('Downloaded' as const)
+          : ('Expired' as const)
+        : ('Not downloaded' as const),
+    };
+  });
+  const effectiveDiscovery: EventDiscoveryState = catalogue.length
+    ? { status: 'ready', events: presentedEvents }
+    : usingSaved
+      ? saved.error
+        ? { status: 'error', message: saved.error }
+        : { status: 'empty' }
+      : discovery;
+  const savedActions: Record<
+    string,
+    { label: string; detail: string; disabled?: boolean; onPlay?: () => void }
+  > = {};
+  for (const event of presentedEvents) {
+    const cachedPack = saved.local?.packs.find(
+      (item) => item.pack.event.eventId === event.id,
+    );
+    const localAttempt = saved.local?.attempts.find(
+      (item) => item.cached.pack.event.eventId === event.id,
+    );
+    if (localAttempt || event.offlineStatus === 'Downloaded' || usingSaved) {
+      savedActions[event.id] = {
+        label: localAttempt
+          ? localAttempt.status === 'active'
+            ? 'Continue challenge'
+            : 'View saved attempt'
+          : 'Play',
+        detail:
+          savedStartMessage && selectedEventId === event.id
+            ? savedStartMessage
+            : localAttempt
+              ? localAttempt.status === 'active'
+                ? 'Your challenge is saved on this device.'
+                : 'Answers saved. Waiting for the server to confirm your result.'
+              : event.offlineStatus === 'Downloaded'
+                ? cachedPack?.pack.locationPolicy === 'arrival-v1'
+                  ? `Start within ${event.radiusMetres} metres. A recorded arrival is valid for five minutes; results are provisional until checked.`
+                  : `Start within ${event.radiusMetres} metres with a fresh location. This older download also needs a finishing location; results are provisional until checked.`
+                : event.offlineStatus === 'Expired'
+                  ? 'This download has expired. Reconnect to refresh it.'
+                  : 'These questions were not downloaded. Reconnect to play this event.',
+        disabled: !localAttempt && event.availability !== 'active',
+        onPlay:
+          localAttempt || event.offlineStatus === 'Downloaded'
+            ? () => void startChallenge(event.id)
+            : undefined,
+      };
+    }
+  }
+
   return (
     <CampusExplorer
-      discovery={discovery}
+      discovery={effectiveDiscovery}
+      offlineMap={usingSaved}
+      savedActions={savedActions}
+      locationStale={locationStale}
       eligibility={eligibility}
       eligibilityBusy={
         checkingEventId !== null ||
         refreshingLocationEventId !== null ||
         startingEventId !== null
       }
-      locationState={locationState}
+      locationState={
+        locationState === 'tracking' && locationStale && reportedLocation
+          ? 'stale'
+          : locationState
+      }
       mapConfiguration={mapConfiguration}
       mapFactory={mapFactory}
       exploreMode={exploreMode}
