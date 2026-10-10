@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import pg from 'pg';
 
 import {
   createDatabasePool,
   createListenerDatabasePool,
   type DatabasePoolLogger,
+  withDatabaseClient,
 } from '../src/database/connection.js';
 
 const databaseConfig = {
@@ -19,7 +21,45 @@ describe('database connection pool', () => {
   afterEach(async () => {
     await Promise.all(pools.map(async (pool) => pool.end()));
     pools.length = 0;
+    vi.restoreAllMocks();
   });
+
+  it('ends a maintenance pool when connection acquisition fails', async () => {
+    vi.spyOn(pg.Pool.prototype, 'connect').mockRejectedValue(
+      new Error('connection failed'),
+    );
+    const end = vi.spyOn(pg.Pool.prototype, 'end').mockResolvedValue(undefined);
+    const callback = vi.fn();
+    await expect(withDatabaseClient(databaseConfig, callback)).rejects.toThrow(
+      'connection failed',
+    );
+    expect(callback).not.toHaveBeenCalled();
+    expect(end).toHaveBeenCalledOnce();
+  });
+
+  it.each([false, true])(
+    'destroys a maintenance session and ends its pool after callback failure=%s',
+    async (fail) => {
+      const release = vi.fn();
+      vi.spyOn(pg.Pool.prototype, 'connect').mockImplementation(
+        async () =>
+          ({
+            release,
+          }) as unknown as pg.PoolClient,
+      );
+      const end = vi
+        .spyOn(pg.Pool.prototype, 'end')
+        .mockResolvedValue(undefined);
+      const work = withDatabaseClient(databaseConfig, async () => {
+        if (fail) throw new Error('query failed');
+        return 'completed';
+      });
+      if (fail) await expect(work).rejects.toThrow('query failed');
+      else await expect(work).resolves.toBe('completed');
+      expect(release).toHaveBeenCalledWith(true);
+      expect(end).toHaveBeenCalledOnce();
+    },
+  );
 
   it('isolates the max-one listener pool with unchanged TLS and acquisition settings', async () => {
     const logger = { info: vi.fn(), error: vi.fn() };

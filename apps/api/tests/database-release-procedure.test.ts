@@ -31,6 +31,7 @@ describe('database release procedure', () => {
   it('runs migrations before installed-PostGIS readiness, optional seeding, and verification', async () => {
     const stages: string[] = [];
     const onInspection = vi.fn(() => stages.push('inspection-reported'));
+    const onStage = vi.fn();
     const inspectTarget = vi.fn(async () => {
       stages.push('inspection');
       return inspection;
@@ -65,6 +66,7 @@ describe('database release procedure', () => {
           includeBasicDemoSeed: true,
           includeVerifiedEventsSeed: false,
           onInspection,
+          onStage,
         },
         {
           checkReadiness,
@@ -101,6 +103,22 @@ describe('database release procedure', () => {
       expectedMigrationCount: 2,
       verifyBasicDemo: true,
     });
+    expect(onStage.mock.calls.map(([name, state]) => [name, state])).toEqual([
+      ['inspection', 'started'],
+      ['inspection', 'completed'],
+      ['migrations', 'started'],
+      ['migrations', 'completed'],
+      ['readiness', 'started'],
+      ['readiness', 'completed'],
+      ['seeding', 'started'],
+      ['seeding', 'completed'],
+      ['verification', 'started'],
+      ['verification', 'completed'],
+    ]);
+    for (const [, state, durationMs] of onStage.mock.calls) {
+      if (state === 'completed') expect(durationMs).toBeGreaterThanOrEqual(0);
+      else expect(durationMs).toBeUndefined();
+    }
   });
 
   it('stops before writes when the connected database is not confirmed', async () => {
@@ -150,6 +168,7 @@ describe('database release procedure', () => {
     const checkReadiness = vi.fn();
     const runBasicDemoSeedFiles = vi.fn();
     const verifyRelease = vi.fn();
+    const onStage = vi.fn();
 
     await expect(
       runDatabaseRelease(
@@ -157,6 +176,7 @@ describe('database release procedure', () => {
           confirmDatabase: 'wits_quest_test',
           databaseConfig,
           includeBasicDemoSeed: true,
+          onStage,
         },
         {
           checkReadiness,
@@ -171,6 +191,11 @@ describe('database release procedure', () => {
     expect(checkReadiness).not.toHaveBeenCalled();
     expect(runBasicDemoSeedFiles).not.toHaveBeenCalled();
     expect(verifyRelease).not.toHaveBeenCalled();
+    expect(onStage.mock.calls.map(([name, state]) => [name, state])).toEqual([
+      ['inspection', 'started'],
+      ['inspection', 'completed'],
+      ['migrations', 'started'],
+    ]);
   });
 
   it('does not apply seeds without the explicit seed option', async () => {

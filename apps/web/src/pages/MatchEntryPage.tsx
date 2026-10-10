@@ -10,14 +10,14 @@ import {
 } from 'react';
 import { Link, useLocation } from 'wouter';
 
-import { DeckApiError, listSavedDecks, type SavedDeck } from '../api/decks';
+import type { CpuBattleEntrySummary } from '../api/matches';
 import {
-  getActiveCpuMatchEntry,
-  listCpuMatchHistory,
+  getCpuBattleEntrySummary,
+  listRecentCpuMatchHistory,
   MatchApiError,
   recoverOrCreateCpuMatch,
   type CpuMatchEntry,
-  type CpuMatchHistoryItem,
+  type CpuMatchHistorySummary,
 } from '../api/matches';
 import {
   listActivePvpMatches,
@@ -39,7 +39,7 @@ type EntryState =
   | { status: 'loading' }
   | {
       activeMatch: CpuMatchEntry | null;
-      deck: SavedDeck | null;
+      deck: CpuBattleEntrySummary['selectedDeck'];
       status: 'ready';
     }
   | { error: MatchApiError; status: 'error' };
@@ -80,7 +80,7 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const loadEntry = useCallback(
     async (signal: AbortSignal) => {
-      const active = await getActiveCpuMatchEntry({
+      const entry = await getCpuBattleEntrySummary({
         apiBaseUrl,
         getAccessToken,
         signal,
@@ -89,21 +89,10 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         return;
       }
 
-      if (active) {
-        setState({ activeMatch: active, deck: null, status: 'ready' });
-        return;
-      }
-
-      const decks = await listSavedDecks({
-        apiBaseUrl,
-        getAccessToken,
-        signal,
-      });
-
       if (!signal.aborted) {
         setState({
-          activeMatch: null,
-          deck: decks.find((deck) => deck.isSelected) ?? null,
+          activeMatch: entry.activeMatch,
+          deck: entry.selectedDeck,
           status: 'ready',
         });
       }
@@ -184,7 +173,9 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     }
   }, [state.status]);
 
-  async function startMatch(deck: SavedDeck) {
+  async function startMatch(
+    deck: NonNullable<CpuBattleEntrySummary['selectedDeck']>,
+  ) {
     if (isStarting) {
       return;
     }
@@ -292,7 +283,9 @@ function StartMatchPanel({
   reauthFailed: boolean;
   errorRef: RefObject<HTMLElement | null>;
   isStarting: boolean;
-  onStart: (deck: SavedDeck) => Promise<void>;
+  onStart: (
+    deck: NonNullable<CpuBattleEntrySummary['selectedDeck']>,
+  ) => Promise<void>;
 }) {
   const activeMatch = state.status === 'ready' ? state.activeMatch : null;
   const deck = state.status === 'ready' ? state.deck : null;
@@ -506,7 +499,7 @@ async function loadRecentBattles({
   signal: AbortSignal;
 }): Promise<RecentResultsState> {
   const [cpuResult, playerResult] = await Promise.allSettled([
-    listCpuMatchHistory({ apiBaseUrl, getAccessToken, signal }),
+    listRecentCpuMatchHistory({ apiBaseUrl, getAccessToken, signal }),
     listPvpHistory({
       apiBaseUrl,
       getAccessToken,
@@ -519,7 +512,7 @@ async function loadRecentBattles({
     return { status: 'unavailable' };
   }
 
-  const cpuMatches: CpuMatchHistoryItem[] =
+  const cpuMatches: CpuMatchHistorySummary[] =
     cpuResult.status === 'fulfilled' ? cpuResult.value : [];
   const playerMatches: PvpHistorySummary[] =
     playerResult.status === 'fulfilled' ? playerResult.value.items : [];
@@ -554,9 +547,6 @@ function formatMatchPhase(match: CpuMatchEntry) {
 function toMatchError(error: unknown) {
   if (error instanceof MatchApiError) {
     return error;
-  }
-  if (error instanceof DeckApiError && error.failure === 'authorization') {
-    return new MatchApiError('authorization');
   }
   return new MatchApiError('unavailable');
 }

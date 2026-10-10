@@ -1,5 +1,12 @@
-import { XIcon } from '@phosphor-icons/react';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { SmileyIcon, XIcon } from '@phosphor-icons/react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   PlayerProfileError,
@@ -11,8 +18,13 @@ import { useApiAccessToken } from '../../auth/useApiAccessToken';
 import { useModalFocus } from '../useModalFocus';
 import { ProfileCardPicker } from './ProfileCardPicker';
 import { ProfileAvatar } from './PlayerShowcase';
-import { StatusEmojiPicker } from './StatusEmojiPicker';
 import { AvatarCrop } from './AvatarCrop';
+
+const StatusEmojiPicker = lazy(() =>
+  import('./StatusEmojiPicker').then((module) => ({
+    default: module.StatusEmojiPicker,
+  })),
+);
 
 function editFromProfile(profile: PlayerProfile): ProfileEdit {
   return {
@@ -294,11 +306,34 @@ export function ProfileEditor({
             ) : section === 'status' ? (
               <>
                 <div className="profile-status-fields">
-                  <StatusEmojiPicker
-                    value={edit.statusEmoji}
-                    disabled={busy}
-                    onChange={(emoji) => change('statusEmoji', emoji)}
-                  />
+                  <Suspense
+                    fallback={
+                      <div className="status-emoji-field" aria-busy="true">
+                        <span className="status-emoji-label">Emoji</span>
+                        <button
+                          className="status-emoji-trigger"
+                          type="button"
+                          aria-label="Choose status emoji"
+                          disabled
+                        >
+                          {edit.statusEmoji ? (
+                            <span aria-hidden="true">{edit.statusEmoji}</span>
+                          ) : (
+                            <SmileyIcon size={24} aria-hidden="true" />
+                          )}
+                        </button>
+                        <span className="sr-only" role="status">
+                          Loading status emojis…
+                        </span>
+                      </div>
+                    }
+                  >
+                    <StatusEmojiPicker
+                      value={edit.statusEmoji}
+                      disabled={busy}
+                      onChange={(emoji) => change('statusEmoji', emoji)}
+                    />
+                  </Suspense>
                   <label>
                     Status
                     <input

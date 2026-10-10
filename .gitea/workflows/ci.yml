@@ -92,6 +92,9 @@ jobs:
         env:
           NPM_CONFIG_CACHE: /opt/wits-world/npm-cache
 
+      - name: Test deployment release guards
+        run: time npm run test:deployment
+
       - name: Test shared account policy package
         run: time npm run test:coverage --workspace @wits-world/account-policy
 
@@ -244,6 +247,7 @@ jobs:
           VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
           VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
           VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
+          VITE_AUTH0_DATABASE_CONNECTION: ${{ vars.VITE_AUTH0_DATABASE_CONNECTION }}
           VITE_MAPBOX_ACCESS_TOKEN: ${{ vars.VITE_MAPBOX_ACCESS_TOKEN }}
         run: time npm run build --workspace @wits-world/web
 
@@ -352,21 +356,23 @@ jobs:
             package-lock.json \
             tsconfig.base.json \
             apps/api \
+            apps/web \
             packages/account-policy \
             packages/game-rules \
             scripts/confirm-current-main.sh \
             scripts/prepare-api.mjs \
+            scripts/production-gameplay-mode.mjs \
             database
           DIFF_STATUS=$?
           set -e
 
           case "$DIFF_STATUS" in
             0)
-              echo "No API, database, or shared runtime changes detected; no production API artifact is required."
+              echo "No API, web, database, or shared runtime changes detected; no production API artifact is required."
               echo "required=false" >> "$GITHUB_OUTPUT"
               ;;
             1)
-              echo "API, database, or shared runtime changes detected; a production API artifact is required."
+              echo "API, web, database, or shared runtime changes detected; a production API artifact is required."
               echo "required=true" >> "$GITHUB_OUTPUT"
               ;;
             *)
@@ -629,6 +635,11 @@ jobs:
       - validation
     if: ${{ gitea.ref == 'refs/heads/main' && (gitea.event_name == 'push' || gitea.event_name == 'workflow_dispatch') }}
     runs-on: azure-deploy
+    timeout-minutes: 15
+
+    outputs:
+      published_sha: ${{ steps.api_publication.outputs.published_sha }}
+      api_origin: ${{ steps.api_health.outputs.api_origin }}
 
     env:
       DEPLOY_SHA: ${{ gitea.sha }}
@@ -639,6 +650,7 @@ jobs:
       AZURE_WEBAPP_NAME: witsworld-api
       PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS: '1800000'
       PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND: ${{ vars.PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND || 'polling' }}
+      PRODUCTION_GAMEPLAY_WRITERS_COORDINATED: ${{ vars.PRODUCTION_GAMEPLAY_WRITERS_COORDINATED || 'false' }}
 
     steps:
       - name: Check out exact main commit
@@ -733,16 +745,18 @@ jobs:
             package-lock.json \
             tsconfig.base.json \
             apps/api \
+            apps/web \
             packages/account-policy \
             packages/game-rules \
             scripts/confirm-current-main.sh \
             scripts/prepare-api.mjs \
+            scripts/production-gameplay-mode.mjs \
             database
           then
-            echo "No API, database, or shared runtime changes detected; API deployment will be skipped."
+            echo "No API, web, database, or shared runtime changes detected; API deployment will be skipped."
             echo "required=false" >> "$GITHUB_OUTPUT"
           else
-            echo "API, database, or shared runtime changes detected; API deployment is required."
+            echo "API, web, database, or shared runtime changes detected; API deployment is required."
             touch "$DEPLOY_MARKER"
             echo "required=true" >> "$GITHUB_OUTPUT"
           fi
@@ -907,51 +921,9 @@ jobs:
             --query '{name:name,state:state}' \
             --output table
 
-      - name: Configure production database maintenance cadence
-        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
-        run: |
-          set -euo pipefail
-
-          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
-          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
-
-          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
-            echo "Skipping production database maintenance configuration."
-            exit 0
-          fi
-
-          bash \
-            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
-            "$CURRENT_MAIN_MARKER"
-
-          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
-            rm -f "$DEPLOY_ROOT/deploy-required"
-            echo "Skipping stale production database maintenance configuration."
-            exit 0
-          fi
-
-          case "$PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND" in
-            polling|upstash) ;;
-            *) echo "Invalid production gameplay scheduler backend." >&2; exit 1 ;;
-          esac
-
-          # Promote the repository variable to upstash only after all older,
-          # unfenced writers have been retired. The first rollout stays polling.
-          az webapp config appsettings set \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --settings \
-              "ACCOUNT_DELETION_RETRY_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
-              "ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
-              "MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
-              "LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
-              "TRUST_EVALUATION_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
-              "CARD_TRADE_MAINTENANCE_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
-              "GAMEPLAY_SCHEDULER_BACKEND=${PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND}" \
-            --output none
-
       - name: Release production database
         if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        timeout-minutes: 8
         env:
           CONFIRM_DATABASE: ${{ vars.PRODUCTION_DATABASE_NAME }}
           CONFIRM_DATABASE_HOST: ${{ vars.PRODUCTION_DATABASE_HOST }}
@@ -986,6 +958,16 @@ jobs:
               --only-show-errors
           )"
           export DATABASE_URL
+
+          MIGRATION_DATABASE_URL="$(
+            az webapp config appsettings list \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_WEBAPP_NAME" \
+              --query "[?name=='MIGRATION_DATABASE_URL'].value | [0]" \
+              --output tsv \
+              --only-show-errors
+          )"
+          export MIGRATION_DATABASE_URL
 
           if [ -z "${DATABASE_URL:-}" ]; then
             echo "DATABASE_URL is not configured on the production API App Service."
@@ -1052,13 +1034,84 @@ jobs:
           (
             cd "$RELEASE_ROOT"
 
-            node apps/api/dist/database/release.js \
+            timeout --signal=TERM --kill-after=10s 360s \
+              node apps/api/dist/database/release.js \
               --target production \
-              --confirm-database "$CONFIRM_DATABASE"
+              --confirm-database "$CONFIRM_DATABASE" || {
+                RELEASE_STATUS=$?
+                if [ "$RELEASE_STATUS" -eq 124 ] || [ "$RELEASE_STATUS" -eq 137 ]; then
+                  echo "Production database release exceeded its six-minute deadline. No API deployment will follow." >&2
+                fi
+                exit "$RELEASE_STATUS"
+              }
           )
 
           echo "Production database release completed successfully."
+
+      - name: Configure and verify production database maintenance cadence
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping production database maintenance configuration."
+            exit 0
+          fi
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+            echo "Skipping stale production database maintenance configuration."
+            exit 0
+          fi
+
+          EFFECTIVE_GAMEPLAY_SCHEDULER_BACKEND="$(
+            node "$DEPLOY_ROOT/repository/scripts/production-gameplay-mode.mjs"
+          )"
+          if [ "$EFFECTIVE_GAMEPLAY_SCHEDULER_BACKEND" != "$PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND" ]; then
+            echo "Upstash activation is gated: retire or upgrade every old writer, then set PRODUCTION_GAMEPLAY_WRITERS_COORDINATED=true."
+          fi
+
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --settings \
+              "ACCOUNT_DELETION_RETRY_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "TRUST_EVALUATION_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "CARD_TRADE_MAINTENANCE_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "GAMEPLAY_SCHEDULER_BACKEND=${EFFECTIVE_GAMEPLAY_SCHEDULER_BACKEND}" \
+            --output none
+
+          DEPLOYED_SCHEDULER_BACKEND="$(
+            az webapp config appsettings list \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_WEBAPP_NAME" \
+              --query "[?name=='GAMEPLAY_SCHEDULER_BACKEND'].value | [0]" \
+              --output tsv \
+              --only-show-errors
+          )"
+          echo "Requested gameplay scheduler backend: $PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND"
+          echo "Safe effective gameplay scheduler backend: $EFFECTIVE_GAMEPLAY_SCHEDULER_BACKEND"
+          echo "Azure gameplay scheduler backend: $DEPLOYED_SCHEDULER_BACKEND"
+          if [ "$DEPLOYED_SCHEDULER_BACKEND" != "$EFFECTIVE_GAMEPLAY_SCHEDULER_BACKEND" ]; then
+            echo "Azure scheduler configuration does not match the safe release configuration." >&2
+            exit 1
+          fi
+          if [ "$DEPLOYED_SCHEDULER_BACKEND" = polling ]; then
+            echo "Warning: idle gameplay probes still query Neon at the active cadence."
+          fi
+
       - name: Deploy API to Azure
+        id: api_publication
         run: |
           set -euo pipefail
 
@@ -1090,7 +1143,10 @@ jobs:
             --track-status false \
             --output none
 
+          printf 'published_sha=%s\n' "$DEPLOY_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Verify production health
+        id: api_health
         run: |
           set -euo pipefail
 
@@ -1126,6 +1182,7 @@ jobs:
               echo "Production API is healthy:"
               cat "$HEALTH_BODY"
               rm -f "$HEALTH_BODY"
+              printf 'api_origin=https://%s\n' "$API_HOST" >> "$GITHUB_OUTPUT"
               exit 0
             fi
 
@@ -1164,11 +1221,15 @@ jobs:
     name: Deploy Web to Azure
     needs:
       - validation
-    if: ${{ gitea.ref == 'refs/heads/main' && (gitea.event_name == 'push' || gitea.event_name == 'workflow_dispatch') }}
+      - deploy-api
+    if: ${{ needs.deploy-api.result == 'success' && gitea.ref == 'refs/heads/main' && (gitea.event_name == 'push' || gitea.event_name == 'workflow_dispatch') }}
     runs-on: azure-deploy
 
     env:
       DEPLOY_SHA: ${{ gitea.sha }}
+      API_PUBLISHED_SHA: ${{ needs.deploy-api.outputs.published_sha }}
+      API_ORIGIN: ${{ needs.deploy-api.outputs.api_origin }}
+      WEB_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
       PREVIOUS_SHA: ${{ gitea.event.before }}
       GITEA_JOB_TOKEN: ${{ gitea.token }}
       REPOSITORY_URL: https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
@@ -1360,6 +1421,8 @@ jobs:
             echo "Skipping the web deployment."
             exit 0
           fi
+
+          node "$DEPLOY_ROOT/repository/scripts/verify-battles-summary-contract.mjs"
 
           bash \
             "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \

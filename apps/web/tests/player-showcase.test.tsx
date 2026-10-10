@@ -290,6 +290,11 @@ describe('player showcase', () => {
         await screen.findByRole('button', { name: 'Set a status' }),
       );
       expect(screen.getByLabelText('Clear status')).toHaveValue('never');
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Choose status emoji' }),
+        ).toBeEnabled(),
+      );
       await user.click(
         screen.getByRole('button', { name: 'Choose status emoji' }),
       );

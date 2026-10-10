@@ -313,6 +313,80 @@ describe('migration file loading', () => {
 });
 
 describe('migration execution', () => {
+  it('uses a direct session and server-side deadlines before acquiring the lock', async () => {
+    const directory = await createTemporaryMigrationDirectory();
+    const query = createMigrationQuery();
+    const observedConfig = vi.fn();
+    const delegate = createClientRunner(query);
+    const runner: DatabaseClientRunner = (config, callback) => {
+      observedConfig(config);
+      return delegate(config, callback);
+    };
+    await runMigrations(
+      {
+        ...databaseConfig,
+        connectionString:
+          'postgres://owner:password@ep-test-pooler.neon.tech/db?sslmode=require',
+      },
+      directory,
+      runner,
+    );
+    expect(observedConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionString:
+          'postgres://owner:password@ep-test.neon.tech/db?sslmode=require',
+      }),
+    );
+    expect(query.mock.calls.slice(0, 3).map(([sql]) => sql)).toEqual([
+      "set lock_timeout = '30s'",
+      "set statement_timeout = '5min'",
+      'select pg_advisory_lock($1)',
+    ]);
+  });
+
+  it('fails a contended lock without executing SQL or unlocking a lock it never acquired', async () => {
+    const directory = await createTemporaryMigrationDirectory();
+    await writeFile(join(directory, '0001_first.sql'), 'select 1;');
+    const query = vi.fn(async (statement: string) => {
+      if (statement === 'select pg_advisory_lock($1)')
+        throw Object.assign(new Error('lock timeout'), { code: '55P03' });
+      return { rows: [] };
+    });
+    await expect(
+      runMigrations(databaseConfig, directory, createClientRunner(query)),
+    ).rejects.toThrow('not acquired within 30 seconds');
+    expect(query).not.toHaveBeenCalledWith('select 1;');
+    expect(query).not.toHaveBeenCalledWith(
+      'select pg_advisory_unlock($1)',
+      expect.anything(),
+    );
+  });
+
+  it('does not misreport non-lock acquisition failures', async () => {
+    const directory = await createTemporaryMigrationDirectory();
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockRejectedValueOnce(new Error('connection lost'));
+    await expect(
+      runMigrations(databaseConfig, directory, createClientRunner(query)),
+    ).rejects.toThrow('connection lost');
+  });
+
+  it('fails when the backend does not own the lock on release', async () => {
+    const directory = await createTemporaryMigrationDirectory();
+    const query = createMigrationQuery();
+    query.mockImplementation(async (statement: string) =>
+      statement === 'select pg_advisory_unlock($1)'
+        ? { rows: [{ pg_advisory_unlock: false }] }
+        : { rows: [] },
+    );
+    await expect(
+      runMigrations(databaseConfig, directory, createClientRunner(query)),
+    ).rejects.toThrow('Migration lock ownership was lost');
+  });
+
   it('applies an unapplied migration in a transaction', async () => {
     const directory = await createTemporaryMigrationDirectory();
     await writeFile(join(directory, '0001_first.sql'), 'select 1;');
@@ -455,6 +529,10 @@ function createMigrationQuery(
 
     if (statement.startsWith('select name, checksum')) {
       return { rows: appliedMigrations };
+    }
+
+    if (statement === 'select pg_advisory_unlock($1)') {
+      return { rows: [{ pg_advisory_unlock: true }] };
     }
 
     return { rows: [] };

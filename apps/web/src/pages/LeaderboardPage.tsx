@@ -1,6 +1,6 @@
 import { TrophyIcon } from '@phosphor-icons/react';
 
-import { CampusStandings } from './ProfilePage';
+import { CampusStandings } from '../components/profile/CampusStandings';
 import './profile.css';
 
 export default function LeaderboardPage({

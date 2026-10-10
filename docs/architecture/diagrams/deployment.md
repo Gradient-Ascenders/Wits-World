@@ -15,7 +15,7 @@ and delivers the application builds.
 ```mermaid
 flowchart TB
     accTitle: From pull request to application and documentation releases
-    accDescr: Pull requests run validation before review and merge. Main CI validates and builds application artifacts. Eligible Web releases deploy independently; eligible API releases apply guarded database migrations before deployment. Relevant documentation changes follow a separate Cloudflare Pages workflow.
+    accDescr: Pull requests run validation before review and merge. Main CI validates and builds application artifacts. API releases apply bounded direct database migrations before deployment; eligible Web releases require the same-commit API publication and contract checks. Relevant documentation changes follow a separate Cloudflare Pages workflow.
 
     PR["Pull request"]
     Checks["PR validation<br/>Static, database, journey, and build checks"]
@@ -23,19 +23,19 @@ flowchart TB
     Main["Main CI<br/>Checks and application artifacts"]
 
     subgraph Applications["Application release paths"]
-        Web["Web release<br/>Azure deployment and smoke check"]
+        Web["Web release<br/>API contract gate, deployment and smoke check"]
         Guard["API release guards<br/>Required changes and current main"]
-        Migrate["Database release<br/>Confirm target and apply migrations"]
+        Migrate["Database release<br/>Confirm target; bounded direct migrations"]
         API["API release<br/>Azure deployment and smoke check"]
         Guard --> Migrate --> API
+        API -->|"Same-commit publication and compatible contracts"| Web
     end
 
     Docs["Documentation workflow<br/>Build and publish to Cloudflare Pages"]
 
     PR --> Checks --> Merge
     Merge --> Main
-    Main -->|"Eligible Web changes"| Web
-    Main -->|"Eligible API changes"| Guard
+    Main -->|"Eligible API or Web changes"| Guard
     Merge -->|"Relevant documentation paths"| Docs
 
     classDef authority stroke:#9d8130,stroke-width:2px;
@@ -52,7 +52,13 @@ databases, Basic browser journeys, and builds. Review and merge lead to
 
 Web and API deployment jobs check whether a release is needed and reject stale
 commits. The API release verifies the production database target and applies
-migrations before deploying the API. Content seeding is a separate operation.
+migrations through a direct connection before deploying the API. Migration lock
+waits and statements have deadlines; a failed release blocks API publication.
+Content seeding is a separate operation.
+
+Web publication follows successful same-commit API publication, health
+verification, and the compact Battles contract gate. Web-only releases also
+publish an API artifact; API-only changes can skip Web publication.
 
 Configured smoke checks confirm basic reachability and release responses.
 Full player journeys and operational recovery have their own validation scope.
@@ -65,12 +71,12 @@ Cloudflare Pages. An application deployment does not publish the documentation.
 
 ## Runtime hosting
 
-| Component     | Host                       | Connection                                                                |
-| ------------- | -------------------------- | ------------------------------------------------------------------------- |
-| Web           | Azure App Service          | Browser requests to the API over HTTPS; live battles also use WebSockets. |
-| API           | Separate Azure App Service | Server-side database, authentication-management, and Redis connections.   |
-| Database      | Neon                       | PostgreSQL/PostGIS over TLS, with a direct endpoint for notifications.    |
-| Documentation | Cloudflare Pages           | Public static pages and browser-local search.                             |
+| Component     | Host                       | Connection                                                                                                                  |
+| ------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Web           | Azure App Service          | Browser requests to the API over HTTPS; live battles also use WebSockets.                                                   |
+| API           | Separate Azure App Service | Server-side database, authentication-management, and Redis connections.                                                     |
+| Database      | Neon                       | PostgreSQL/PostGIS over TLS; direct endpoints for migrations and notifications, with pooling permitted for runtime queries. |
+| Documentation | Cloudflare Pages           | Public static pages and browser-local search.                                                                               |
 
 Browser builds contain public configuration. Database URLs, Management API
 credentials, and Redis credentials stay in server configuration. Azure serves

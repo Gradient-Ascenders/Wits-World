@@ -1,4 +1,7 @@
-import { buildDatabaseConfig, loadApiEnvironment } from '../config/database.js';
+import {
+  buildMigrationDatabaseConfig,
+  loadApiEnvironment,
+} from '../config/database.js';
 import { parseDatabaseReleaseOptions } from './release-options.js';
 import { runDatabaseRelease } from './release-procedure.js';
 
@@ -6,7 +9,12 @@ async function main() {
   loadApiEnvironment();
 
   const options = parseDatabaseReleaseOptions(process.argv.slice(2));
-  const databaseConfig = buildDatabaseConfig({ target: options.target });
+  const databaseConfig = buildMigrationDatabaseConfig({
+    target: options.target,
+  });
+  console.log(
+    `Release connection: ${databaseConfig.variableName}; direct Neon endpoint when applicable.`,
+  );
   const result = await runDatabaseRelease({
     confirmDatabase: options.confirmDatabase,
     databaseConfig,
@@ -16,6 +24,11 @@ async function main() {
       console.log(`Release target: ${options.target}`);
       console.log(`Connected database: ${inspection.database}`);
       console.log(`PostGIS available: ${inspection.postgisAvailableVersion}`);
+    },
+    onStage(stage, state, durationMs) {
+      console.log(
+        `Database release ${stage}: ${state}${durationMs === undefined ? '' : ` (${durationMs} ms)`}`,
+      );
     },
   });
 

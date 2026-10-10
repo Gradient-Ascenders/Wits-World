@@ -194,6 +194,15 @@ export interface CpuMatchHistoryItem {
   winner: BattleSide;
 }
 
+export type CpuMatchHistorySummary = Omit<CpuMatchHistoryItem, 'rounds'> & {
+  roundCount: number;
+};
+
+export interface CpuBattleEntrySummary {
+  activeMatch: CpuMatchEntry | null;
+  selectedDeck: { deckId: string; name: string } | null;
+}
+
 interface MatchRequestOptions {
   apiBaseUrl: string;
   getAccessToken: ApiAccessTokenProvider;
@@ -309,6 +318,43 @@ export async function getActiveCpuMatchEntry(
   }
 }
 
+export async function getCpuBattleEntrySummary(
+  options: MatchRequestOptions,
+): Promise<CpuBattleEntrySummary> {
+  const payload = await matchRequest({
+    ...options,
+    method: 'GET',
+    path: '/matches/cpu/entry?view=summary',
+  });
+  if (
+    !isRecord(payload) ||
+    !hasExactKeys(payload, ['activeMatch', 'selectedDeck', 'requestId']) ||
+    typeof payload.requestId !== 'string'
+  )
+    throw new MatchApiError('unavailable');
+  const deck = payload.selectedDeck;
+  if (
+    deck !== null &&
+    (!isRecord(deck) ||
+      !hasExactKeys(deck, ['deckId', 'name']) ||
+      !isUuid(deck.deckId) ||
+      typeof deck.name !== 'string')
+  )
+    throw new MatchApiError('unavailable');
+  const activeMatch =
+    payload.activeMatch === null
+      ? null
+      : parseActiveMatchEntry({
+          ...(isRecord(payload.activeMatch) ? payload.activeMatch : {}),
+          requestId: payload.requestId,
+        });
+  if (activeMatch && deck !== null) throw new MatchApiError('unavailable');
+  return {
+    activeMatch,
+    selectedDeck: deck as CpuBattleEntrySummary['selectedDeck'],
+  };
+}
+
 export async function getCpuMatch({ matchId, ...options }: GetMatchOptions) {
   return requireRequestedMatch(
     await requestMatch({
@@ -401,6 +447,52 @@ export async function listCpuMatchHistory(
   }
 
   return payload.matches.map(parseHistoryItem);
+}
+
+export async function listRecentCpuMatchHistory(
+  options: MatchRequestOptions,
+): Promise<CpuMatchHistorySummary[]> {
+  const payload = await matchRequest({
+    ...options,
+    method: 'GET',
+    path: '/matches/history?view=summary&limit=5',
+  });
+  if (
+    !isRecord(payload) ||
+    !hasExactKeys(payload, ['matches', 'requestId']) ||
+    typeof payload.requestId !== 'string' ||
+    !Array.isArray(payload.matches) ||
+    payload.matches.length > 5
+  )
+    throw new MatchApiError('unavailable');
+  return payload.matches.map((value: unknown) => {
+    if (
+      !isRecord(value) ||
+      !hasExactKeys(value, [
+        'completedAt',
+        'matchId',
+        'roundCount',
+        'startedAt',
+        'status',
+        'winner',
+      ]) ||
+      !isUuid(value.matchId) ||
+      value.status !== 'completed' ||
+      !isSide(value.winner) ||
+      !isDateTime(value.startedAt) ||
+      !isDateTime(value.completedAt) ||
+      !isNonNegativeInteger(value.roundCount)
+    )
+      throw new MatchApiError('unavailable');
+    return {
+      completedAt: value.completedAt,
+      matchId: value.matchId,
+      roundCount: value.roundCount,
+      startedAt: value.startedAt,
+      status: value.status,
+      winner: value.winner,
+    };
+  });
 }
 
 export async function recoverOrCreateCpuMatch(

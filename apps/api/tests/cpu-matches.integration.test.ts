@@ -17,6 +17,7 @@ import {
   type CpuMatchService,
 } from '../src/matches/cpu-match-service.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
+import type { PlayerProfileService } from '../src/players/player-profile.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',
@@ -38,6 +39,7 @@ const activePlayer = {
 };
 
 let app: FastifyInstance;
+let profileService: PlayerProfileService;
 let service: {
   createMatch: ReturnType<typeof vi.fn<CpuMatchService['createMatch']>>;
   forfeitMatch: ReturnType<typeof vi.fn<CpuMatchService['forfeitMatch']>>;
@@ -48,6 +50,12 @@ let service: {
   getMatch: ReturnType<typeof vi.fn<CpuMatchService['getMatch']>>;
   submitAction: ReturnType<typeof vi.fn<CpuMatchService['submitAction']>>;
   listHistory: ReturnType<typeof vi.fn<CpuMatchService['listHistory']>>;
+  getBattleEntrySummary: ReturnType<
+    typeof vi.fn<CpuMatchService['getBattleEntrySummary']>
+  >;
+  listHistorySummaries: ReturnType<
+    typeof vi.fn<CpuMatchService['listHistorySummaries']>
+  >;
 };
 
 beforeEach(async () => {
@@ -87,6 +95,15 @@ beforeEach(async () => {
     getMatch: vi.fn().mockResolvedValue(buildMatch()),
     submitAction: vi.fn().mockResolvedValue(buildMatch()),
     listHistory: vi.fn().mockResolvedValue([]),
+    getBattleEntrySummary: vi
+      .fn()
+      .mockResolvedValue({ activeMatch: null, selectedDeck: null }),
+    listHistorySummaries: vi.fn().mockResolvedValue([]),
+  };
+
+  profileService = {
+    get: vi.fn<PlayerProfileService['get']>(),
+    save: vi.fn<PlayerProfileService['save']>(),
   };
 
   app = await buildApp({
@@ -96,6 +113,7 @@ beforeEach(async () => {
       resolve: resolvePlayer,
     },
     cpuMatchService: service,
+    playerProfileService: profileService,
     logger: false,
   });
 });
@@ -105,6 +123,113 @@ afterEach(async () => {
 });
 
 describe('CPU match API', () => {
+  it('verifies the release gate with production profile routes enabled and no gameplay reads', async () => {
+    const { verifyBattlesRelease } = await import(
+      new URL(
+        '../../../scripts/verify-battles-summary-contract.mjs',
+        import.meta.url,
+      ).href
+    );
+    await verifyBattlesRelease(
+      {
+        DEPLOY_SHA: 'a'.repeat(40),
+        API_PUBLISHED_SHA: 'a'.repeat(40),
+        API_ORIGIN: 'https://api.example.test',
+        WEB_API_BASE_URL: 'https://api.example.test/api/v1',
+      },
+      {
+        attempts: 1,
+        fetchFn: async (url: string) => {
+          const target = new URL(url);
+          const response = await app.inject({
+            method: 'GET',
+            url: target.pathname + target.search,
+          });
+          return new Response(response.body, { status: response.statusCode });
+        },
+      },
+    );
+    expect(app.swagger().paths?.['/api/v1/profiles/me']?.get).toBeDefined();
+    expect(service.getBattleEntrySummary).not.toHaveBeenCalled();
+    expect(service.listHistorySummaries).not.toHaveBeenCalled();
+    expect(service.listHistory).not.toHaveBeenCalled();
+    expect(profileService.get).not.toHaveBeenCalled();
+    expect(profileService.save).not.toHaveBeenCalled();
+  });
+
+  it('scopes compact entry and bounded history to the authenticated player', async () => {
+    const entry = await app.inject({
+      method: 'GET',
+      url: '/api/v1/matches/cpu/entry?view=summary',
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    expect(entry.statusCode).toBe(200);
+    expect(entry.json()).toMatchObject({
+      activeMatch: null,
+      selectedDeck: null,
+    });
+    expect(service.getBattleEntrySummary).toHaveBeenCalledWith(PLAYER_ID);
+    const history = await app.inject({
+      method: 'GET',
+      url: '/api/v1/matches/history?view=summary&limit=5',
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    expect(history.statusCode).toBe(200);
+    expect(service.listHistorySummaries).toHaveBeenCalledWith(PLAYER_ID, 5);
+    expect(service.listHistory).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '/matches/cpu/entry?view=summary',
+    '/matches/history?view=summary&limit=5',
+  ])('rejects anonymous summary reads: %s', async (path) => {
+    const result = await app.inject({ method: 'GET', url: '/api/v1' + path });
+    expect(result.statusCode).toBe(401);
+    expect(service.getBattleEntrySummary).not.toHaveBeenCalled();
+    expect(service.listHistorySummaries).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'limit=0',
+    'limit=21',
+    'limit=1.5',
+    'limit=5',
+    'view=invalid',
+    'view=summary&limit=21',
+    'view=summary&playerId=' + MATCH_ID,
+  ])('rejects invalid or unscoped summary query: %s', async (query) => {
+    const result = await app.inject({
+      method: 'GET',
+      url: '/api/v1/matches/history?' + query,
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    expect(result.statusCode).toBe(400);
+    expect(service.listHistorySummaries).not.toHaveBeenCalled();
+  });
+
+  it('serializes compact history with counts and no round/action data', async () => {
+    service.listHistorySummaries.mockResolvedValue([
+      {
+        matchId: MATCH_ID,
+        status: 'completed',
+        winner: 'player',
+        startedAt: '2026-08-16T00:00:00.000Z',
+        completedAt: '2026-08-16T00:01:00.000Z',
+        roundCount: 12,
+      },
+    ]);
+    const result = await app.inject({
+      method: 'GET',
+      url: '/api/v1/matches/history?view=summary',
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    expect(result.statusCode).toBe(200);
+    expect(result.json().matches).toEqual([
+      expect.objectContaining({ roundCount: 12 }),
+    ]);
+    expect(result.json().matches[0]).not.toHaveProperty('rounds');
+    expect(service.listHistorySummaries).toHaveBeenCalledWith(PLAYER_ID, 5);
+  });
   it('keeps old match and history projections parseable while the new client opts into swaps', async () => {
     const swap = { type: 'swap_creature' as const, creatureId: DECK_ID };
     const move = { type: 'use_move' as const, moveId: DECK_ID };

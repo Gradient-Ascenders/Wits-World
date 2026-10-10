@@ -24,6 +24,30 @@ afterEach(() => {
 });
 
 describe('card API client', () => {
+  it('requests fresh full card metadata scoped to a saved deck', async () => {
+    const card = buildCard(1);
+    const deckId = buildUuid(900);
+    const controller = new AbortController();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ cards: [card], requestId: 'deck-cards' }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      listOwnedCards({
+        apiBaseUrl,
+        deckId,
+        getAccessToken,
+        signal: controller.signal,
+      }),
+    ).resolves.toEqual([card]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/cards/collection?deckId=${deckId}`,
+      expect.objectContaining({ method: 'GET', signal: controller.signal }),
+    );
+  });
+
   it('requests one owned copy per definition for the favourites picker', async () => {
     const card = buildCard(1);
     const fetchMock = vi

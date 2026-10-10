@@ -48,6 +48,15 @@ include replica count and both workloads when reviewing usage. Reduced idle
 probing does not guarantee that Neon will suspend: other requests, cleanup
 workers, or database clients can keep it active.
 
+Thrown gameplay probe/sweep errors retry with exponential backoff: the first
+retry retains the active interval, later consecutive failures double the delay
+up to 30 seconds (or the configured interval if already longer). A successful
+probe resets the backoff; an explicit mutation wake remains immediate. Healthy
+active work, idle confirmation that safely falls back to fast scans, and paused
+work-creation booleans do not enter this error backoff. A Redis coordination
+outage can therefore still keep PostgreSQL scanning; this is not an outage-time
+scale-to-zero guarantee.
+
 Credentials remain server-only. `GAMEPLAY_SCHEDULER_NAMESPACE`, when set, must
 match across all writers sharing the database. Otherwise the API derives it
 from the database endpoint, normalising pooled and direct Neon hostnames.
@@ -60,9 +69,11 @@ from the database endpoint, normalising pooled and direct Neon hostnames.
 2. Retire every older or unaware writer to the shared database, including local
    API instances. All producers must announce work before long idle sleeps
    become safe.
-3. Set the repository Variable `PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash`,
-   then deploy or restart through the configured release workflow. CI maps this
-   value to the API App Service setting.
+3. Set `PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and acknowledge the
+   completed writer audit with `PRODUCTION_GAMEPLAY_WRITERS_COORDINATED=true`.
+   Start a new deployment. CI defaults the acknowledgement to `false`, keeps
+   polling unless both settings allow promotion, and applies and verifies the
+   Azure mode only after database release succeeds.
 4. Verify cross-instance wake-up, restart recovery, and outage behaviour in an
    isolated environment before relying on the mode in production.
 
@@ -74,6 +85,54 @@ writers.
 
 Keep shared activity records intact. Clearing them to force an idle state can
 hide pending work.
+
+### Verify the deployed scheduler mode
+
+The Gitea Actions variable requests the mode for a future deployment; it is not
+proof that the running API uses that mode. After the writer-retirement audit,
+start a **new** deployment using the updated variable. CI prints the requested
+backend, safe effective backend, and Azure's non-secret
+`GAMEPLAY_SCHEDULER_BACKEND`, failing if Azure differs from the safe effective
+backend. A missing writer acknowledgement deliberately retains polling and
+logs the activation gate. API startup logs record `gameplaySchedulerBackend`,
+`livePvpActiveIntervalMs`, and `rankedActiveIntervalMs`; production polling also
+emits a warning. Confirm the startup values on every running replica.
+
+On 9 October 2026, the operator reported the requested Gitea backend as
+`upstash` but Azure's backend as `polling`. This mismatch explains persistent
+idle queries, not the entire reported CU-hours increase. Do not assume that a
+finished CI run means old API servers have stopped: check old deployments and
+local API servers sharing production Neon separately. Keep the namespace,
+durable intents, and writer fences intact during activation.
+
+Later on 9 October 2026, the operator confirmed that Kevin and Tyron had
+finished stopping or upgrading the old API servers using production Neon.
+This cleared the operator-confirmed writer-retirement prerequisite, not the
+deployment verification. At confirmation time, the release fixes were local
+and no post-cutover Azure mode readback had been performed. A repository owner must set
+`PRODUCTION_GAMEPLAY_WRITERS_COORDINATED=true` alongside the requested
+`PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash`; merge the reviewed release fix
+and start a new deployment instead of rerunning the old failed job, then verify
+Azure and runtime startup both report `upstash`. The investigation session
+could not manage Gitea Actions variables and had no Azure login. No production
+activation or CU savings are claimed by this incident record.
+
+An upgraded local API still keeps Neon awake if its own scheduler remains in
+polling mode, even when it publishes valid intents. Stop unused local servers;
+prefer a disposable local database for development. Every running API sharing
+production must use the coordinated mode after the safe cutover to obtain the
+idle-probe reduction. A check on one machine cannot establish the state of
+teammates' servers or other replicas.
+
+After deployment, compare `live_probe`, `ranked_probe`, and `listener` pool
+telemetry during at least two otherwise idle 30-minute windows, alongside
+Neon's compute-activity graph and actual CU-hours delta. Observe normal
+gameplay and the next scheduled boundary as well. Neon compute use is compute
+size multiplied by active time; regular queries can prevent its five-minute
+idle suspension. A 30-minute idle check is a scheduling limit, not a promised
+monthly CU budget. Other traffic, maintenance, replicas, sockets and external
+clients still affect usage. See [compute lifecycle](https://neon.com/docs/introduction/compute-lifecycle)
+and [usage metrics](https://neon.com/docs/introduction/usage-metrics).
 
 ## Outages and recovery
 

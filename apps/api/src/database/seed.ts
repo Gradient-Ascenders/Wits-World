@@ -1,4 +1,7 @@
-import { buildDatabaseConfig, loadApiEnvironment } from '../config/database.js';
+import {
+  buildMigrationDatabaseConfig,
+  loadApiEnvironment,
+} from '../config/database.js';
 import {
   getBasicDemoSeedsDirectory,
   getSeedsDirectory,
@@ -10,7 +13,7 @@ async function main() {
   loadApiEnvironment();
 
   const target = process.argv.includes('--test') ? 'test' : 'development';
-  const databaseConfig = buildDatabaseConfig({ target });
+  const databaseConfig = buildMigrationDatabaseConfig({ target });
   if (
     process.argv.includes('--basic-demo') &&
     process.argv.includes('--verified-events')

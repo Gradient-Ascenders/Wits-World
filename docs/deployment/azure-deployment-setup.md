@@ -4,7 +4,8 @@ title: 'Azure deployment'
 
 # Azure deployment
 
-The Web application and API deploy independently to Azure App Service. This
+The Web application and API use separate Azure App Services. Web publication
+requires successful same-commit API publication and contract verification. This
 page covers their runtime configuration and release checks. The
 [deployment diagram](../architecture/diagrams/deployment.md) shows the hosting
 layout; [CI workflows](../testing/continuous-integration.md) explains validation
@@ -42,6 +43,7 @@ VITE_API_BASE_URL
 VITE_AUTH0_DOMAIN
 VITE_AUTH0_CLIENT_ID
 VITE_AUTH0_AUDIENCE
+VITE_AUTH0_DATABASE_CONNECTION (optional; defaults to Username-Password-Authentication)
 VITE_MAPBOX_ACCESS_TOKEN
 ```
 
@@ -68,8 +70,27 @@ configuration. Include the dedicated listener and deployment overlap when
 checking database connection capacity.
 
 The workflow also supplies maintenance intervals and maps the repository
-Variable `PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND` to the API's scheduler setting.
-[Gameplay workers](ranked-operations.md) covers that setting's rollout.
+Variables `PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND` and
+`PRODUCTION_GAMEPLAY_WRITERS_COORDINATED` to a safe effective scheduler mode.
+It retains polling unless Upstash is requested and writer retirement is
+acknowledged, then applies and reads back the Azure setting after database
+release succeeds. [Gameplay workers](ranked-operations.md) covers the rollout
+and running-process verification.
+
+## 9. Auth0 production URL configuration
+
+Auth0 callback, logout, and Web-origin allowlists must use the exact application
+origins. The browser's `/account/reset-password` flow also requires
+`http://localhost:5173` and `https://witsworld.co.za` in the SPA's
+**Allowed Origins (CORS)** for `/dbconnections/change_password`. Do not use a
+wildcard. The recorded dashboard value is empty; applying these required CORS
+entries and real reset-email delivery remain unverified operator checks.
+
+The `www` hostname redirects before the SPA starts and is not a separate request
+origin. `VITE_AUTH0_DATABASE_CONNECTION` is public build configuration and
+selects the database connection, defaulting to `Username-Password-Authentication`.
+[Authentication decisions](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/docs/architecture/decisions/ADR-005-auth0-authentication.md#password-reset)
+explain the provider-owned reset flow.
 
 ## Deployment controls
 
@@ -81,9 +102,19 @@ production.
 The API job confirms the configured database host and name, then runs the
 [guarded database release](../database/database-release-procedure.md) before
 uploading the API artifact. A failed database release blocks the API deployment.
-It does not seed event packs or create a ranked season. The Web job deploys its
-own artifact independently, so changes to shared response formats must account
-for old browser tabs and the interval between releases.
+The release uses a direct migration connection even when runtime
+`DATABASE_URL` uses Neon PgBouncer. Optional `MIGRATION_DATABASE_URL` credentials
+must identify the same endpoint/database. Lock waits are limited to 30 seconds,
+statements to five minutes, and the release command to six minutes; the release
+step and API job have eight- and 15-minute timeouts. A timeout blocks deployment.
+See [bounded release waits](../database/database-release-procedure.md#bounded-migration-connections-and-release-waits).
+
+The workflow applies maintenance settings after successful database release and
+before API publication. It does not seed event packs or create a ranked season.
+The Web job requires same-commit API publication, health verification, and the
+[compact Battles contract gate](../testing/continuous-integration.md#api-first-battles-contract-gate).
+Web-only changes also publish an API artifact. Shared response changes must
+still account for old browser tabs and the interval between releases.
 
 Documentation follows a separate Cloudflare Pages workflow described in
 [CI workflows](../testing/continuous-integration.md#documentation-publishing).
@@ -138,4 +169,4 @@ explicit access and retention policy to any exported copies.
 
 **AI declaration:** Prepared and updated with assistance from
 ChatGPT-Web[GPT-5.6 Sol], Codex-CLI[GPT-5], Codex[GPT-5], Codex-CLI[GPT-6],
-and Codex[GPT-6].
+Codex[GPT-6], and Codex-CLI[gpt-6-luna].

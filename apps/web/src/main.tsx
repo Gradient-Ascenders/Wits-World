@@ -34,6 +34,7 @@ try {
       <PlayerAuthProvider config={config.auth}>
         <App
           apiBaseUrl={config.apiBaseUrl}
+          authConfig={config.auth}
           locationClaimProvider={locationClaimProvider}
           locationObservationProvider={locationObservationProvider}
           mapFactory={mapFactory}

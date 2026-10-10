@@ -31,11 +31,12 @@ cp apps/api/.env.example apps/api/.env
 
 Set these values in the ignored `apps/api/.env` file:
 
-| Variable                | Target                                                                                             |
-| ----------------------- | -------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`          | Development database. A pooled Neon endpoint is supported for ordinary queries.                    |
-| `LISTENER_DATABASE_URL` | Direct, non-pooled connection to the same development database, used for PostgreSQL notifications. |
-| `TEST_DATABASE_URL`     | Separate database used by test commands.                                                           |
+| Variable                 | Target                                                                                                            |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`           | Development database. A pooled Neon endpoint is supported for ordinary queries.                                   |
+| `LISTENER_DATABASE_URL`  | Direct, non-pooled connection to the same development database, used for PostgreSQL notifications.                |
+| `MIGRATION_DATABASE_URL` | Optional direct maintenance connection to the same endpoint/database as `DATABASE_URL`; ignored by test commands. |
+| `TEST_DATABASE_URL`      | Separate database used by test commands.                                                                          |
 
 The CLI loads the API environment file automatically. Values already exported
 in the terminal take precedence. Test commands require both `DATABASE_URL` and
@@ -60,6 +61,12 @@ Applied migrations are tracked and skipped on later runs. The runner checks all
 applied filenames and checksums before applying pending SQL; missing or changed
 applied files stop the run.
 
+Migration and release commands automatically derive a direct Neon endpoint from
+a `-pooler` runtime URL. They leave the API runtime connection unchanged.
+Migration lock waits stop after 30 seconds and statements after five minutes.
+See [bounded migration connections and release waits](database-release-procedure.md#bounded-migration-connections-and-release-waits)
+for maintenance credentials, serialization, seed locking, and recovery.
+
 Normal seeding loads reusable reference data and checks that the card catalogue
 is ready.
 
@@ -80,7 +87,16 @@ npm run test:database --workspace @wits-world/api
 
 The suite creates isolated databases, applies migrations, and removes its
 temporary databases afterward. Pull-request CI supplies an ephemeral PostGIS
-service rather than using Neon.
+service rather than using Neon. The bounded maintenance regression tests refuse
+remote databases; use disposable local PostGIS for the automated suite.
+
+Coordinated production scheduling requires both
+`PRODUCTION_GAMEPLAY_SCHEDULER_BACKEND=upstash` and
+`PRODUCTION_GAMEPLAY_WRITERS_COORDINATED=true`, after all unaware writers have
+been retired. CI retains polling unless both settings allow activation and
+verifies the Azure setting after database release succeeds. Follow
+[Gameplay workers](../deployment/ranked-operations.md#enable-coordinated-scheduling)
+for the rollout and deployed-mode checks.
 
 Production changes follow the separate
 [database release procedure](database-release-procedure.md).

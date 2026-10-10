@@ -13,6 +13,11 @@ import { AppRoutes } from '../src/App';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
 const mapboxAccessToken = 'pk.test-token';
+const authConfig = {
+  audience: 'https://account.example.test/api',
+  clientId: 'public-test-client',
+  domain: 'account.example.test',
+};
 const playerId = '6fe7dc26-cdea-4275-a2df-861724137cbc';
 const deletionId = '00000000-0000-4000-8000-000000000600';
 const developerKeyId = '00000000-0000-4000-8000-000000000700';
@@ -43,7 +48,7 @@ afterEach(() => {
 });
 
 describe('player account page', () => {
-  it('shows authoritative profile data and opens Auth0-hosted recovery for a database user', async () => {
+  it('shows authoritative profile data and navigates to the dedicated password-reset page', async () => {
     const user = userEvent.setup();
     const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
     mockAccountApi({ connectionStrategy: 'auth0' });
@@ -66,48 +71,190 @@ describe('player account page', () => {
     ).not.toBeInTheDocument();
     expect(document.querySelector('input[type="password"]')).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Reset password' }));
-
-    expect(loginWithRedirect).toHaveBeenCalledWith({
-      appState: { returnTo: '/account?action=password-recovery' },
-      authorizationParams: { prompt: 'login' },
-    });
-  });
-
-  it('reports the Auth0 recovery handoff without claiming the password changed', async () => {
-    mockAccountApi({ connectionStrategy: 'auth0' });
-
-    renderAccount('/account?action=password-recovery');
+    await user.click(screen.getByRole('link', { name: 'Reset password' }));
 
     expect(
-      await screen.findByText(/cannot confirm whether your password changed/iu),
+      await screen.findByRole('heading', { level: 1, name: 'Reset password' }),
     ).toBeVisible();
-    expect(window.location.pathname).toBe('/account');
-    expect(window.location.search).toBe('');
-    expect(document.querySelector('input[type="password"]')).toBeNull();
+    expect(window.location.pathname).toBe('/account/reset-password');
+    expect(document.title).toBe('Reset password · Wits World');
+    expect(loginWithRedirect).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('textbox', { name: 'Account email' }),
+    ).toBeVisible();
+    await user.click(screen.getByRole('link', { name: 'Account settings' }));
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Account settings',
+      }),
+    ).toBeVisible();
+    expect(document.title).toBe('Account settings · Wits World');
   });
 
-  it('keeps Auth0 recovery retryable when the hosted flow cannot open', async () => {
+  it.each([200, 404])(
+    'confirms the reset request without claiming delivery or a password change for status %s',
+    async (status) => {
+      const user = userEvent.setup();
+      const fetchMock = mockAccountApi({
+        connectionStrategy: 'auth0',
+        passwordResetResponses: [{ status }],
+      });
+      renderAccount('/account/reset-password', {
+        user: { sub: 'auth0|player-123', email: 'player@example.test' },
+      });
+
+      const email = await screen.findByRole('textbox', {
+        name: 'Account email',
+      });
+      expect(email).toHaveValue('player@example.test');
+      expect(document.title).toBe('Reset password · Wits World');
+      await user.click(screen.getByRole('button', { name: 'Send reset link' }));
+      expect(
+        await screen.findByRole('heading', { name: 'Check your inbox' }),
+      ).toHaveFocus();
+      expect(
+        screen.getByText(
+          'If an account uses this email, you will receive a password-reset link.',
+        ),
+      ).toBeVisible();
+      expect(
+        screen.getByText(
+          /Your password stays the same until you follow the link/,
+        ),
+      ).toBeVisible();
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://account.example.test/dbconnections/change_password',
+        expect.objectContaining({
+          body: JSON.stringify({
+            client_id: 'public-test-client',
+            connection: 'Username-Password-Authentication',
+            email: 'player@example.test',
+          }),
+          method: 'POST',
+          credentials: 'omit',
+        }),
+      );
+      expect(document.querySelector('input[type="password"]')).toBeNull();
+      expect(window.localStorage.getItem('email')).toBeNull();
+      await user.click(
+        screen.getByRole('button', { name: 'Use a different email' }),
+      );
+      expect(
+        screen.getByRole('textbox', { name: 'Account email' }),
+      ).toHaveValue('player@example.test');
+      await user.click(screen.getByRole('link', { name: 'Account settings' }));
+      expect(
+        await screen.findByRole('heading', {
+          level: 1,
+          name: 'Account settings',
+        }),
+      ).toBeVisible();
+    },
+  );
+
+  it('keeps the reset request retryable after a provider error', async () => {
     const user = userEvent.setup();
-    const loginWithRedirect = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('provider unavailable'))
-      .mockResolvedValueOnce(undefined);
-    mockAccountApi({ connectionStrategy: 'auth0' });
+    const fetchMock = mockAccountApi({
+      connectionStrategy: 'auth0',
+      passwordResetResponses: [{ status: 500 }, { status: 200 }],
+    });
+    renderAccount('/account/reset-password');
 
-    renderAccount('/account', { loginWithRedirect });
-
-    await user.click(
-      await screen.findByRole('button', {
-        name: 'Reset password',
-      }),
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Account email' }),
+      'player@example.test',
     );
+    await user.click(screen.getByRole('button', { name: 'Send reset link' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Could not open password recovery',
+      'Could not request a reset link',
     );
 
-    await user.click(screen.getByRole('button', { name: 'Reset password' }));
-    expect(loginWithRedirect).toHaveBeenCalledTimes(2);
+    await user.click(screen.getByRole('button', { name: 'Send reset link' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Check your inbox' }),
+    ).toBeVisible();
+    expect(
+      fetchMock.mock.calls.filter(([url]) =>
+        String(url).endsWith('/dbconnections/change_password'),
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('explains a rate-limited password-reset request', async () => {
+    const user = userEvent.setup();
+    mockAccountApi({
+      connectionStrategy: 'auth0',
+      passwordResetResponses: [{ status: 429 }],
+    });
+    renderAccount('/account/reset-password');
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Account email' }),
+      'player@example.test',
+    );
+    await user.click(screen.getByRole('button', { name: 'Send reset link' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Too many requests',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Send reset link' }),
+    ).toBeEnabled();
+  });
+
+  it('requires a valid email before requesting a password reset', async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockAccountApi({ connectionStrategy: 'auth0' });
+    renderAccount('/account/reset-password');
+    const email = await screen.findByRole('textbox', { name: 'Account email' });
+    await user.click(screen.getByRole('button', { name: 'Send reset link' }));
+    expect(email).toBeInvalid();
+    await user.type(email, 'not-an-email');
+    await user.click(screen.getByRole('button', { name: 'Send reset link' }));
+    expect(email).toBeInvalid();
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        String(url).endsWith('/dbconnections/change_password'),
+      ),
+    ).toBe(false);
+  });
+
+  it('does not offer an Auth0 reset form when a Google user visits its route', async () => {
+    mockAccountApi({ connectionStrategy: 'google-oauth2' });
+    renderAccount('/account/reset-password');
+    expect(
+      await screen.findByText(/Google manages your password/),
+    ).toBeVisible();
+    expect(document.title).toBe('Reset password · Wits World');
+    expect(
+      screen.getByRole('link', { name: 'Open Google recovery' }),
+    ).toHaveAttribute('target', '_blank');
+    expect(
+      screen.queryByRole('textbox', { name: 'Account email' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Send reset link' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the dedicated reset route protected for signed-out visitors', async () => {
+    const fetchMock = mockAccountApi({ connectionStrategy: 'auth0' });
+    renderAccount('/account/reset-password', {
+      isAuthenticated: false,
+      user: undefined,
+    });
+    expect(
+      await screen.findByRole('button', {
+        name: 'Sign in to reset your password',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('textbox', { name: 'Account email' }),
+    ).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        /\/(?:auth\/me|dbconnections\/change_password)$/.test(String(url)),
+      ),
+    ).toBe(false);
   });
 
   it('keeps federated credentials with Google and does not offer Auth0 database recovery', async () => {
@@ -119,7 +266,7 @@ describe('player account page', () => {
       await screen.findByText(/Google manages your password/iu),
     ).toBeVisible();
     expect(
-      screen.queryByRole('button', { name: 'Reset password' }),
+      screen.queryByRole('link', { name: 'Reset password' }),
     ).not.toBeInTheDocument();
     expect(screen.getByText('Not chosen yet')).toBeVisible();
     expect(
@@ -638,6 +785,7 @@ function renderAccount(
       <Router>
         <AppRoutes
           apiBaseUrl={apiBaseUrl}
+          authConfig={authConfig}
           mapboxAccessToken={mapboxAccessToken}
         />
       </Router>
@@ -652,6 +800,7 @@ function mockAccountApi({
   developerListResponses = [],
   developerCreateResponse,
   playerName = 'test-player',
+  passwordResetResponses = [{ status: 200 }],
 }: {
   connectionStrategy: 'auth0' | 'google-oauth2';
   deletionResponses?: Array<{ body: object; status: number }>;
@@ -659,16 +808,24 @@ function mockAccountApi({
   developerListResponses?: Array<{ body: object; status: number }>;
   developerCreateResponse?: { body: object; status: number };
   playerName?: string | null;
+  passwordResetResponses?: Array<{ status: number }>;
 }) {
   let deletionIndex = 0;
   let currentDeveloperKeys = [...developerKeys];
   let developerListIndex = 0;
+  let passwordResetIndex = 0;
 
   return vi
     .spyOn(globalThis, 'fetch')
     .mockImplementation(async (input, init) => {
       const url = String(input);
       const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/dbconnections/change_password')) {
+        return new Response('Provider response is not displayed.', {
+          status: passwordResetResponses[passwordResetIndex++]?.status ?? 500,
+        });
+      }
 
       if (url.endsWith('/auth/me')) {
         return new Response(

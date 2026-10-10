@@ -556,7 +556,7 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
   app,
   { starterGrantService, collectionService, evolutionService },
 ) => {
-  app.get<{ Querystring: { unique?: boolean } }>(
+  app.get<{ Querystring: { unique?: boolean; deckId?: string } }>(
     '/cards/collection',
     {
       preHandler: [app.authenticate, app.requireActivePlayer],
@@ -564,16 +564,20 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
         operationId: 'listOwnedCards',
         summary: 'List the current player card collection',
         description:
-          'Returns owned card copies with player-safe catalogue and acquisition metadata. With unique=true, returns only the newest owned copy of each card definition.',
+          'Returns owned card copies with player-safe catalogue and acquisition metadata. With deckId, limits copies to a saved deck belonging to the authenticated player; missing or inaccessible decks return an empty list. With unique=true, returns only the newest copy of each definition within the requested collection.',
         tags: ['Cards'],
         security: [{ bearerAuth: [] }],
         querystring: {
           type: 'object',
           additionalProperties: false,
-          properties: { unique: { type: 'boolean' } },
+          properties: {
+            unique: { type: 'boolean' },
+            deckId: { type: 'string', format: 'uuid' },
+          },
         },
         response: {
           200: collectionResponseSchema,
+          400: apiErrorSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
         },
@@ -588,9 +592,15 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
         );
       }
 
-      const cards = request.query.unique
-        ? await collectionService.listOwnedCards(player.id, true)
-        : await collectionService.listOwnedCards(player.id);
+      const cards = request.query.deckId
+        ? await collectionService.listOwnedCards(
+            player.id,
+            request.query.unique ?? false,
+            request.query.deckId,
+          )
+        : request.query.unique
+          ? await collectionService.listOwnedCards(player.id, true)
+          : await collectionService.listOwnedCards(player.id);
 
       return reply.status(200).send({
         cards,

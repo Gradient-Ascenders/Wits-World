@@ -17,7 +17,11 @@ export interface CardCollectionQueryable {
 }
 
 export interface CardCollectionService {
-  listOwnedCards(playerId: string, unique?: boolean): Promise<OwnedCard[]>;
+  listOwnedCards(
+    playerId: string,
+    unique?: boolean,
+    deckId?: string,
+  ): Promise<OwnedCard[]>;
   listTradingCatalogue(): Promise<TradingCardDefinition[]>;
 }
 
@@ -77,7 +81,21 @@ export function createCardCollectionService(
   database: CardCollectionQueryable,
 ): CardCollectionService {
   return {
-    async listOwnedCards(playerId, unique = false) {
+    async listOwnedCards(playerId, unique = false, deckId) {
+      // Scope before move/effect projection (and before unique-copy selection).
+      // Both the deck and the owned copy must belong to the authenticated player.
+      const deckScope = deckId
+        ? `and exists (
+            select 1
+            from public.player_deck_cards membership
+            join public.player_decks deck
+              on deck.id = membership.deck_id
+             and deck.player_id = membership.player_id
+            where membership.deck_id = $2::uuid
+              and membership.player_id = $1::uuid
+              and membership.owned_card_id = owned.id
+          )`
+        : '';
       const result = await database.query<OwnedCardRow>(
         `
           select
@@ -134,8 +152,9 @@ export function createCardCollectionService(
             unique
               ? `(
             select distinct on (card_definition_id) *
-            from public.player_cards
-            where player_id = $1::uuid
+            from public.player_cards owned
+            where owned.player_id = $1::uuid
+            ${deckScope}
             order by card_definition_id, acquired_at desc, id desc
           )`
               : 'public.player_cards'
@@ -143,9 +162,10 @@ export function createCardCollectionService(
           join public.card_definitions definition
             on definition.id = owned.card_definition_id
           where owned.player_id = $1::uuid
+          ${unique ? '' : deckScope}
           order by owned.acquired_at desc, owned.id desc
         `,
-        [playerId],
+        deckId ? [playerId, deckId] : [playerId],
       );
 
       return result.rows.map(mapOwnedCard);
