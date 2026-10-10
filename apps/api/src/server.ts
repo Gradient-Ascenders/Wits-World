@@ -1,3 +1,4 @@
+import { createPostgresGameplayCoordination } from './matches/postgres-gameplay-coordination.js';
 import { buildApp } from './app.js';
 import { createOfflineChallengeService } from './challenges/offline-challenges.js';
 import { buildApiConfig } from './config/api.js';
@@ -119,7 +120,8 @@ async function startServer(): Promise<void> {
   };
   const activityStore =
     config.rateLimitBackend === 'upstash' ||
-    config.gameplaySchedulerBackend === 'upstash'
+    config.gameplaySchedulerBackend === 'upstash' ||
+    config.postgresGameplayCoordinationEnabled
       ? createUpstashGameplayActivityStore({
           url: config.upstashRedisRestUrl!,
           token: config.upstashRedisRestToken!,
@@ -383,6 +385,8 @@ async function startServer(): Promise<void> {
     app.log,
   );
   let gameplayCoordination: GameplayCoordination | undefined;
+  let postgresCoordination:
+    ReturnType<typeof createPostgresGameplayCoordination> | undefined;
   const livePvpRuntimeScheduler = createLivePvpRuntimeScheduler(
     livePvpDeadlineProcessor,
     livePvpService,
@@ -390,16 +394,20 @@ async function startServer(): Promise<void> {
     {
       deadlineSweepIntervalMs: config.livePvpDeadlineSweepIntervalMs,
       transientCleanupIntervalMs: config.livePvpTransientCleanupIntervalMs,
-      coordinatedIdle: config.gameplaySchedulerBackend === 'upstash',
+      coordinatedIdle:
+        config.gameplaySchedulerBackend === 'upstash' ||
+        config.postgresGameplayCoordinationEnabled,
       hasActiveWork: async () => {
         const pending = await hasLivePvpWork(database);
         if (!pending && livePvpGateway.connectionCount() > 0) {
           await livePvpGateway.refreshConnections();
         }
         if (pending || livePvpGateway.connectionCount() > 0) {
+          postgresCoordination?.observeActive('live', true);
           await gameplayCoordination?.observeActive('live', true);
           return true;
         }
+        postgresCoordination?.observeActive('live', false);
         if (!gameplayCoordination) return false;
         const confirmation = await gameplayCoordination.confirmIdle(
           'live',
@@ -422,6 +430,11 @@ async function startServer(): Promise<void> {
     listenerDatabase,
     livePvpGateway,
     app.log,
+    {
+      onWake: (worker) => postgresCoordination?.wake(worker),
+      onReady: () => postgresCoordination?.ready(),
+      onUnavailable: () => postgresCoordination?.unavailable(),
+    },
   );
   const rankedScheduler = createRankedScheduler(
     rankedDatabase,
@@ -431,9 +444,12 @@ async function startServer(): Promise<void> {
     config.rankedSweepIntervalMs,
     {
       onMatchesCreated: () => livePvpRuntimeScheduler.wake(),
-      coordinatedIdle: config.gameplaySchedulerBackend === 'upstash',
+      coordinatedIdle:
+        config.gameplaySchedulerBackend === 'upstash' ||
+        config.postgresGameplayCoordinationEnabled,
       nextSweep: async () => {
         const next = await nextRankedSweep(database);
+        postgresCoordination?.observeActive('ranked', next === true);
         if (!gameplayCoordination) return next;
         if (next === true) {
           await gameplayCoordination.observeActive('ranked', true);
@@ -447,7 +463,13 @@ async function startServer(): Promise<void> {
       },
     },
   );
-  if (config.gameplaySchedulerBackend === 'upstash') {
+  if (config.postgresGameplayCoordinationEnabled) {
+    postgresCoordination = createPostgresGameplayCoordination(
+      livePvpNotificationListener,
+      { live: livePvpRuntimeScheduler, ranked: rankedScheduler },
+      app.log,
+    );
+  } else if (config.gameplaySchedulerBackend === 'upstash') {
     gameplayCoordination = createGameplayCoordination(
       database,
       activityStore!,
@@ -464,25 +486,32 @@ async function startServer(): Promise<void> {
   );
 
   app.addHook('onClose', async () => {
-    await gameplayCoordination?.stop();
-    await placementScheduler.stop();
-    await livePvpRuntimeScheduler.stop();
-    await rankedScheduler.stop();
-    try {
-      await livePvpNotificationListener.stop();
-    } finally {
+    const cleanupSteps = [
+      () => postgresCoordination?.stop(),
+      () => gameplayCoordination?.stop(),
+      () => placementScheduler.stop(),
+      () => livePvpRuntimeScheduler.stop(),
+      () => rankedScheduler.stop(),
+      () => livePvpNotificationListener.stop(),
+      () => listenerDatabase.end(),
+      () => livePvpGateway.closeAll(),
+      () => accountDeletionRetryScheduler.stop(),
+      () => movementEvidenceCleanupScheduler.stop(),
+      () => trustEvaluationScheduler.stop(),
+      () => asyncPvpDeadlineScheduler.stop(),
+      () => cardTradeMaintenanceScheduler.stop(),
+      () => database.end(),
+    ];
+    const errors: unknown[] = [];
+    for (const cleanup of cleanupSteps) {
       try {
-        await listenerDatabase.end();
-      } finally {
-        await livePvpGateway.closeAll();
-        await accountDeletionRetryScheduler.stop();
-        await movementEvidenceCleanupScheduler.stop();
-        await trustEvaluationScheduler.stop();
-        await asyncPvpDeadlineScheduler.stop();
-        await cardTradeMaintenanceScheduler.stop();
-        await database.end();
+        await cleanup();
+      } catch (error) {
+        errors.push(error);
       }
     }
+    // Finish every cleanup step before propagating the original shutdown error.
+    if (errors.length > 0) throw errors[0];
   });
 
   try {
@@ -493,6 +522,7 @@ async function startServer(): Promise<void> {
 
     livePvpRuntimeScheduler.start();
     rankedScheduler.start();
+    await postgresCoordination?.start();
     gameplayCoordination?.start();
     accountDeletionRetryScheduler.start();
     movementEvidenceCleanupScheduler.start();
@@ -505,6 +535,8 @@ async function startServer(): Promise<void> {
       {
         address,
         gameplaySchedulerBackend: config.gameplaySchedulerBackend,
+        postgresGameplayCoordinationEnabled:
+          config.postgresGameplayCoordinationEnabled,
         livePvpActiveIntervalMs: config.livePvpDeadlineSweepIntervalMs,
         rankedActiveIntervalMs: config.rankedSweepIntervalMs,
       },
@@ -512,7 +544,8 @@ async function startServer(): Promise<void> {
     );
     if (
       process.env.NODE_ENV === 'production' &&
-      config.gameplaySchedulerBackend === 'polling'
+      config.gameplaySchedulerBackend === 'polling' &&
+      !config.postgresGameplayCoordinationEnabled
     ) {
       app.log.warn(
         {

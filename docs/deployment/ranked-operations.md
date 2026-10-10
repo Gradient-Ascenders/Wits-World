@@ -168,6 +168,89 @@ counts without recording tickets, tokens, hidden cards, or precise locations.
 [Database integration and coordination suites](../testing/automated-verification.md#database-integration)
 cover automated checks; deployed recovery needs its own verification.
 
+## Staged PostgreSQL gameplay coordination (PR 1)
+
+`GAMEPLAY_COORDINATION_POSTGRES_ENABLED` defaults to `false`. Existing
+`GAMEPLAY_SCHEDULER_BACKEND` behavior and release settings remain unchanged.
+This additive migration is not permission to activate the production path.
+Activation requires reviewed concurrency/load results and a deliberate operator
+change after deployment; this slice changes no production settings.
+
+With the flag enabled, Ranked and Live discovery use PostgreSQL, while Redis
+producer intents, shared advisory fences and activity signaling remain
+operational. Redis-backed HTTP sliding-window policies are unchanged.
+The flag still requires configured Upstash credentials: PR 1 does not make
+Ranked work creation independent of Redis availability.
+
+Migration `0066_notify_gameplay_work.sql` emits fixed `ranked`/`live` hints on
+`witsworld_gameplay_work`. Filtered row triggers cover queue/proposal work,
+Live status/deadlines, season boundaries and territory scheduling inputs.
+Notifications commit with the transaction; rollbacks and irrelevant metadata
+updates do not publish work. No player identifiers or gameplay payloads are sent.
+
+The existing max1 direct listener multiplexes these hints with match/presence
+channels. Coordination owns that session while enabled; idle gateway ownership
+can be released without closing it. Shared max4 is unchanged. Both gateway
+subscription readiness and coordination registration await successful LISTEN.
+Startup/reconnection wakes both workers; startup then reconciles persisted work.
+A coalesced single-statement probe runs on the direct session every ten seconds,
+with scheduling adjusted for probe duration. Missing hints are repaired within
+that polling interval plus database/event-loop/worker execution time.
+
+Coordination-session registration, cleanup and discovery queries have a
+one-second client bound. Failed/timed-out sessions are destroyed, never returned
+to the pool with an outstanding query. The existing five-second acquisition
+timeout is unchanged. Failed discovery wakes existing workers to scan persisted
+work and continues checking every ten seconds without monitor error backoff.
+All six expected migration triggers must be enabled before discovery can report
+a successful snapshot. No notification changes a match or establishes authority.
+Existing active scan intervals, deadline checks, domain locks, receipts and
+scheduler maintenance/retention policies remain unchanged.
+
+### Database budget and verification
+
+There is one continuously occupied direct session/process, no second listener
+and no healthy reconciliation acquisition from shared max4. The application
+ceiling remains five/process; two processes allow ten, and old/new overlap can
+allow twenty. These are application ceilings, not available provider headroom.
+
+The healthy steady-idle monitor performs six small queries/minute/process, approximately
+259,200 per 30 days (518,400 for two), plus startup/reconnect probes. Regular queries prevent an otherwise idle
+Neon compute from autosuspending; no provider cost reduction is claimed. Existing
+active worker queries continue, and notification wakes may add/coalesce work.
+Measure representative workloads and notification fan-out before production
+cutover, including shared waiting, direct probe duration, connection occupancy,
+worker query/hold counts and scheduler runtimes. Do not compare a Docker Redis
+CLI fixture's wall time with production REST latency.
+
+Focused `postgres-gameplay-coordination` unit and isolated local PostgreSQL tests
+cover commit/rollback, delayed writes, concurrent authority, dropped hints,
+reconnection, migration readiness, bounded queries and mixed Redis producers.
+Database tests reject non-loopback targets. Production cutover remains unverified.
+
+The two-processor deadline fixture also reproduced a pre-existing joined-state
+race on archived, unchanged main without this migration: two initial-selection
+versions committed while only one selection persisted. Mutating Live context
+reads now lock both the header and private state rows in the same statement,
+preserving coherent READ COMMITTED recovery after a lock wait. This changes no
+query/acquisition counts, transaction boundary, deadline policy or gameplay rule.
+
+### Deployment and rollback
+
+1. Deploy the additive migration and API with the flag off through normal release.
+2. Confirm artifact publication and all six triggers; retain existing Redis guards.
+3. After review and load verification, enable the flag deliberately and observe
+   one/two-process discovery, deadlines, positive telemetry and natural cycles.
+4. Disable the flag to restore the previous consumer; producer compatibility is
+   retained throughout PR 1. No table data or Redis rate-limit counters are reset.
+5. Only after PR 1 production verification, prepare PR 2 to remove gameplay Redis.
+   Every remaining consumer must already support PostgreSQL discovery. Retain a
+   PostgreSQL-capable rollback release; restore Redis producers before rolling
+   back to a Redis-only consumer after producer removal.
+
+No deployment workflow, pool size, global query timeout, rate-limit policy or
+billing setting is changed by this slice.
+
 **AI declaration:** Prepared and updated with assistance from Codex[GPT-5],
 ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-6], Codex-CLI[GPT-5], and
 Codex-CLI[gpt-6-luna].

@@ -87,6 +87,14 @@ const mocks = vi.hoisted(() => {
         return gateway;
       },
     ),
+    createPostgresCoordination: vi.fn(() => ({
+      start: vi.fn(async () => undefined),
+      stop: vi.fn(async () => undefined),
+      observeActive: vi.fn(),
+      wake: vi.fn(),
+      ready: vi.fn(),
+      unavailable: vi.fn(),
+    })),
     createListener: vi.fn(() => listener),
     createLifecycle: vi.fn(
       (_database: unknown, options: AccountDeletionLifecycleOptions) => {
@@ -101,6 +109,7 @@ const mocks = vi.hoisted(() => {
       port: 4321,
       rateLimitBackend: 'local' as 'local' | 'upstash',
       gameplaySchedulerBackend: 'polling' as 'polling' | 'upstash',
+      postgresGameplayCoordinationEnabled: false,
       rateLimitPolicies: {},
       rateLimitTimeoutMs: 25,
       upstashRedisRestUrl: 'https://redis.example.test',
@@ -180,6 +189,9 @@ vi.mock('../src/matches/gameplay-coordination.js', () => ({
   createGameplayMutationGuard: () => vi.fn(),
   gameplayCoordinationNamespace: () => 'derived-namespace',
 }));
+vi.mock('../src/matches/postgres-gameplay-coordination.js', () => ({
+  createPostgresGameplayCoordination: mocks.createPostgresCoordination,
+}));
 vi.mock('../src/matches/live-pvp-gateway.js', () => ({
   createLivePvpGateway: mocks.createGateway,
 }));
@@ -252,6 +264,7 @@ describe('API server bootstrap', () => {
     mocks.gateway.connectionCount.mockReturnValue(0);
     mocks.config.rateLimitBackend = 'local';
     mocks.config.gameplaySchedulerBackend = 'polling';
+    mocks.config.postgresGameplayCoordinationEnabled = false;
     process.exitCode = originalExitCode;
     vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
     vi.stubEnv('OFFLINE_PACK_SIGNING_KEY', '');
@@ -324,6 +337,30 @@ describe('API server bootstrap', () => {
     expect(mocks.schedulers.ranked.start).toHaveBeenCalledOnce();
   });
 
+  it('enables only the reviewed PostgreSQL consumer and preserves Redis producers and active cadence', async () => {
+    mocks.config.rateLimitBackend = 'upstash';
+    mocks.config.gameplaySchedulerBackend = 'upstash';
+    mocks.config.postgresGameplayCoordinationEnabled = true;
+    await importServer();
+    expect(mocks.upstashActivityStore).toHaveBeenCalledOnce();
+    expect(mocks.createCoordination).not.toHaveBeenCalled();
+    expect(mocks.createPostgresCoordination).toHaveBeenCalledOnce();
+    const postgres = mocks.createPostgresCoordination.mock.results[0]!.value;
+    expect(postgres.start).toHaveBeenCalledOnce();
+    expect(mocks.state.liveSchedulerOptions?.coordinatedIdle).toBe(true);
+    expect(mocks.state.liveSchedulerOptions?.deadlineSweepIntervalMs).toBe(
+      1000,
+    );
+    expect(mocks.state.rankedSchedulerOptions?.coordinatedIdle).toBe(true);
+    mocks.database.query.mockResolvedValue({ rows: [{ pending: false }] });
+    await mocks.state.liveSchedulerOptions!.hasActiveWork!();
+    expect(postgres.observeActive).toHaveBeenCalledWith('live', false);
+    const app = await mocks.createApp.mock.results[0]!.value;
+    await app.close();
+    expect(postgres.stop).toHaveBeenCalledOnce();
+    expect(mocks.listenerDatabase.end).toHaveBeenCalledOnce();
+  });
+
   it('starts maintenance schedulers and closes coordinated workers, listener, gateway, and both pools', async () => {
     mocks.config.gameplaySchedulerBackend = 'upstash';
     await importServer();
@@ -345,6 +382,43 @@ describe('API server bootstrap', () => {
     expect(mocks.database.end).toHaveBeenCalledOnce();
   });
 
+  it.each(['none', 'listener', 'listener pool'])(
+    'finishes shutdown after PostgreSQL coordination fails, with %s additional failure',
+    async (additionalFailure) => {
+      mocks.config.postgresGameplayCoordinationEnabled = true;
+      await importServer();
+      const postgres = mocks.createPostgresCoordination.mock.results[0]!.value;
+      const shutdownError = new Error('coordination cleanup failed');
+      postgres.stop.mockRejectedValueOnce(shutdownError);
+      const laterError = new Error('later cleanup failed');
+      if (additionalFailure === 'listener') {
+        mocks.listener.stop.mockRejectedValueOnce(laterError);
+      } else if (additionalFailure === 'listener pool') {
+        mocks.listenerDatabase.end.mockRejectedValueOnce(laterError);
+      }
+      const app = await mocks.createApp.mock.results[0]!.value;
+
+      await expect(app.close()).rejects.toBe(shutdownError);
+
+      expect(postgres.stop).toHaveBeenCalledOnce();
+      for (const scheduler of Object.values(mocks.schedulers)) {
+        expect(scheduler.stop).toHaveBeenCalledOnce();
+      }
+      expect(mocks.listener.stop).toHaveBeenCalledOnce();
+      expect(mocks.listenerDatabase.end).toHaveBeenCalledOnce();
+      expect(mocks.gateway.closeAll).toHaveBeenCalledOnce();
+      expect(mocks.database.end).toHaveBeenCalledOnce();
+      expect(postgres.stop.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.schedulers.livePvpRuntime.stop.mock.invocationCallOrder[0]!,
+      );
+      expect(
+        mocks.schedulers.ranked.stop.mock.invocationCallOrder[0],
+      ).toBeLessThan(mocks.listenerDatabase.end.mock.invocationCallOrder[0]!);
+      expect(mocks.gateway.closeAll.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.database.end.mock.invocationCallOrder[0]!,
+      );
+    },
+  );
   it('wires gameplay wakes, notification connection preparation, and dependent-gameplay deletion finalization', async () => {
     await importServer();
 
