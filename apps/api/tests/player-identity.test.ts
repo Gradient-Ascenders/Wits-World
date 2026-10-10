@@ -62,7 +62,7 @@ describe('local player identity', () => {
     );
   });
 
-  it('shares only the stable identity result and rechecks concurrent authorization', async () => {
+  it('does not delay a fresh concurrent authorization read behind another request', async () => {
     const initialResult = {
       rows: [
         {
@@ -100,7 +100,11 @@ describe('local player identity', () => {
     const first = service.resolve(trustedPrincipal);
     const concurrent = service.resolve(trustedPrincipal);
 
-    expect(query).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledTimes(2);
+    await expect(concurrent).resolves.toMatchObject({
+      id: 'player',
+      role: 'author',
+    });
     releaseQuery(initialResult);
     await expect(Promise.all([first, concurrent])).resolves.toEqual([
       expect.objectContaining({ id: 'player', role: 'player' }),
@@ -113,13 +117,160 @@ describe('local player identity', () => {
       trustedPrincipal.tokenIssuedAt,
       trustedPrincipal.playerName,
       true,
-      'player',
+      null,
     ]);
 
     await expect(service.resolve(trustedPrincipal)).resolves.toMatchObject({
       id: 'player',
     });
     expect(query).toHaveBeenCalledTimes(3);
+  });
+
+  it('waits only after a concurrent miss and rechecks fresh state using the stable identity', async () => {
+    const row = {
+      id: 'player',
+      player_name: 'naledi',
+      role: 'player',
+      lifecycle_status: 'active',
+      identity_denied: false,
+    };
+    let finishFirst!: (value: { rows: (typeof row)[] }) => void;
+    const query = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (finishFirst = resolve)),
+      )
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ ...row, role: 'author' }] });
+    const connect = vi.fn();
+    const service = createPlayerIdentityService({
+      query,
+      connect,
+    } as unknown as Pick<pg.Pool, 'query' | 'connect'>);
+
+    const first = service.resolve(trustedPrincipal);
+    const follower = service.resolve(trustedPrincipal);
+    await Promise.resolve();
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(connect).not.toHaveBeenCalled();
+    finishFirst({ rows: [row] });
+    await expect(first).resolves.toMatchObject({ role: 'player' });
+    await expect(follower).resolves.toMatchObject({ role: 'author' });
+    expect(query.mock.calls[2]?.[1]).toEqual([
+      trustedPrincipal.issuer,
+      trustedPrincipal.subject,
+      trustedPrincipal.tokenIssuedAt,
+      trustedPrincipal.playerName,
+      true,
+      'player',
+    ]);
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it('rejects a concurrent denied token without waiting for another token lookup', async () => {
+    let finishFirst!: (value: { rows: unknown[] }) => void;
+    const query = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (finishFirst = resolve)),
+      )
+      .mockResolvedValueOnce({
+        rows: [{ id: 'player', identity_denied: true }],
+      });
+    const service = createPlayerIdentityService({
+      query,
+      connect: vi.fn(),
+    } as unknown as Pick<pg.Pool, 'query' | 'connect'>);
+    const first = service.resolve(trustedPrincipal);
+    const denied = service.resolve({
+      ...trustedPrincipal,
+      tokenIssuedAt: new Date('2026-08-29T12:00:00.000Z'),
+    });
+    await expect(denied).rejects.toBeInstanceOf(DeletedIdentityTokenError);
+    finishFirst({
+      rows: [
+        {
+          id: 'player',
+          player_name: 'naledi',
+          role: 'player',
+          lifecycle_status: 'active',
+        },
+      ],
+    });
+    await expect(first).resolves.toMatchObject({ id: 'player' });
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('rechecks denial after waiting for a missed concurrent identity', async () => {
+    let finishFirst!: (value: { rows: unknown[] }) => void;
+    const query = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (finishFirst = resolve)),
+      )
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ id: 'player', identity_denied: true }],
+      });
+    const connect = vi.fn();
+    const service = createPlayerIdentityService({
+      query,
+      connect,
+    } as unknown as Pick<pg.Pool, 'query' | 'connect'>);
+    const first = service.resolve(trustedPrincipal);
+    const follower = service.resolve(trustedPrincipal);
+    const rejection = expect(follower).rejects.toBeInstanceOf(
+      DeletedIdentityTokenError,
+    );
+    finishFirst({
+      rows: [
+        {
+          id: 'player',
+          player_name: 'naledi',
+          role: 'player',
+          lifecycle_status: 'active',
+        },
+      ],
+    });
+    await first;
+    await rejection;
+    expect(query).toHaveBeenCalledTimes(3);
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it('cleans up a failed leader and lets a missed follower perform a fresh read', async () => {
+    let failFirst!: (error: Error) => void;
+    const query = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise((_resolve, reject) => (failFirst = reject)),
+      )
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValue({
+        rows: [
+          {
+            id: 'player',
+            player_name: 'naledi',
+            role: 'player',
+            lifecycle_status: 'active',
+          },
+        ],
+      });
+    const service = createPlayerIdentityService({
+      query,
+      connect: vi.fn(),
+    } as unknown as Pick<pg.Pool, 'query' | 'connect'>);
+    const error = new Error('fixture lookup failure');
+    const first = service.resolve(trustedPrincipal);
+    const rejection = expect(first).rejects.toBe(error);
+    const follower = service.resolve(trustedPrincipal);
+    failFirst(error);
+    await rejection;
+    await expect(follower).resolves.toMatchObject({ id: 'player' });
+    await expect(service.resolve(trustedPrincipal)).resolves.toMatchObject({
+      id: 'player',
+    });
+    expect(query).toHaveBeenCalledTimes(4);
   });
 
   it('rejects a denied token even when the unchanged player exists', async () => {

@@ -83,6 +83,7 @@ export function createPlayerIdentityService(
   async function resolveIdentity(
     identity: InteractivePlayerPrincipal,
     knownPlayerId?: string,
+    pendingIdentityLookup?: Promise<string | null>,
   ): Promise<LocalPlayer> {
     const playerName =
       identity.connectionStrategy === AUTH0_DATABASE_CONNECTION_STRATEGY
@@ -134,6 +135,14 @@ export function createPlayerIdentityService(
         role: unchanged.role,
         lifecycleStatus: unchanged.lifecycle_status,
       };
+    }
+
+    // Do not serialize fresh reads for an already provisioned player behind
+    // another request. Only a miss needs to wait for that request's possible
+    // provisioning, then re-read mutable authorization and token denial state.
+    if (pendingIdentityLookup) {
+      const knownPlayerId = await pendingIdentityLookup;
+      return resolveIdentity(identity, knownPlayerId ?? undefined);
     }
 
     const result = await withTransaction(database, async (client) => {
@@ -278,8 +287,7 @@ export function createPlayerIdentityService(
       const key = JSON.stringify([identity.issuer, identity.subject]);
       const activeLookup = inFlightIdentityLookups.get(key);
       if (activeLookup) {
-        const knownPlayerId = await activeLookup;
-        return resolveIdentity(identity, knownPlayerId ?? undefined);
+        return resolveIdentity(identity, undefined, activeLookup);
       }
 
       const resolution = resolveIdentity(identity);
