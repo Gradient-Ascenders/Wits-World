@@ -473,3 +473,94 @@ concurrent dev-server run did not reproduce on either production build.
 
 AI assistance: Codex[GPT-6] investigated, implemented, tested, measured and
 documented this Workstream 3 slice.
+
+## Issue #358: concurrent request identity initialization
+
+10 October 2026. Local disposable-database comparison against frozen main
+`0dcce5db629d4cd5082fcc459f429fb606d4b8ca`; not production performance evidence.
+The API already uses a reused max4 shared pool. Unchanged identities require one
+fresh authorization statement, including token denial and `FOR KEY SHARE`,
+without provisioning writes. The previous in-flight identity lookup nevertheless
+made same-player requests wait for the first resolution before starting their
+own fresh reads. Four warm simultaneous `/auth/me` requests therefore needed two
+database round-trip waves even with four idle clients.
+
+Concurrent requests now attempt that same fresh read immediately. Only a miss
+waits for the existing in-flight resolution, then rechecks mutable authorization
+and token denial using the stable player ID when available. Existing provisioning
+transactions and identity locks remain authoritative. No authorization result is
+shared across requests. SQL, authentication, pool limits, idle/acquisition
+timeouts, rate limiting, coordination and scheduler behavior are unchanged.
+
+### Equivalent fixture measurements
+
+The harness used actual Fastify routes, local RS256 token verification and current
+identity/collection services against a new isolated PostgreSQL database under the
+approved disposable test target. Its minimal identity/card schema and empty
+collection are not a production workload or a full migration fixture. Fixtures
+were removed after each comparison. Request duration uses Fastify injection, not
+browser-to-Azure latency. SQL-client/hold durations include transport and server
+work; they do not isolate server-only execution.
+
+| Measurement (median, ms unless stated)      | Frozen main | Change  |
+| ------------------------------------------- | ----------- | ------- |
+| Four same-player requests, all complete     | 339.6       | 172.2   |
+| Four distinct-player requests, all complete | 173.3       | 172.0   |
+| Same-player request duration (12 requests)  | 338.7       | 170.8   |
+| Same-player SQL-client hold per request     | 169.4       | 169.3   |
+| Sequential warm `/auth/me` (five requests)  | 169.4       | 174.8   |
+| Sequential empty collection (five requests) | 337.1       | 343.5   |
+| Empty-pool `/auth/me` (three requests)      | 1,182.8     | 1,222.0 |
+| Empty-pool acquisition                      | 1,011.3     | 1,047.9 |
+| Three concurrent first-time requests        | 1,040.8     | 1,034.7 |
+| First-time burst statements / acquisitions  | 7 / 4       | 9 / 6   |
+| First-time burst cumulative client holds    | 1,214.8     | 1,547.1 |
+
+Each four-request concurrency condition had three bursts. The warm same-player
+benefit removes an application-level wait, approximately one measured database
+round trip; it does not accelerate PostgreSQL connection establishment. Each
+steady-state `/auth/me` still uses one statement/acquisition; collection uses two.
+Median sequential RS256 verification was 0.4 ms in both builds. Small changes in
+sequential and cold timings are not claimed as improvements or regressions.
+
+The first-time trade-off is explicit: each follower whose initial read misses
+performs an extra fresh read after waiting. The three-request fixture saved no
+meaningful provisioning latency and added two statements/acquisitions and about
+332 ms cumulative holds. Normal pool capacity remains max4, with no extra pool or
+permanent client. The optimization benefits concurrent unchanged-player reads,
+not sign-up/provisioning bursts, and needs independent review of that trade-off.
+
+A separate SELECT-only pool sample observed empty-pool acquisition of
+1,024–1,683 ms with a new connection, versus 0.08–0.16 ms for immediate idle reuse.
+With all four test clients deliberately held, a fifth checkout waited 87.6 ms
+until a controlled release and created no new connection. These controlled
+conditions distinguish waiting from empty-pool establishment, but do not split
+DNS, TLS, authentication, provider routing or backend connection creation. Existing
+production telemetry combines waiting and establishment; no causal link to the
+separate gameplay coordination incident is established.
+
+### Focused verification and release gate
+
+Focused identity/authentication tests exercise independent role/denial reads,
+delayed and failed leaders, fresh rechecks after misses and recovery. The gated
+`player-identity-concurrency.integration.test.ts` uses a minimal isolated real
+PostgreSQL fixture for parallel role visibility, exactly one provisioning
+transaction/player, deletion row-lock behavior and independent token denial.
+Existing native-pool integrations verify queue timeout, release and query-error
+recovery. The full migration/deletion-retention suite remains separate.
+
+```sh
+npm test --workspace @wits-world/api -- tests/player-identity.test.ts tests/authentication.integration.test.ts tests/authorization.test.ts tests/database-connection.test.ts tests/pool-observability.test.ts tests/request-timing.test.ts --maxWorkers=2
+RUN_DATABASE_INTEGRATION_TESTS=true npm test --workspace @wits-world/api -- tests/player-identity-concurrency.integration.test.ts tests/pool-observability.integration.test.ts --maxWorkers=1
+```
+
+No production measurements or release occurred. Do not release this slice until
+the independent gameplay activity-store correction is merged and production
+coordination recovery is verified. After that gate, compare equivalent natural
+same-player request bursts, authorization timing, query/acquisition counts,
+pool waiting, new connections and failures; separately monitor first-time
+provisioning costs. Rollback restores the previous wait placement without a
+schema/configuration change. No general endpoint or cold-start speedup is claimed.
+
+AI assistance: Codex[GPT-6] investigated, implemented, tested and measured this
+request-initialization slice and documented its limitations.
