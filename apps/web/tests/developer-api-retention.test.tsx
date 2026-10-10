@@ -68,9 +68,11 @@ it('preserves confirmed keys and the one-time secret when post-create refresh fa
     screen.getByRole('textbox', { name: 'Generated API key' }),
   ).toHaveValue('fixture-secret');
   expect(screen.getByRole('button', { name: 'Revoke' })).toBeDisabled();
-  expect(
-    screen.getByRole('heading', { name: 'Save this API key now' }),
-  ).toHaveFocus();
+  await waitFor(() =>
+    expect(
+      screen.getByRole('heading', { name: 'Save this API key now' }),
+    ).toHaveFocus(),
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Retry update' }));
   await waitFor(() =>
     expect(screen.queryByText(/Could not update/)).toBeNull(),
