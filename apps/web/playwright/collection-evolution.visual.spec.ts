@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { selectOption } from './select-option';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { buildCard, buildUuid } from '../tests/fixtures/cards';
@@ -227,7 +228,7 @@ for (const reducedMotion of [false, true]) {
           page.getByRole('navigation', { name: 'Collection sections' }),
         ).toBeVisible();
         await expectCollectionLoaderCentred(page);
-        await page.screenshot({
+        await captureScreenshot(test.info(), page, {
           path: testInfo.outputPath(`loading-${width}.png`),
           fullPage: true,
         });
@@ -281,7 +282,7 @@ for (const reducedMotion of [false, true]) {
         .getByRole('button', { name: 'Close Quillip details' })
         .click();
       await expect(sourceDetailsTrigger).toBeFocused();
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: testInfo.outputPath(`evolutions-${width}.png`),
         fullPage: true,
       });
@@ -334,7 +335,7 @@ for (const reducedMotion of [false, true]) {
           element.getAnimations().map((animation) => animation.finished),
         ),
       );
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: testInfo.outputPath(`target-full-details-${width}.png`),
       });
       await page.keyboard.press('Tab');
@@ -369,7 +370,7 @@ for (const reducedMotion of [false, true]) {
         });
       expect(Math.abs(composition.centreDelta)).toBeLessThan(2);
       expect(composition.sourcesBelowTarget).toBe(true);
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: testInfo.outputPath(`preview-${width}.png`),
       });
       if (width === 1440) {
@@ -393,7 +394,7 @@ for (const reducedMotion of [false, true]) {
         expect(tallRecipe.spaceBelowSources).toBeLessThan(96);
         expect(tallRecipe.connectorHeight).toBeGreaterThan(48);
         expect(tallRecipe.connectorHeight).toBeLessThan(192);
-        await page.screenshot({
+        await captureScreenshot(test.info(), page, {
           path: testInfo.outputPath('preview-desktop-tall.png'),
         });
         await page.setViewportSize({ width, height: 960 });
@@ -401,7 +402,7 @@ for (const reducedMotion of [false, true]) {
       await page
         .getByRole('button', { name: 'Evolve' })
         .scrollIntoViewIfNeeded();
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: testInfo.outputPath(`availability-${width}.png`),
       });
       const previewBounds = await dialog.boundingBox();
@@ -438,7 +439,7 @@ for (const reducedMotion of [false, true]) {
           () => document.documentElement.scrollWidth <= innerWidth,
         ),
       ).toBe(true);
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: testInfo.outputPath(`confirmation-${width}.png`),
       });
       await confirm.focus();
@@ -471,7 +472,7 @@ for (const reducedMotion of [false, true]) {
     );
     await expect(page.getByRole('alert')).toBeFocused();
     await expect(page.getByTestId('evolution-reveal')).toHaveCount(0);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: testInfo.outputPath('confirmation-error-mobile.png'),
     });
     mutation = 'stale';
@@ -480,14 +481,16 @@ for (const reducedMotion of [false, true]) {
       'preview is no longer valid',
     );
     await expect(page.getByRole('button', { name: 'Evolve' })).toBeDisabled();
-    await page.screenshot({ path: testInfo.outputPath('stale-mobile.png') });
+    await captureScreenshot(test.info(), page, {
+      path: testInfo.outputPath('stale-mobile.png'),
+    });
     await expect(page.getByTestId('evolution-reveal')).toHaveCount(0);
     await page.keyboard.press('Escape');
     await expect(
       page.getByText('Not enough copies', { exact: true }),
     ).toBeVisible();
     await expect(page.getByText('2 / 3', { exact: true })).toBeVisible();
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: testInfo.outputPath('insufficient-mobile.png'),
     });
     cards = [...initialCards, existingTarget];
@@ -502,14 +505,16 @@ for (const reducedMotion of [false, true]) {
     await expect(
       page.getByText(/Remove them from all saved decks to use them/),
     ).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath('locked-mobile.png') });
+    await captureScreenshot(test.info(), page, {
+      path: testInfo.outputPath('locked-mobile.png'),
+    });
     await page.keyboard.press('Escape');
     previewFails = true;
     await page.getByRole('link', { name: 'Cards', exact: true }).click();
     await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
     await selectOption(page.getByLabel('Availability', { exact: true }), 'all');
     await expect(page.getByText('Availability unknown')).toBeVisible();
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: testInfo.outputPath('preview-error-mobile.png'),
     });
     previewFails = false;
@@ -555,7 +560,7 @@ for (const reducedMotion of [false, true]) {
     await expectEvolutionFeedbackVisible(dialog);
     const refresh = dialog.getByRole('button', { name: 'Refresh collection' });
     await expect(refresh).toBeInViewport({ ratio: 1 });
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: testInfo.outputPath('refresh-error-320x568.png'),
     });
     collectionRefreshFails = false;
@@ -630,7 +635,7 @@ for (const reducedMotion of [false, true]) {
             ).toBe(true);
           }
           await expectEvolutionFeedbackVisible(dialog);
-          await page.screenshot({
+          await captureScreenshot(test.info(), page, {
             path: testInfo.outputPath(
               `ascension-${phase}-${viewport.width}.png`,
             ),
@@ -646,7 +651,7 @@ for (const reducedMotion of [false, true]) {
       await expect(
         dialog.locator('.evolution-reveal .collectible-card__art-perspective'),
       ).toHaveCSS('clip-path', 'none');
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: testInfo.outputPath('late-hover-desktop.png'),
       });
       await page.mouse.move(0, 0);
@@ -685,7 +690,9 @@ for (const reducedMotion of [false, true]) {
       'false',
     );
     await expect(page.locator('.evolution-reveal__glint')).toHaveCount(0);
-    await page.screenshot({ path: testInfo.outputPath('success-mobile.png') });
+    await captureScreenshot(test.info(), page, {
+      path: testInfo.outputPath('success-mobile.png'),
+    });
     for (const viewport of reducedMotion
       ? [
           { width: 390, height: 844 },
@@ -762,7 +769,7 @@ for (const reducedMotion of [false, true]) {
       if (viewport.width >= 640) {
         expect(geometry.gapBelowResult).toBeLessThan(48);
       }
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: testInfo.outputPath(
           `success-${viewport.width}x${viewport.height}.png`,
         ),
@@ -975,7 +982,7 @@ test('finds evolutions across pages and keeps browsing usable after consuming th
       () => document.documentElement.scrollWidth > innerWidth,
     );
     expect(overflows).toBe(false);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: testInfo.outputPath(`browse-${viewport.width}.png`),
       fullPage: true,
     });
@@ -999,7 +1006,7 @@ test('finds evolutions across pages and keeps browsing usable after consuming th
     await expect(
       page.getByRole('heading', { name: 'No matching cards' }),
     ).toBeVisible();
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: testInfo.outputPath(`empty-search-${viewport.width}.png`),
     });
     await page.getByRole('button', { name: 'Clear filters' }).click();
@@ -1043,7 +1050,7 @@ test('finds evolutions across pages and keeps browsing usable after consuming th
     'Ready',
   );
   expect(mutationRequests).toBe(1);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('browse-after-evolving.png'),
   });
 });
@@ -1100,7 +1107,7 @@ test('centres loading screens across every Collection section', async ({
       ]) {
         await page.setViewportSize(viewport);
         await expectCollectionLoaderCentred(page);
-        await page.screenshot({
+        await captureScreenshot(test.info(), page, {
           path: testInfo.outputPath(`${section}-loading-${viewport.width}.png`),
         });
       }

@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { selectOption } from './select-option';
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
@@ -219,7 +220,7 @@ test('event schedule times stay in Johannesburg on a device in another timezone'
     await page.getByText('About this event', { exact: true }).click();
     const time = page.locator('.selected-event__facts dd').last();
     await expect(time).toHaveText(/1 Oct.*02:00/);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       path: info.outputPath('johannesburg-desktop.png'),
     });
@@ -228,7 +229,7 @@ test('event schedule times stay in Johannesburg on a device in another timezone'
     if (await trigger.isVisible()) await trigger.click();
     await expect(time).toBeVisible();
     await expect(time).toHaveText(/1 Oct.*02:00/);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       path: info.outputPath('johannesburg-mobile.png'),
     });
@@ -273,7 +274,7 @@ test('one discovery navigation stays readable with narrow screens and larger tex
       );
     expect(crowded).toEqual([]);
     await noOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       path: info.outputPath(`explore-tabs-${width}-${scale}.png`),
     });
@@ -336,7 +337,7 @@ test('keeps the read aloud icon clear of map controls and the collapsible header
     mobileLocation!.y,
   );
   await noOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('explore-header-controls-expanded.png'),
   });
@@ -362,7 +363,7 @@ test('keeps the read aloud icon clear of map controls and the collapsible header
   await expect(detail).toHaveAttribute('aria-pressed', 'true');
   await detail.click();
   await expect(detail).toHaveAttribute('aria-pressed', 'false');
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('explore-header-controls-collapsed.png'),
   });
@@ -386,7 +387,7 @@ test('keeps the read aloud icon clear of map controls and the collapsible header
     desktopLocation!.y,
   );
   await noOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('explore-header-controls-desktop.png'),
   });
@@ -401,7 +402,7 @@ test('keeps the read aloud icon clear of map controls and the collapsible header
   await expect(page.locator('.exploration-view')).toBeVisible();
   await expect(reader).toBeVisible();
   await noOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('explore-header-controls-desktop-default-size.png'),
   });
@@ -409,7 +410,7 @@ test('keeps the read aloud icon clear of map controls and the collapsible header
   await expect(page.locator('.exploration-view')).toBeVisible();
   await expect(reader).toBeVisible();
   await noOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('explore-header-controls-tablet-default-size.png'),
   });
@@ -417,7 +418,7 @@ test('keeps the read aloud icon clear of map controls and the collapsible header
   await expect(page.locator('.exploration-view')).toBeVisible();
   await expect(detail).toBeVisible();
   await noOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('explore-header-controls-mobile-default-size.png'),
   });
@@ -429,7 +430,7 @@ test('keeps the read aloud icon clear of map controls and the collapsible header
   expect(screenshotDetail!.y).toBeGreaterThanOrEqual(
     screenshotHeader!.y + screenshotHeader!.height,
   );
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('explore-header-controls-500-expanded.png'),
   });
@@ -440,7 +441,7 @@ test('keeps the read aloud icon clear of map controls and the collapsible header
   await expect
     .poll(async () => (await detail.boundingBox())?.y ?? Infinity)
     .toBeLessThanOrEqual(cornerGap + 1);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('explore-header-controls-500-collapsed.png'),
   });
@@ -493,7 +494,7 @@ test('map and event loading preserve discovery space', async ({
     page.getByRole('heading', { name: 'Opening Explore…' }),
   ).toBeVisible();
   await expect(page.locator('.page-loading-state')).toHaveCount(1);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('mobile-loading.png'),
   });
@@ -520,13 +521,13 @@ test('map and event loading preserve discovery space', async ({
     trailLoading.locator('.region-loading-state__placeholder'),
   ).toBeVisible();
   await expect(trailLoading.locator('[role="status"]')).toHaveClass(/sr-only/);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('mobile-trails-loading.png'),
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(trailLoading).toBeVisible();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('desktop-trails-loading.png'),
   });
@@ -554,7 +555,7 @@ test('mobile sheet stays above navigation, supports selection, disclosure, gestu
   expect(triggerBounds!.y + triggerBounds!.height).toBeLessThanOrEqual(
     navigationBounds!.y + 1,
   );
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('mobile-collapsed.png'),
   });
@@ -576,7 +577,7 @@ test('mobile sheet stays above navigation, supports selection, disclosure, gestu
   await expect(
     page.getByRole('button', { name: 'Start challenge for Great Hall' }),
   ).toHaveCSS('background-color', 'rgb(23, 74, 153)');
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('mobile-selected.png'),
   });
@@ -590,7 +591,7 @@ test('mobile sheet stays above navigation, supports selection, disclosure, gestu
   await page.getByText('About this event', { exact: true }).click();
   await expect(page.getByText('75 m radius')).toBeVisible();
   await noOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('mobile-expanded-long-title.png'),
   });
@@ -645,7 +646,7 @@ test('tablet bounds the sheet and desktop reserves map space for discovery', asy
   expect(
     (await page.locator('.event-panel').boundingBox())!.width,
   ).toBeLessThan(460);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('tablet-list.png'),
   });
@@ -664,7 +665,7 @@ test('tablet bounds the sheet and desktop reserves map space for discovery', asy
     await control.hover();
     await expect(control).toHaveCSS('background-color', 'rgb(17, 36, 64)');
   }
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('desktop-map-control-hover.png'),
   });
@@ -680,7 +681,7 @@ test('tablet bounds the sheet and desktop reserves map space for discovery', asy
     desktopCollapse.locator('.event-panel__collapse-chevron'),
   ).toBeHidden();
   await expect(desktopCollapse).toHaveAttribute('aria-expanded', 'true');
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('desktop-selected.png'),
   });
@@ -727,7 +728,7 @@ test('tablet bounds the sheet and desktop reserves map space for discovery', asy
     shortcuts.getByRole('button', { name: 'Open Events' }),
   ).toHaveAttribute('aria-current', 'page');
   await reopen.focus();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('desktop-collapsed-rail.png'),
   });
@@ -772,7 +773,7 @@ test('desktop rail shortcuts open each section with keyboard focus and active fe
     await expect(shortcut).toHaveAttribute('aria-current', 'page');
     await expect(shortcut).toHaveCSS('color', 'rgb(224, 196, 108)');
   }
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('desktop-rail-shortcuts.png'),
   });
@@ -823,7 +824,7 @@ test('desktop layers change visibility without clearing selection or resetting t
   await expect(map).toHaveAttribute('data-map-labels-visible', 'false');
   await expect(map).toHaveAttribute('data-map-provider', provider!);
   await expect(map).toHaveAttribute('data-map-camera-center', camera!);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('desktop-map-layers.png'),
   });
@@ -850,7 +851,7 @@ test('desktop layers change visibility without clearing selection or resetting t
   await expect(layers).toHaveCount(0);
   await expect(map).toHaveAttribute('data-map-labels-visible', 'true');
   await expect(markers.first()).toBeVisible();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('mobile-without-layers.png'),
   });
@@ -865,7 +866,7 @@ test('map failure retains event discovery and a retry action', async ({
   await expect(page.getByText('The map could not load.')).toBeVisible();
   await page.getByRole('button', { name: 'Retry map' }).click();
   await expect(page.getByText('The map could not load.')).toBeVisible();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('mobile-map-failure.png'),
   });
@@ -887,7 +888,7 @@ for (const mode of ['empty', 'error'] as const) {
         mode === 'empty' ? 'No events available.' : 'Events could not load.',
       ),
     ).toBeVisible();
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       path: info.outputPath(`mobile-events-${mode}.png`),
     });
@@ -905,7 +906,7 @@ test('uncertain reported location and empty nearby results explain the next step
   await expect(
     page.getByRole('button', { name: /Start challenge/ }),
   ).toHaveCount(0);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('mobile-location-uncertain.png'),
   });
@@ -914,7 +915,7 @@ test('uncertain reported location and empty nearby results explain the next step
   await expect(
     page.getByRole('button', { name: 'Refresh nearby' }),
   ).toBeVisible();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     path: info.outputPath('mobile-nearby-empty.png'),
   });
@@ -961,7 +962,7 @@ for (const state of ['prompt', 'denied', 'unavailable', 'locating'] as const) {
     await expect(
       page.getByRole('button', { name: label, exact: true }),
     ).toBeVisible();
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       path: info.outputPath(`mobile-location-${state}.png`),
     });

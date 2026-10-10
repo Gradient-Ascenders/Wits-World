@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 const API_BASE_URL = 'http://127.0.0.1:3999/api/v1';
@@ -72,7 +73,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
     page.locator('[data-deterministic-markers] [data-trail-state="locked"]'),
   ).toBeDisabled();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('trail-detail-mobile.png'),
@@ -84,7 +85,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
   await currentEventAction.scrollIntoViewIfNeeded();
   await currentEventAction.focus();
   await expect(currentEventAction).toBeFocused();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('trail-current-mobile.png'),
@@ -105,7 +106,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
     page.locator('[data-deterministic-markers] [data-event-marker-id]'),
   ).toHaveCount(1);
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('nearby-mobile.png'),
@@ -139,7 +140,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
   await page.getByRole('checkbox', { name: 'Event markers' }).check();
   await expect(trailMarkers.nth(0)).toBeVisible();
   await page.getByRole('button', { name: 'Close map layers' }).click();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('trail-detail-desktop.png'),
@@ -159,7 +160,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
     'aria-label',
     'Stop 3: Origins Centre, retired trail stop',
   );
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('trail-retired-desktop.png'),
@@ -178,7 +179,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
     page.getByText('This trail is retired. Completed stops remain visible.'),
   ).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Open event/ })).toHaveCount(0);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('trail-history-desktop.png'),
@@ -186,7 +187,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
   await page.setViewportSize({ height: 844, width: 390 });
   await page.getByRole('button', { name: 'Collapse trail details' }).click();
   await expect(trailMarkers).toHaveCount(3);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('trail-pins-mobile.png'),

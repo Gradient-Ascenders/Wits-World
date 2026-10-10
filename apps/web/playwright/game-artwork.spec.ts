@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type BrowserContext } from '@playwright/test';
 import { buildPlayerProfile } from '../tests/fixtures/player-profile';
 
@@ -112,7 +113,7 @@ test('campus and every atlas cell remain sharp, bounded and accessible across de
       await expect(
         page.getByRole('link', { name: 'Explore campus from Great Hall' }),
       ).toBeVisible();
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: info.outputPath(`campus-${width}-${dpr}-${scale}.png`),
         animations: 'disabled',
       });
@@ -157,7 +158,7 @@ test('campus and every atlas cell remain sharp, bounded and accessible across de
           Math.min(1536, cell.display * dpr),
         );
       }
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: info.outputPath(`badges-${width}-${dpr}-${scale}.png`),
         animations: 'disabled',
       });
@@ -192,7 +193,7 @@ test('campus and every atlas cell remain sharp, bounded and accessible across de
           () => document.documentElement.scrollWidth <= innerWidth,
         ),
       ).toBe(true);
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: info.outputPath(`dialog-${width}-${dpr}-${scale}.png`),
         animations: 'disabled',
       });
@@ -281,7 +282,7 @@ for (const outcome of ['success', 'close-before-load'] as const) {
         }),
         contentType: 'application/json',
       });
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: info.outputPath('dialog-delayed-preview.png'),
         animations: 'disabled',
       });
@@ -400,7 +401,7 @@ test('a loaded profile keeps badge dialog artwork when its larger variant is una
       ),
     )
     .toBe(true);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: info.outputPath('badge-dialog-offline.png'),
     animations: 'disabled',
   });
