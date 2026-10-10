@@ -1547,32 +1547,24 @@ async function insertDeckSnapshot(
   if (!initialCardId) {
     throw new Error('Initial Creature snapshot identity was not generated.');
   }
+  // The RETURNING dependency writes the header before its cards in one trip.
+  // Existing deferred snapshot checks still run at the transaction's commit.
   await client.query(
     `
-      insert into private.async_pvp_deck_snapshots (
-        id, invitation_id, player_id, participant_role, source_deck_id,
-        initial_creature_card_id, created_at
-      ) values ($1::uuid, $2::uuid, $3::uuid, $4, $5::uuid, $6::uuid, $7)
-    `,
-    [
-      snapshotId,
-      invitationId,
-      playerId,
-      role,
-      deck.deckId,
-      initialCardId,
-      createdAt,
-    ],
-  );
-  await client.query(
-    `
+      with inserted_snapshot as (
+        insert into private.async_pvp_deck_snapshots (
+          id, invitation_id, player_id, participant_role, source_deck_id,
+          initial_creature_card_id, created_at
+        ) values ($1::uuid, $2::uuid, $3::uuid, $4, $5::uuid, $6::uuid, $7)
+        returning id
+      )
       insert into private.async_pvp_deck_snapshot_cards (
         id, snapshot_id, position, battle_card_id, source_owned_card_id,
         source_card_definition_id, category, affinity, rarity, card_snapshot
       )
       select
         card.id,
-        $1::uuid,
+        snapshot.id,
         card.position,
         card.battle_card_id,
         card.battle_card_id,
@@ -1581,7 +1573,8 @@ async function insertDeckSnapshot(
         card.affinity,
         card.rarity,
         card.card_snapshot
-      from jsonb_to_recordset($2::jsonb) as card (
+      from inserted_snapshot snapshot
+      cross join jsonb_to_recordset($8::jsonb) as card (
         id uuid,
         position smallint,
         battle_card_id uuid,
@@ -1594,6 +1587,12 @@ async function insertDeckSnapshot(
     `,
     [
       snapshotId,
+      invitationId,
+      playerId,
+      role,
+      deck.deckId,
+      initialCardId,
+      createdAt,
       JSON.stringify(
         deck.cards.map((card) => ({
           id: cardIds.get(card.ownedCardId),
