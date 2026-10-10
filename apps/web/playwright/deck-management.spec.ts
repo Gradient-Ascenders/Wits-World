@@ -1,10 +1,5 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import path from 'node:path';
-
-const screenshotsDirectory = path.resolve(
-  process.cwd(),
-  '../../.pr-screenshots/issue-73',
-);
 
 const cards = [1, 2, 3, 4, 5].map((index) => ({
   acquiredAt: '2026-08-16T08:00:00.000Z',
@@ -150,8 +145,8 @@ test('completes the saved-deck journey and records responsive evidence', async (
 
   await expect(page.getByText('Complete lineup')).toBeVisible();
   await expect(page.getByText('5 / 10')).toBeVisible();
-  await page.locator('.decks-page').screenshot({
-    path: path.join(screenshotsDirectory, '390-editor-ready.png'),
+  await captureScreenshot(test.info(), page.locator('.decks-page'), {
+    path: '390-editor-ready.png',
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
   await page.getByRole('button', { name: 'Create deck' }).click();
@@ -185,11 +180,8 @@ test('completes the saved-deck journey and records responsive evidence', async (
       width: viewport.width,
     });
     await expectNoHorizontalOverflow(page);
-    await page.locator('.decks-page').screenshot({
-      path: path.join(
-        screenshotsDirectory,
-        `${viewport.label}-active-deck.png`,
-      ),
+    await captureScreenshot(test.info(), page.locator('.decks-page'), {
+      path: `${viewport.label}-active-deck.png`,
       style: '.skip-link, .primary-navigation { display: none !important; }',
     });
   }

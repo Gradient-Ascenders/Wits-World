@@ -1,3 +1,4 @@
+import { captureScreenshot } from './visual-capture';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 import { buildUuid } from '../tests/fixtures/cards';
@@ -220,7 +221,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
   await expect(page.getByRole('contentinfo')).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
   await clearFocus(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
     path: testInfo.outputPath('trade-inbox-mobile.png'),
   });
@@ -231,7 +232,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
     await expect(page.getByRole('link', { name: 'Start a trade' })).toHaveCount(
       1,
     );
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`trade-inbox-${width}.png`),
     });
@@ -240,7 +241,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
       page.getByRole('list', { name: 'Trade history' }),
     ).toContainText('Completed');
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`trade-history-${width}.png`),
     });
@@ -260,7 +261,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
   await expect(
     page.getByRole('heading', { name: 'No trade history yet' }),
   ).toBeVisible();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
     path: testInfo.outputPath('trade-history-empty.png'),
   });
@@ -288,7 +289,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
     page.getByRole('heading', { name: 'Couldn’t load trades' }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
     path: testInfo.outputPath('trade-inbox-error.png'),
   });
@@ -306,7 +307,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
     page.getByRole('heading', { name: 'Start a trade' }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
     path: testInfo.outputPath('trade-recipient-mobile.png'),
   });
@@ -322,7 +323,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
     await expect(
       page.locator('.trade-recipient-entry__artwork button'),
     ).toHaveCount(0);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`trade-entry-${width}.png`),
     });
@@ -356,7 +357,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
     } else {
       await expect(page.locator('.trade-entry-card')).toHaveCount(0);
     }
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`trade-entry-${artwork}.png`),
     });
@@ -376,7 +377,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
     page.getByRole('heading', { name: 'Start a trade' }),
   ).toBeVisible();
   await expect(recipientInput).toHaveAttribute('aria-invalid', 'true');
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
     path: testInfo.outputPath('trade-recipient-unavailable.png'),
   });
@@ -421,7 +422,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
     'auto',
   );
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('trade-card-details-mobile.png'),
   });
   await mobileCardDetails
@@ -436,7 +437,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
   for (let index = 0; index < 5; index += 1) await addCopy.click();
   await expect(collection.locator('output')).toHaveText('5');
   await clearFocus(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
     path: testInfo.outputPath('trade-copy-picker-mobile.png'),
   });
@@ -461,7 +462,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await clearFocus(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
     path: testInfo.outputPath('trade-builder-mobile.png'),
   });
@@ -519,7 +520,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
     'border-top-color',
     'rgb(237, 198, 100)',
   );
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('trade-card-details-legendary-desktop.png'),
   });
   await legendaryDetails
@@ -528,7 +529,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
   await expect(legendaryDetailsTrigger).toBeFocused();
   await expectNoHorizontalOverflow(page);
   await clearFocus(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
     path: testInfo.outputPath('trade-builder-desktop.png'),
   });
@@ -672,7 +673,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
         ),
     );
     await clearFocus(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`trade-new-${width}.png`),
     });
@@ -704,7 +705,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
   expect(
     Math.abs(discardBox!.y + discardBox!.height / 2 - 960 / 2),
   ).toBeLessThanOrEqual(2);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('trade-discard-confirmation-desktop.png'),
   });
   await discardConfirmation
@@ -722,7 +723,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
   ).toBeDisabled();
   await expectNoHorizontalOverflow(page);
   await clearFocus(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
     path: testInfo.outputPath('trade-detail-desktop.png'),
   });
@@ -772,7 +773,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
         ),
     );
     await clearFocus(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`trade-detail-${width}.png`),
     });
@@ -811,7 +812,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
     await page.mouse.move(0, 0);
     await page.evaluate(() => window.scrollTo(0, 0));
     await clearFocus(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       fullPage: true,
       path: testInfo.outputPath(`trade-edit-${width}.png`),
     });
@@ -835,7 +836,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
       revisionDialog.getByRole('button', { name: 'Publish new version' }),
     ).toBeInViewport();
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: testInfo.outputPath(`trade-revision-${width}.png`),
     });
   }

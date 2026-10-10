@@ -167,6 +167,23 @@ the committed action without another transition; changed intent returns
 Existing sockets receive the final committed view and close normally with code
 `1000`. Participants can then recover the result through HTTP.
 
+## Worker coordination safety
+
+In Upstash scheduler mode, each API instance reads one combined live/ranked
+activity snapshot with Redis `HMGET` every 10 seconds. This remains below the
+30-second activity lease and 20-second proposal window; PostgreSQL match state,
+deadlines, locks, and versions remain authoritative.
+
+SDK automatic deserialization is disabled, so the reader maps the five ordered
+`HMGET` values explicitly. A completely missing state initializes through EVAL
+with both workers active. Partial or malformed state fails safely and retains
+fast scans instead of declaring the workers idle.
+
+Coordination diagnostics expose only a fixed `activity_error_category`
+(`transport`, `timeout`, `invalid_response`, or `unknown`), the
+`coordination_stage`, and, for idle failures, the fixed worker category. Raw
+provider errors, state values, keys, credentials, and URLs are never logged.
+
 ## Errors and recovery
 
 | Code                                                | Caller action                                                                                    |

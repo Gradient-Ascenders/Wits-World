@@ -127,12 +127,25 @@ including direct routes, role denial, delayed and failed imports, reload recover
 focus restoration, cached navigation and demand-cached deferred modules.
 The normal experience-regression CI command does not include this separate
 configuration. Run it explicitly alongside the relevant existing Author and
-Profile journeys. Some existing Author visual cases write screenshots under
-`.impeccable/`; preserve those files before running captures. For the existing
-Player review case, `PLAYER_REVIEW_CAPTURE=none` skips its optional screenshots
-while retaining the behavioral assertions. Existing component tests wait for the deferred emoji control to
-be enabled before interacting with it; the dialog and text input do not wait for
-the catalogue.
+Profile journeys. Optional screenshots and visual metrics are disabled by
+default across the Playwright suites. Set `PLAYWRIGHT_VISUAL_CAPTURE=1`
+explicitly to capture review artifacts through `playwright/visual-capture.ts`;
+all destinations must resolve inside the current test's
+`testInfo.outputPath(...)` directory. The helper rejects `.impeccable/`, escaped
+output paths, and symbolic links into protected directories, even when captures
+are disabled. Playwright's existing failure screenshots and traces remain
+isolated in its configured test output. `PLAYER_REVIEW_CAPTURE` can further
+filter enabled Player review captures. Generating an artifact does not approve
+or promote a visual baseline: copying any image into a permanent baseline
+requires separate explicit approval. Never run legacy commands that write into
+`.impeccable/`.
+
+Run `npx playwright test --config=playwright/visual-capture.config.ts` from
+`apps/web` for the isolated capture safety checks. The focused unit tests in
+`tests/visual-capture.test.ts` also reject direct screenshot calls outside the
+shared helper. Existing component tests wait for the deferred emoji control to
+be enabled before interacting with it; the dialog and text input do not wait
+for the catalogue.
 
 For a safe local build, use the existing `basic-e2e` Auth0/runtime fixture aliases
 and synthetic public configuration; do not use real credentials or start an API:
@@ -223,4 +236,5 @@ minimums; measured coverage comes from a completed run.
 [CI workflows](continuous-integration.md) describes how the automated checks run
 for pull requests and releases. Dated results remain separate from this strategy.
 
-AI declaration: Rewritten with assistance from Codex[GPT-6].
+AI declaration: Rewritten with assistance from Codex[GPT-6]. Conflict
+reconciliation was completed with assistance from Codex[GPT-5].

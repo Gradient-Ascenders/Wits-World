@@ -1,5 +1,5 @@
+import { captureScreenshot, attachScreenshot } from './visual-capture';
 import { selectOption } from './select-option';
-import { mkdir } from 'node:fs/promises';
 import {
   expect,
   test,
@@ -49,7 +49,9 @@ test('Author sidebar collapses without losing edits and supports keyboard naviga
   await expect(navigation).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   const expandedWidth = (await workspace.boundingBox())!.width;
-  await page.screenshot({ path: testInfo.outputPath('sidebar-expanded.png') });
+  await captureScreenshot(test.info(), page, {
+    path: testInfo.outputPath('sidebar-expanded.png'),
+  });
 
   await toggle.focus();
   await page.keyboard.press('Enter');
@@ -60,7 +62,9 @@ test('Author sidebar collapses without losing edits and supports keyboard naviga
   );
   await expect(toggle).toBeFocused();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({ path: testInfo.outputPath('sidebar-collapsed.png') });
+  await captureScreenshot(test.info(), page, {
+    path: testInfo.outputPath('sidebar-collapsed.png'),
+  });
 
   await page.getByRole('link', { name: 'New event' }).click();
   await expect(navigation).toBeHidden();
@@ -92,7 +96,7 @@ test('Author sidebar collapses without losing edits and supports keyboard naviga
     await toggle.click();
     await expect(navigation).toBeVisible();
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: testInfo.outputPath(`sidebar-${width}.png`),
     });
     await navigation.getByRole('link', { name: 'Events', exact: true }).click();
@@ -478,10 +482,7 @@ test('ordering authoring and player reordering work at desktop and mobile widths
     .getByRole('listitem');
   await expect(authoredItems).toHaveText(correctOrder);
   await expectNoHorizontalOverflow(page);
-  await testInfo.attach('ordering-author-desktop.png', {
-    body: await page.screenshot({ fullPage: true }),
-    contentType: 'image/png',
-  });
+  await attachScreenshot(testInfo, page, 'ordering-author-desktop.png');
 
   await page.setViewportSize({ height: 844, width: 390 });
   await expect(
@@ -534,10 +535,7 @@ test('ordering authoring and player reordering work at desktop and mobile widths
     'Campus era 2',
   ]);
   await expectNoHorizontalOverflow(page);
-  await testInfo.attach('ordering-player-mobile.png', {
-    body: await page.screenshot({ fullPage: true }),
-    contentType: 'image/png',
-  });
+  await attachScreenshot(testInfo, page, 'ordering-player-mobile.png');
 
   await page.getByRole('button', { name: 'Submit order' }).click();
   await expect(
@@ -567,20 +565,14 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   await expect(page.getByText('Ordering explanation 1.')).toBeVisible();
   await expect(page.getByText('Correct order').first()).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await testInfo.attach('ordering-result-mobile.png', {
-    body: await page.screenshot({ fullPage: true }),
-    contentType: 'image/png',
-  });
+  await attachScreenshot(testInfo, page, 'ordering-result-mobile.png');
 
   await page.setViewportSize({ height: 800, width: 1280 });
   await expect(
     page.getByRole('heading', { name: 'Your challenge result' }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await testInfo.attach('ordering-result-desktop.png', {
-    body: await page.screenshot({ fullPage: true }),
-    contentType: 'image/png',
-  });
+  await attachScreenshot(testInfo, page, 'ordering-result-desktop.png');
   expect(consoleErrors).toEqual([]);
 });
 
@@ -592,11 +584,11 @@ test.describe('desktop campaign workspace', () => {
   }, info) => {
     const state = await installAuthorApi(page);
     const errors = monitorConsoleErrors(page);
-    await mkdir('.impeccable/review', { recursive: true });
+
     const capture = async (name: string, width: number) => {
       await page.evaluate(() => window.scrollTo(0, 0));
-      await page.screenshot({
-        path: `.impeccable/review/campaign-${name}-${width}.png`,
+      await captureScreenshot(test.info(), page, {
+        path: `author/campaign-${name}-${width}.png`,
         fullPage: true,
       });
       await expectNoHorizontalOverflow(page);
@@ -830,11 +822,11 @@ for (const viewport of [
     state.events[0]!.title = 'Ordering Wits: Science and Discovery';
     state.questions[0]!.prompt =
       'Arrange Wits timeline set 16 (1962–1968) from earliest to latest.';
-    await mkdir('.impeccable/review', { recursive: true });
+
     const capture = async (name: string) => {
       await page.evaluate(() => window.scrollTo(0, 0));
-      await page.screenshot({
-        path: `.impeccable/review/${name}-${viewport.width}.png`,
+      await captureScreenshot(test.info(), page, {
+        path: `author/${name}-${viewport.width}.png`,
         fullPage: true,
       });
     };
@@ -966,7 +958,7 @@ test('Question workspace preserves focused mobile and tablet navigation', async 
       );
     expect(metadataColumnCount).toBe(viewport.width === 390 ? 1 : 2);
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: testInfo.outputPath(`question-detail-${viewport.width}.png`),
       fullPage: true,
     });
@@ -1189,9 +1181,9 @@ for (const width of [1280, 1440, 1556, 1920]) {
         return;
       await page.evaluate(() => window.scrollTo(0, 0));
       await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         fullPage: true,
-        path: `.impeccable/review/player-review-${kind}-${width}.png`,
+        path: `author/player-review-${kind}-${width}.png`,
       });
     };
     await page.goto('/author/player-review');
@@ -1201,7 +1193,7 @@ for (const width of [1280, 1440, 1556, 1920]) {
       0,
     );
     await expectNoHorizontalOverflow(page);
-    await mkdir('.impeccable/review', { recursive: true });
+
     await capture('queue');
 
     await page.getByRole('searchbox', { name: 'Search cases' }).fill('Casey');
@@ -1406,9 +1398,9 @@ test('desktop Player review opens paged audit references and explains unavailabl
   ).toHaveAttribute('aria-selected', 'true');
   await expectNoHorizontalOverflow(page);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
-    path: '.impeccable/review/player-review-audit-reference-1440.png',
+    path: 'author/player-review-audit-reference-1440.png',
   });
   api.queue.missingReference = true;
   await page.reload();
@@ -1426,9 +1418,9 @@ test('desktop Player review opens paged audit references and explains unavailabl
     page.getByRole('heading', { name: 'Record decision' }),
   ).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     fullPage: true,
-    path: '.impeccable/review/player-review-missing-reference-1440.png',
+    path: 'author/player-review-missing-reference-1440.png',
   });
   await page.getByRole('button', { name: 'Retry reference' }).click();
   await expect(
@@ -1465,7 +1457,7 @@ test('Card editor previews unsaved artwork and metadata beside the form on deskt
   ).toBeVisible();
   await expect(preview.getByText('120', { exact: true })).toBeVisible();
   await expect(preview.getByText('25', { exact: true })).toBeVisible();
-  await mkdir('/tmp/author-card-preview', { recursive: true });
+
   for (const width of [1715, 1280]) {
     await page.setViewportSize({ height: 900, width });
     const fieldsBox = await page
@@ -1476,8 +1468,8 @@ test('Card editor previews unsaved artwork and metadata beside the form on deskt
     expect(previewBox).not.toBeNull();
     expect(previewBox!.x).toBeGreaterThan(fieldsBox!.x + fieldsBox!.width);
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
-      path: `/tmp/author-card-preview/desktop-${width}.png`,
+    await captureScreenshot(test.info(), page, {
+      path: `visual/author-card-preview/desktop-${width}.png`,
       fullPage: true,
     });
   }
@@ -1762,9 +1754,9 @@ test('Card catalogue and dedicated detail pages preserve filtering, review and l
   await expect(
     page.getByRole('link', { name: /A Deliberately Long Card Name/ }),
   ).toBeVisible();
-  await mkdir('/tmp/author-cards-redesign', { recursive: true });
-  await page.screenshot({
-    path: '/tmp/author-cards-redesign/catalogue-1600.png',
+
+  await captureScreenshot(test.info(), page, {
+    path: 'visual/author-cards-redesign/catalogue-1600.png',
     fullPage: true,
   });
   const deepLinkedCardId = uuid('5', 128);
@@ -1783,8 +1775,8 @@ test('Card catalogue and dedicated detail pages preserve filtering, review and l
   await expect(
     page.locator('.author-card-detail__layout .collectible-card'),
   ).toBeVisible();
-  await page.screenshot({
-    path: '/tmp/author-cards-redesign/detail-1600.png',
+  await captureScreenshot(test.info(), page, {
+    path: 'visual/author-cards-redesign/detail-1600.png',
     fullPage: true,
   });
   await page.getByRole('link', { name: 'Review', exact: true }).click();
@@ -1799,8 +1791,8 @@ test('Card catalogue and dedicated detail pages preserve filtering, review and l
   await page.getByText('Review history', { exact: true }).click();
   await expect(page.locator('.author-history')).toHaveAttribute('open', '');
   await expect(page.getByText('Approve: in review to approved')).toBeVisible();
-  await page.screenshot({
-    path: '/tmp/author-cards-redesign/review-1600.png',
+  await captureScreenshot(test.info(), page, {
+    path: 'visual/author-cards-redesign/review-1600.png',
     fullPage: true,
   });
   await page.getByRole('link', { name: 'Details', exact: true }).click();
@@ -1935,7 +1927,7 @@ test('placement workspace stages preview, campus map, and secondary details acro
   expect(coverageLayout.containerHeight).toBeLessThanOrEqual(
     coverageLayout.tableHeight + 1,
   );
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('placement-coverage-desktop.png'),
     fullPage: true,
   });
@@ -1948,7 +1940,7 @@ test('placement workspace stages preview, campus map, and secondary details acro
   await expect(
     page.getByText('Minimum separation', { exact: true }),
   ).toBeVisible();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('placement-rules-open-desktop.png'),
     fullPage: true,
   });
@@ -1957,7 +1949,7 @@ test('placement workspace stages preview, campus map, and secondary details acro
   await planDetails.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByText('State version', { exact: true })).toBeVisible();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('placement-plan-details-open-desktop.png'),
     fullPage: true,
   });
@@ -1978,12 +1970,12 @@ test('placement workspace stages preview, campus map, and secondary details acro
   expect(
     overridesMessage.y - overridesHeading.y - overridesHeading.height,
   ).toBeLessThanOrEqual(16);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('placement-manual-empty-desktop.png'),
     fullPage: true,
   });
   await page.getByRole('tab', { name: 'Changes' }).click();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('placement-current-desktop.png'),
     fullPage: true,
   });
@@ -1996,7 +1988,7 @@ test('placement workspace stages preview, campus map, and secondary details acro
   await preview.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('.placement-preview__loader')).toHaveCount(2);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('placement-loading.png'),
     fullPage: true,
   });
@@ -2016,7 +2008,7 @@ test('placement workspace stages preview, campus map, and secondary details acro
     blockedSites.getByText('Within 150 m of Great Hall.'),
   ).toBeVisible();
   await policyDetails.click();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('placement-desktop.png'),
     fullPage: true,
   });
@@ -2050,7 +2042,7 @@ test('placement workspace stages preview, campus map, and secondary details acro
   expect(tabletRail.y).toBeLessThan(tabletMap.y);
   expect(tabletMap.y).toBeLessThan(tabletDetails.y);
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('placement-tablet.png'),
     fullPage: true,
   });
@@ -2082,7 +2074,7 @@ test('placement workspace stages preview, campus map, and secondary details acro
     page.getByRole('button', { name: 'Review and apply' }),
   ).toBeFocused();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: testInfo.outputPath('placement-mobile.png'),
     fullPage: true,
   });
@@ -2110,9 +2102,9 @@ test('event schedule picker preserves campus time with keyboard and calendar inp
       const calendar = page.getByRole('dialog');
       await expect(calendar.getByRole('heading')).toHaveText('September 2026');
       await expect(calendar).toContainText('Johannesburg · UTC+02:00');
-      await mkdir('.impeccable/review', { recursive: true });
-      await page.screenshot({
-        path: `.impeccable/review/event-date-picker-${width}.png`,
+
+      await captureScreenshot(test.info(), page, {
+        path: `author/event-date-picker-${width}.png`,
       });
       await page.keyboard.press('Escape');
       await expect(calendar).toBeHidden();
@@ -2197,7 +2189,7 @@ test('author save state remains visible through edits, saving, failure and recov
     'aria-invalid',
     'true',
   );
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: info.outputPath('validation.png'),
     fullPage: true,
   });
@@ -2222,14 +2214,14 @@ test('author save state remains visible through edits, saving, failure and recov
   await expect(page.getByLabel('Event title')).toHaveValue(
     'Updated campus event',
   );
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: info.outputPath('save-failure.png'),
     fullPage: true,
   });
   await page.unroute(endpoint);
   await page.getByRole('button', { name: 'Save event' }).click();
   await expect(page.getByText('Event changes saved.')).toBeFocused();
-  await page.screenshot({
+  await captureScreenshot(test.info(), page, {
     path: info.outputPath('save-success.png'),
     fullPage: true,
   });
@@ -3764,7 +3756,7 @@ test('shared catalogue fields support search clearing, keyboard selection, and b
       await expect(
         page.getByRole('option', { name: 'All', exact: true }),
       ).toHaveAttribute('aria-selected', 'true');
-      await page.screenshot({
+      await captureScreenshot(test.info(), page, {
         path: info.outputPath(`${section}-filters-${width}.png`),
       });
       await page.keyboard.press('Escape');
@@ -3811,7 +3803,7 @@ test('author creation fields keep keyboard menus and validation usable at respon
     const menuBox = await page.getByRole('listbox').boundingBox();
     expect(menuBox!.x).toBeGreaterThanOrEqual(0);
     expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(width);
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: info.outputPath(`new-card-fields-${width}.png`),
     });
     await page.keyboard.press('Escape');
@@ -3837,7 +3829,7 @@ test('author creation fields keep keyboard menus and validation usable at respon
     const title = page.getByLabel('Event title');
     await expect(title).toBeVisible();
     await title.focus();
-    await page.screenshot({
+    await captureScreenshot(test.info(), page, {
       path: info.outputPath(`new-event-fields-${width}.png`),
     });
     await page.getByRole('button', { name: 'Create draft event' }).click();
@@ -3907,12 +3899,12 @@ test('desktop content review keeps evidence, decisions and queue return together
       name: `Campus Owl ${index + 2}`,
     })),
   );
-  await mkdir('.impeccable/review', { recursive: true });
+
   const capture = async (name: string, width: number) => {
     await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
     await expectNoHorizontalOverflow(page);
-    await page.screenshot({
-      path: `.impeccable/review/content-review-${name}-${width}.png`,
+    await captureScreenshot(test.info(), page, {
+      path: `author/content-review-${name}-${width}.png`,
       fullPage: true,
     });
   };

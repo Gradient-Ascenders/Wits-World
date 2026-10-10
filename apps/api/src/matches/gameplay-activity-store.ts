@@ -44,6 +44,66 @@ type GameplayActivityHashFields = {
   ranked_active: unknown;
 };
 
+const hashFields = [
+  'epoch',
+  'live_revision',
+  'live_active',
+  'ranked_revision',
+  'ranked_active',
+] as const;
+
+export class GameplayActivityStoreError extends Error {
+  constructor(readonly category: 'transport' | 'timeout' | 'invalid_response') {
+    super(
+      category === 'invalid_response'
+        ? 'Invalid gameplay activity store response.'
+        : 'Gameplay activity store unavailable.',
+    );
+    this.name = 'GameplayActivityStoreError';
+  }
+}
+
+export function gameplayActivityErrorCategory(error: unknown): string {
+  return error instanceof GameplayActivityStoreError
+    ? error.category
+    : 'unknown';
+}
+
+function transportFailure(error: unknown): GameplayActivityStoreError {
+  return new GameplayActivityStoreError(
+    error instanceof Error && error.name === 'TimeoutError'
+      ? 'timeout'
+      : 'transport',
+  );
+}
+
+function normalizeHashFields(
+  value: unknown,
+): GameplayActivityHashFields | null {
+  if (value === null) return null;
+  if (Array.isArray(value)) {
+    if (value.length !== hashFields.length) {
+      throw new GameplayActivityStoreError('invalid_response');
+    }
+    if (hashFields.every((_, index) => value[index] === null)) return null;
+    return Object.fromEntries(
+      hashFields.map((field, index) => [field, value[index]]),
+    ) as GameplayActivityHashFields;
+  }
+  // Support deserialized SDK/injected clients without accepting partial state.
+  if (typeof value === 'object' && value !== null && 'epoch' in value) {
+    const fields = value as GameplayActivityHashFields;
+    if (
+      fields.epoch === null &&
+      hashFields.slice(1).every((field) => fields[field] == null)
+    ) {
+      return null;
+    }
+    return fields;
+  }
+  throw new GameplayActivityStoreError('invalid_response');
+}
+
 const ensureState = `
 if redis.call('HGET', KEYS[1], 'epoch') == false then
   redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'live_revision', '0',
@@ -161,33 +221,28 @@ export function createUpstashGameplayActivityStore({
   async function evaluate<T>(script: string, args: string[]): Promise<T> {
     try {
       return (await redis.eval(script, keys, args)) as T;
-    } catch {
-      throw new Error('Gameplay activity store unavailable.');
+    } catch (error) {
+      throw transportFailure(error);
     }
   }
 
   return {
     async read() {
-      let fields: GameplayActivityHashFields | null;
+      let response: unknown;
       try {
-        fields = await redis.hmget<GameplayActivityHashFields>(
-          keys[0],
-          'epoch',
-          'live_revision',
-          'live_active',
-          'ranked_revision',
-          'ranked_active',
-        );
-      } catch {
-        throw new Error('Gameplay activity store unavailable.');
+        response = await redis.hmget(keys[0], ...hashFields);
+      } catch (error) {
+        throw transportFailure(error);
       }
 
-      if (fields === null || fields.epoch === null) {
+      // With automaticDeserialization:false, HMGET returns its ordered wire array.
+      let fields = normalizeHashFields(response);
+      if (fields === null) {
         const initialized = await evaluate<unknown>(initializeReadScript, [
           randomUUID(),
         ]);
         if (!Array.isArray(initialized) || initialized.length !== 5) {
-          throw new Error('Invalid gameplay activity store response.');
+          throw new GameplayActivityStoreError('invalid_response');
         }
         fields = {
           epoch: initialized[0],
@@ -199,7 +254,7 @@ export function createUpstashGameplayActivityStore({
       }
 
       if (typeof fields.epoch !== 'string' || fields.epoch.length === 0) {
-        throw new Error('Invalid gameplay activity store response.');
+        throw new GameplayActivityStoreError('invalid_response');
       }
       return {
         epoch: fields.epoch,
@@ -335,11 +390,11 @@ function parseRevision(value: unknown): number {
     typeof value !== 'number' &&
     (typeof value !== 'string' || !/^\d+$/.test(value))
   ) {
-    throw new Error('Invalid gameplay activity store response.');
+    throw new GameplayActivityStoreError('invalid_response');
   }
   const revision = typeof value === 'number' ? value : Number(value);
   if (!Number.isSafeInteger(revision) || revision < 0) {
-    throw new Error('Invalid gameplay activity store response.');
+    throw new GameplayActivityStoreError('invalid_response');
   }
   return revision;
 }
@@ -347,11 +402,11 @@ function parseRevision(value: unknown): number {
 function parseActive(value: unknown): boolean {
   if (value === '0' || value === 0) return false;
   if (value === '1' || value === 1) return true;
-  throw new Error('Invalid gameplay activity store response.');
+  throw new GameplayActivityStoreError('invalid_response');
 }
 
 function parseBooleanResult(value: unknown): boolean {
   if (value === 0 || value === '0') return false;
   if (value === 1 || value === '1') return true;
-  throw new Error('Invalid gameplay activity store response.');
+  throw new GameplayActivityStoreError('invalid_response');
 }
