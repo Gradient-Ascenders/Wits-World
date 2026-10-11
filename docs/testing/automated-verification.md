@@ -185,6 +185,44 @@ Explore, Author, and Account also have a combined command used by pull-request C
 npm run test:e2e:experience-regressions
 ```
 
+### Real-map Explore startup verification
+
+The focused Explore browser suite uses a deterministic map adapter. It verifies
+discovery, selection, keyboard interaction, responsive layout, and recovery, but
+cannot measure Mapbox construction, worker, style, tile, or WebGL costs.
+
+For a map startup performance comparison, use matched production builds with
+the actual Mapbox runtime and approved map access, disposable event responses,
+and equivalent authentication fixtures. Keep benchmark instrumentation and
+reports outside the repository. Measure at least three cold runs per device,
+retain the slower first run, and record discovery readiness, map load, selection,
+keyboard response, and cached client-side navigation separately. Record browser,
+GPU, viewport, device-pixel ratio, throttling, and cache settings. Browser resource
+caches can be cleared; graphics-driver and provider cache state may remain.
+
+Mapbox startup avoids equal basemap configuration and layer visibility writes.
+Territory and selected-event-radius overlays are created when visible data first
+requires them. Verify both Standard and Streets styles, hidden-to-visible data,
+clearing selection, style reload, and cleanup with the provider tests. Source
+workers can temporarily make the style busy without another style reload.
+Pending selection, region, and visibility updates replay their latest state
+on a ready data/idle event, without polling or repeated idle writes. Verify rapid
+hide/show and clear/reselection during worker loading, style replacement, and
+listener removal/abort:
+
+```bash
+npm exec --workspace @wits-world/web -- vitest run tests/map-provider.test.ts tests/exploration.test.tsx tests/explore-page.test.tsx tests/map-layers-control.test.tsx tests/explore-actions-recovery-coverage.test.tsx tests/territory-experience.test.tsx tests/trail-discovery.test.tsx --maxWorkers=2
+npm exec --workspace @wits-world/web -- playwright test --config playwright/explore.config.ts --workers=2
+```
+
+Leave optional visual captures disabled and direct generated test output into an
+isolated directory. Never write benchmark captures into protected visual baselines.
+Confirm the real map creates selected-radius geometry on first selection, keeps
+event discovery usable during loading, and remains interactive after navigation.
+Do not substitute a delayed map or a deterministic adapter for the real-map
+performance comparison. No map construction delay or style change is introduced
+by this optimization.
+
 A file labelled `visual` can include layout assertions and captured images.
 That label alone does not imply automated screenshot-baseline comparison or
 complete accessibility verification.
