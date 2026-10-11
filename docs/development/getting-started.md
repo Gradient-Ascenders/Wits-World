@@ -1,153 +1,147 @@
 ---
-title: 'Set up the project locally'
-description: Set up, understand, run, and verify the Wits World monorepo.
+title: 'Getting started'
+description: Local setup, environment configuration, and verification for the Wits World workspaces.
 ---
 
-# Set up the project locally
-
-This page is the public starting point for developing Wits World. It gives the
-shortest safe path through the repository and links to the detailed README or
-operational guide that owns each subject. The
-[root README](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/README.md)
-remains the canonical repository-local setup reference.
+# Getting started
 
 ## Prerequisites
 
-Install:
+- Git
+- Node.js `24.14.1`
+- npm `11.18.0`
 
-- Git;
-- Node.js `24.14.1`; and
-- npm `11.18.0`.
+The repository pins Node.js in `.nvmrc` and records the npm version in
+`package.json`.
 
-The repository pins Node in `.nvmrc`, constrains Node and npm in `package.json`,
-and records the npm release in `packageManager`. With nvm installed:
+## Install dependencies
+
+Clone the repository and install dependencies from the repository root:
 
 ```bash
 git clone https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
 cd Wits-World
-nvm install
-nvm use
 npm ci
 ```
 
-Run npm commands from the repository root unless a guide explicitly says
-otherwise. `npm ci` installs the lockfile-controlled dependency graph for every
-npm workspace; do not run a separate install inside each application.
+If using nvm, run `nvm install` and `nvm use` before `npm ci`.
+The root install covers all npm workspaces. Rerun it when the lockfile changes.
 
-## Local configuration
+## Configure the game
 
-Local `.env` files and their variants are ignored by Git. Copy only the example
-for an application you intend to run:
+The game uses a React/Vite Web application, a Fastify API, and Neon
+PostgreSQL with PostGIS. Authentication uses Auth0; map rendering uses Mapbox.
+
+Create the local environment files:
 
 ```bash
-cp apps/web/.env.example apps/web/.env
 cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env
 ```
 
-The Web file contains browser-visible `VITE_` configuration. Never put a client
-secret, password, private key, database connection string, or private token in a
-`VITE_` value. Replace its public Auth0 SPA Client ID and public, restricted
-Mapbox token placeholders before testing those integrations.
+PowerShell equivalent:
 
-The API file contains safe placeholders for database and server-side Auth0
-configuration. Replace every required placeholder in the ignored file before
-starting the full API. Development and test database URLs must identify
-different targets. Do not copy real values into documentation, commits, test
-output, screenshots, or issue/PR comments.
-
-The documentation application currently needs no local environment values;
-`apps/docs/.env.example` records that boundary.
-
-Use the application guides for the complete configuration contracts:
-
-- [Web application README](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/web/README.md)
-- [API README](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/api/README.md)
-- [Neon PostgreSQL and PostGIS setup](../database/neon-postgis-setup.md)
-
-## Monorepo map
-
-| Path                      | Responsibility                                                                                                    |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `apps/web`                | React/Vite player and Author browser application, Auth0 integration, Mapbox presentation, and player interactions |
-| `apps/api`                | Fastify API, authoritative application services, authentication/authorisation, and database tooling               |
-| `apps/docs`               | Docusaurus application that renders the repository-level `docs/` content                                          |
-| `packages/account-policy` | Shared pure Player Name validation used by Web and API                                                            |
-| `packages/game-rules`     | Pure deterministic Basic CPU-battle rules consumed by the API                                                     |
-| `database/migrations`     | Ordered, checksummed PostgreSQL/PostGIS schema changes                                                            |
-| `database/seeds`          | Repeatable development and test fixtures                                                                          |
-| `docs`                    | Public architecture, requirements, data, operations, testing, and project records                                 |
-| `.gitea/workflows`        | Pull-request validation, main validation/deployment, and documentation deployment                                 |
-| `scripts`                 | Repository-level preparation and reporting helpers                                                                |
-
-Application code stays in its matching workspace. Shared packages contain code
-that is genuinely used across a boundary; protected game decisions remain in
-the API and database rather than moving into the browser.
-
-## Start the applications
-
-### Documentation
-
-The documentation site is the smallest application to start and can run
-without the Web, API, database, Auth0, or Mapbox:
-
-```bash
-npm run start --workspace @wits-world/docs -- --port 3001
+```powershell
+Copy-Item apps/api/.env.example apps/api/.env
+Copy-Item apps/web/.env.example apps/web/.env
 ```
 
-Open [http://localhost:3001](http://localhost:3001). Content comes from `docs/`;
-site configuration and the curated sidebar live in `apps/docs/`. See the
-[documentation workspace README](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/docs/README.md)
-before changing navigation or adding a page.
+Replace the example placeholders with development values. Both `.env` files
+are ignored by Git. Restart the affected application after changing them.
 
-### Web
+### API environment
 
-After creating `apps/web/.env`:
+Configure these values in `apps/api/.env`:
+
+| Setting                                         | Configuration                                                                                                                           |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                  | Development PostgreSQL/PostGIS connection.                                                                                              |
+| `LISTENER_DATABASE_URL`                         | Direct, session-compatible connection to the same development database. Neon `-pooler` endpoints are not supported for this connection. |
+| `TEST_DATABASE_URL`                             | Separate disposable database for integration tests. Configure its identity guard using the database setup guide.                        |
+| Auth0 settings                                  | Development domain, API audience, SPA client ID, tenant domain, and Management API credentials.                                         |
+| `CORS_ALLOWED_ORIGIN`                           | `http://localhost:5173` for the default Vite origin.                                                                                    |
+| `ASYNC_PVP_CURSOR_SIGNING_KEY`                  | Random server-only secret of at least 32 bytes.                                                                                         |
+| `MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND` | Reviewed movement threshold for the environment; there is no default.                                                                   |
+
+Keep `RATE_LIMIT_BACKEND=local` and `GAMEPLAY_SCHEDULER_BACKEND=polling` for
+local development. Offline challenge packs additionally require
+`OFFLINE_PACK_SIGNING_KEY`. The
+[offline play contract](../architecture/offline-challenge-play.md) describes
+preparation and synchronisation behaviour.
+
+The [Neon/PostGIS guide](../database/neon-postgis-setup.md) covers database
+provisioning and test-target safeguards. The
+[API README](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/api/README.md#local-configuration)
+defines the complete runtime configuration.
+
+### Web environment
+
+Configure these values in `apps/web/.env`:
+
+| Setting                    | Configuration                                               |
+| -------------------------- | ----------------------------------------------------------- |
+| `VITE_API_BASE_URL`        | `http://localhost:3000/api/v1` for the local API.           |
+| `VITE_AUTH0_DOMAIN`        | Development Auth0 domain matching the API configuration.    |
+| `VITE_AUTH0_CLIENT_ID`     | Public SPA client ID matching the API's SPA configuration.  |
+| `VITE_AUTH0_AUDIENCE`      | API audience matching the server configuration.             |
+| `VITE_MAPBOX_ACCESS_TOKEN` | Public Mapbox token restricted to the approved web origins. |
+
+`VITE_` values are bundled into browser code. Database credentials, private
+keys, and Auth0 Management API secrets belong only in server configuration.
+The [Web README](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/web/README.md)
+covers Auth0 callback URLs and the full browser configuration.
+
+## Initialise the database
+
+From the repository root:
 
 ```bash
-npm run view
+npm run prepare:api
+npm run db:migrate --workspace @wits-world/api
+npm run db:check --workspace @wits-world/api
+npm run db:seed --workspace @wits-world/api
 ```
 
-Open [http://localhost:5173](http://localhost:5173). A UI-only start is useful
-for public and setup states, but authenticated live journeys require the API,
-its database, and the approved development integrations. The Web README owns
-route, Auth0, Mapbox, browser-test, and manual verification detail.
+`prepare:api` builds the shared packages consumed by the API. Apply migrations
+before checking a new database so PostGIS is available, then load reference data.
+Verify the development target in `DATABASE_URL` before running these commands.
+Database integration tests use the separate disposable test target.
 
-### API and database-backed development
+## Start the game services
 
-The repository's supported development entry point is Neon PostgreSQL with
-PostGIS. It does not provide a local Docker or self-hosted PostgreSQL start
-command. Follow the [Neon/PostGIS guide](../database/neon-postgis-setup.md) to
-create separate development and test targets and configure `apps/api/.env`.
-
-Prepare the development database:
+Run the API and Web in separate terminals from the repository root:
 
 ```bash
-npm run db
-```
-
-That root shortcut builds the API and then checks, migrates, and seeds the
-development target. Applied migrations are immutable; add a new migration for
-later schema evolution. Database integration or destructive verification must
-use the separate disposable test target documented by the database guides.
-
-Start the API:
-
-```bash
+# API
 npm run api
 ```
 
-The example configuration serves the API at
-[http://127.0.0.1:3000](http://127.0.0.1:3000). Useful local endpoints are
-`/health`, `/api/v1/`, `/documentation/`, and
-`/documentation/json`. The [API README](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/api/README.md)
-owns their exact contracts and the full runtime configuration.
+```bash
+# Web
+npm run view
+```
 
-Run `npm run view` in a second terminal for the complete browser-to-API slice.
+| Service             | Local endpoint                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| Web application     | [http://localhost:5173](http://localhost:5173)                                       |
+| API health          | [http://127.0.0.1:3000/health](http://127.0.0.1:3000/health)                         |
+| Interactive OpenAPI | [http://127.0.0.1:3000/documentation/](http://127.0.0.1:3000/documentation/)         |
+| OpenAPI JSON        | [http://127.0.0.1:3000/documentation/json](http://127.0.0.1:3000/documentation/json) |
 
-## Verify a change
+## Troubleshooting
 
-Use the smallest relevant workspace check while iterating. Before review,
-normally run the root quality set:
+| Symptom                           | Check                                                                                  |
+| --------------------------------- | -------------------------------------------------------------------------------------- |
+| Dependency installation fails     | Confirm the pinned Node.js/npm versions and run `npm ci` at the repository root.       |
+| API startup rejects configuration | Replace required placeholders and empty values in `apps/api/.env`.                     |
+| Database connection fails         | Verify credentials, target database, TLS settings, and the direct listener connection. |
+| Authentication fails              | Verify the Auth0 domain, audience, SPA client ID, and allowed callback URLs.           |
+| Browser requests fail             | Confirm API availability, `VITE_API_BASE_URL`, and exact-origin CORS configuration.    |
+| Port binding fails                | Stop the conflicting process or update the port and any dependent URLs.                |
+
+## Verification
+
+Run the standard repository checks before review:
 
 ```bash
 npm run format:check
@@ -157,37 +151,19 @@ npm test
 npm run build
 ```
 
-For example:
+For documentation-only changes:
 
 ```bash
-npm test --workspace @wits-world/web
-npm run build --workspace @wits-world/api
 npm run build --workspace @wits-world/docs
 ```
 
-`npm run format:check` is read-only. `npm run verify` runs the formatter before
-the checks and may rewrite files, so use it only when formatting changes are
-intentional. Browser, database, release, and deployment changes have additional
-targeted checks in their application or operational guides.
-
-Read [Continuous Integration](../testing/continuous-integration.md) for the
-Gitea Actions gates and [Work Tracking & Issue Management](../planning/work-tracking-and-issue-management.md)
-before starting an issue branch or pull request.
-
-## Continue with the canonical guide
-
-- Repository standards and the issue-to-PR flow:
-  [CONTRIBUTING.md](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/CONTRIBUTING.md)
-- System responsibilities and authority boundaries:
-  [Architecture overview](../architecture/overview.md)
-- Database releases and recovery:
-  [Database release procedure](../database/database-release-procedure.md) and
-  [PostGIS recovery rehearsal](../database/postgis-recovery-rehearsal.md)
-- Production hosting: [Azure deployment setup](../deployment/azure-deployment-setup.md)
-- Testing layers and evidence: [Testing strategy](../testing/testing-strategy.md)
+Additional browser and database checks are documented in the
+[testing strategy](../testing/testing-strategy.md). The
+[contributor guide](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/CONTRIBUTING.md)
+defines the issue, branch, and pull-request workflow. Production configuration
+is covered in the [deployment guide](../deployment/azure-deployment-setup.md).
 
 ---
 
-This developer guide was created and edited with assistance from Codex[GPT-5].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
+This guide was created and edited with assistance from Codex[GPT-5],
+Codex-CLI[GPT-6], and Codex[GPT-6].

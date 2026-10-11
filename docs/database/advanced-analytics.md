@@ -1,100 +1,103 @@
 ---
-title: 'Advanced analytics persistence'
+title: 'Analytics storage and privacy'
 ---
 
-# Advanced analytics persistence
+# Analytics storage and privacy
 
-Issue `#278` adds a narrow read-model boundary for the two operational funnel
-stages that do not already have authoritative durable records. It deliberately
-does not create a raw telemetry or player-location history.
+Author analytics reads aggregate counters and existing gameplay records. It
+creates no separate player activity or answer history. The API applies disclosure
+rules before returning reports.
 
-## Migration `0057_create_advanced_analytics.sql`
+[Analytics overview](../design/author-analytics.md) owns report usage.
+[Author analytics API](../architecture/advanced-analytics-api-contract.md) owns
+filters and response formats.
 
-`public.event_product_event_aggregates` stores UTC-hour aggregate counters with
-this identity:
+## Reporting sources
 
-- `event_id` — the published event;
-- `location_key` — the event ID for a fixed authored location or the historical
-  placement-assignment ID for an automatically placed event;
-- `placement_assignment_id` — nullable reference to placement history;
-- `bucket_start` — the start of the UTC hour;
-- `view_count` and `eligible_count` — non-negative aggregate counters.
+| Metric                                        | Authoritative source                                                         |
+| --------------------------------------------- | ---------------------------------------------------------------------------- |
+| Event views and successful eligibility checks | `event_product_event_aggregates`.                                            |
+| Challenge starts                              | `challenge_attempts.started_at`.                                             |
+| Event completions                             | `event_completions.completed_at`.                                            |
+| Question outcomes                             | Completed attempts, saved question/answer records, and private marking keys. |
+| Base challenge card issuance                  | `event_completion_card_rewards`.                                             |
 
-The primary key `(event_id, location_key, bucket_start)` makes each hour/location
-bucket unique. Concurrent recorder calls use `INSERT ... ON CONFLICT ... DO
-UPDATE`, so increments are atomic. The recorder validates an optional assignment
-against the event before it writes.
+The issuance ledger records what was awarded, rather than what is currently
+owned. Trading and evolution do not change it. Starter grants, evolved cards,
+trades, and territory bonus decisions are separate acquisition sources.
 
-No player ID, authentication subject, latitude, longitude, accuracy, request
-payload, answer, or movement trail is stored in this table.
+Location stages use their own time boundaries and can count repeat activity;
+they do not track one cohort of unique players or form a conversion rate.
+Question query mechanics belong to [Question queries](question-performance-query.md).
 
-## Reused authoritative records
+## Hourly activity counters
 
-The rest of the reporting model remains in existing domain relations:
+`public.event_product_event_aggregates` stores:
 
-| Metric            | Source                                                                    |
-| ----------------- | ------------------------------------------------------------------------- |
-| Challenge starts  | `challenge_attempts.started_at`                                           |
-| Event completions | `event_completions.completed_at`                                          |
-| Question outcomes | Completed attempt/question snapshots through `QuestionPerformanceService` |
-| Card issuance     | Immutable `event_completion_card_rewards`                                 |
+| Field                          | Contract                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `event_id`                     | Referenced event.                                                         |
+| `location_key`                 | Event UUID for a fixed point, or assignment UUID for automatic placement. |
+| `placement_assignment_id`      | Optional historical assignment belonging to the event.                    |
+| `bucket_start`                 | UTC hour boundary.                                                        |
+| `view_count`, `eligible_count` | Non-negative counts.                                                      |
 
-Current `player_cards` are intentionally not the source for historical issuance.
-Ownership can change after an award, while the completion-reward ledger records
-what the game issued at the time.
+The primary key is `(event_id, location_key, bucket_start)`. Concurrent
+`INSERT … ON CONFLICT … DO UPDATE` operations increment counters atomically.
+A discovery response counts each active event once in that response; later
+responses can count it again.
 
-For automatically placed events, attempts already retain
-`placement_assignment_id`. Reporting joins that historical assignment to
-`event_placement_sites`, so separate rotations through the same reviewed site
-can be aggregated without preserving a player's coordinates.
+The recorder receives event/assignment IDs and server time. It stores no player
+ID, Auth0 identity, precise coordinates, accuracy, or request payload.
+Background writes are best effort and do not determine gameplay success.
 
-## Indexes
+Reporting joins historical assignments to reviewed sites. Several rotations
+at one physical site can be grouped together. Starts and completions use the
+assignment saved on the attempt, preserving their location context.
 
-Migration `0057` adds bounded-read indexes for:
+## Small-sample disclosure
 
-- aggregate bucket time, event, and optional placement assignment;
-- placement-assignment aggregate history;
-- challenge-attempt start time;
-- event-completion completion time; and
-- reward award time and card definition.
+Advanced reports use a minimum sample of **10**. Hidden values are `null` with
+explicit suppression metadata, preserving the difference between hidden, zero,
+and an unavailable rate.
 
-These support the issue `#278` date-bounded Author queries while keeping the
-canonical records in their existing tables. No scheduled refresh worker or
-materialized summary of attempts, completions, or rewards is introduced.
+| Projection      | Disclosure rule                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| Location stages | Check each count independently: 0 and counts of at least 10 remain visible; 1–9 is hidden.   |
+| Questions       | With 1–9 outcomes, hide counts and rates and return `suppressed`.                            |
+| Card rows       | Hide count/rate when either issuance or the completion denominator is positive and below 10. |
+| Rarity totals   | Apply the card rule and suppress any rarity containing a card with 1–9 issuances.            |
+| Event attention | Use only reportable ignored-location and question signals.                                   |
 
-## Retention and privacy
+A location row can mix visible and hidden stages. A zero-card count can still
+be hidden when its completion denominator is small. Rates with no completion
+denominator remain unavailable.
 
-The product-event table is aggregate-only and cannot be used to reconstruct an
-individual player's path. The API additionally suppresses positive samples below
-10 for the advanced analytics projections. Exact zero remains visible. Card rarity
-summaries use secondary suppression whenever a rarity contains a non-zero
-per-card issuance count below 10, preventing subtraction of disclosed siblings
-from revealing the suppressed child count.
+Rarity suppression prevents subtraction from revealing a hidden child count.
+Clients use returned summaries rather than rebuilding totals from visible rows.
 
-This design does not claim differential privacy. Authors can still learn
-operational facts about public event locations and content; the protection is
-that player-level identities, raw coordinates, and tiny exact activity counts
-are not part of the new analytics contract.
+The exact curation endpoint retains small aggregates; its threshold controls
+flagging rather than disclosure. See
+[the endpoint comparison](../architecture/advanced-analytics-api-contract.md#two-reporting-endpoints).
+Neither endpoint adds noise or guarantees anonymity against outside knowledge.
 
-Because no player key is retained, account deletion does not require deletion
-from the aggregate table. Existing short-lived movement evidence and its
-retention rules are unchanged.
+## Queries and retention
 
-## Query-plan evidence
+Reports query source records directly, with indexes for aggregate time/location,
+attempt starts, completion time, and reward time/definition. There is no scheduled
+materialised gameplay summary. Bounded pages and period filters limit responses.
 
-`apps/api/tests/advanced-analytics-database.integration.test.ts` is the focused
-persistence and query-plan harness. It covers concurrent counter increments,
-privacy-safe schema columns, authoritative start/completion joins, ignored
-locations, immutable reward-ledger issuance, secondary rarity suppression,
-ownership independence, and representative `EXPLAIN (ANALYZE, BUFFERS)` plans.
+All reports require an authenticated, active Author. Projections contain content
+context and aggregate statistics, without player/attempt IDs, submitted answers,
+precise activity timestamps, or movement evidence.
 
-The target is less than 1,000 ms PostgreSQL execution time for each captured
-representative advanced-analytics query on the disposable fixture. A separate
-selective product-event date query verifies indexed access. This target is not
-production latency evidence; measured results should only be recorded after the
-suite has actually run.
+Hourly counters have no player key to remove on account deletion and no automatic
+expiry purge. Source gameplay records retain their own deletion rules, so removing
+personal attempts or completions can change derived reports. Analytics does not
+preserve a second copy of those records.
 
-## AI declaration
+See [Account retention](account-deletion-retention.md) for personal data and
+[Reward storage](challenge-reward-persistence-design.md) for award history.
 
-The preceding document was generated and edited with the assistance of:
-ChatGPT-Web[GPT-5.6 Sol].
+**AI declaration:** Prepared and updated with assistance from
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-6].

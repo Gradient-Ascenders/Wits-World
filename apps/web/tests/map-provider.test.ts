@@ -4,6 +4,7 @@ import { getCampusLightPreset } from '../src/components/exploration/map-lighting
 
 import {
   createMapboxMap,
+  createGeodesicCircle,
   DEFAULT_MAP_LAYER_VISIBILITY,
   MOBILE_2D_MAP_STYLE,
   type CampusDataset,
@@ -39,6 +40,7 @@ const mapboxState = vi.hoisted(() => ({
   remove: vi.fn(),
   resize: vi.fn(),
   setPadding: vi.fn(),
+  getConfigProperty: vi.fn(),
   setConfigProperty: vi.fn(),
   setLayoutProperty: vi.fn(),
   sources: new Map<string, unknown>(),
@@ -66,6 +68,13 @@ vi.mock('mapbox-gl/esm', () => ({
     public addLayer = mapboxState.addLayer;
 
     public addSource = mapboxState.addSource;
+    public getConfigProperty = mapboxState.getConfigProperty;
+    public getLayoutProperty(layerId: string, name: string) {
+      const layer = mapboxState.layerDefinitions.find(
+        (item) => item.id === layerId,
+      );
+      return (layer?.layout as Record<string, unknown> | undefined)?.[name];
+    }
     public setConfigProperty = mapboxState.setConfigProperty;
     public setLayoutProperty = mapboxState.setLayoutProperty;
 
@@ -241,7 +250,8 @@ beforeEach(() => {
   ];
   mapboxState.isLoaded = false;
   mapboxState.isStyleLoaded = false;
-  mapboxState.setConfigProperty.mockClear();
+  mapboxState.getConfigProperty.mockReset();
+  mapboxState.setConfigProperty.mockReset();
   mapboxState.setLayoutProperty.mockReset();
   mapboxState.markerElements.length = 0;
   mapboxState.markerDragEnd = null;
@@ -289,6 +299,351 @@ afterEach(() => {
 });
 
 describe('Mapbox Standard provider', () => {
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'replays the latest overlay state once after source workers become idle (%s)',
+    async (styleUrl) => {
+      mapboxState.isStyleLoaded = true;
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        [],
+        new AbortController().signal,
+      );
+      const first = {
+        id: 'first',
+        label: 'First',
+        latitude: -26.19205,
+        longitude: 28.03038,
+        radiusMetres: 75,
+      };
+      const latest = { ...first, id: 'latest', longitude: 28.031 };
+      const region: MapRegion = {
+        id: 'pending-zone',
+        label: 'Campus',
+        ownerLabel: null,
+        status: 'active',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [28.03, -26.192],
+              [28.031, -26.192],
+              [28.031, -26.193],
+              [28.03, -26.192],
+            ],
+          ],
+        },
+      };
+      controller.setSelectedPoint?.(first);
+      controller.setRegions?.([region]);
+      const radius = mapboxState.sources.get('wits-selected-event-radius') as {
+        setData: ReturnType<typeof vi.fn>;
+      };
+      const territories = mapboxState.sources.get('wits-territory-regions') as {
+        setData: ReturnType<typeof vi.fn>;
+      };
+      radius.setData.mockClear();
+      territories.setData.mockClear();
+      // Source-worker activity makes isStyleLoaded false without another style.load.
+      mapboxState.isStyleLoaded = false;
+      controller.setLayerVisibility?.({
+        ...DEFAULT_MAP_LAYER_VISIBILITY,
+        radius: false,
+        territories: false,
+        labels: false,
+      });
+      controller.setSelectedPoint?.(latest);
+      controller.setRegions?.([{ ...region, label: 'Latest campus' }]);
+      controller.setSelectedRegion?.(region);
+      mapboxState.handlers.get('idle')?.();
+      expect(radius.setData).not.toHaveBeenCalled();
+      expect(territories.setData).not.toHaveBeenCalled();
+      mapboxState.isStyleLoaded = true;
+      // Ready data events replay promptly; synchronous reentry must not loop.
+      radius.setData.mockImplementation(() =>
+        mapboxState.handlers.get('data')?.(),
+      );
+      territories.setData.mockImplementation(() =>
+        mapboxState.handlers.get('data')?.(),
+      );
+      mapboxState.handlers.get('data')?.();
+      expect(radius.setData).toHaveBeenCalledExactlyOnceWith({
+        type: 'FeatureCollection',
+        features: [],
+      });
+      expect(territories.setData).toHaveBeenCalledExactlyOnceWith({
+        type: 'FeatureCollection',
+        features: [],
+      });
+      mapboxState.handlers.get('idle')?.();
+      expect(radius.setData).toHaveBeenCalledTimes(1);
+      expect(territories.setData).toHaveBeenCalledTimes(1);
+      controller.setLayerVisibility?.(DEFAULT_MAP_LAYER_VISIBILITY);
+      expect(radius.setData).toHaveBeenLastCalledWith({
+        type: 'FeatureCollection',
+        features: [createGeodesicCircle(latest, 75)],
+      });
+      expect(territories.setData).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          features: [
+            expect.objectContaining({
+              properties: expect.objectContaining({
+                label: 'Latest campus',
+                selected: true,
+              }),
+            }),
+          ],
+        }),
+      );
+      mapboxState.isStyleLoaded = false;
+      controller.setSelectedPoint?.(null);
+      controller.setRegions?.([]);
+      mapboxState.isStyleLoaded = true;
+      mapboxState.handlers.get('idle')?.();
+      expect(radius.setData).toHaveBeenLastCalledWith({
+        type: 'FeatureCollection',
+        features: [],
+      });
+      expect(territories.setData).toHaveBeenLastCalledWith({
+        type: 'FeatureCollection',
+        features: [],
+      });
+      mapboxState.isStyleLoaded = false;
+      controller.setSelectedPoint?.(first);
+      mapboxState.isStyleLoaded = true;
+      mapboxState.handlers.get('idle')?.();
+      expect(radius.setData).toHaveBeenLastCalledWith({
+        type: 'FeatureCollection',
+        features: [createGeodesicCircle(first, 75)],
+      });
+      expect(mapboxState.addSource).toHaveBeenCalledTimes(2);
+      controller.remove();
+    },
+  );
+
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'consumes pending overlays on style reload without repeating them at idle (%s)',
+    async (styleUrl) => {
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        [],
+        new AbortController().signal,
+      );
+      controller.setSelectedPoint?.({
+        id: 'queued',
+        label: 'Queued',
+        latitude: -26.19205,
+        longitude: 28.03038,
+        radiusMetres: 75,
+      });
+      expect(mapboxState.addSource).not.toHaveBeenCalled();
+      mapboxState.isStyleLoaded = true;
+      mapboxState.handlers.get('style.load')?.();
+      const radius = mapboxState.sources.get('wits-selected-event-radius') as {
+        data: { features: unknown[] };
+        setData: ReturnType<typeof vi.fn>;
+      };
+      expect(radius.data.features).toHaveLength(1);
+      mapboxState.handlers.get('idle')?.();
+      expect(radius.setData).not.toHaveBeenCalled();
+      controller.remove();
+    },
+  );
+
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'does not replay pending overlays after abort or removal (%s)',
+    async (styleUrl) => {
+      mapboxState.isStyleLoaded = true;
+      const abort = new AbortController();
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        [],
+        abort.signal,
+      );
+      controller.setSelectedPoint?.({
+        id: 'queued',
+        label: 'Queued',
+        latitude: -26.19205,
+        longitude: 28.03038,
+        radiusMetres: 75,
+      });
+      const radius = mapboxState.sources.get('wits-selected-event-radius') as {
+        setData: ReturnType<typeof vi.fn>;
+      };
+      radius.setData.mockClear();
+      mapboxState.isStyleLoaded = false;
+      controller.setLayerVisibility?.({
+        ...DEFAULT_MAP_LAYER_VISIBILITY,
+        radius: false,
+      });
+      abort.abort();
+      mapboxState.isStyleLoaded = true;
+      mapboxState.handlers.get('idle')?.();
+      expect(radius.setData).not.toHaveBeenCalled();
+      controller.remove();
+      expect(mapboxState.off).toHaveBeenCalledWith(
+        'idle',
+        expect.any(Function),
+      );
+      mapboxState.handlers.get('idle')?.();
+      expect(radius.setData).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([configuration.styleUrl, MOBILE_2D_MAP_STYLE])(
+    'creates overlays only when needed and restores them after style reload (%s)',
+    async (styleUrl) => {
+      mapboxState.isStyleLoaded = true;
+      const controller = await createMapboxMap(
+        document.createElement('div'),
+        { ...configuration, styleUrl },
+        [],
+        new AbortController().signal,
+      );
+      mapboxState.handlers.get('style.load')?.();
+      expect(mapboxState.addSource).not.toHaveBeenCalled();
+      expect(mapboxState.addLayer).not.toHaveBeenCalled();
+      controller.setLayerVisibility?.({
+        ...DEFAULT_MAP_LAYER_VISIBILITY,
+        radius: false,
+        territories: false,
+      });
+      controller.setRegions?.([
+        {
+          id: 'zone-lazy',
+          label: 'Campus',
+          ownerLabel: null,
+          status: 'active' as const,
+          geometry: {
+            type: 'Polygon' as const,
+            coordinates: [
+              [
+                [28.03, -26.192],
+                [28.031, -26.192],
+                [28.031, -26.193],
+                [28.03, -26.192],
+              ],
+            ],
+          },
+        },
+      ]);
+      controller.setSelectedPoint?.({
+        id: 'event-lazy',
+        label: 'Great Hall',
+        latitude: -26.19205,
+        longitude: 28.03038,
+        radiusMetres: 75,
+      });
+      expect(mapboxState.addSource).not.toHaveBeenCalled();
+      controller.setLayerVisibility?.(DEFAULT_MAP_LAYER_VISIBILITY);
+      expect(mapboxState.sources.size).toBe(2);
+      expect(mapboxState.addLayer).toHaveBeenCalledTimes(7);
+      const radius = mapboxState.sources.get('wits-selected-event-radius') as {
+        data: { features: unknown[] };
+        setData: ReturnType<typeof vi.fn>;
+      };
+      const territories = mapboxState.sources.get('wits-territory-regions') as {
+        data: { features: unknown[] };
+        setData: ReturnType<typeof vi.fn>;
+      };
+      expect(radius.data.features).toHaveLength(1);
+      expect(territories.data.features).toHaveLength(1);
+      controller.setRegions?.([]);
+      controller.setSelectedPoint?.(null);
+      expect(radius.setData).toHaveBeenLastCalledWith({
+        type: 'FeatureCollection',
+        features: [],
+      });
+      expect(territories.setData).toHaveBeenLastCalledWith({
+        type: 'FeatureCollection',
+        features: [],
+      });
+      controller.setRegions?.([
+        {
+          id: 'zone-lazy',
+          label: 'Campus',
+          ownerLabel: null,
+          status: 'active' as const,
+          geometry: {
+            type: 'Polygon' as const,
+            coordinates: [
+              [
+                [28.03, -26.192],
+                [28.031, -26.192],
+                [28.031, -26.193],
+                [28.03, -26.192],
+              ],
+            ],
+          },
+        },
+      ]);
+      controller.setSelectedPoint?.({
+        id: 'event-lazy',
+        label: 'Great Hall',
+        latitude: -26.19205,
+        longitude: 28.03038,
+        radiusMetres: 75,
+      });
+      mapboxState.sources.clear();
+      mapboxState.layers.clear();
+      mapboxState.handlers.get('style.load')?.();
+      expect(mapboxState.sources.size).toBe(2);
+      expect(mapboxState.addLayer).toHaveBeenCalledTimes(14);
+      controller.remove();
+      expect(mapboxState.remove).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('does not invalidate Standard dependencies for unchanged initial config or repeat layer updates', async () => {
+    mapboxState.isStyleLoaded = true;
+    const values = new Map<string, unknown>(
+      Object.entries({
+        ...configuration.standardConfig,
+        lightPreset: getCampusLightPreset(),
+        showPlaceLabels: true,
+        showPointOfInterestLabels: true,
+        showRoadLabels: true,
+        showTransitLabels: true,
+      }),
+    );
+    mapboxState.getConfigProperty.mockImplementation((_id, key: string) =>
+      values.get(key),
+    );
+    mapboxState.setConfigProperty.mockImplementation(
+      (_id, key: string, value: unknown) => values.set(key, value),
+    );
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
+    mapboxState.handlers.get('style.load')?.();
+    expect(mapboxState.setConfigProperty).not.toHaveBeenCalled();
+    controller.setLayerVisibility?.({
+      ...DEFAULT_MAP_LAYER_VISIBILITY,
+      details: false,
+      labels: false,
+    });
+    expect(mapboxState.setConfigProperty).toHaveBeenCalledTimes(8);
+    controller.setLayerVisibility?.({
+      ...DEFAULT_MAP_LAYER_VISIBILITY,
+      details: false,
+      labels: false,
+    });
+    mapboxState.handlers.get('style.load')?.();
+    expect(mapboxState.setConfigProperty).toHaveBeenCalledTimes(8);
+    values.set('show3dObjects', true);
+    mapboxState.handlers.get('style.load')?.();
+    expect(mapboxState.setConfigProperty).toHaveBeenCalledTimes(9);
+    expect(values.get('show3dObjects')).toBe(false);
+    controller.setLayerVisibility?.(DEFAULT_MAP_LAYER_VISIBILITY);
+    expect(values.get('show3dObjects')).toBe(true);
+    controller.remove();
+  });
+
   it('uses Streets without Standard config or lighting lifecycle work', async () => {
     vi.useFakeTimers();
     const abort = new AbortController();
@@ -329,6 +684,32 @@ describe('Mapbox Standard provider', () => {
       [],
       new AbortController().signal,
     );
+    controller.setRegions?.([
+      {
+        id: 'zone-lazy',
+        label: 'Campus',
+        ownerLabel: null,
+        status: 'active' as const,
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: [
+            [
+              [28.03, -26.192],
+              [28.031, -26.192],
+              [28.031, -26.193],
+              [28.03, -26.192],
+            ],
+          ],
+        },
+      },
+    ]);
+    controller.setSelectedPoint?.({
+      id: 'event-lazy',
+      label: 'Great Hall',
+      latitude: -26.19205,
+      longitude: 28.03038,
+      radiusMetres: 75,
+    });
     for (const [layer, beforeId] of mapboxState.addLayer.mock.calls) {
       expect(layer).not.toHaveProperty('slot');
       expect(beforeId).toBe(
@@ -370,7 +751,11 @@ describe('Mapbox Standard provider', () => {
       'visibility',
       'visible',
     );
-    expect(mapboxState.setLayoutProperty).toHaveBeenLastCalledWith(
+    expect(
+      mapboxState.layerDefinitions.find((layer) => layer.id === 'hidden-label')
+        ?.layout?.visibility,
+    ).toBe('none');
+    expect(mapboxState.setLayoutProperty).not.toHaveBeenCalledWith(
       'hidden-label',
       'visibility',
       'none',
@@ -925,9 +1310,7 @@ describe('Mapbox Standard provider', () => {
       [],
       new AbortController().signal,
     );
-    const source = mapboxState.sources.get('wits-selected-event-radius') as {
-      setData: ReturnType<typeof vi.fn>;
-    };
+    expect(mapboxState.sources.has('wits-selected-event-radius')).toBe(false);
     controller.setSelectedPoint?.({
       id: 'event-1',
       label: 'Great Hall',
@@ -936,7 +1319,11 @@ describe('Mapbox Standard provider', () => {
       radiusMetres: 75,
     });
 
-    expect(source.setData).toHaveBeenLastCalledWith(
+    const source = mapboxState.sources.get('wits-selected-event-radius') as {
+      data: unknown;
+      setData: ReturnType<typeof vi.fn>;
+    };
+    expect(source.data).toEqual(
       expect.objectContaining({
         features: [
           expect.objectContaining({

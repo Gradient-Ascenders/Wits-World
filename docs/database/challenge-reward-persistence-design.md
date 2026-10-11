@@ -4,785 +4,190 @@ title: 'Challenge, reward and card storage'
 
 # Challenge, reward and card storage
 
-## Status and scope
+Challenge attempts preserve the questions a player received. Completion records
+preserve the score and reward outcome. Owned-card rows track the copies currently
+in a collection; they are separate from shared catalogue definitions.
 
-This document records the Sprint 2 persistence foundation for event quizzes,
-reward issuance, and owned card copies. Issue #49 was the original design input;
-issue #64 implements the migration layer described here. Issue #193 supersedes
-the active coin behavior with permanent progression points and card-only
-challenge rewards while retaining the applied legacy schema for history.
-Challenge and reward routes and finalization services are implemented by their
-respective Sprint 2 issues. Issue #182 supersedes issue #77's direct-publish
-authoring model with the five-state reviewed lifecycle documented in the
-[Author curation API contract](../architecture/author-curation-api-contract.md).
+The [challenge API contract](../architecture/challenge-attempt-api-contract.md)
+owns request and response details. [Game rules](../requirements/basic-game-rules.md#card-rewards)
+define reward odds, while this page covers storage and transaction boundaries.
 
-The HTTP behavior is defined by the
-[challenge and attempt API contract](../architecture/challenge-attempt-api-contract.md).
-This design extends the existing `events` relation; it does not replace or alter
-the Sprint 1 event columns and eligibility rules.
+## Questions and attempts
 
-The catalogue vocabulary, duplicate-ownership policy, reward odds, and
-selection behavior used below were confirmed by the team in the
-[issue #49 product decision record](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/49#issuecomment-2748).
-They are inputs to this persistence proposal rather than rules chosen by the
-schema design.
+| Relations                                            | Stored responsibility                                                                               |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `event_challenges`                                   | Versioned challenge format and reviewed publication state; at most 1 published challenge per event. |
+| `challenge_questions`                                | Prompt, difficulty, explanation, sources, and publication state.                                    |
+| `challenge_choices`, `challenge_ordering_items`      | Format-specific authored choices or items.                                                          |
+| Private answer-key tables                            | Accepted choice or correct ordering positions.                                                      |
+| `challenge_attempts`                                 | Player/event identity, status, start, deadline, selected average difficulty, and final result.      |
+| `attempt_questions` and format-specific child tables | Saved prompts, shuffled choices/items, and locked submitted answers.                                |
+| `event_completions`                                  | Immutable completion, score, difficulty, reward-policy version, and completion time.                |
 
-Selling remains deferred. Card evolution is implemented by migration `0042`;
-see the [evolution rules](../requirements/card-evolution-rules.md). CPU match persistence is implemented by
-migration `0012` and documented separately. The Basic starter grant is
-implemented by migrations `0009` and `0010` and the protected
-`POST /api/v1/cards/starter` endpoint.
+Published questions have 4 choices with 1 accepted choice, or 4 ordering items
+with unique correct positions. Published definitions and their marking data
+cannot be edited in place.
 
-Saved deck persistence and selection are implemented by migration `0011` and
-the protected `/api/v1/decks` operations. Their schema and authority boundary
-are documented in the
-[saved deck persistence and API design](saved-deck-persistence-design.md).
+Starting an attempt selects **5 distinct published questions**, saves their
+prompts and shuffled presentation, and derives the deadline. Unique
+`(player_id, event_id)` constraints allow only 1 attempt and 1 completion for
+that player/event, including concurrent starts.
 
-The ownership model continues to distinguish an individual `player_cards` copy
-from its shared card definition.
+Each question accepts 1 locked answer. Ordering answers contain all 4 distinct
+attempt-item IDs. Membership and format checks prevent an answer from using
+another question's choices or items.
 
-## Required invariants
+Active player responses omit answer keys and correctness. After completion,
+review uses the saved attempt and answers, exposing attempt-facing IDs rather
+than private source relationships. [Offline play](../architecture/offline-challenge-play.md)
+defines pack snapshots and reconciliation through the same completion boundary.
 
-- A player is identified by the validated token's `(issuer, subject)` pair.
-- An event has at most one active challenge definition.
-- A published challenge question matches its challenge format: multiple choice
-  has exactly four choices and one private accepted choice; ordering has exactly
-  four items and four unique private correct positions.
-- One player can have only one attempt and one completion for an event.
-- An attempt stores five distinct questions and their shuffled choice or item
-  order.
-- A question can be answered at most once; accepted answers cannot be changed.
-- Completion, progression points, card awards, and the completion response are
-  one atomic, retry-safe operation.
-- Each awarded duplicate is a separate owned-card row.
-- Browser input never determines correctness, score, progression points,
-  rarity, or awarded card definition.
-- Marking is server-authoritative. While a timed attempt is active, Player
-  routes do not expose correct choices or ordering, per-question correctness,
-  private answer-key relationships, or explanations.
-- After authoritative completion, the Player review may expose the player's
-  selected answer, the correct answer, and per-question correctness. The review
-  is reconstructed from immutable format-specific snapshots, persisted locked
-  answers, and the private answer key. Private source identifiers remain
-  private; ordering explanations are revealed only after completion.
-- Author content mutations derive the acting Author from the authenticated
-  server context and record each versioned edit or lifecycle transition in the
-  audit trail.
-- Content follows `draft -> in_review -> approved -> published -> retired`;
-  returns from review or approval go to draft with a required reason, and
-  published content cannot return to draft.
-- Card-definition names are unique across draft, published, and retired rows
-  under `lower(btrim(name))`; stored display casing is preserved, and retired
-  rows continue to reserve their normalized names.
-- A Creature draft has zero through four ordered moves. Publication and gameplay
-  usability require exactly four valid moves; Power definitions are not subject
-  to this count.
-- A newly authored event becomes player-visible only after publication verifies
-  one valid published challenge and at least one active Common reward card.
+## Catalogue definitions
 
-## Relationship view
+`card_definitions` stores shared identity, category, rarity, stats, artwork,
+publication state, pool eligibility, and optional evolution relationships.
 
-For a shorter presentation view, start with the
-[database diagrams](../architecture/diagrams/database-relationships.md).
-Format-specific rows are optional in this combined diagram: a published question
-uses either multiple-choice or ordering records, not both. An event may retain
-several challenge versions but has at most one published challenge. An attempt
-has no completion until it is finalised. Legacy wallet/coin tables below remain
-for migration history; current rewards use cards and progression points.
+| Data               | Contract                                                                                            |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| Name               | Globally unique under `lower(btrim(name))`, including retired definitions.                          |
+| Category and stats | Creatures have HP, Power, and an affinity; current Power cards are typeless with no Creature stats. |
+| `catalogue_class`  | `ordinary` or `special`; distinguishes catalogue content from historical/special definitions.       |
+| Eligibility flags  | Separate `starter_eligible`, `reward_eligible`, and `cpu_eligible` selection permissions.           |
+| Evolution fields   | Defined source relationship and required copy count on an evolved Creature.                         |
+| Artwork metadata   | Image URL, alternative text, and attribution.                                                       |
 
-<div className="diagram-scroll" role="region" aria-label="Challenge, reward and card storage — diagram 1" tabIndex={0}>
+`card_moves` stores ordered Creature moves. `card_move_effects` stores each
+move's ordered executable effects, including effect code, configuration, and
+readable rules. `card_effects` stores Power-card effects and their execution
+metadata. A move can have several effects.
+
+Creature drafts can be incomplete; publication requires exactly **4 valid
+moves**. Published content is immutable, and retirement preserves references
+and saved battle history. Historical affinity-bearing Power records remain
+readable without changing the current typeless catalogue.
+
+See [Author cards](../design/author-cards.md) for authoring and
+[Card catalogue](../design/basic-card-roster.md) for the current roster.
+
+## Reward outcomes and current ownership
+
+<div className="diagram-scroll" role="region" aria-label="Reward outcomes and individual owned-card copies" tabIndex={0}>
 
 ```mermaid
 erDiagram
-    accTitle: Challenge, reward and card storage
-    accDescr: Selected schema relationships. The surrounding document explains fields, constraints and server authority.
-  PLAYERS ||--o{ CHALLENGE_ATTEMPTS : starts
-  EVENTS ||--o{ EVENT_CHALLENGES : offers
-  EVENT_CHALLENGES ||--o{ CHALLENGE_QUESTIONS : contains
-  CHALLENGE_QUESTIONS ||--o{ CHALLENGE_CHOICES : offers
-  CHALLENGE_QUESTIONS ||--o| CHALLENGE_ANSWER_KEYS : marks
-  CHALLENGE_QUESTIONS ||--o{ CHALLENGE_ORDERING_ITEMS : offers
-  CHALLENGE_QUESTIONS ||--o{ CHALLENGE_ORDERING_ANSWER_KEYS : orders
-  CHALLENGE_ATTEMPTS ||--|{ ATTEMPT_QUESTIONS : snapshots
-  ATTEMPT_QUESTIONS ||--o{ ATTEMPT_QUESTION_CHOICES : orders
-  ATTEMPT_QUESTIONS ||--o| ATTEMPT_ANSWERS : receives
-  ATTEMPT_QUESTIONS ||--o{ ATTEMPT_QUESTION_ORDERING_ITEMS : orders
-  ATTEMPT_QUESTIONS ||--o| ATTEMPT_ORDERING_ANSWERS : receives
-  PLAYERS ||--o{ EVENT_COMPLETIONS : earns
-  EVENTS ||--o{ EVENT_COMPLETIONS : records
-  CHALLENGE_ATTEMPTS ||--o| EVENT_COMPLETIONS : produces
-  PLAYERS ||--o| PLAYER_WALLETS : retains_legacy
-  EVENT_COMPLETIONS ||--o| COIN_LEDGER_ENTRIES : retains_legacy
-  PLAYERS ||--o{ PLAYER_CARDS : owns
-  CARD_DEFINITIONS ||--o{ PLAYER_CARDS : instantiates
-  EVENT_COMPLETIONS ||--o{ PLAYER_CARDS : awards
+    direction TB
+    accTitle: Reward history and current card ownership are separate records
+    accDescr: A completion stores ordered reward outcomes referring to shared card definitions. Players own individual copies of those definitions. A copy can later be consumed or exchanged while the completion's reward outcome remains unchanged.
+
+    event_completions ||--o{ event_completion_card_rewards : records
+    card_definitions ||--o{ event_completion_card_rewards : awarded
+    card_definitions ||--o{ player_cards : defines
+    players ||--o{ player_cards : owns
+
+    event_completions {
+        uuid id PK
+        smallint score_correct
+        text reward_policy_version
+    }
+    event_completion_card_rewards {
+        uuid completion_id PK, FK
+        smallint reward_position PK
+        uuid card_definition_id FK
+    }
+    card_definitions {
+        uuid id PK
+        text name
+        text rarity
+    }
+    player_cards {
+        uuid id PK
+        uuid player_id FK
+        uuid card_definition_id FK
+        text acquisition_kind
+    }
+    players {
+        uuid id PK
+    }
 ```
 
 </div>
 
-## Implemented relations and design constraints
-
-All identifiers are UUIDs. All timestamps are `timestamptz`. Foreign keys use
-`ON DELETE RESTRICT` unless retention policy later requires archival behavior.
-
-### `players`
-
-`players` stores `id`, canonical `auth_issuer`, `auth_subject`, and audit
-timestamps. `UNIQUE (auth_issuer, auth_subject)` prevents two local
-players from representing the same external identity. No access token is stored.
-
-### `event_challenges`
-
-An event challenge stores `id`, `event_id`, `format`, its five-state status,
-optimistic-concurrency version, submission/review metadata, provenance, and
-lifecycle timestamps. A partial unique index on `event_id` where status is
-`published` permits challenge history but allows only one published challenge
-per event. Only a published challenge may be started, and approval and
-publication require at least five complete published questions.
-
-### `challenge_questions` and `challenge_choices`
-
-A question stores its challenge, nonblank prompt, difficulty from `1` through
-`3`, optional draft explanation, status, and audit timestamps. Publication
-requires a nonblank explanation. Each choice stores its question, nonblank
-text, and an authoring position from `1` through `4`.
-
-`UNIQUE (question_id, authoring_position)` and a deferred publish-time check
-ensure exactly four choices. Published questions and choices are immutable;
-editing creates replacement rows so active attempts retain stable source data.
-
-Draft questions may replace their choices and accepted-answer relationship
-transactionally. Once published, their authored content, choices, answer key,
-and explanation are immutable; later authoring uses replacement content rather
-than mutating the published definition.
-
-### `private.challenge_answer_keys`
-
-The answer-key row contains `question_id` as its primary key and an
-`accepted_choice_id`. A composite relationship or trigger proves that the choice
-belongs to the same question.
-
-This table lives in a restricted schema. Public read queries have no direct
-`SELECT` permission; marking uses a narrowly scoped service query or database
-function. Player-facing responses, logs, player fixtures, and analytics exports
-must never expose accepted-answer relationships. Protected Author endpoints may
-return the accepted answer required to create and manage question content only
-after authentication, active-account validation, and Author authorization.
-
-### Ordering definitions and private keys
-
-`challenge_ordering_items` stores four nonblank items per ordering question.
-`private.challenge_ordering_answer_keys` maps each item to one unique correct
-position from `1` through `4`. Format guards reject MCQ children on ordering
-questions and ordering children on MCQ questions. Deferred publication checks
-require exactly the format-appropriate children, and published ordering content
-is immutable under the same lifecycle rules as multiple choice.
-
-The public item relation does not encode the correct order. Public roles have no
-read permission on the private position relation. Protected Author operations
-may read the authored order; active Player operations may not.
-
-### `challenge_attempts`
-
-An attempt stores:
-
-- `id`, `player_id`, `event_id`, and `challenge_id`;
-- `status` as `in_progress` or `completed`;
-- `started_at`, `deadline`, and `time_limit_seconds`;
-- the selected questions' `average_difficulty`;
-- nullable `completed_at`, `completion_reason`, and `score_correct`.
-
-Completion reason is `answered` or `timeout`; score is from `0` through `5`.
-Checks tie completion-only fields to status and require the deadline to match the
-stored time limit. `UNIQUE (player_id, event_id)` makes start/resume idempotent
-and enforces one attempt per player and event.
-
-### Attempt question snapshots and answers
-
-`attempt_questions` stores an API-facing ID, attempt, source question, position
-from `1` through `5`, prompt snapshot, difficulty snapshot, and a nullable
-ordering explanation snapshot. Constraints on
-`(attempt_id, position)` and `(attempt_id, source_question_id)` guarantee five
-ordered, non-repeating questions when combined with deferred attempt-readiness
-validation that requires exactly five rows before creation commits.
-
-`attempt_question_choices` stores an API-facing ID, attempt question, source
-choice, display position from `1` through `4`, and text snapshot. Unique
-constraints on display position and source choice persist one shuffled order.
-Snapshot rows are immutable once their parent attempt is completed; database
-triggers reject inserts, updates, and deletes that would change a finalized
-attempt's question or choice snapshot.
-
-`attempt_answers` uses `attempt_question_id` as its primary key and stores the
-selected attempt choice plus server receipt time. A composite relationship proves
-that the choice belongs to the question. The primary key locks one answer, and
-database triggers prevent updates or deletes after submission and reject new
-answers after the parent attempt is finalized. Correctness is calculated only
-during finalization and is not stored here.
-
-For ordering, `attempt_question_ordering_items` persists four shuffled item
-snapshots with stable attempt-facing IDs. `attempt_ordering_answers` locks one
-server receipt timestamp per question, and `attempt_ordering_answer_items`
-stores all four unique snapshot IDs by submitted position. Deferred constraints
-require an ordering answer to contain exactly four items. Foreign keys prove
-membership; triggers reject format mismatches, mutation after submission, and
-inserts after finalisation.
-
-An ordering attempt snapshot requires five published questions, four item
-snapshots per question, no MCQ choice snapshots, and a nonblank explanation
-snapshot. MCQ snapshots remain valid with four choices and no ordering items.
-Their ordering explanation snapshot remains null.
-
-### `card_definitions`
-
-A card definition stores `id`, nonblank `name`, `category`, `affinity`, `rarity`,
-active state, and audit timestamps. Creature definitions also store positive
-`hp` and non-negative `power`; Power definitions keep both stats null.
-
-The name is globally unique across every authoring state after surrounding
-whitespace is trimmed and case is ignored. The comparison key is
-`lower(btrim(name))`; the stored name retains the Author's chosen display casing
-after trimming. Retired definitions reserve that key. This invariant belongs to
-`card_definitions` and deliberately does not prevent multiple `player_cards`
-rows from representing separately owned copies of one definition.
-
-Issue #182 uses `authoring_status` values `draft`, `in_review`, `approved`,
-`published`, and `retired`. Only drafts are editable; only published cards are
-active. Approval and publication require the persisted definition to pass the
-same Creature/Power validation used by the application. Published and retired
-definition content, moves, and effects are immutable. Retirement makes the
-card inactive but preserves the definition so existing `player_cards`
-ownership rows continue to resolve their shared catalogue data. Retired cards
-cannot be republished.
-
-- Category is `creature` or `power`.
-- Affinity is `wit`, `grit`, `spark`, `spirit`, or `mystic`.
-- Rarity is `common`, `rare`, `epic`, or `legendary`.
-
-Creature moves are stored in `card_moves` with an ordered position, name, move
-type, effect type, draft-optional effect value, modifier target/operation metadata,
-optional damage-modifier duration, and non-negative Power cost. Power-card
-effects are stored in `card_effects` with the same ordered effect and modifier
-fields. Buff and Debuff rows require an authored modifier target and operation;
-HP/Power modifiers use `add`, damage-strength modifiers use `multiply`, and only
-damage-strength modifiers may define a positive duration. Damage and Heal rows
-cannot define modifier metadata. Child-table triggers enforce that moves belong
-to Creatures and effects belong to Power cards. A category-change trigger
-prevents an existing Creature from being changed into a Power card, or vice
-versa, while its child rows remain.
-
-Draft authoring continues to permit a null effect value so incomplete content
-can be saved. The Author publication service and the database publication
-transition reject a Creature move or Power-card effect whose executable value
-is null before setting `authoring_status = 'published'` and `is_active = true`.
-The same database transition requires exactly four ordered moves for a
-Creature. CPU match setup retains independent rules-engine validation as a
-final defensive boundary.
-
-A Creature definition may have at most four ordered `card_moves`. Drafts may be
-incomplete with zero through four valid moves. Moving a Creature to `published`
-and making it usable requires exactly four valid moves. Power definitions and
-their `card_effects` are not subject to this move-count rule.
-
-The move/effect vocabulary is `basic`, `wit`, `grit`, `spark`, `spirit`, and
-`mystic` for move types, and `damage`, `debuff`, `heal`, and `buff` for effect
-types. Damage is the only effect affected by the affinity multiplier; the
-server-side type rule is implemented in `apps/api/src/cards/card-rules.ts`.
-Reward and starter selection use only active definitions.
-
-### Event authoring lifecycle
-
-Issue #182 adds authoritative `authoring_status` while preserving
-`is_published` as the player-facing compatibility flag.
-
-The Author lifecycle is:
-
-- draft, in review, or approved: `is_published = false` and
-  `retired_at is null`;
-- published: `is_published = true` and `retired_at is null`;
-- retired: `is_published = false` and `retired_at is not null`.
-
-A newly authored event must be submitted and approved by a different Author
-before it may be published. Approval and publication both require exactly one
-published challenge and at least one active published Common card required by
-the Basic reward policy. Challenge publication already proves that at least
-five valid published questions exist.
-
-Published event content is immutable and cannot return to draft. Retirement
-removes the event from player discovery without deleting it, and retirement is
-irreversible. The published challenge associated with a live published event
-cannot be retired until the event itself has been retired.
-
-The original Sprint 1 published demonstration event remains a compatibility
-fixture. The new publication-readiness checks guard Author-driven draft-to-
-published transitions rather than retroactively invalidating that legacy row.
-
-### `event_completions`
-
-A completion stores `id`, unique `attempt_id`, player, event, score, average
-difficulty, `reward_policy_version`, and completion time. The
-`coins_awarded` column remains only for compatibility with applied migrations:
-new completions must store zero, while historical non-zero values remain
-unchanged. `UNIQUE (player_id, event_id)` independently protects the
-player/event boundary. Finalized completion rows and their matching completed
-attempts are immutable. Policy inputs are snapshots so historical rewards stay
-explainable after policy changes.
-
-### Retired wallet and coin ledger
-
-Migration `0034_retire_coin_rewards.sql` leaves existing `player_wallets` rows
-read-only and makes `coin_ledger_entries` fully immutable. It blocks wallet
-inserts and updates and ledger inserts, updates, and deletes. Historical values
-are neither recalculated nor transferred into points. Account deletion remains
-the only supported wallet deletion path; the legacy ledger and personal
-completion outcome are also purged during account deletion.
-
-The active application does not read either relation and never creates a wallet
-or ledger entry. This forward-only treatment preserves migration checksums and
-historical integrity without exposing a spendable balance.
-
-### `player_cards`
-
-Each row represents one owned copy and stores `id`, player, card definition,
-nullable source completion, optional starter grant, acquisition kind, and
-acquisition time. Acquisition kind supports `event_reward` and `starter`.
-
-Starter rows must reference `player_starter_grants`, while event-reward rows
-must reference a completion. A partial unique index prevents the same card
-definition from being inserted twice for one starter grant without preventing
-duplicate copies from later events.
-
-There is deliberately no uniqueness constraint on player and card definition.
-The event-reward completion index allows the one- or two-card reward result to
-store multiple owned-card rows for one completion while keeping lookups fast.
-Duplicate card definitions remain valid across separate acquisitions, such as
-two starter copies or rewards from different events.
-
-The protected `GET /api/v1/cards/collection` endpoint exposes this ownership
-model directly. It derives the player only from the validated authenticated
-context and returns one response entry for every matching `player_cards` row.
-Two rows that reference the same `card_definition_id` therefore remain two
-distinct owned copies through their different owned-card IDs.
-
-The collection joins each ownership row to the shared definition and its
-Creature moves or Power-card effects. `acquisition_kind` and `acquired_at` are
-safe collection metadata. Raw ownership provenance such as
-`source_completion_id` and `source_starter_grant_id`, as well as reward-policy
-and challenge-answer internals, are not exposed by the collection response.
-Inactive definitions remain visible when already owned even though reward and
-starter selection use only active definitions.
-
-### `event_completion_card_rewards`
-
-Each row stores the completion, one-based reward position, awarded card
-definition, and award time. It is the immutable historical reward outcome, not
-current ownership. The completion finalizer writes it beside each event-reward
-`player_cards` row in the same transaction. Account deletion can therefore
-remove every owned copy while retaining an anonymous, auditable completion
-result. Migration `0024` backfills existing event reward rows in stable
-acquisition order.
-
-## Attempt creation transaction
-
-Starting an attempt performs these operations atomically:
-
-1. Resolve or provision the local player from `(issuer, subject)`.
-2. Serialize the player/event attempt boundary and return an existing attempt.
-3. Verify publication, activity, fresh reachability, and challenge health.
-4. Randomly select five distinct published questions.
-5. Calculate average difficulty and choose the time limit.
-6. Insert the attempt, question snapshots, and one shuffled choice snapshot per
-   question.
-
-The unique player/event constraint is the final concurrency guard. A conflicting
-insert loads the winner instead of creating a second quiz.
-
-For example, if two start requests arrive together, both may initially observe
-no attempt. Only one insert can satisfy `UNIQUE (player_id, event_id)`. The other
-transaction catches that conflict and returns the persisted attempt, including
-the same deadline and question order.
-
-## Completion and reward policy
-
-Challenge points use the permanent progression rules. Card rewards use this
-separate score policy:
-
-| Correct | Card award                     |
-| ------- | ------------------------------ |
-| `0`     | None                           |
-| `1`     | None                           |
-| `2`     | None                           |
-| `3`     | One Common                     |
-| `4`     | One card: 75% Common, 25% Rare |
-| `5`     | 80% one card, 20% two cards    |
-
-The implemented completion finalizer persists zero, one, or two event-reward
-card rows per completion according to the approved reward policy. Completion,
-card-outcome, ownership, and point-award uniqueness constraints form the
-idempotency boundary, while the ownership query returns all cards linked to the
-persisted completion.
-
-Each card awarded for five correct answers rolls rarity independently: 45%
-Common, 40% Rare, 14% Epic, and 1% Legendary. After rarity selection, one active
-creature or power definition in that rarity is selected uniformly. Affinity and
-category are not weighted.
-
-If a positive-probability rarity has no active definitions, its probability is
-redistributed proportionally across the other available positive-probability
-rarities. A guaranteed Common reward requires at least one active Common card; otherwise
-completion fails and retries after catalogue repair. Issue #77 therefore
-requires at least one active Common definition before a newly authored event may
-be published.
-
-Random decisions use a server-side cryptographically secure source. Award count,
-rarity, and definitions become durable through completion and ownership rows, so
-retries return the same reward instead of rerolling.
-
-## Atomic finalization
-
-The fifth-answer path, timeout worker, and defensive request finalizer call the
-same transaction:
-
-1. Lock the attempt and return its existing completion if already completed.
-2. Load answers and private keys; unanswered questions count as wrong.
-3. Calculate score and rewards from the attempt snapshots.
-4. Insert the event completion.
-5. Insert zero, one, or two retained card-reward outcome rows.
-6. Insert the matching event-reward ownership rows.
-7. Mark the attempt completed with its reason, score, and timestamp.
-8. Record the idempotent progression-point award.
-9. Commit, then return the persisted score/reward result with the review derived
-   from the same authoritative attempt state.
-
-Any failure rolls back every effect. Constraints make retries converge on one
-completion instead of issuing additional points or cards. The expiry worker
-claims bounded batches with `FOR UPDATE SKIP LOCKED`, allowing concurrent workers
-without duplicate processing.
-
-For example, a fifth-answer request and the timeout worker can race for the same
-attempt. The first transaction obtains the attempt lock and commits one
-completion. The second then observes the completed state and returns that same
-persisted reward. `UNIQUE (player_id, event_id)` on completions and unique
-completion/card/progression source constraints provide independent backstops.
-
-## Completed API representation
-
-The completed attempt gains a server-generated reward result:
-
-```json
-{
-  "scoreCorrect": 5,
-  "reward": {
-    "cards": [
-      {
-        "ownedCardId": "51000000-0000-4000-8000-000000000001",
-        "cardDefinitionId": "50000000-0000-4000-8000-000000000009",
-        "name": "Campus Spark",
-        "category": "creature",
-        "affinity": "spark",
-        "rarity": "rare"
-      }
-    ]
-  }
-}
-```
-
-It also gains exactly five review entries in persisted question order:
-
-```ts
-review: Array<{
-  attemptQuestionId: string;
-  position: number;
-  prompt: string;
-  selectedChoice: { choiceId: string; text: string } | null;
-  correctChoice: { choiceId: string; text: string };
-  isCorrect: boolean;
-}>;
-```
-
-The selected and correct choice IDs are attempt-choice snapshot IDs, so they
-match the choices shown during the attempt without exposing source authoring IDs
-or the private `accepted_choice_id`. `selectedChoice` is read from the immutable
-`attempt_answers` row and is `null` when timeout leaves a question unanswered.
-The correct snapshot is selected by joining the attempt question's source row to
-`private.challenge_answer_keys`, then matching the accepted source choice back
-to that attempt's persisted shuffled choices. The server derives `isCorrect`;
-unanswered entries are false and the number of true entries must equal the
-persisted `score_correct`. An `answered` completion must have five non-null
-selected choices. The completed Player review has no explanation field; Author-only question
-explanations are not exposed through Player challenge responses.
-
-No review, correct choice, correctness, score, or reward field is returned while
-the attempt is `in_progress`.
-
-Completed ordering review instead returns `selectedItems` in submitted order
-(or `null` for an unanswered timeout), `correctItems` in authoritative order,
-`isCorrect`, and the persisted explanation. The source order remains in
-`private.challenge_ordering_answer_keys`; both returned arrays use immutable
-attempt-item snapshot IDs. Marking requires all four submitted positions to
-match, with no partial credit. Active ordering responses expose shuffled items
-and a previously locked `selectedItemIds` array only; they never expose the
-correct order, correctness, or explanation.
-
-The response is reconstructed from persisted rows. The browser never submits
-any field in `reward`.
-
-## Starter-card grant
-
-The protected `GET /api/v1/cards/starter-options` endpoint returns the current
-Spark, Grit, and Wit starter packages from the same server-owned canonical ID
-configuration used by the grant transaction. The API loads all 15 configured
-definitions in canonical order and requires each one to remain active,
-published, Common, battle-ready, and in its expected affinity/category. Preview
-data includes only comparison copy and the Creature/move and Power-effect detail
-needed to make the one-time choice; the browser does not reconstruct the
-package from catalogue assumptions.
-
-The protected `POST /api/v1/cards/starter` endpoint derives the player from the
-validated access token. The request contains only the selected affinity. One
-transaction locks or creates the player's `player_starter_grants` row, selects
-the affinity's configured three canonical Common Creatures and two canonical
-Common Power cards, validates and locks those definitions, inserts five owned
-copies, and returns the persisted grant.
-
-The same affinity can be submitted again safely: the API returns the original
-grant and cards with HTTP `200`. A different affinity returns a conflict, and
-the database's unique player constraint prevents concurrent requests from
-creating two starter selections. Only Spark, Grit, and Wit can create new
-starter grants. Spirit and Mystic remain full catalogue affinities for later
-progression. Historical Spirit or Mystic grants remain readable and a retry of
-their original affinity remains idempotent. The starter API refuses an eligible
-affinity if any configured canonical definition is missing or no longer valid
-for its approved package.
-
-## Migration and implementation order
-
-Issue #64 added the original persistence foundation in dependency order:
-
-1. `0003_create_players.sql` stores the local identity boundary.
-2. `0004_create_account_deletion_requests.sql` adds the account-lifecycle
-   relationship required by the existing player model.
-3. `0005_create_challenge_definitions.sql` adds event challenges, questions,
-   choices, private answer keys, publication validation, and content
-   immutability.
-4. `0006_create_challenge_attempts.sql` adds attempts, five-question snapshots,
-   shuffled four-choice snapshots, and locked answers.
-5. `0007_create_cards_rewards_and_ownership.sql` adds card definitions,
-   completions, wallets, coin ledger entries, and owned card copies.
-6. `0008_allow_multiple_event_reward_cards.sql` allows the approved perfect
-   score reward to persist two event-reward card copies for one completion.
-7. `0009_create_card_catalogue_and_starter_grants.sql` adds Creature stats,
-   normalized moves/effects, starter grants, starter ownership provenance, and
-   the constraints that keep those records consistent.
-8. `0010_add_card_modifier_metadata.sql` adds authored Buff/Debuff modifier
-   targets, operations, durations, and battle-readiness constraints.
-9. `0011_create_saved_decks.sql` adds saved decks, exact owned-copy
-   memberships, ownership-safe composite relationships, deterministic positions,
-   and one active deck selection per player.
-10. `0012_create_cpu_matches.sql` adds server-authoritative CPU match state,
-    immutable card snapshots, ordered rounds/actions, and private completed
-    history.
-11. `0013_add_author_content_foundation.sql` adds question explanations,
-    immutable Author-content audit records, and database enforcement that audit
-    actors are active Authors.
-12. `0014_harden_author_challenge_lifecycle.sql` hardens question and challenge
-    immutability and lifecycle transitions used by protected challenge
-    authoring.
-13. `0015_add_card_authoring_lifecycle.sql` adds explicit draft, published, and
-    retired card states, active-state consistency, and published-card content
-    immutability.
-14. `0016_add_event_authoring_lifecycle.sql` adds event retirement, publication
-    readiness validation, published-event immutability, and protection against
-    retiring the challenge beneath a live published event.
-
-Migration `0025_add_ordering_challenges.sql` adds the ordering format without
-rewriting existing multiple-choice data. It adds format-specific definition,
-private key, snapshot, and answer relations; broadens the format constraint;
-and replaces shared deferred validators so both formats retain exact publication
-and five-question snapshot invariants. Because account-deletion migration
-`0024` was published first, `0025` also extends deletion-scoped cleanup to the
-new ordering answer and snapshot relations without editing migration history.
-
-Subsequent migrations add the bounded `Edge` remediation, normalized name
-uniqueness, Player Name evolution, and the one-through-four move-position
-constraint. Migration `0041_complete_card_catalogue.sql` supersedes the
-placeholder roster with exactly 30 active ordinary definitions, ordered
-multi-effect Creature moves and Power effects, eligibility flags, accessible
-artwork metadata, and eight fixed evolution relationships. It preserves stable
-definition IDs where reused, existing owned-card row IDs and deck membership,
-and all historical match snapshots. Superseded definitions remain retired
-`special` records for historical references. The repeatable
-`0002_basic_card_catalogue.sql` seed now checks catalogue readiness rather
-than rewriting versioned production content.
-
-The database integration suite discovers and applies the complete ordered
-migration directory to an empty PostgreSQL/PostGIS database and checks that a
-second run is a no-op. The full roster is documented in the
-[complete card catalogue](../design/basic-card-roster.md).
-
-Migration `0034_retire_coin_rewards.sql` is deliberately deployed during a
-coordinated API/Web cutover that stops writing and returning coins. Challenge
-traffic remains quiesced until the migration and a post-migration completion
-smoke test succeed. The replacement API requires challenge contract version `2`
-on every challenge-attempt request and rejects absent or stale versions before
-any challenge service runs, so an old Web session cannot mutate or finalise a
-challenge until it hard-refreshes onto the matching build. The migration adds a
-not-valid zero-only constraint so new completion rows cannot award coins without
-scanning or rewriting historical rows, guards the legacy wallet against inserts
-and updates, and guards the legacy ledger against every mutation. Deploying this
-migration before compatible API code would make an older completion finalizer
-fail; rollback is therefore application-first and forward-only rather than a
-down-migration that re-enables coin writes.
-
-## Card-invariant migration blockers
-
-:::note[Status update — 25 August 2026]
-
-The dated audit below is preserved as evidence. Migrations `0017` and `0018`
-resolved the approved `Edge` collision, and migration
-`0019_limit_creature_move_positions.sql` limited stored Creature move positions.
-The approved canonical roster now resolves the remaining 18 two-move
-definitions through a bounded forward migration that preserves their stable
-IDs and historical match snapshots. Strict database publication and gameplay
-validation can therefore require exactly four executable Creature moves.
-
-:::
-
-A read-only audit of the configured development database on 2026-08-21 found
-the following blockers. These records were identified only; the audit did not
-rename, delete, merge, retire, or otherwise mutate them.
-
-### Normalized card-definition name collision
-
-The normalized key `edge` is held by both records below:
-
-| Definition ID                          | Display name | Authoring status | Owned copies | CPU-match snapshots |
-| -------------------------------------- | ------------ | ---------------- | -----------: | ------------------: |
-| `a0ef723b-0b3f-498f-96e7-1f56a21cb3a1` | Edge         | published        |            0 |                   0 |
-| `4f4baa5d-e31b-44d9-b743-29b4d0db67fd` | Edge         | retired          |            0 |                   0 |
-
-The current absence of direct ownership or match references does not free the
-retired name: retired definitions reserve names under the approved policy. An
-explicit Author/Product decision and reviewed forward data migration must
-resolve this collision before a unique index or constraint over
-`lower(btrim(name))` can be installed. Enforcement must not automatically
-rename, delete, merge, or revive either record.
-
-### Published Creatures with two moves
-
-All 18 definitions below are published with two moves at positions `1` and `2`.
-The seed creates these definitions deterministically, so both existing data and
-clean seed setup are non-compliant with the four-move publication policy.
-
-| Definition ID                          | Definition name          | Owned copies | CPU-match snapshots |
-| -------------------------------------- | ------------------------ | -----------: | ------------------: |
-| `27cbcedf-1886-aa81-04b4-089b4c10cd87` | Grit Creature 1          |            0 |                   3 |
-| `c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac` | Grit Creature 2          |            0 |                   3 |
-| `fc2c46fb-d960-b1bb-ea9a-93110b79e22d` | Grit Creature 3          |            0 |                   3 |
-| `0cba869b-d777-11f8-6b8c-c47d4d626558` | Mystic Creature 1        |            2 |                   2 |
-| `5340e0ee-d31c-93f5-0d59-39d0cd977f15` | Mystic Creature 2        |            2 |                   2 |
-| `a30d8e2e-42bf-574a-aa6f-1ebdf33c86b6` | Mystic Creature 3        |            2 |                   2 |
-| `eca9b943-9e05-834e-c85c-1175001d897c` | Spark Creature 1         |            1 |                   1 |
-| `ec9fb511-5dd2-8164-5f56-d9e13820c713` | Spark Creature 2         |            1 |                   1 |
-| `62d5bb93-78ad-5c44-412c-c7eca5f03250` | Spark Creature 3         |            1 |                   1 |
-| `65f102ad-ff11-876c-a4f7-e2e74167bc4c` | Spark Epic Creature      |            0 |                   0 |
-| `948a71e6-f04b-fcec-75ef-e401066ec8b8` | Spark Legendary Creature |            0 |                   0 |
-| `740b5400-8362-b728-3b76-9d232077732d` | Spark Rare Creature      |            0 |                   0 |
-| `a230fdda-cec0-c127-b4a2-e4dd20660e3a` | Spirit Creature 1        |            0 |                   0 |
-| `6e6b2c9f-27b2-2145-3b8a-219a0df622d7` | Spirit Creature 2        |            0 |                   0 |
-| `6f962f85-eaee-fd27-b2d7-c00c8af95098` | Spirit Creature 3        |            0 |                   0 |
-| `84790040-6ea8-6155-c4b7-dec3a22ac3ab` | Wit Creature 1           |            0 |                   0 |
-| `47f04de3-98d9-79ad-2759-7409c499c5ec` | Wit Creature 2           |            0 |                   0 |
-| `cdd5284b-0aaf-5c50-f820-787a7f6b1506` | Wit Creature 3           |            0 |                   0 |
-
-Manual gameplay/content remediation must supply and approve two additional
-valid moves for each affected definition, or approve a different explicit
-replacement/migration treatment that preserves owned copies and historical
-snapshots. Implementation must not invent move names, types, effects, values,
-costs, or balance. Existing CPU-match snapshots are historical records and must
-not be rewritten. Strict database publication enforcement must remain disabled
-until the seed and persisted catalogue have been remediated and the reference
-treatment has been reviewed.
-
-## Historical implementation sequence
-
-The sequence below is retained as the safe plan used after the audit. All five
-items are now implemented and covered by repository tests; the approved roster
-unblocked the content migration and strict four-move enforcement.
-
-Use focused branches in this order so constraints never encounter data known to
-violate them:
-
-1. `test/email-verification-nonblocking` — add regression coverage proving that
-   valid Auth0 access tokens with `email_verified` absent, `false`, or `true`
-   receive the same authentication result. Cover `/auth/me`, a representative
-   protected gameplay route, protected React routing, and the absence of Wits
-   institutional-identity claims in Wits-owned copy. Do not change Auth0 tenant
-   settings.
-2. `content/resolve-edge-definition-name` — after an explicit Author/Product
-   choice, apply only the reviewed forward data treatment for the two `Edge`
-   records. Test that the migration is bounded to the approved IDs, preserves
-   referenced/history data, is retry-safe, and leaves no duplicate
-   `lower(btrim(name))` key.
-3. `fix/card-definition-name-uniqueness` — add the database uniqueness invariant
-   and map its conflict through the Author service, OpenAPI response, and Author
-   UI. Test draft/published/retired conflicts, case and surrounding-whitespace
-   variants, concurrent writes, preserved display casing, unchanged same-record
-   edits, and multiple owned copies of one definition.
-4. `content/complete-creature-moves` — only after Cards/Game review supplies the
-   missing content, update the deterministic seed and apply the approved bounded
-   data migration. Test all affected IDs, exactly four valid ordered moves per
-   published Creature, seed repeatability, preserved ownership, and unchanged
-   historical match snapshots. Include gameplay/content review; automated tests
-   cannot approve balance.
-5. `fix/creature-four-move-publication` — enforce zero-to-four moves for Creature
-   drafts, a maximum of four at the database/API boundary, and exactly four for
-   publication and gameplay use. Update the OpenAPI schema and Author UI without
-   applying the rule to Power definitions. Test draft counts `0` through `4`,
-   rejection of a fifth move, publication failure for counts `0` through `3`,
-   exactly-four success, persisted move ordering, direct-database bypass,
-   concurrent child changes/publication, Power-card non-regression, seed/release
-   setup, and the game-rules/card-snapshot boundary.
-
-The existing Sprint 1 demo event carries over as an unchanged `events` row.
-For local development, `basic-demo/0003_sprint_1_demo_challenge.sql` supplies one
-deterministic published challenge with five valid questions, immutable private
-answer keys, and the existing seeded reward catalogue. It makes the real
-challenge flow demonstrable without changing event discovery or eligibility
-rules. The fixture is non-production content; authoring changes to published
-questions still require replacements rather than mutation.
-
-Schema-only migrations may be reversed before challenge data is written. After
-attempts or rewards exist, rollback cannot safely drop ownership, ledger, or
-answer-snapshot records. A production rollback must instead stop new starts and
-finalization, preserve immutable history, and deploy a forward corrective
-migration. Removing a published challenge must use retirement rather than
-deletion while attempts reference it.
-
-Repository tests must cover concurrent start, duplicate answers, deadline races,
-concurrent timeout workers, completion retry, rollback, unavailable rarity pools,
-and duplicate awards. API tests must prove answer keys and correctness details
-never cross the response boundary while an attempt is active, and that only the
-defined review fields reveal them after completion.
-
-The event rule remains `starts_at < ends_at`; this design does not introduce an
-unapproved one-to-three-hour duration limit. `BASIC-12` now defines which
-account-linked records are deleted, anonymised, or retained, including the
-12-month minimal deletion audit. That confirmed policy is recorded in the
-[Basic-tier decision register](../requirements/basic-tier-decision-register.md)
-and [Basic game rules](../requirements/basic-game-rules.md#account-deletion-and-re-registration).
-Issue `#160` implements the transactional retention backend, including deletion
-of individual answers/snapshots and separation of retained card-reward outcomes
-from deleted ownership rows. The exact matrix and retry boundary are documented
-in [Account deletion persistence and retention](./account-deletion-retention.md).
-Issue `#161` implements the player-facing capability.
-
-This design was planned, generated, edited, and reviewed with the assistance of
-Codex[GPT-5.6 Sol], Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and
-ChatGPT-Web[GPT-5.6 Sol], Codex-CLI[GPT-5.6 Sol], and
-Codex[gpt-5.6-sol].
-
-Page title, relationship cardinalities, and evolution status updated with
-assistance from Codex-CLI[GPT-6].
-
-This account-deletion update was edited with assistance from Codex[GPT-6].
+`||` means exactly 1 and `o{` means 0 or more. Selected relationships and
+columns are shown; owned copies also carry acquisition provenance.
+
+Each `player_cards` row has its own UUID. There is no unique player/definition
+constraint, so duplicates remain separate copies. Supported acquisition kinds
+are `starter`, `event_reward`, `evolution`, and `trade`.
+
+Source fields link the copy to its starter grant, completion, evolution, or trade
+movement as appropriate. A territory owner bonus uses `event_reward` with an
+additional `source_territory_bonus_id`; it does not add an acquisition kind.
+
+`event_completion_card_rewards` stores immutable ordered base reward outcomes.
+Those rows describe what was awarded, rather than what is still owned.
+Territory bonuses have separate decision/provenance records; see
+[Territory storage](contested-campus-territory-persistence.md).
+
+The default collection read returns individual owned copies and player-visible
+catalogue data. It includes inactive definitions that are still owned, but omits
+raw acquisition-source IDs and private marking data.
+
+## Completion transaction
+
+Answer completion, timeout handling, and defensive finalisation share the same
+transaction boundary:
+
+1. Lock the attempt and return its saved completion if already finalised.
+2. Mark locked answers using private keys; unanswered questions count as wrong.
+3. Derive the score and select base rewards from the current eligible pool.
+4. Save the completion, ordered reward outcomes, and matching owned copies.
+5. Finalise any snapshotted territory owner-bonus decision.
+6. Mark the attempt completed and save progression.
+7. Commit the result used by completed-attempt responses.
+
+Selection uses server-side cryptographic randomness. The default reward-policy
+identifier is `points-cards-v2`. Only active, published, reward-eligible
+definitions enter the base reward pool. Empty weighted rarities are removed and
+remaining weights are normalised; a guaranteed Common reward requires an eligible
+Common definition.
+
+Retries read the persisted result without rerolling or adding copies. A failure
+rolls back the completion and all awards together. Concurrent answer and timeout
+finalisers serialise on the attempt. Progression values belong to
+[Progression storage](player-progression-persistence.md).
+
+## Starter grants and evolution
+
+`player_starter_grants` has a unique player key. Grant creation and its 5 owned
+copies commit together, so repeat or concurrent selection cannot issue another
+package. New choices are Wit, Grit, and Spark; historical grants remain readable.
+The [starter rules](../requirements/basic-game-rules.md#starter-grant) define
+package contents.
+
+Evolution uses `card_evolution_transactions` and `card_evolution_consumptions`
+to retain the recipe, submitted operation, 3 consumed-copy snapshots, and granted
+copy identity. Ownership rows are locked before saved-deck and trade-reservation
+checks. Consumption, grant, and receipt commit together; a repeated submission
+cannot consume another set.
+
+The [evolution guide](../requirements/card-evolution-rules.md) owns recipe and
+selection rules. [Deck storage](saved-deck-persistence-design.md) and
+[Trading storage](card-trading-persistence.md) define related copy protections.
+
+## Privacy and retention
+
+Public card reads do not expose ownership provenance or Author review metadata.
+Active attempts do not expose private answers; completed review has its own
+authenticated projection.
+
+Account deletion removes personal attempts, completions, reward outcomes, starter
+grants, owned cards, and evolution records. Shared catalogue definitions and
+required trade/battle history remain under the
+[account retention contract](account-deletion-retention.md).
+
+The retired coin schema is compatibility history. New completions store 0 coins,
+and current rewards use cards and progression points.
+
+**AI declaration:** Prepared and updated with assistance from Codex[GPT-5.6 Sol],
+Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], ChatGPT-Web[GPT-5.6 Sol],
+Codex-CLI[GPT-5.6 Sol], Codex[gpt-5.6-sol], Codex-CLI[GPT-6], and Codex[GPT-6].

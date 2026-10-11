@@ -65,11 +65,11 @@ serialization before sending, not browser transport or response download.
 Use browser Network timings alongside this header to separate network waiting
 from server work. Compare warm and first-after-idle requests separately.
 
-For acceptance and match-detail GET diagnostics, see
-[PvP request phase timing](./pvp-request-phase-timing.md). It documents the
-additional server-only fields, overlapping spans, privacy limits and controlled
-deployment/measurement procedure. Detailed timing is observability, not a claim
-of a latency improvement or deployed instrumentation.
+Detailed acceptance and match-read spans can overlap; they must not be
++added together as total request latency. Server instrumentation alone does not
++establish a latency improvement or deployment. Keep controlled measurements
++attached to their revision, dataset, and warm/cold conditions; operator logging
++and diagnostics follow the [Azure monitoring guidance](../deployment/azure-deployment-setup.md).
 
 The deployed browser/API click-to-result path was not profiled with a signed-in
 session. The identity measurements isolate real database work; they are not a
@@ -564,3 +564,86 @@ schema/configuration change. No general endpoint or cold-start speedup is claime
 
 AI assistance: Codex[GPT-6] investigated, implemented, tested and measured this
 request-initialization slice and documented its limitations.
+
+## Submission stabilization: PvP deck snapshot writes
+
+The 10 October 2026 local comparison uses main revision
+`df24854b6a7d20ec47bc91458d49afabfed3d3ca`. Fresh invitation creation and
+acceptance each persisted a snapshot header followed by its five cards in two
+sequential SQL calls. A data-modifying CTE now returns the inserted header ID to
+the card insert in one call. Card identities, source ownership, ordering, JSON,
+timestamps, deferred constraints, transaction boundaries and client acquisitions
+are preserved. No API, Redis, scheduler, pool, timeout or migration changes are
+required. Idempotent replays and battle turns do not execute this snapshot write.
+
+### Comparable disposable measurements
+
+The real service runs against temporary local PostgreSQL 17/PostGIS. A frozen
+copy of the old two statements replaces only the combined snapshot query in the
+baseline condition. Fixture setup and parity assertions are outside the timed
+service calls. Connections/plans are primed, and baseline/change ordering
+alternates across five fresh journeys per condition. Both participants' five
+persisted cards and header fields are checked against the write parameters.
+
+| Median measurement                | Original | Combined |
+| --------------------------------- | -------- | -------- |
+| Invitation SQL statements         | 18       | 17       |
+| Acceptance SQL statements         | 16       | 15       |
+| Snapshot statements, either role  | 2        | 1        |
+| Acquisitions per operation        | 1        | 1        |
+| Local invitation service time, ms | 27.1     | 25.1     |
+| Local acceptance service time, ms | 32.7     | 31.0     |
+| Local invitation client hold, ms  | 26.9     | 25.0     |
+| Local acceptance client hold, ms  | 32.5     | 30.9     |
+| Local invitation SQL-client, ms   | 26.6     | 24.7     |
+| Local acceptance SQL-client, ms   | 31.8     | 30.3     |
+
+These small local timing differences are not a general latency claim. Counts
+include BEGIN/COMMIT; the fixture does not configure the production Trust gate or
+Redis producer guard, so its totals are not production request totals. Checkout
+medians were 0.03–0.05 ms with warm idle reuse; connection establishment and
+saturated-pool queueing are not improved by this change.
+
+A second equivalent comparison adds an explicit 25 ms simulated delay to every
+real SQL round trip, equally in both conditions:
+
+| Median simulated-transport measurement | Original | Combined |
+| -------------------------------------- | -------- | -------- |
+| Invitation service time, ms            | 572.8    | 551.4    |
+| Acceptance service time, ms            | 514.3    | 481.9    |
+| Invitation client hold, ms             | 572.7    | 551.1    |
+| Acceptance client hold, ms             | 514.1    | 481.7    |
+| Invitation SQL-client, ms              | 572.1    | 550.3    |
+| Acceptance SQL-client, ms              | 513.2    | 480.8    |
+
+Timer scheduling and real query variability are included. This demonstrates the
+saved serialized round trip under controlled delay; it is not measured Azure to
+Neon latency, server-only execution time, HTTP latency or production speedup.
+
+### Correctness, reproduction and rollback
+
+The real PostgreSQL persistence suite passes 48 tests, including frozen-query
+parity for both roles, real card-constraint failures with no partial snapshot or
+receipt left behind, successful retry, existing concurrent acceptance, expiry,
+receipt freshness, privacy, hidden state, legal actions and rollback regressions.
+The fixture's optional measurement case runs only when an output path is supplied;
+normal database CI still runs the parity/rollback cases and existing strict query
+count checks.
+
+```sh
+RUN_DATABASE_INTEGRATION_TESTS=true PVP_SNAPSHOT_MEASUREMENT_FILE=/temporary/review/snapshot-measurements.json npm test --workspace @wits-world/api -- tests/asynchronous-pvp-persistence.integration.test.ts --maxWorkers=1
+```
+
+Use the authorized disposable `TEST_DATABASE_URL` and an independently different
+development URL as required by the database-test guard. Keep measurements outside
+the repository. No production fixture, account or gameplay mutation was used.
+
+After a separately approved release, compare equivalent fresh invitation and
+acceptance request phase counts, SQL-client/transaction time, pool checkout,
+errors and retries. Expect one fewer statement only where a new deck snapshot is
+written; unchanged replays/turns are controls. Do not attribute all request timing
+changes to this write. Rollback restores the two statements in the same existing
+transaction; no schema, data repair or configuration change is needed.
+
+AI assistance: Codex[GPT-6] investigated, implemented, tested and measured this
+snapshot-write slice and documented its limitations.

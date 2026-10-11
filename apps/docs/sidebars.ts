@@ -1,1084 +1,365 @@
 import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 
-// Organise by reader task. sidebar-coverage.test.ts guards against missing pages.
+type SidebarItemConfig = Extract<SidebarsConfig[string], unknown[]>[number];
+
+// Navigation labels name the topic; page titles carry the full context.
+const doc = (id: string, label: string): SidebarItemConfig => ({
+  type: 'doc',
+  id,
+  label,
+});
+
+const category = (
+  label: string,
+  items: SidebarItemConfig[],
+  overview?: string,
+): SidebarItemConfig => ({
+  type: 'category',
+  label,
+  collapsed: true,
+  ...(overview ? { link: { type: 'doc' as const, id: overview } } : {}),
+  items,
+});
+
+const sprintReport = (sprint: number): SidebarItemConfig =>
+  doc(`planning/scrum/sprint-${sprint}/report`, 'Sprint report');
+
+const sprint = (
+  number: number,
+  items: SidebarItemConfig[],
+): SidebarItemConfig => ({
+  type: 'category',
+  label: `Sprint ${number}`,
+  collapsed: true,
+  link: {
+    type: 'generated-index',
+    slug: `/project/sprint-${number}`,
+    title: `Sprint ${number}`,
+    description: `Sprint ${number} report and supporting evidence.`,
+  },
+  items,
+});
+
+// Small topic groups keep technical references and dated evidence findable
+// without turning any expanded section into an inventory of every page.
 const sidebars: SidebarsConfig = {
   docsSidebar: [
+    category(
+      'Start here',
+      [
+        doc('basic-release-reference', 'About the game'),
+        doc('requirements/basic-game-rules', 'Game basics'),
+        doc('architecture/diagrams/index', 'Visual guide'),
+      ],
+      'index',
+    ),
     {
       type: 'category',
-      label: 'Start here',
+      label: 'Players',
+      collapsed: true,
+      link: {
+        type: 'generated-index',
+        slug: '/player-guide',
+        title: 'Player Guide',
+        description:
+          'Get started, explore campus, play online or offline, and manage your account.',
+      },
       items: [
-        {
-          type: 'doc',
-          id: 'architecture/diagrams/index',
-          label: 'Visual guide and diagrams',
-        },
-        {
-          type: 'doc',
-          id: 'sprint-3-overview',
-          label: 'Sprint 3 overview',
-        },
-        {
-          type: 'doc',
-          id: 'sprint-2-overview',
-          label: 'Sprint 2 overview',
-        },
-        {
-          type: 'doc',
-          id: 'basic-release-reference',
-          label: 'Basic game overview',
-        },
+        doc('requirements/player-getting-started', 'Getting started'),
+        doc('requirements/player-location-journey', 'Explore'),
+        doc('requirements/player-challenge-journey', 'Challenges'),
+        doc('requirements/player-offline-journey', 'Offline play'),
+        doc('requirements/ordered-trails-rules', 'Trails'),
+        doc('design/profile-showcase', 'Profile'),
+        doc('requirements/player-account-settings', 'Account settings'),
+        doc('design/design-system', 'Accessibility'),
+        category('Cards', [
+          doc(
+            'requirements/player-deck-building-journey',
+            'Collections and decks',
+          ),
+          doc('design/basic-card-roster', 'Card catalogue'),
+          doc('requirements/card-evolution-rules', 'Evolution'),
+          doc('requirements/card-trading-policy', 'Trading'),
+        ]),
+        category('Battles', [
+          doc('requirements/battle-rules', 'Battle rules'),
+          doc('requirements/player-cpu-battle-journey', 'CPU battles'),
+          doc('requirements/player-asynchronous-pvp-journey', 'Player battles'),
+        ]),
+        category('Game systems', [
+          doc(
+            'requirements/player-progression-rules',
+            'Points and achievements',
+          ),
+          doc('requirements/ranked-competition-policy', 'Rankings'),
+          doc('requirements/contested-campus-zone-policy', 'Territories'),
+        ]),
       ],
+    },
+    {
+      type: 'category',
+      label: 'Authors',
+      collapsed: true,
       link: {
         type: 'doc',
-        id: 'index',
-      },
-    },
-    {
-      type: 'category',
-      label: 'Game rules & player experience',
-      link: {
-        type: 'generated-index',
-        slug: '/product-requirements',
+        id: 'design/author-guide',
       },
       items: [
-        {
-          type: 'category',
-          label: 'Game rules and decisions',
-          items: [
-            {
-              type: 'doc',
-              id: 'requirements/sprint-3-feature-matrix',
-              label: 'Sprint 3 Advanced features and progress',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/sprint-2-feature-matrix',
-              label: 'Sprint 2 features and progress',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/basic-game-rules',
-              label: 'Basic game rules',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/basic-tier-decision-register',
-              label: 'Confirmed game decisions',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/player-progression-rules',
-              label: 'Points, achievements and rankings',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/ranked-competition-policy',
-              label: 'Ranked ratings, matchmaking and seasons',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/contested-campus-zone-policy',
-              label: 'Contested-campus zones and settlement',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/ordered-trails-rules',
-              label: 'Trail rules and progress',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/card-evolution-rules',
-              label: 'Card evolution rules',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/card-trading-policy',
-              label: 'Card trading and anti-drain policy',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/longitudinal-trust-policy',
-              label: 'Trust scoring and enforcement policy',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/automatic-event-placement-policy',
-              label: 'Automatic event placement policy',
-            },
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Playing the game',
-          items: [
-            {
-              type: 'doc',
-              id: 'requirements/player-challenge-journey',
-              label: 'Playing a challenge',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/player-deck-building-journey',
-              label: 'Building a deck',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/player-cpu-battle-journey',
-              label: 'CPU battles and match history',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/player-asynchronous-pvp-journey',
-              label: 'Player battles and invitations',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/player-location-journey',
-              label: 'Location and event access (Sprint 1)',
-            },
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Design and accessibility',
-          items: [
-            {
-              type: 'doc',
-              id: 'design/design-system',
-              label: 'Design and accessibility standards',
-            },
-            {
-              type: 'doc',
-              id: 'design/profile-showcase',
-              label: 'Player profile showcase and editing',
-            },
-            {
-              type: 'doc',
-              id: 'design/basic-card-roster',
-              label: 'Complete card catalogue',
-            },
-            {
-              type: 'doc',
-              id: 'design/state-review',
-              label: 'Loading, error and feedback states',
-            },
-            {
-              type: 'doc',
-              id: 'loading-policy',
-              label: 'Loading policy and route coverage',
-            },
-            {
-              type: 'doc',
-              id: 'design/references/card-frames/README',
-              label: 'Card frame examples',
-            },
-          ],
-        },
+        category('Content', [
+          doc('architecture/diagrams/content-review', 'Review and publish'),
+          doc(
+            'architecture/author-curation-api-contract',
+            'Events and questions',
+          ),
+          doc('design/author-cards', 'Cards'),
+          doc('design/author-trails', 'Trails'),
+          doc('architecture/campaign-scheduling-api-contract', 'Campaigns'),
+          doc(
+            'architecture/automatic-event-placement-service',
+            'Event placement',
+          ),
+          doc(
+            'requirements/automatic-event-placement-policy',
+            'Placement rules',
+          ),
+        ]),
+        doc('requirements/longitudinal-trust-policy', 'Moderation and trust'),
+        doc('design/author-analytics', 'Analytics'),
+        doc('database/question-performance-analytics', 'Question reports'),
       ],
     },
     {
       type: 'category',
-      label: 'Technical guides',
+      label: 'Developers',
+      collapsed: true,
       link: {
         type: 'generated-index',
-        slug: '/technical-reference',
+        slug: '/developer-guide',
+        title: 'Developer Guide',
+        description: 'Set up, understand, test, and operate the system.',
       },
       items: [
-        {
-          type: 'category',
-          label: 'Architecture',
-          link: {
-            type: 'generated-index',
-            slug: '/architecture',
-          },
-          items: [
-            {
-              type: 'doc',
-              id: 'architecture/overview',
-              label: 'System architecture',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/technology-stack',
-              label: 'Technology stack',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/data-flow',
-              label: 'How data moves through the system',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/trust-boundaries',
-              label: 'Security and server authority',
-            },
-            {
-              type: 'category',
-              label: 'Architecture diagrams',
-              items: [
-                {
-                  type: 'doc',
-                  id: 'architecture/diagrams/advanced-systems',
-                  label: 'Advanced services and authority',
-                },
-                {
-                  type: 'doc',
-                  id: 'architecture/diagrams/database-relationships',
-                  label: 'Database relationships',
-                },
-                {
-                  type: 'doc',
-                  id: 'architecture/diagrams/database-battles',
-                  label: 'Battle database relationships',
-                },
-                {
-                  type: 'doc',
-                  id: 'architecture/diagrams/challenge-flow',
-                  label: 'Challenge and reward flow',
-                },
-                {
-                  type: 'doc',
-                  id: 'architecture/diagrams/content-review',
-                  label: 'Content review and publication',
-                },
-                {
-                  type: 'doc',
-                  id: 'architecture/diagrams/system-context',
-                  label: 'System and external services diagram',
-                },
-                {
-                  type: 'doc',
-                  id: 'architecture/diagrams/application-containers',
-                  label: 'Frontend, API and database diagram',
-                },
-                {
-                  type: 'doc',
-                  id: 'architecture/diagrams/deployment',
-                  label: 'Hosting and deployment diagram',
-                },
-              ],
-            },
-            {
-              type: 'category',
-              label: 'External services',
-              items: [
-                {
-                  type: 'doc',
-                  id: 'architecture/external-integrations',
-                  label: 'External services and data sharing',
-                },
-                {
-                  type: 'doc',
-                  id: 'architecture/mapbox-standard-migration',
-                  label: 'Mapbox 3D map integration',
-                },
-                {
-                  type: 'doc',
-                  id: 'architecture/third-party-software-and-services',
-                  label: 'Third-party tools and why we use them',
-                },
-              ],
-            },
+        category('Setup', [
+          doc('development/getting-started', 'Getting started'),
+          doc('database/neon-postgis-setup', 'Neon and PostGIS'),
+          doc('development/documentation-site', 'Documentation site'),
+        ]),
+        category(
+          'Architecture',
+          [
+            doc('architecture/technology-stack', 'Stack'),
+            doc('architecture/data-flow', 'Data flow'),
+            doc('architecture/key-decisions', 'Decisions'),
+            doc('architecture/trust-boundaries', 'Security'),
+            doc('architecture/external-integrations', 'Integrations'),
+            category('Diagrams', [
+              doc('architecture/diagrams/system-context', 'System context'),
+              doc(
+                'architecture/diagrams/application-containers',
+                'App, API and database',
+              ),
+              doc('architecture/diagrams/deployment', 'Deployment'),
+              doc('architecture/diagrams/advanced-systems', 'Advanced systems'),
+              doc(
+                'architecture/diagrams/challenge-flow',
+                'Challenges and rewards',
+              ),
+              doc(
+                'architecture/diagrams/database-relationships',
+                'Data relationships',
+              ),
+              doc(
+                'architecture/diagrams/database-battles',
+                'Battle relationships',
+              ),
+            ]),
           ],
-        },
-        {
-          type: 'category',
-          label: 'API guides',
-          items: [
-            {
-              type: 'doc',
-              id: 'architecture/api-overview',
-              label: 'API overview and endpoint reference',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/player-profile-api-contract',
-              label: 'Player profile API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/rate-limiting',
-              label: 'API rate limiting',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/developer-api',
-              label: 'External developer API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/author-curation-api-contract',
-              label: 'Content authoring API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/challenge-attempt-api-contract',
-              label: 'Challenges and answers API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/asynchronous-pvp-api-contract',
-              label: 'Asynchronous player battle API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/card-trading-api-contract',
-              label: 'Card trading API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/live-pvp-api-contract',
-              label: 'Live player battle API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/ranked-matchmaking-api-contract',
-              label: 'Ranked matchmaking API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/contested-campus-territory-api-contract',
-              label: 'Contested-campus territory API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/campaign-scheduling-api-contract',
-              label: 'Campaign scheduling API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/automatic-event-placement-service',
-              label: 'Automatic event placement service',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/advanced-analytics-api-contract',
-              label: 'Advanced analytics API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/offline-challenge-play',
-              label: 'Offline play and synchronisation',
-            },
+          'architecture/overview',
+        ),
+        category(
+          'Database',
+          [
+            category('Events', [
+              doc('database/event-schema', 'Schema'),
+              doc('database/verified-event-content', 'Questions and sources'),
+              doc('database/event-eligibility', 'Eligibility'),
+              doc('database/movement-evidence', 'Movement checks'),
+              doc('database/ordered-trails-persistence', 'Trails'),
+              doc(
+                'database/automatic-event-placement-persistence',
+                'Event placement',
+              ),
+            ]),
+            category('Players', [
+              doc('database/player-schema', 'Accounts'),
+              doc('database/player-progression-persistence', 'Progression'),
+              doc('database/trust-persistence', 'Trust'),
+              doc(
+                'database/account-deletion-retention',
+                'Deletion and retention',
+              ),
+              doc('database/developer-api-keys', 'API keys'),
+            ]),
+            category('Cards', [
+              doc(
+                'database/challenge-reward-persistence-design',
+                'Rewards and cards',
+              ),
+              doc('database/saved-deck-persistence-design', 'Decks'),
+              doc('database/card-trading-persistence', 'Trading'),
+            ]),
+            category('Battles', [
+              doc('database/cpu-match-persistence-design', 'CPU battles'),
+              doc('database/asynchronous-pvp-persistence', 'Player battles'),
+              doc('database/live-pvp-persistence', 'Live PvP'),
+              doc('database/ranked-competition-persistence', 'Rankings'),
+              doc(
+                'database/contested-campus-territory-persistence',
+                'Territories',
+              ),
+            ]),
+            doc('database/campaign-scheduling-persistence', 'Campaigns'),
+            category('Analytics', [
+              doc('database/advanced-analytics', 'Storage and privacy'),
+              doc('database/question-performance-query', 'Question queries'),
+            ]),
           ],
-        },
-        {
-          type: 'category',
-          label: 'Database guides',
-          link: {
-            type: 'generated-index',
-            slug: '/data-database',
-          },
-          items: [
-            {
-              type: 'doc',
-              id: 'database/overview',
-              label: 'Database structure and relationships',
-            },
-            {
-              type: 'doc',
-              id: 'database/data-quality-and-structure',
-              label: 'Production data and database quality',
-            },
-            {
-              type: 'doc',
-              id: 'database/event-schema',
-              label: 'Event fields and relationships',
-            },
-            {
-              type: 'doc',
-              id: 'database/player-schema',
-              label: 'Player accounts and names',
-            },
-            {
-              type: 'doc',
-              id: 'database/event-eligibility',
-              label: 'How event access is calculated',
-            },
-            {
-              type: 'doc',
-              id: 'database/movement-evidence',
-              label: 'Movement checks and privacy',
-            },
-            {
-              type: 'doc',
-              id: 'database/automatic-event-placement-persistence',
-              label: 'Automatic event placement storage',
-            },
-            {
-              type: 'category',
-              label: 'Data storage and reports',
-              items: [
-                {
-                  type: 'doc',
-                  id: 'database/challenge-reward-persistence-design',
-                  label: 'Challenge, reward and card storage',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/saved-deck-persistence-design',
-                  label: 'Deck storage and API',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/cpu-match-persistence-design',
-                  label: 'CPU battle storage',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/player-progression-persistence',
-                  label: 'Points and achievement storage',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/ordered-trails-persistence',
-                  label: 'Trail storage and API',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/asynchronous-pvp-persistence',
-                  label: 'Player battle storage',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/live-pvp-persistence',
-                  label: 'Live player battle storage',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/ranked-competition-persistence',
-                  label: 'Ranked competition storage',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/contested-campus-territory-persistence',
-                  label: 'Contested-campus territory storage',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/card-trading-persistence',
-                  label: 'Card trading storage',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/trust-persistence',
-                  label: 'Trust and review storage',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/account-deletion-retention',
-                  label: 'Account deletion and retained data',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/developer-api-keys',
-                  label: 'Developer API key storage',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/campaign-scheduling-persistence',
-                  label: 'Campaign schedule storage',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/question-performance-analytics',
-                  label: 'Question performance reports',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/advanced-analytics',
-                  label: 'Advanced analytics storage and privacy',
-                },
-                {
-                  type: 'doc',
-                  id: 'database/verified-event-content',
-                  label: 'Campus events, questions and sources',
-                },
-              ],
-            },
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Architecture decisions',
-          items: [
-            {
-              type: 'doc',
-              id: 'architecture/decisions/README',
-              label: 'Architecture decisions explained',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/decisions/ADR-001-monorepo',
-              label: 'ADR-001 — One repository',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/decisions/ADR-002-separate-web-api',
-              label: 'ADR-002 — Separate frontend and API',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/decisions/ADR-003-postgresql-postgis',
-              label: 'ADR-003 — PostgreSQL and PostGIS',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/decisions/ADR-004-map-provider-boundary',
-              label: 'ADR-004 — Map display and server rules',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/decisions/ADR-005-auth0-authentication',
-              label: 'ADR-005 — Auth0 authentication',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/decisions/ADR-006-poor-gps-presence-fallback',
-              label: 'ADR-006 — Poor-GPS options (proposed)',
-            },
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Reviews and comparisons',
-          items: [
-            {
-              type: 'doc',
-              id: 'database/architecture-review-2026-09',
-              label: 'Database review — September 2026',
-            },
-
-            {
-              type: 'doc',
-              id: 'architecture/authentication-provider-comparison',
-              label: 'Authentication options compared',
-            },
-            {
-              type: 'doc',
-              id: 'architecture/map-provider-evaluation',
-              label: 'Map options compared (historical)',
-            },
-          ],
-        },
+          'database/overview',
+        ),
+        category('Interface', [
+          doc('design/ui-ux-design', 'UI/UX design'),
+          doc('design/state-review', 'Interaction states'),
+        ]),
+        category('Testing', [
+          doc('testing/testing-strategy', 'Strategy'),
+          doc('testing/automated-verification', 'Test suites'),
+          doc('testing/continuous-integration', 'CI workflows'),
+        ]),
+        category('Operations', [
+          doc('deployment/azure-deployment-setup', 'Azure deployment'),
+          doc('database/database-release-procedure', 'Database releases'),
+          doc('deployment/ranked-operations', 'Gameplay workers'),
+        ]),
       ],
     },
     {
       type: 'category',
-      label: 'Development & deployment',
+      label: 'API',
+      collapsed: true,
       link: {
-        type: 'generated-index',
-        slug: '/development-operations',
+        type: 'doc',
+        id: 'api-reference',
       },
       items: [
-        {
-          type: 'doc',
-          id: 'development/getting-started',
-          label: 'Set up the project locally',
-        },
-        {
-          type: 'doc',
-          id: 'development/documentation-site',
-          label: 'Update and publish documentation',
-        },
-        {
-          type: 'category',
-          label: 'Local database and demo data',
-          items: [
-            {
-              type: 'doc',
-              id: 'database/neon-postgis-setup',
-              label: 'Set up Neon and PostGIS',
-            },
-            {
-              type: 'doc',
-              id: 'database/basic-demo-seed',
-              label: 'Load demo events and challenges',
-            },
-          ],
-        },
-        {
-          type: 'category',
-          label: 'CI and application deployment',
-          items: [
-            {
-              type: 'doc',
-              id: 'testing/continuous-integration',
-              label: 'CI checks and deployment workflows',
-            },
-            {
-              type: 'doc',
-              id: 'deployment/azure-deployment-setup',
-              label: 'Deploy the app and API to Azure',
-            },
-            {
-              type: 'doc',
-              id: 'deployment/mapbox-operations',
-              label: 'Configure and operate Mapbox',
-            },
-            {
-              type: 'doc',
-              id: 'deployment/ranked-operations',
-              label: 'Operate ranked competition',
-            },
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Database setup and recovery',
-          items: [
-            {
-              type: 'doc',
-              id: 'database/database-release-procedure',
-              label: 'Apply database migrations safely',
-            },
-            {
-              type: 'doc',
-              id: 'database/postgis-recovery-rehearsal',
-              label: 'Test database recovery',
-            },
-          ],
-        },
+        doc('architecture/rate-limiting', 'Rate limits'),
+        category('Players', [
+          doc('architecture/player-profile-api-contract', 'Profiles'),
+          doc('architecture/cards-decks-api-contract', 'Cards and decks'),
+          doc('architecture/card-trading-api-contract', 'Trading'),
+          doc(
+            'architecture/challenge-attempt-api-contract',
+            'Challenges and answers',
+          ),
+          doc('architecture/offline-challenge-play', 'Offline play'),
+        ]),
+        category('Battles and competition', [
+          doc('architecture/cpu-match-api-contract', 'CPU battles'),
+          doc('architecture/asynchronous-pvp-api-contract', 'Player battles'),
+          doc('architecture/live-pvp-api-contract', 'Live PvP'),
+          doc(
+            'architecture/ranked-matchmaking-api-contract',
+            'Ranked matchmaking',
+          ),
+          doc(
+            'architecture/contested-campus-territory-api-contract',
+            'Territories',
+          ),
+        ]),
+        category('Authors', [
+          doc('architecture/trust-review-api-contract', 'Moderation'),
+          doc('architecture/advanced-analytics-api-contract', 'Analytics'),
+        ]),
+        doc('architecture/developer-api', 'External developer API'),
       ],
     },
     {
       type: 'category',
-      label: 'Testing & feedback',
+      label: 'Project',
+      collapsed: true,
       link: {
         type: 'generated-index',
-        slug: '/testing-quality',
+        slug: '/project',
+        title: 'Project',
+        description:
+          'Process, sprint records, reviews, and validation evidence.',
       },
       items: [
-        {
-          type: 'doc',
-          id: 'testing/testing-strategy',
-          label: 'Test strategy, commands and policy',
-        },
-        {
-          type: 'category',
-          label: 'Sprint 2 results and feedback',
-          items: [
-            {
-              type: 'doc',
-              id: 'testing/sprint-2-validation-status',
-              label: 'Sprint 2 test results and release status',
-            },
-            {
-              type: 'doc',
-              id: 'testing/sprint-2-user-testing-plan',
-              label: 'Sprint 2 user-testing plan',
-            },
-            {
-              type: 'doc',
-              id: 'testing/sprint-2-user-feedback-results',
-              label: 'Sprint 2 feedback and resulting changes',
-            },
+        category('Process', [
+          doc('planning/project-and-git-methodology', 'Methodology and Git'),
+          doc('planning/work-tracking-and-issue-management', 'Work and bugs'),
+          doc('planning/delivery-roadmap', 'Roadmap'),
+          doc('planning/risk-register', 'Risks'),
+          doc('planning/ai-use', 'AI use'),
+        ]),
+        category(
+          'Sprints',
+          [
+            sprint(1, [
+              sprintReport(1),
+              doc('planning/scrum/sprint-1/evidence', 'Evidence'),
+            ]),
+            sprint(2, [
+              sprintReport(2),
+              doc('planning/scrum/sprint-2/evidence', 'Evidence'),
+              doc('planning/scrum/sprint-2/feedback', 'User feedback'),
+            ]),
+            sprint(3, [
+              sprintReport(3),
+              doc('planning/scrum/sprint-3/evidence', 'Evidence'),
+              doc('planning/scrum/sprint-3/feedback', 'User feedback'),
+            ]),
+            sprint(4, [
+              sprintReport(4),
+              doc('planning/scrum/sprint-4/evidence', 'Evidence'),
+            ]),
           ],
-        },
-        {
-          type: 'category',
-          label: 'Sprint 3 results and feedback',
-          items: [
-            {
-              type: 'doc',
-              id: 'testing/sprint-3-validation-status',
-              label: 'Sprint 3 validation and release gaps',
-            },
-            {
-              type: 'doc',
-              id: 'testing/sprint-3-user-testing-plan',
-              label: 'Sprint 3 user-testing and retest plan',
-            },
-            {
-              type: 'doc',
-              id: 'testing/sprint-3-user-feedback-results',
-              label: 'Sprint 3 user feedback and follow-up',
-            },
+          'planning/scrum/index',
+        ),
+        category(
+          'Stakeholder reviews',
+          [
+            doc(
+              'planning/stakeholder-interactions/initial-client-meeting',
+              'Project introduction',
+            ),
+            doc(
+              'planning/stakeholder-interactions/2026-09-04-database-usage-review',
+              'Database and hosting',
+            ),
+            doc(
+              'planning/stakeholder-interactions/2026-09-08-trails-and-card-art-review',
+              'Trails and artwork',
+            ),
+            doc(
+              'planning/stakeholder-interactions/2026-09-11-frontend-ui-review',
+              'Interface clarity',
+            ),
+            doc(
+              'planning/stakeholder-interactions/2026-09-21-battle-performance-review',
+              'Battle performance',
+            ),
+            doc(
+              'planning/stakeholder-interactions/2026-09-23-account-deletion-review',
+              'Account deletion',
+            ),
+            doc(
+              'planning/stakeholder-interactions/2026-09-25-territories-and-rate-limits-review',
+              'Territories and rate limits',
+            ),
           ],
-        },
-        {
-          type: 'category',
-          label: 'Release testing and checklists',
-          items: [
-            {
-              type: 'category',
-              label: 'Basic release results and follow-up',
-              items: [
-                {
-                  type: 'doc',
-                  id: 'testing/basic-release-validation-167',
-                  label: 'Basic release test results (#167)',
-                },
-                {
-                  type: 'doc',
-                  id: 'testing/basic-release-player-session',
-                  label: 'Player test session guide',
-                },
-                {
-                  type: 'doc',
-                  id: 'testing/basic-release-accessibility-matrix',
-                  label: 'Accessibility and device checklist',
-                },
-                {
-                  type: 'doc',
-                  id: 'testing/basic-release-stakeholder-review',
-                  label: 'Next stakeholder review template',
-                },
-                {
-                  type: 'doc',
-                  id: 'testing/basic-release-findings',
-                  label: 'Record findings and retests',
-                },
-              ],
-            },
-            {
-              type: 'doc',
-              id: 'testing/basic-tier-deterministic-e2e',
-              label: 'Basic game end-to-end tests',
-            },
-            {
-              type: 'doc',
-              id: 'testing/automated-verification',
-              label: 'Database and end-to-end test gates',
-            },
-            {
-              type: 'doc',
-              id: 'testing/basic-tier-release-validation',
-              label: 'Basic release acceptance checklist',
-            },
-            {
-              type: 'doc',
-              id: 'testing/deployed-auth-cors-privacy-review',
-              label: 'Live authentication and privacy checks',
-            },
-            {
-              type: 'doc',
-              id: 'testing/player-account-lifecycle-validation',
-              label: 'Account recovery and deletion checks',
-            },
-            {
-              type: 'doc',
-              id: 'testing/api-battle-responsiveness',
-              label: 'API speed and battle response results',
-            },
-            {
-              type: 'doc',
-              id: 'testing/pvp-request-phase-timing',
-              label: 'PvP request phase timing',
-            },
-            {
-              type: 'doc',
-              id: 'requirements/location-eligibility-field-test',
-              label: 'On-campus location testing guide',
-            },
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Stakeholder meetings',
-          link: { type: 'doc', id: 'planning/stakeholder-interactions/index' },
-          items: [
-            {
-              type: 'doc',
-              id: 'planning/stakeholder-interactions/initial-client-meeting',
-              label: 'Meeting 1 — Calvin Rea',
-            },
-            {
-              type: 'doc',
-              id: 'planning/stakeholder-interactions/2026-09-04-database-usage-review',
-              label: 'Meeting 2 — Calvin Rea',
-            },
-            {
-              type: 'doc',
-              id: 'planning/stakeholder-interactions/2026-09-08-trails-and-card-art-review',
-              label: 'Meeting 3 — Calvin Rea',
-            },
-            {
-              type: 'doc',
-              id: 'planning/stakeholder-interactions/2026-09-11-frontend-ui-review',
-              label: 'Meeting 4 — Calvin Rea',
-            },
-            {
-              type: 'category',
-              label: 'Sprint 3 review plans',
-              items: [
-                {
-                  type: 'doc',
-                  id: 'planning/stakeholder-interactions/2026-09-21-battle-performance-review',
-                  label: '21 September - Battle performance',
-                },
-                {
-                  type: 'doc',
-                  id: 'planning/stakeholder-interactions/2026-09-23-account-deletion-review',
-                  label: '23 September - Account deletion',
-                },
-                {
-                  type: 'doc',
-                  id: 'planning/stakeholder-interactions/2026-09-25-territories-and-rate-limits-review',
-                  label: '25 September - Territories and rate limits',
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-    {
-      type: 'category',
-      label: 'Project & sprint records',
-      link: {
-        type: 'generated-index',
-        slug: '/project-management',
-      },
-      items: [
-        {
-          type: 'category',
-          label: 'Team workflow and responsibilities',
-          items: [
-            {
-              type: 'doc',
-              id: 'planning/project-and-git-methodology',
-              label: 'How we plan, build and review work',
-            },
-            {
-              type: 'doc',
-              id: 'planning/work-tracking-and-issue-management',
-              label: 'Track tasks, bugs and fixes',
-            },
-            {
-              type: 'doc',
-              id: 'planning/sprint-3-governance-and-evidence',
-              label: 'Sprint 3 process and evidence',
-            },
-            {
-              type: 'doc',
-              id: 'planning/sprint-2-governance-and-evidence',
-              label: 'Sprint 2 process and evidence',
-            },
-            {
-              type: 'doc',
-              id: 'planning/ai-use',
-              label: 'AI tools and contribution disclosure',
-            },
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Plans and risks',
-          items: [
-            {
-              type: 'doc',
-              id: 'planning/delivery-roadmap',
-              label: 'Delivery roadmap (original plan)',
-            },
-            {
-              type: 'doc',
-              id: 'planning/risk-register',
-              label: 'Project risks and mitigations',
-            },
-          ],
-        },
-        {
-          type: 'doc',
-          id: 'planning/scrum/index',
-          label: 'Sprint meeting overview',
-        },
-        {
-          type: 'category',
-          label: 'Sprint 3 coordination and review',
-          items: [
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-3/initial-planning',
-              label: 'Planning',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-3/daily-scrum-01',
-              label: 'Checkpoint 1 - Foundations',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-3/daily-scrum-02',
-              label: 'Checkpoint 2 - Backend integration',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-3/backlog-refinement',
-              label: 'Backlog refinement',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-3/daily-scrum-03',
-              label: 'Checkpoint 3 - Player and Author experience',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-3/daily-scrum-04',
-              label: 'Checkpoint 4 - Feedback and release readiness',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-3/sprint-review',
-              label: 'Review',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-3/sprint-retrospective',
-              label: 'Retrospective',
-            },
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Sprint 2 meetings',
-          items: [
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-2/initial-planning',
-              label: 'Planning',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-2/daily-scrum-01',
-              label: 'Daily Scrum 1 — Foundations',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-2/daily-scrum-02',
-              label: 'Daily Scrum 2 — Backend integration',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-2/backlog-refinement',
-              label: 'Backlog refinement',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-2/daily-scrum-03',
-              label: 'Daily Scrum 3 — Player experience',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-2/daily-scrum-04',
-              label: 'Daily Scrum 4 — Testing and feedback',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-2/sprint-review',
-              label: 'Review',
-            },
-            {
-              type: 'doc',
-              id: 'planning/scrum/sprint-2/sprint-retrospective',
-              label: 'Retrospective',
-            },
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Sprint 1 evidence',
-          items: [
-            {
-              type: 'category',
-              label: 'Test results and demo',
-              items: [
-                {
-                  type: 'doc',
-                  id: 'testing/sprint-1-evidence-index',
-                  label: 'Sprint 1 evidence overview',
-                },
-                {
-                  type: 'doc',
-                  id: 'testing/sprint-1-deterministic-e2e',
-                  label: 'Sprint 1 end-to-end tests',
-                },
-                {
-                  type: 'doc',
-                  id: 'testing/sprint-1-release-validation',
-                  label: 'Sprint 1 release checks',
-                },
-                {
-                  type: 'doc',
-                  id: 'testing/sprint-1-demonstration-script',
-                  label: 'Sprint 1 demo walkthrough',
-                },
-                {
-                  type: 'doc',
-                  id: 'testing/sprint-1-known-limitations',
-                  label: 'Sprint 1 known limitations',
-                },
-              ],
-            },
-            {
-              type: 'category',
-              label: 'Planning and Scrum meetings',
-              items: [
-                {
-                  type: 'doc',
-                  id: 'planning/scrum/sprint-1/initial-planning',
-                  label: 'Sprint 1 planning',
-                },
-                {
-                  type: 'doc',
-                  id: 'planning/scrum/sprint-1/daily-scrum-01',
-                  label: 'Daily Scrum 1 — Foundations',
-                },
-                {
-                  type: 'doc',
-                  id: 'planning/scrum/sprint-1/daily-scrum-02',
-                  label: 'Daily Scrum 2 — System integration',
-                },
-                {
-                  type: 'doc',
-                  id: 'planning/scrum/sprint-1/backlog-refinement',
-                  label: 'Sprint 1 backlog refinement',
-                },
-                {
-                  type: 'doc',
-                  id: 'planning/scrum/sprint-1/daily-scrum-03',
-                  label: 'Daily Scrum 3 — Refinement outcomes',
-                },
-                {
-                  type: 'doc',
-                  id: 'planning/scrum/sprint-1/daily-scrum-04',
-                  label: 'Daily Scrum 4 — Basic game integration',
-                },
-                {
-                  type: 'doc',
-                  id: 'planning/scrum/sprint-1/sprint-review',
-                  label: 'Sprint 1 review',
-                },
-                {
-                  type: 'doc',
-                  id: 'planning/scrum/sprint-1/sprint-retrospective',
-                  label: 'Sprint 1 retrospective',
-                },
-              ],
-            },
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Past task plans',
-          items: [
-            {
-              type: 'doc',
-              id: 'planning/wits-quest-sprint-2-gitea-issues',
-              label: 'Sprint 2 task plan (historical)',
-            },
-            {
-              type: 'doc',
-              id: 'planning/wits-quest-sprint-1-gitea-issues',
-              label: 'Sprint 1 task plan (historical)',
-            },
-            {
-              type: 'doc',
-              id: 'planning/sprint-1-week-2-gitea-issues',
-              label: 'Sprint 1 week 2 plan (historical)',
-            },
-          ],
-        },
+          'planning/stakeholder-interactions/index',
+        ),
       ],
     },
   ],

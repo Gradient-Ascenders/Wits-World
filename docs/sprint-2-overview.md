@@ -26,9 +26,8 @@ and Mapbox supplies map presentation. See the
 - [Live app](https://witsworld.co.za) and [public docs](https://wits-world-docs.pages.dev).
 - [Public interactive API](https://witsworld-api-a4awdtdahbbkh8g4.southafricanorth-01.azurewebsites.net/documentation/).
 - [Basic/Intermediate feature and evidence matrix](requirements/sprint-2-feature-matrix.md).
-- [Dated test, CI, deployment and limitation snapshot](testing/sprint-2-validation-status.md).
-- [#167 local release evidence and follow-up pack](testing/basic-release-validation-167.md):
-  recorded tests plus player-session, accessibility, stakeholder-review and retest templates.
+- [Dated test, CI, deployment and limitation snapshot](testing/sprint-2-validation-status.md):
+  includes the 13 September local release results and their outstanding acceptance gaps.
 
 Main revision `9a2f941` has recorded successful CI and application/docs deployments.
 The complete release acceptance remains open under #167. The status page
@@ -46,12 +45,12 @@ This is an evidence guide, not a predicted grade or claim that every band is met
 | Core features                  | 25%    | [Feature matrix](requirements/sprint-2-feature-matrix.md), [Basic reference](basic-release-reference.md)                                                                                                                                                                                                                | Demonstrate deployed behaviour; implementation alone does not establish the permitted bug count                            |
 | Automated testing              | 10%    | [Dated results](testing/sprint-2-validation-status.md), [testing strategy](testing/testing-strategy.md)                                                                                                                                                                                                                 | UI/API coverage and specific results; outstanding nightly and manual gates remain visible                                  |
 | Stakeholder reviews            | 10%    | [Meeting 2 — Database & hosting](planning/stakeholder-interactions/2026-09-04-database-usage-review.md), [Meeting 3 — Trails & card artwork](planning/stakeholder-interactions/2026-09-08-trails-and-card-art-review.md), [Meeting 4 — Frontend UI](planning/stakeholder-interactions/2026-09-11-frontend-ui-review.md) | Records distinguish feedback, evaluation, changes and missing follow-up                                                    |
-| API                            | 15%    | [API overview/OpenAPI](architecture/api-overview.md), [external integrations](architecture/external-integrations.md)                                                                                                                                                                                                    | Public API docs and implemented integrations; HTTP reachability is not an authenticated end-to-end pass                    |
+| API                            | 15%    | [API reference/OpenAPI](api-reference.md), [external integrations](architecture/external-integrations.md)                                                                                                                                                                                                               | Public API docs and implemented integrations; HTTP reachability is not an authenticated end-to-end pass                    |
 | User feedback                  | 10%    | [Formal process](testing/sprint-2-user-testing-plan.md), [actual results and issue/change trail](testing/sprint-2-user-feedback-results.md)                                                                                                                                                                             | Ten responses, five accepted findings; incomplete change/retest evidence is identified                                     |
 | Project methodology            | 10%    | [Project/Git methodology](planning/project-and-git-methodology.md), [Sprint 2 governance](planning/sprint-2-governance-and-evidence.md)                                                                                                                                                                                 | Show actual issues/PRs and recorded meetings; process documentation alone is insufficient                                  |
 | Bug tracker                    | 5%     | [Work/bug tracking](planning/work-tracking-and-issue-management.md), [Gitea issues](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues)                                                                                                                                                                        | Tracker is authoritative; old planning checkboxes are not live status                                                      |
-| Database documentation         | 5%     | [Schema and relationship guide](database/overview.md), [deployment](database/neon-postgis-setup.md), [migrations](database/database-release-procedure.md), [selection rationale](architecture/decisions/ADR-003-postgresql-postgis.md)                                                                                  | Distinguish schema reference from proof of production migration/recovery                                                   |
-| Third-party code documentation | 5%     | [Software/services and motivations](architecture/third-party-software-and-services.md)                                                                                                                                                                                                                                  | Direct dependencies, supporting tooling and unused declarations are distinguished; transitive inventory is in the lockfile |
+| Database documentation         | 5%     | [Schema and relationship guide](database/overview.md), [deployment](database/neon-postgis-setup.md), [migrations](database/database-release-procedure.md), [database technology](architecture/technology-stack.md#postgresql-postgis-and-pg)                                                                            | Distinguish schema reference from proof of production migration/recovery                                                   |
+| Third-party code documentation | 5%     | [Software/services and motivations](architecture/technology-stack.md#application-stack)                                                                                                                                                                                                                                 | Direct dependencies, supporting tooling and unused declarations are distinguished; transitive inventory is in the lockfile |
 | Testing documentation          | 5%     | [Policy and procedures](testing/testing-strategy.md), [CI](testing/continuous-integration.md), [formal user-testing process](testing/sprint-2-user-testing-plan.md)                                                                                                                                                     | Procedures and completed results are separate pages                                                                        |
 
 Also keep [AI-use declarations](planning/ai-use.md) and
@@ -59,17 +58,14 @@ Also keep [AI-use declarations](planning/ai-use.md) and
 
 ## Sprint meetings and process evidence
 
-The [sprint meeting overview](planning/scrum/index.md) now includes Sprint 2
-planning, four Daily Scrum records with the supplied meeting photos, backlog
-refinement, the review and the retrospective. These records arrived through
+Read the [Sprint 2 report](planning/scrum/sprint-2/report.md) for planning,
+four Daily Scrums with meeting photos, backlog refinement, Review, and
+Retrospective in one document. It incorporates the ceremony records introduced in
 [PR #248](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/248).
 
-Start with [Daily Scrum 1 and its photo](planning/scrum/sprint-2/daily-scrum-01.md#meeting-photo),
-the [Sprint 2 review](planning/scrum/sprint-2/sprint-review.md), and the
-[retrospective](planning/scrum/sprint-2/sprint-retrospective.md).
-The overview also retains the original Sprint 1 meetings and their photos.
-Record dates and reporting windows remain separate from image provenance and
-from the dated test/deployment evidence below.
+The [sprint records index](planning/scrum/index.md) retains source and image
+provenance across all sprints. Record dates and reporting windows remain
+separate from image provenance and dated test/deployment evidence.
 
 ## Product and player journeys
 
@@ -120,8 +116,8 @@ Sprint 2 stakeholder records:
 - [Player account validation](testing/player-account-lifecycle-validation.md)
   records provider-owned and manual checks.
 - [Location field-test protocol](requirements/location-eligibility-field-test.md)
-  covers real-device evidence. [ADR-006](architecture/decisions/ADR-006-poor-gps-presence-fallback.md)
-  is a fallback evaluation, not permission to bypass current eligibility rules.
+  covers real-device evidence. Poor-GPS alternative proof remains unimplemented;
+  current eligibility rules still apply.
 
 The user-feedback report identifies outstanding deployed follow-up sessions.
 Keep these limits visible when preparing a demo or submission; do not relabel
@@ -141,3 +137,5 @@ This reading guide was prepared with assistance from Codex-CLI[GPT-6] using
 existing repository records. It adds navigation, not new acceptance evidence.
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Sprint report links updated with assistance from Codex[GPT-6].

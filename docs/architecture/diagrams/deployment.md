@@ -1,102 +1,93 @@
 ---
-title: 'Hosting and deployment diagram'
+title: 'Deployment'
 ---
 
-# Hosting and deployment diagram
+# Deployment
 
-This diagram records the currently implemented deployment architecture. The
-services are selected and deployed, while release-specific verification and
-some operational acceptance decisions remain separate gates.
+The Web and API deploy to separate Azure App Services. Neon hosts the database,
+and Cloudflare Pages hosts the documentation. Gitea Actions validates changes
+and delivers the application builds.
 
-<div className="diagram-scroll" role="region" aria-label="Hosting and deployment diagram — diagram 1" tabIndex={0}>
+## Release flow
+
+<div className="diagram-scroll" role="region" aria-label="Application and documentation release paths" tabIndex={0}>
 
 ```mermaid
 flowchart TB
-    accTitle: From pull request to production
-    accDescr: Pull requests run checks before review and merge. Main CI deploys the web and API independently, releasing the guarded database before the API. A separate path-filtered workflow publishes documentation.
-    PR["Branch and pull request"] --> Checks["PR validation<br/>Static checks, tests, isolated DB and builds"]
-    Checks --> Review["Team review and merge to main"]
-    Review --> Main["Main CI checks and release artifacts"]
-    Review --> DocsBuild["Docs workflow<br/>Relevant path changes only"]
-    Main --> Web["Azure App Service<br/>Web deployment and smoke check"]
-    Main --> Guard["API change and current-main guards"]
-    Guard --> Release["Production DB release<br/>Confirmed target; bounded direct migrations"]
-    Release -->|"Direct session; lock/statement deadlines"| DB[("Neon PostgreSQL / PostGIS")]
-    Release --> API["Azure App Service<br/>API deployment and smoke check"]
-    API -->|"Encrypted runtime connection; pooler permitted"| DB
-    DocsBuild --> Docs["Cloudflare Pages<br/>Docusaurus documentation"]
+    accTitle: From pull request to application and documentation releases
+    accDescr: Pull requests run validation before review and merge. Main CI validates and builds application artifacts. API releases apply bounded direct database migrations before deployment; eligible Web releases require the same-commit API publication and contract checks. Relevant documentation changes follow a separate Cloudflare Pages workflow.
+
+    PR["Pull request"]
+    Checks["PR validation<br/>Static, database, journey, and build checks"]
+    Merge["Review and merge to main"]
+    Main["Main CI<br/>Checks and application artifacts"]
+
+    subgraph Applications["Application release paths"]
+        Web["Web release<br/>API contract gate, deployment and smoke check"]
+        Guard["API release guards<br/>Required changes and current main"]
+        Migrate["Database release<br/>Confirm target; bounded direct migrations"]
+        API["API release<br/>Azure deployment and smoke check"]
+        Guard --> Migrate --> API
+        API -->|"Same-commit publication and compatible contracts"| Web
+    end
+
+    Docs["Documentation workflow<br/>Build and publish to Cloudflare Pages"]
+
+    PR --> Checks --> Merge
+    Merge --> Main
+    Main -->|"Eligible API or Web changes"| Guard
+    Merge -->|"Relevant documentation paths"| Docs
+
+    classDef authority stroke:#9d8130,stroke-width:2px;
+    class Migrate authority;
 ```
 
 </div>
 
-This is a workflow map, not a claim that the latest run passed. Use the
-[dated release status](../../testing/sprint-2-validation-status.md) for evidence.
-The separate [automated verification gate](../../testing/automated-verification.md)
-is still present on this branch; it is not shown as a prerequisite of every deploy.
+## Application delivery
 
-## Deployment requirements
+`pr-validation.yml` checks formatting, linting, types, tests, isolated PostGIS
+databases, Basic browser journeys, and builds. Review and merge lead to
+`ci.yml`, whose validation jobs prepare the release artifacts on `main`.
 
-- The web application, API, and documentation site are independently buildable.
-- The web application and API are independently deployable.
-- The API and database are not bundled into the browser application.
-- Deployment credentials remain outside the repository.
-- Production browser traffic uses HTTPS.
-- The deployed API connects to a PostGIS-capable database.
-- The static web host supports browser-history routing or an equivalent
-  fallback to `index.html`.
-- CI checks formatting, linting, type checking, tests, and builds before
-  deployment.
-- Deployment smoke tests verify that the web application and API are reachable.
-- Browser-facing configuration contains only public values.
-- Private database and authentication credentials are supplied only to trusted
-  deployment environments.
+Web and API deployment jobs check whether a release is needed and reject stale
+commits. The API release verifies the production database target and applies
+migrations through a direct connection before deploying the API. Migration lock
+waits and statements have deadlines; a failed release blocks API publication.
+Content seeding is a separate operation.
 
-## Expected CI/CD flow
+Web publication follows successful same-commit API publication, health
+verification, and the compact Battles contract gate. Web-only releases also
+publish an API artifact; API-only changes can skip Web publication.
 
-1. A team member opens a pull request targeting `main`.
-2. `pr-validation.yml` runs static checks, application/package tests, isolated
-   database tests, and builds. The team reviews the change before merge.
-3. `ci.yml` runs on `main`, prepares release artifacts, and deploys eligible Web
-   and API changes through separate jobs. API deployment rejects stale commits
-   and runs the guarded production database release before deploying the API.
-   Migration sessions use the direct Neon endpoint with bounded waits; the
-   runtime may keep its pooled URL. Release failures prevent API publication.
-4. `docs-deploy.yml` independently builds and publishes documentation when its
-   configured paths change on `main`. A Web/API deployment is not proof that
-   the documentation deployment succeeded.
-5. Deployment jobs perform their configured smoke checks. Authenticated player
-   journeys and operational recovery require their own evidence.
+Configured smoke checks confirm basic reachability and release responses.
+Full player journeys and operational recovery have their own validation scope.
 
-Sources: [main CI workflow](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/.gitea/workflows/ci.yml),
-[PR validation](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/.gitea/workflows/pr-validation.yml),
-[docs deployment](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/.gitea/workflows/docs-deploy.yml),
-and [database release procedure](../../database/database-release-procedure.md).
+## Documentation delivery
 
-## Remaining deployment and operational decisions
+`docs-deploy.yml` runs independently for relevant changes on `main`, or through
+its manual trigger. It builds Docusaurus and publishes the static output to
+Cloudflare Pages. An application deployment does not publish the documentation.
 
-The current hosts, Auth0 provider, Mapbox team technology choice, production
-origins, and platform-managed secret boundaries are selected. The following
-still require operational review or evidence:
+## Runtime hosting
 
-- Mapbox licensing/terms, production-token/CSP/privacy, usage/cost ownership,
-  and campus-data readiness;
-- operational approval and evidence for database backup and recovery;
-- credential rotation and ongoing least-privilege review; and
-- production observability tooling.
+| Component     | Host                       | Connection                                                                                                                  |
+| ------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Web           | Azure App Service          | Browser requests to the API over HTTPS; live battles also use WebSockets.                                                   |
+| API           | Separate Azure App Service | Server-side database, authentication-management, and Redis connections.                                                     |
+| Database      | Neon                       | PostgreSQL/PostGIS over TLS; direct endpoints for migrations and notifications, with pooling permitted for runtime queries. |
+| Documentation | Cloudflare Pages           | Public static pages and browser-local search.                                                                               |
 
-Not every current hosting selection has a dedicated accepted ADR. Operational
-documentation and deployed workflow configuration are the current evidence;
-future material changes should receive an ADR rather than rewriting history.
+Browser builds contain public configuration. Database URLs, Management API
+credentials, and Redis credentials stay in server configuration. Azure serves
+the Web application's history routes through its configured fallback.
 
----
+See [Continuous integration](../../testing/continuous-integration.md),
+[Azure deployment](../../deployment/azure-deployment-setup.md), and
+[database releases](../../database/database-release-procedure.md) for
+commands and operating procedures. Executed checks are recorded in the
+[sprint evidence](../../planning/scrum/sprint-2/evidence.md#verification).
 
-The preceding document was planned and generated with the assistance of
-ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
-edited for Sprint 1 release validation with assistance from
-ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
-
-Page title and diagram updated against the current repository with assistance
-from Codex-CLI[GPT-6].
-
-Connection and bounded-release labels were updated with assistance from
-Codex[GPT-5].
+**AI declaration:** Prepared and updated with assistance from
+ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex-CLI[GPT-5],
+Codex[GPT-5], Codex-CLI[GPT-6], and Codex[GPT-6].

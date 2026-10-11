@@ -4,101 +4,79 @@ title: 'How event access is calculated'
 
 # How event access is calculated
 
-The API event-eligibility service decides whether a submitted location claim is
-inside the authoritative radius stored for an event. The browser and map display
-do not calculate the authoritative result.
+Event access combines effective availability, a reported location, and server
+checks. The API makes the decision using PostgreSQL/PostGIS. Map markers and
+browser distance displays present that decision.
 
-## Inputs and authority
+## Availability and location
 
-The service accepts an event identifier, latitude, and longitude. Latitude must
-be a finite number from `-90` through `90`; longitude must be a finite number
-from `-180` through `180`.
+The service first resolves the event's publication state and effective schedule,
+including campaign membership. The active interval includes its start and
+excludes its end.
 
-The submitted coordinates are an untrusted location claim. PostgreSQL/PostGIS
-remains authoritative for the event location, radius, publication state, and
-availability period. The query uses parameters for every submitted value and
-constructs the claim point in longitude-latitude order with SRID 4326.
+A fixed event uses its authored point. A placement-managed event uses the
+assignment valid at the evaluation time. Without a valid assignment it is
+unavailable; the service does not fall back to an old authored point.
 
-## Outcomes
+See [event fields](event-schema.md) and
+[placement storage](automatic-event-placement-persistence.md) for those
+resolvers.
 
-The service returns one of three outcomes:
+## Location claim
 
-- `not_found` when the event identifier has no stored row;
-- `unavailable` when the event is unpublished, has not started, or has ended;
-- `evaluated` with the distance, stored radius, and eligibility decision.
+The authenticated request supplies latitude, longitude, reported accuracy in
+metres, and acquisition time. The API derives the player identity.
 
-Unpublished events are reported as unavailable before considering their time
-period. Availability uses the half-open interval `starts_at <= now < ends_at`.
+Coordinates must be finite and within latitude `-90…90` and longitude
+`-180…180`. Accuracy must be finite and non-negative. Online readings cannot
+be from the future or older than the default **120-second** freshness limit.
 
-For available events, `ST_Distance` calculates the distance between the two
-PostGIS `geography` points in metres. `ST_DWithin` compares that distance with
-the stored `radius_metres`; a claim exactly on the radius is eligible.
-
-The service does not return the stored event coordinates.
+The query constructs a WGS 84 point in longitude-latitude order and uses
+parameterised SQL. `ST_Distance` calculates metres between geography points;
+`ST_DWithin` applies the event radius.
 
 ## Reported accuracy policy
 
-A reported point qualifies for the location check when its distance is at most
-the event radius and its real reported accuracy is at most
-`min(150 metres, 2 × event radius)`. Both boundaries are inclusive. Accuracy above
-that bound returns the existing `location_accuracy` retry result; with acceptable
-accuracy, a point outside the radius is unreachable. Accuracy is never clamped
-or replaced, and the uncertainty circle no longer has to fit inside the event.
+A point passes the location check when both conditions hold:
 
-Online event eligibility, challenge start, and offline start use the same
-server policy. Offline finish uses the same accuracy bound for its existing
-movement corroboration; it does not introduce a new finish-inside-radius rule.
-Freshness, chronology, movement plausibility, and all non-location eligibility
-checks remain unchanged. Offline submissions above the bound use the existing
-`OFFLINE_LOCATION_UNVERIFIABLE` response. No secondary-verification flow is
-implemented. This policy tolerates uncertainty and does not prove presence.
-
-## Sprint 1 assumptions
-
-The seeded Great Hall demonstration event uses a provisional radius of `75`
-metres. This is an integration value, not an approved production threshold.
-
-Reported device accuracy and location-acquisition freshness are validated at the
-API request boundary introduced by the event-endpoint work. The current accuracy policy is described above; real-device field testing
-remains necessary to assess access and false acceptance.
-
-The distance service itself does not perform movement analysis, spoofing
-detection, continuous tracking, or challenge-session creation. A failed or
-ambiguous location check must not be presented as evidence that a player is
-cheating.
-
-For issue `#168`, a valid claim for a confirmed active event is passed to the
-internal [privacy-limited movement-evidence service](./movement-evidence.md)
-after reachability is calculated. For issue `#169`, the same internal service
-compares a reachable claim with the latest unexpired accepted anchor using
-PostGIS distance, both accuracy radii, and server receipt time. A journey that
-would require more than the configured maximum speed returns the neutral
-`journey_too_fast` retry result. It is audited but cannot become a later trusted
-anchor. Stale, future, unavailable, or unknown-event requests do not persist
-evidence. No movement history, distance, speed, prior event, or threshold is
-returned by this endpoint.
-
-## Verification
-
-Run the service unit tests with the normal API test command:
-
-```bash
-npm test --workspace @wits-world/api
+```text
+distance <= event radius
+reported accuracy <= min(150 metres, 2 × event radius)
 ```
 
-Run the PostGIS-backed tests against the configured test database:
+Both boundaries are inclusive. Accuracy is used as reported, without clamping
+or replacement. The uncertainty circle does not have to fit inside the event
+radius.
 
-```bash
-npm run test:database --workspace @wits-world/api
-```
+Online eligibility, challenge start, and offline start share this policy.
+Offline finish uses the same accuracy bound for movement corroboration; it
+does not add a finish-inside-radius requirement.
+[Offline play](../architecture/offline-challenge-play.md) defines its separate
+timing and reconciliation rules.
 
-The database test verifies a zero-distance claim at the seeded event, a clearly
-outside claim, unavailable events, and a missing event. Test output and issue
-evidence must not include database credentials or precise player location data.
+## Decision and challenge start
 
-The preceding document was generated and edited with the assistance of:
-Codex[GPT-5].
+| Result      | Meaning                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------- |
+| Reachable   | The point is in range with acceptable accuracy, and the applicable movement check passes. |
+| Unreachable | Accuracy is acceptable, but the point is outside the event radius.                        |
+| Retry       | The reading is stale, future-dated, too inaccurate, or fails the journey check.           |
+| Unavailable | Publication, scheduling, or placement does not permit access.                             |
+| Not found   | No event matches the requested identifier.                                                |
 
-Page title clarified with assistance from Codex-CLI[GPT-6].
+The spatial service supplies the distance and radius decision. The HTTP route
+adds timing, accuracy, and [movement checks](movement-evidence.md), returning
+the player-safe result. It does not expose previous movement samples or
+journey metrics.
 
-The accuracy-policy update was edited with assistance from Codex-CLI[GPT-6].
+Challenge start repeats access checks and saves the attempt transactionally.
+A successful Explore check does not reserve access for a later start. Other
+account and content rules can also prevent a new attempt.
+
+A device reading remains a claim rather than proof of physical presence.
+Player instructions belong in [Explore](../requirements/player-location-journey.md);
+the [attempt contract](../architecture/challenge-attempt-api-contract.md)
+defines challenge requests and responses.
+
+**AI declaration:** Prepared and updated with assistance from Codex[GPT-5],
+Codex-CLI[GPT-6], and Codex[GPT-6].

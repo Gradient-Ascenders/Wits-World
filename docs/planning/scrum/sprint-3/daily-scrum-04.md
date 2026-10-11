@@ -1,26 +1,45 @@
 ---
-title: Sprint 3 coordination snapshot 4 - hardening and feedback
-sidebar_position: 6
+title: Sprint 3 Daily Scrum 4
+sidebar_position: 5
 ---
 
-# Sprint 3 coordination snapshot 4 - hardening and feedback
+# Sprint 3 Daily Scrum 4
 
-This repository-backed reporting window is not a claim that a Daily Scrum
-occurred.
+**Date:** 26–28 September 2026 reporting window.
 
-| Field                | Record                                                                  |
-| -------------------- | ----------------------------------------------------------------------- |
-| Reporting window     | 26-28 September 2026                                                    |
-| Meeting / attendance | No ceremony date, time, attendance, or notes supplied                   |
-| Evidence             | Merged PR history through `c0fd42b`; feedback report dated 28 September |
+> Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
-## Sprint goal context
+[Read the complete sprint report](report.md).
+
+## Meeting photo
+
+<figure className="sprint-meeting-photo">
+  <a href="/img/scrum/sprint-3/daily-scrum-05.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 5">
+    <img
+      src="/img/scrum/sprint-3/daily-scrum-05.png"
+      alt="Sprint 3 supplied team-call photo 5"
+      width="1672"
+      height="941"
+      loading="lazy"
+      decoding="async"
+    />
+  </a>
+  <figcaption>Supplied Sprint 3 photo 5, displayed with Daily Scrum 4.</figcaption>
+</figure>
+
+Photo placement follows the supplied order for presentation; its meeting date
+and association with this record are unconfirmed. See the
+[photo provenance and layout](../index.md#sprint-3-photo-provenance).
+
+## Summary of Progress
+
+### Sprint goal context
 
 Consolidate the delivered player-facing work, address operational and account
 lifecycle concerns, and assess feedback without equating merges with release
 acceptance or retests.
 
-## Progress by stream
+### Progress by stream
 
 - **Product/Web (Kevin, coordination role):** PR #318 unifies battle
   presentation, #321 adds ranked-season UI, #324 card trading UI, #325 decks
@@ -34,15 +53,7 @@ acceptance or retests.
   application/battle performance and #306 accessibility work is in the merge
   history. Automated or deployed outcomes require their own recorded evidence.
 
-## Feedback snapshot
-
-The [Sprint 3 feedback report](../../../testing/sprint-3-user-feedback-results.md)
-records 15 submissions on 28 September, including three identical complete
-answer sets. It identifies six proposed findings. The report records no new
-accepted issues and no participant retests. Findings are signals for triage,
-not verified defects or proof that associated UI/performance PRs resolve them.
-
-## Coordination and impediments
+## Blockers and Open Questions {/* #coordination-and-impediments */}
 
 - Separate PR checks and local benchmark data from named-deployment results.
 - Feedback on action confirmation, recovery, mode/rating clarity, and other
@@ -50,7 +61,15 @@ not verified defects or proof that associated UI/performance PRs resolve them.
 - No ceremony occurrence, attendance, or release sign-off is documented.
 - Territory randomization and Upstash distributed limits remain unimplemented.
 
-## Next actions
+## Actions Taken {/* #feedback-snapshot */}
+
+The [Sprint 3 feedback report](../../../testing/sprint-3-user-feedback-results.md)
+records 15 submissions on 28 September, including three identical complete
+answer sets. It identifies six proposed findings. The report records no new
+accepted issues and no participant retests. Findings are signals for triage,
+not verified defects or proof that associated UI/performance PRs resolve them.
+
+## Next Actions {/* #next-actions */}
 
 - Create or link focused feedback issues only after useful reproduction details
   are captured; retain explicit retest status.
@@ -60,9 +79,20 @@ not verified defects or proof that associated UI/performance PRs resolve them.
   rate-limit behavior through the appropriate existing automated policies and
   recorded manual checks.
 
+## Record Details and Sources
+
+This repository-backed reporting window is not a claim that a Daily Scrum
+occurred.
+
+- **Reporting window:** 26-28 September 2026
+- **Meeting / attendance:** No ceremony date, time, attendance, or notes supplied
+- **Evidence:** Merged PR history through `c0fd42b`; feedback report dated 28 September
+
 ## AI declaration
 
 This coordination summary was drafted with Codex-CLI[gpt-6-luna] assistance
 and reviewed and edited with Codex-CLI[gpt-6-sol], using local merge history and
 the repository's sanitized feedback report. It is not meeting
 minutes, and feedback is not presented as acceptance evidence.
+
+Layout and section structure revised with assistance from Codex[GPT-6], using `vitaqsprint.pdf` as the presentation reference.

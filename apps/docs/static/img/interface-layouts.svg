@@ -1,0 +1,540 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 1280 802"
+  width="1280"
+  height="802"
+  role="img"
+  aria-labelledby="title description"
+>
+  <title id="title">Interface layout relationships</title>
+  <desc id="description">
+    Four schematic layouts. Explore puts event availability beside the start
+    action; deck editing puts the draft beside the collection; battles put
+    combatants above action choices with history alongside; authoring separates
+    draft saving from lifecycle actions. Callout 1 marks decision context and
+    callout 2 marks the related controls. These illustrations are not
+    screenshots.
+  </desc>
+  <style>
+    text {
+      font-family: 'Source Sans 3', Arial, sans-serif;
+      fill: #f7f3e7;
+    }
+    .heading {
+      font-family: 'Source Serif 4', Georgia, serif;
+      font-size: 24px;
+      font-weight: 600;
+    }
+    .label {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .small {
+      font-size: 14px;
+      fill: #b9c3d2;
+    }
+    .note {
+      font-size: 15px;
+      fill: #b9c3d2;
+    }
+    .target {
+      fill: #f7f3e7;
+      font-size: 15px;
+      font-weight: 700;
+    }
+  </style>
+  <rect width="1280" height="802" rx="18" fill="#050b16" />
+  <text x="28" y="39" class="heading">Context beside the decision</text>
+  <text x="1252" y="37" class="small" text-anchor="end">
+    Schematic layouts · 1 Context · 2 Controls
+  </text>
+
+  <rect
+    x="24"
+    y="70"
+    width="604"
+    height="342"
+    rx="12"
+    fill="#0d1b31"
+    stroke="#33445e"
+  />
+  <text x="44" y="104" class="heading" text-anchor="start">Explore</text>
+  <text x="44" y="389" class="note" text-anchor="start">
+    Spatial context and direct browsing share the same event selection.
+  </text>
+  <rect
+    x="44"
+    y="124"
+    width="332"
+    height="237"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <polyline
+    points="94,340 134,260 179,285 236,185 348,226"
+    fill="none"
+    stroke="#33445e"
+    stroke-width="12"
+  />
+  <polyline
+    points="80,204 154,221 230,325 354,313"
+    fill="none"
+    stroke="#33445e"
+    stroke-width="12"
+  />
+  <text x="58" y="149" class="label" text-anchor="start">Campus map</text>
+  <circle cx="236" cy="244" r="9" fill="#54a8ff" />
+  <text x="254" y="250" class="small" text-anchor="start">Selected event</text>
+  <rect
+    x="394"
+    y="124"
+    width="214"
+    height="237"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <text x="409" y="150" class="label" text-anchor="start">
+    Event list / details
+  </text>
+  <text x="409" y="181" class="small" text-anchor="start">
+    Selected campus event
+  </text>
+  <text x="409" y="209" class="small" text-anchor="start">
+    Availability and range
+  </text>
+  <rect
+    x="409"
+    y="225"
+    width="184"
+    height="41"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="421" y="252" class="label" text-anchor="start">In range</text>
+  <circle cx="591" cy="209" r="13" fill="#174a99" stroke="#54a8ff" />
+  <text x="591" y="214" class="target" text-anchor="middle">1</text>
+  <rect
+    x="409"
+    y="290"
+    width="184"
+    height="32"
+    rx="5"
+    fill="#d4af37"
+    stroke="#d4af37"
+  />
+  <text
+    x="501.0"
+    y="311"
+    style="fill: #08101d; font-size: 14px; font-weight: 700"
+    text-anchor="middle"
+  >
+    Start challenge
+  </text>
+  <circle cx="591" cy="287" r="13" fill="#174a99" stroke="#54a8ff" />
+  <text x="591" y="292" class="target" text-anchor="middle">2</text>
+  <rect
+    x="652"
+    y="70"
+    width="604"
+    height="342"
+    rx="12"
+    fill="#0d1b31"
+    stroke="#33445e"
+  />
+  <text x="672" y="104" class="heading" text-anchor="start">Deck editing</text>
+  <text x="672" y="389" class="note" text-anchor="start">
+    Desktop comparison; smaller screens use focused editing views.
+  </text>
+  <rect
+    x="672"
+    y="124"
+    width="218"
+    height="237"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <text x="687" y="150" class="label" text-anchor="start">Draft lineup</text>
+  <rect
+    x="687"
+    y="165"
+    width="51"
+    height="48"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <rect
+    x="749"
+    y="165"
+    width="51"
+    height="48"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <rect
+    x="811"
+    y="165"
+    width="51"
+    height="48"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <rect
+    x="687"
+    y="224"
+    width="51"
+    height="48"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <rect
+    x="749"
+    y="224"
+    width="51"
+    height="48"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="687" y="292" class="small" text-anchor="start">
+    Count · readiness
+  </text>
+  <circle cx="875" cy="287" r="13" fill="#174a99" stroke="#54a8ff" />
+  <text x="875" y="292" class="target" text-anchor="middle">1</text>
+  <rect
+    x="687"
+    y="311"
+    width="188"
+    height="32"
+    rx="5"
+    fill="#d4af37"
+    stroke="#d4af37"
+  />
+  <text
+    x="781.0"
+    y="332"
+    style="fill: #08101d; font-size: 14px; font-weight: 700"
+    text-anchor="middle"
+  >
+    Save deck
+  </text>
+  <circle cx="875" cy="324" r="13" fill="#174a99" stroke="#54a8ff" />
+  <text x="875" y="329" class="target" text-anchor="middle">2</text>
+  <rect
+    x="908"
+    y="124"
+    width="328"
+    height="237"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="924" y="150" class="label" text-anchor="start">
+    Owned collection
+  </text>
+  <rect
+    x="924"
+    y="163"
+    width="296"
+    height="31"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <text x="935" y="184" class="small" text-anchor="start">
+    Search and filters
+  </text>
+  <rect
+    x="924"
+    y="208"
+    width="65"
+    height="55"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <rect
+    x="999"
+    y="208"
+    width="65"
+    height="55"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <rect
+    x="1074"
+    y="208"
+    width="65"
+    height="55"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <rect
+    x="1149"
+    y="208"
+    width="65"
+    height="55"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <rect
+    x="924"
+    y="273"
+    width="65"
+    height="55"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <rect
+    x="999"
+    y="273"
+    width="65"
+    height="55"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <rect
+    x="1074"
+    y="273"
+    width="65"
+    height="55"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <rect
+    x="1149"
+    y="273"
+    width="65"
+    height="55"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <text x="924" y="349" class="small" text-anchor="start">
+    Inspect a card before adding it
+  </text>
+  <rect
+    x="24"
+    y="436"
+    width="604"
+    height="342"
+    rx="12"
+    fill="#0d1b31"
+    stroke="#33445e"
+  />
+  <text x="44" y="470" class="heading" text-anchor="start">Battle</text>
+  <text x="44" y="755" class="note" text-anchor="start">
+    Turn and combatants precede action choices; history is secondary.
+  </text>
+  <rect
+    x="44"
+    y="490"
+    width="358"
+    height="237"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <text x="60" y="516" class="label" text-anchor="start">Current turn</text>
+  <rect
+    x="60"
+    y="531"
+    width="152"
+    height="76"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="72" y="557" class="label" text-anchor="start">Opponent</text>
+  <text x="72" y="583" class="small" text-anchor="start">
+    HP · Power · effects
+  </text>
+  <rect
+    x="234"
+    y="531"
+    width="152"
+    height="76"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="246" y="557" class="label" text-anchor="start">Player</text>
+  <text x="246" y="583" class="small" text-anchor="start">
+    HP · Power · effects
+  </text>
+  <circle cx="383" cy="515" r="13" fill="#174a99" stroke="#54a8ff" />
+  <text x="383" y="520" class="target" text-anchor="middle">1</text>
+  <text x="60" y="635" class="label" text-anchor="start">
+    Moves · Power · Swap
+  </text>
+  <rect
+    x="60"
+    y="648"
+    width="156"
+    height="61"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="72" y="674" class="label" text-anchor="start">Action choice</text>
+  <text x="72" y="695" class="small" text-anchor="start">Effect and cost</text>
+  <rect
+    x="226"
+    y="648"
+    width="156"
+    height="61"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="238" y="674" class="label" text-anchor="start">Action choice</text>
+  <text x="238" y="695" class="small" text-anchor="start">Effect and cost</text>
+  <circle cx="383" cy="636" r="13" fill="#174a99" stroke="#54a8ff" />
+  <text x="383" y="641" class="target" text-anchor="middle">2</text>
+  <rect
+    x="420"
+    y="490"
+    width="188"
+    height="237"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="436" y="518" class="label" text-anchor="start">Battle context</text>
+  <text x="436" y="551" class="small" text-anchor="start">History</text>
+  <text x="436" y="582" class="small" text-anchor="start">Reserve detail</text>
+  <text x="436" y="613" class="small" text-anchor="start">
+    Expanded information
+  </text>
+  <rect
+    x="652"
+    y="436"
+    width="604"
+    height="342"
+    rx="12"
+    fill="#0d1b31"
+    stroke="#33445e"
+  />
+  <text x="672" y="470" class="heading" text-anchor="start">
+    Author editing
+  </text>
+  <text x="672" y="755" class="note" text-anchor="start">
+    Saving a draft and changing its publication state stay distinct.
+  </text>
+  <rect
+    x="672"
+    y="490"
+    width="112"
+    height="237"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="684" y="516" class="label" text-anchor="start">Workspace</text>
+  <text x="684" y="548" class="small" text-anchor="start">Events</text>
+  <text x="684" y="581" class="small" text-anchor="start">Cards</text>
+  <text x="684" y="614" class="small" text-anchor="start">Campaigns</text>
+  <text x="684" y="647" class="small" text-anchor="start">Review</text>
+  <rect
+    x="800"
+    y="490"
+    width="270"
+    height="237"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <text x="815" y="516" class="label" text-anchor="start">Record editor</text>
+  <rect
+    x="815"
+    y="529"
+    width="239"
+    height="33"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="828" y="551" class="small" text-anchor="start">
+    Name and description
+  </text>
+  <rect
+    x="815"
+    y="573"
+    width="239"
+    height="33"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="828" y="595" class="small" text-anchor="start">Content fields</text>
+  <rect
+    x="815"
+    y="617"
+    width="239"
+    height="33"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="828" y="639" class="small" text-anchor="start">Unsaved changes</text>
+  <circle cx="1054" cy="516" r="13" fill="#174a99" stroke="#54a8ff" />
+  <text x="1054" y="521" class="target" text-anchor="middle">1</text>
+  <rect
+    x="815"
+    y="676"
+    width="239"
+    height="32"
+    rx="5"
+    fill="#d4af37"
+    stroke="#d4af37"
+  />
+  <text
+    x="934.5"
+    y="697"
+    style="fill: #08101d; font-size: 14px; font-weight: 700"
+    text-anchor="middle"
+  >
+    Save changes
+  </text>
+  <circle cx="1054" cy="673" r="13" fill="#174a99" stroke="#54a8ff" />
+  <text x="1054" y="678" class="target" text-anchor="middle">2</text>
+  <rect
+    x="1086"
+    y="490"
+    width="150"
+    height="237"
+    rx="8"
+    fill="#081426"
+    stroke="#33445e"
+  />
+  <text x="1099" y="516" class="label" text-anchor="start">Preview</text>
+  <rect
+    x="1099"
+    y="529"
+    width="123"
+    height="67"
+    rx="8"
+    fill="#112440"
+    stroke="#33445e"
+  />
+  <text x="1099" y="628" class="label" text-anchor="start">Lifecycle</text>
+  <text x="1099" y="655" class="small" text-anchor="start">
+    Submit / review
+  </text>
+  <text x="1099" y="682" class="small" text-anchor="start">
+    Publish / retire
+  </text>
+</svg>

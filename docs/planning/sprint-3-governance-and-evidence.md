@@ -95,7 +95,7 @@ decision, implementation scope, issue, and validation.
 
 ## Coordination and retained evidence
 
-The [Sprint 3 Scrum set](scrum/index.md#sprint-3-record) mirrors Sprint 2:
+The [Sprint 3 report](scrum/sprint-3/report.md) mirrors Sprint 2:
 planning, four delivery checkpoints, refinement, review, and retrospective.
 The checkpoints summarize repository windows, and the review/retrospective
 capture release-readiness and process actions. Add actual meeting attendance,
@@ -109,14 +109,14 @@ Publish sanitized aggregates, necessary explanations, links and outcomes.
 
 ## Release-readiness ledger
 
-| Gate                                | Evidence location                                                       | Current boundary                                                                          |
-| ----------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Advanced feature mapping            | [Feature matrix](../requirements/sprint-3-feature-matrix.md)            | Seven feature groups have implementation references; deployed acceptance remains separate |
-| Automated quality                   | [Validation snapshot](../testing/sprint-3-validation-status.md)         | Focused results and configured gates distinguished from a full release/coverage run       |
-| User evaluation and improvement     | [Feedback report](../testing/sprint-3-user-feedback-results.md)         | New finding-specific issues/fixes/retests remain to be recorded                           |
-| Stakeholder evaluation              | [Review plans](stakeholder-interactions/index.md#sprint-3-review-plans) | Demonstrations and itemized acceptance still to be recorded                               |
-| API, spatial and operational checks | [Review checklist](scrum/sprint-3/sprint-review.md)                     | Named deployment, real-campus and operator verification needed                            |
-| Documentation publication           | [Docs deployment](../development/documentation-site.md)                 | Local build does not publish this branch                                                  |
+| Gate                                | Evidence location                                                                | Current boundary                                                                          |
+| ----------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Advanced feature mapping            | [Feature matrix](../requirements/sprint-3-feature-matrix.md)                     | Seven feature groups have implementation references; deployed acceptance remains separate |
+| Automated quality                   | [Validation snapshot](../testing/sprint-3-validation-status.md)                  | Focused results and configured gates distinguished from a full release/coverage run       |
+| User evaluation and improvement     | [Feedback report](../testing/sprint-3-user-feedback-results.md)                  | New finding-specific issues/fixes/retests remain to be recorded                           |
+| Stakeholder evaluation              | [Review plans](stakeholder-interactions/index.md#sprint-3-review-plans)          | Demonstrations and itemized acceptance still to be recorded                               |
+| API, spatial and operational checks | [Review checklist](scrum/sprint-3/report.md#sprint-review)                       | Named deployment, real-campus and operator verification needed                            |
+| Documentation publication           | [Docs deployment](../testing/continuous-integration.md#documentation-publishing) | Local build does not publish this branch                                                  |
 
 ## AI declaration
 

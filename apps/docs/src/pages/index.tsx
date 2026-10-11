@@ -1,4 +1,12 @@
 import type { ReactNode } from 'react';
+import {
+  ArrowRight,
+  BracketsCurly,
+  Cards,
+  ClipboardText,
+  Code,
+  type Icon,
+} from '@phosphor-icons/react';
 import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import Layout from '@theme/Layout';
@@ -6,179 +14,149 @@ import Heading from '@theme/Heading';
 
 import styles from './index.module.css';
 
-const readerPaths = [
+type GuideIconName = 'player' | 'author' | 'developer' | 'api';
+
+const guideIcons: Record<GuideIconName, Icon> = {
+  player: Cards,
+  author: ClipboardText,
+  developer: Code,
+  api: BracketsCurly,
+};
+
+const guides: Array<{
+  title: string;
+  description: string;
+  href: string;
+  icon: GuideIconName;
+}> = [
   {
-    title: 'Understand the product',
-    description:
-      'See what Wits Quest currently delivers, how its rules are defined, and how players move through the game.',
-    links: [
-      {
-        label: 'Sprint 3 overview',
-        href: '/docs/sprint-3-overview',
-      },
-      {
-        label: 'Sprint 2 reference',
-        href: '/docs/sprint-2-overview',
-      },
-      {
-        label: 'Game rules & player experience',
-        href: '/docs/product-requirements',
-      },
-    ],
+    title: 'Player Guide',
+    description: 'Explore campus, collect cards, and learn how battles work.',
+    href: '/docs/player-guide',
+    icon: 'player',
   },
   {
-    title: 'Build and run the system',
-    description:
-      'Find local-service guidance, delivery workflows, deployment procedures, and database operations.',
-    links: [
-      {
-        label: 'Development & deployment',
-        href: '/docs/development-operations',
-      },
-    ],
+    title: 'Author Guide',
+    description: 'Create, review, publish, and evaluate game content.',
+    href: '/docs/author-guide',
+    icon: 'author',
   },
   {
-    title: 'Explore the technical design',
-    description:
-      'Review the system architecture, data model, design decisions, and accessible interface standards.',
-    links: [
-      {
-        label: 'Technical guides',
-        href: '/docs/technical-reference',
-      },
-      {
-        label: 'Database guides',
-        href: '/docs/data-database',
-      },
-      {
-        label: 'Design and accessibility standards',
-        href: '/docs/design/design-system',
-      },
-    ],
+    title: 'Developer Guide',
+    description: 'Set up the project and understand how the system is built.',
+    href: '/docs/developer-guide',
+    icon: 'developer',
   },
   {
-    title: 'Review quality and project evidence',
-    description:
-      'Inspect Sprint 3 user feedback, stakeholder review plans, verification gaps, governance, and coordination records alongside earlier sprint evidence.',
-    links: [
-      {
-        label: 'Testing & feedback',
-        href: '/docs/testing-quality',
-      },
-      {
-        label: 'Project & sprint records',
-        href: '/docs/project-management',
-      },
-    ],
+    title: 'API Reference',
+    description: 'Explore the OpenAPI documentation and feature contracts.',
+    href: '/docs/api-reference',
+    icon: 'api',
   },
 ];
 
-const documentationSections = [
-  { label: 'Start here', href: '/docs/' },
-  {
-    label: 'Game rules & player experience',
-    href: '/docs/product-requirements',
-  },
-  { label: 'Technical guides', href: '/docs/technical-reference' },
-  {
-    label: 'Development & deployment',
-    href: '/docs/development-operations',
-  },
-  { label: 'Testing & feedback', href: '/docs/testing-quality' },
-  { label: 'Project & sprint records', href: '/docs/project-management' },
-];
+function GuideIcon({ name }: { name: GuideIconName }): ReactNode {
+  const GuideIconComponent = guideIcons[name];
+
+  return (
+    <GuideIconComponent
+      aria-hidden="true"
+      className={styles.guideIcon}
+      weight="regular"
+    />
+  );
+}
+
+function ArrowIcon(): ReactNode {
+  return (
+    <ArrowRight aria-hidden="true" className={styles.arrowIcon} weight="bold" />
+  );
+}
 
 function HomepageHeader(): ReactNode {
   return (
     <header className={styles.hero}>
-      <div className={styles.heroGlow} />
-
-      <div className={styles.heroContent}>
-        <div className={styles.eyebrow}>
-          COMS3011A · SOFTWARE DESIGN PROJECT
-        </div>
-
+      <div className={styles.brandLockup}>
+        <img
+          className={styles.heroSeal}
+          src="/img/wits-world-campus-seal.svg"
+          alt=""
+          width="148"
+          height="148"
+        />
         <Heading as="h1" className={styles.heroTitle}>
           Wits World
         </Heading>
+      </div>
 
-        <p className={styles.heroSubtitle}>
-          <strong>Wits World</strong> is the project and repository workspace
-          for <strong>Wits Quest</strong>, a location-based campus exploration
-          game.
-        </p>
+      <p className={styles.heroStatement}>
+        Explore campus. Discover stories. Collect cards. Battle.
+      </p>
 
-        <div className={styles.heroActions}>
-          <Link
-            className={clsx('button button--lg', styles.primaryButton)}
-            to="/docs/"
-          >
-            Open documentation
-          </Link>
+      <p className={styles.heroDescription}>
+        Documentation for the Wits Quest campus exploration game.
+      </p>
 
-          <Link
-            className={clsx('button button--lg', styles.secondaryButton)}
-            to="/docs/sprint-3-overview"
-          >
-            Explore Sprint 3
-          </Link>
-        </div>
+      <div className={styles.heroActions}>
+        <Link
+          className={clsx('button button--lg', styles.primaryButton)}
+          to="/docs/"
+        >
+          Get started
+        </Link>
+        <Link
+          className={clsx('button button--lg', styles.secondaryButton)}
+          to="https://witsworld.co.za/"
+        >
+          Explore the game
+        </Link>
       </div>
     </header>
   );
 }
 
-function DocumentationPaths(): ReactNode {
+function GuideDirectory(): ReactNode {
   return (
-    <section className={styles.documentation}>
-      <div className={styles.sectionHeader}>
-        <Heading as="h2">Choose a path</Heading>
-        <p>
-          Start with the part of Wits World that matches what you need to
-          understand or do.
-        </p>
+    <section className={styles.guideSection} aria-labelledby="guide-heading">
+      <div className={styles.sectionHeading}>
+        <Heading as="h2" id="guide-heading">
+          Choose your guide
+        </Heading>
+        <p>Start with the part of Wits Quest that matches what you need.</p>
       </div>
 
-      <div className={styles.pathGrid}>
-        {readerPaths.map((path, index) => (
-          <article className={styles.pathCard} key={path.title}>
-            <span className={styles.pathNumber} aria-hidden="true">
-              {String(index + 1).padStart(2, '0')}
+      <div className={styles.guideGrid}>
+        {guides.map((guide) => (
+          <Link className={styles.guideCard} to={guide.href} key={guide.href}>
+            <GuideIcon name={guide.icon} />
+            <span className={styles.guideCopy}>
+              <span className={styles.guideTitle}>{guide.title}</span>
+              <span className={styles.guideDescription}>
+                {guide.description}
+              </span>
             </span>
-
-            <Heading as="h3">{path.title}</Heading>
-            <p>{path.description}</p>
-
-            <ul className={styles.pathLinks}>
-              {path.links.map((link) => (
-                <li key={link.href}>
-                  <Link className={styles.pathLink} to={link.href}>
-                    <span>{link.label}</span>
-                    <span aria-hidden="true">→</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </article>
-        ))}
-      </div>
-
-      <div className={styles.directoryHeader}>
-        <Heading as="h2">All documentation</Heading>
-        <p>Browse every major section in the curated documentation guide.</p>
-      </div>
-
-      <nav className={styles.sectionLinks} aria-label="Documentation sections">
-        {documentationSections.map((section) => (
-          <Link
-            className={styles.sectionLink}
-            to={section.href}
-            key={section.href}
-          >
-            {section.label}
+            <ArrowIcon />
           </Link>
         ))}
-      </nav>
+      </div>
+
+      <Link className={styles.projectLink} to="/docs/project">
+        <span>
+          <strong>Project evidence</strong>
+          <small>Testing, stakeholder reviews, and sprint history</small>
+        </span>
+        <ArrowIcon />
+      </Link>
+
+      <Link className={styles.projectLink} to="/docs/planning/scrum">
+        <span>
+          <strong>Sprint reports</strong>
+          <small>
+            Planning, progress, reviews, retrospectives, and meeting photos
+          </small>
+        </span>
+        <ArrowIcon />
+      </Link>
     </section>
   );
 }
@@ -189,9 +167,11 @@ export default function Home(): ReactNode {
       title="Documentation"
       description="Technical and project documentation for Wits World and the Wits Quest campus exploration game."
     >
-      <main>
-        <HomepageHeader />
-        <DocumentationPaths />
+      <main className={styles.home}>
+        <div className={styles.frame}>
+          <HomepageHeader />
+          <GuideDirectory />
+        </div>
       </main>
     </Layout>
   );

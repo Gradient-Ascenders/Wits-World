@@ -1186,6 +1186,13 @@ export const createMapboxMap: MapFactory = async (
   };
 
   let currentRegions: readonly MapRegion[] = [];
+  let overlayUpdatePending = false;
+  let overlayUpdatesStopped = false;
+  const updateOverlayWhenReady = (update: () => void): void => {
+    if (overlayUpdatesStopped || signal.aborted) return;
+    if (map.isStyleLoaded()) update();
+    else overlayUpdatePending = true;
+  };
   let territoryHandlersBound = false;
   const emptyRegions: FeatureCollection<Polygon | MultiPolygon> = {
     features: [],
@@ -1234,6 +1241,9 @@ export const createMapboxMap: MapFactory = async (
           ) => void;
         }
       | undefined;
+    // Unrequested overlays have no features to display. Create them on the
+    // first visible data update, retaining existing sources when cleared.
+    if (source === undefined && data.features.length === 0) return;
     if (source === undefined) {
       map.addSource(TERRITORY_SOURCE_ID, {
         data: currentRegions.length === 0 ? emptyRegions : data,
@@ -1370,7 +1380,7 @@ export const createMapboxMap: MapFactory = async (
 
   const renderRegions = (regions: readonly MapRegion[]): void => {
     currentRegions = regions;
-    if (map.isStyleLoaded()) syncRegions();
+    updateOverlayWhenReady(syncRegions);
   };
 
   map.on('style.load', syncRegions);
@@ -1399,6 +1409,7 @@ export const createMapboxMap: MapFactory = async (
     const source = map.getSource(EVENT_RADIUS_SOURCE_ID) as
       { setData: (nextData: FeatureCollection<Polygon>) => void } | undefined;
 
+    if (source === undefined && data.features.length === 0) return;
     if (source === undefined) {
       map.addSource(EVENT_RADIUS_SOURCE_ID, {
         data: selectedRadiusPoint === null ? emptyRadius : data,
@@ -1479,19 +1490,32 @@ export const createMapboxMap: MapFactory = async (
     markerInteraction,
     (point) => {
       selectedRadiusPoint = point;
-      if (map.isStyleLoaded()) {
-        syncSelectedRadius();
-      }
+      updateOverlayWhenReady(syncSelectedRadius);
     },
     regionInteraction,
     renderRegions,
     (region) => {
       regionInteraction.selectedRegionId = region?.id ?? null;
-      if (map.isStyleLoaded()) syncRegions();
+      updateOverlayWhenReady(syncRegions);
     },
     renderAreas,
     configuration.preserveInitialView,
   );
+  const setBasemapProperty = (key: string, value: unknown): void => {
+    // Standard setters re-evaluate style dependencies even for equal values.
+    if (map.getConfigProperty('basemap', key) !== value) {
+      map.setConfigProperty('basemap', key, value);
+    }
+  };
+  const setLayerVisibility = (
+    layerId: string,
+    visibility: 'none' | 'visible' | ExpressionSpecification | undefined,
+  ): void => {
+    const current = map.getLayoutProperty(layerId, 'visibility') ?? 'visible';
+    if (current !== visibility) {
+      map.setLayoutProperty(layerId, 'visibility', visibility);
+    }
+  };
   if (usesStandardBasemap) {
     let lightingStopped = false;
     let appliedLightPreset = initialLightPreset;
@@ -1499,7 +1523,7 @@ export const createMapboxMap: MapFactory = async (
       if (lightingStopped || signal.aborted || !map.isStyleLoaded()) return;
       const lightPreset = getCampusLightPreset();
       if (!force && lightPreset === appliedLightPreset) return;
-      map.setConfigProperty('basemap', 'lightPreset', lightPreset);
+      setBasemapProperty('lightPreset', lightPreset);
       appliedLightPreset = lightPreset;
     };
     const refreshLighting = (): void => syncLighting();
@@ -1534,8 +1558,7 @@ export const createMapboxMap: MapFactory = async (
         'show3dLandmarks',
         'show3dTrees',
       ] as const) {
-        map.setConfigProperty(
-          'basemap',
+        setBasemapProperty(
           key,
           layerVisibility.details && configuration.standardConfig[key],
         );
@@ -1546,8 +1569,7 @@ export const createMapboxMap: MapFactory = async (
         'showRoadLabels',
         'showTransitLabels',
       ]) {
-        map.setConfigProperty(
-          'basemap',
+        setBasemapProperty(
           key,
           layerVisibility.labels && configuration.standardConfig[key] !== false,
         );
@@ -1561,9 +1583,8 @@ export const createMapboxMap: MapFactory = async (
             layer.layout?.visibility ?? 'visible',
           );
         }
-        map.setLayoutProperty(
+        setLayerVisibility(
           layer.id,
-          'visibility',
           layerVisibility.labels
             ? classicLabelVisibility.get(layer.id)
             : 'none',
@@ -1571,21 +1592,49 @@ export const createMapboxMap: MapFactory = async (
       }
     }
     if (map.getLayer(CAMPUS_BUILDING_LAYER_ID)) {
-      map.setLayoutProperty(
+      setLayerVisibility(
         CAMPUS_BUILDING_LAYER_ID,
-        'visibility',
         layerVisibility.details ? 'visible' : 'none',
       );
     }
     if (map.getLayer(CAMPUS_LABEL_LAYER_ID)) {
-      map.setLayoutProperty(
+      setLayerVisibility(
         CAMPUS_LABEL_LAYER_ID,
-        'visibility',
         layerVisibility.labels ? 'visible' : 'none',
       );
     }
   };
-  map.on('style.load', syncBasemapVisibility);
+  map.on('style.load', () => {
+    // Earlier style.load handlers already applied the latest overlay data.
+    overlayUpdatePending = false;
+    syncBasemapVisibility();
+  });
+  const flushPendingOverlayUpdate = (): void => {
+    if (
+      !overlayUpdatePending ||
+      overlayUpdatesStopped ||
+      signal.aborted ||
+      !map.isStyleLoaded()
+    )
+      return;
+    // Clear before writes: setData/config changes may emit data synchronously.
+    overlayUpdatePending = false;
+    syncSelectedRadius();
+    syncRegions();
+    syncBasemapVisibility();
+  };
+  // Source-worker activity can make isStyleLoaded false without a style reload.
+  // Replay only pending state; unconditional setData here would create a loop.
+  map.on('data', flushPendingOverlayUpdate);
+  map.on('idle', flushPendingOverlayUpdate);
+  const removeMap = controller.remove;
+  controller.remove = () => {
+    overlayUpdatesStopped = true;
+    overlayUpdatePending = false;
+    map.off('data', flushPendingOverlayUpdate);
+    map.off('idle', flushPendingOverlayUpdate);
+    removeMap();
+  };
   controller.setLayerVisibility = (visibility) => {
     const basemapChanged =
       visibility.details !== layerVisibility.details ||
@@ -1594,11 +1643,11 @@ export const createMapboxMap: MapFactory = async (
     for (const { button } of markerRecords.values()) {
       button.style.display = visibility.events ? '' : 'none';
     }
-    if (map.isStyleLoaded()) {
+    updateOverlayWhenReady(() => {
       syncSelectedRadius();
       syncRegions();
       if (basemapChanged) syncBasemapVisibility();
-    }
+    });
   };
   controller.setPoints(points);
 

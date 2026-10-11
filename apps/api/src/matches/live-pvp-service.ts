@@ -1309,6 +1309,8 @@ async function loadMatchContext(
   matchId: string,
   forUpdate: boolean,
 ): Promise<LockedMatchContext | null> {
+  // Lock both joined rows: READ COMMITTED must refresh private state as well
+  // as the header after waiting for another processor's committed transition.
   const matchResult = await client.query<MatchRow>(
     `select match.id::text,
             match.status,
@@ -1327,7 +1329,7 @@ async function loadMatchContext(
        join private.live_pvp_match_states state
          on state.match_id = match.id
       where match.id = $1::uuid
-      ${forUpdate ? 'for update of match' : ''}`,
+      ${forUpdate ? 'for update of match, state' : ''}`,
     [matchId],
   );
   const match = matchResult.rows[0];

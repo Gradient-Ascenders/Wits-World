@@ -1,192 +1,142 @@
 ---
-title: 'Project risks and mitigations'
+title: 'Risks and mitigations'
+description: Product, delivery, and personal-data risks, including the safeguards and POPIA checks still needed.
 ---
 
-# Project risks and mitigations
+# Risks and mitigations
 
-:::note[Initial planning record]
+The main risks concern reliable campus access, protected game state, user data,
+external services, and the evidence needed to assess a release. This summary describes
+controls in the repository and the verification each area still requires.
+Detailed ratings and assignments belong to the team's working records.
 
-This page preserves the initial risk baseline and its dated review history. Do
-not interpret an original `Open` status as a current assurance or current issue
-state without a later recorded review.
+## Campus access and accessibility
 
-:::
+Device location can be inaccurate, stale, denied, or unavailable. The API
+checks reported location and event availability; the interface provides retry
+and failure states. A text event list supports discovery alongside the map.
+Device readings remain claims, so automated distance checks cannot establish
+physical presence or prove that campus thresholds suit every device.
 
-## Purpose
+The [location journey](../requirements/player-location-journey.md) explains the
+current behaviour. The [field evidence](scrum/sprint-1/evidence.md#on-campus-field-evidence)
+records the missing campus observations. Responsive and component tests also
+need to be supplemented by real-device, keyboard, and screen-reader review.
 
-This register records the principal technical, product, security, delivery, and
-collaboration risks identified for Wits World.
+## Game integrity and privacy
 
-The register should be reviewed throughout the project. New risks should be
-added when discovered, and material risks should be linked to a Gitea issue or
-architecture decision.
+Retries and concurrent requests can duplicate rewards or conflict with card,
+trade, and match state. The API owns protected decisions; transactions,
+constraints, version checks, and idempotent outcomes preserve integrity.
+Database tests exercise these failure boundaries directly.
 
-## Rating approach
+Location and moderation evidence also create privacy risks. The initial
+Basic-only assumption that player location is never stored no longer describes
+the later movement and offline systems. Their storage and compliance risks are
+set out below.
 
-### Likelihood
+## User data storage and POPIA
 
-- **Low** — unlikely during the project;
-- **Medium** — reasonably possible;
-- **High** — likely without active mitigation.
+**Priority: High. Status: Open - compliance not verified.**
 
-### Impact
+The 9 October 2026 repository review found privacy safeguards, but did not
+establish project-wide compliance with the Protection of Personal Information
+Act (POPIA). Provider settings, agreements, and organisational procedures need
+operator review; this is a risk assessment, not a legal compliance certification.
 
-- **Low** — limited inconvenience or minor rework;
-- **Medium** — threatens an issue, feature, or milestone criterion;
-- **High** — threatens a core journey, milestone, security boundary, or final
-  submission.
+The risk is that personal data is exposed, retained unnecessarily, or processed
+without adequate notice or a lawful basis. Precise location and moderation
+records can reveal a player's movements or behaviour even when identified by a
+game UUID rather than a real name.
 
-## Risk register
+### Where user data is stored
 
-| ID | Risk | Likelihood | Impact | Owner | Mitigation and response | Related work | Status |
-| ---- | ------------------------------------------------------------------------------------------------------------------ | ---------- | ------ | --------------- | ------------------------------------------------------------------------------------------------------------------------ | ------ |
-| R-01 | Unresolved client requirements are embedded as fixed implementation decisions | Medium | High | Member 1 | Record decisions, unresolved questions, and follow-up actions; avoid hard-coding unconfirmed thresholds | Open |
-| R-02 | Authentication-provider selection is delayed or incompatible with the React and Fastify architecture | Medium | High | Member 2 | Compare providers early; verify SPA integration, token validation, account lifecycle, cost, issuer, and audience support | Open |
-| R-03 | Access tokens or private authentication credentials are exposed in browser code, logs, screenshots, or Git | Medium | High | Member 2 | Separate public and private configuration; review environment files; redact evidence; test logging behaviour | Open |
-| R-04 | The browser is trusted to supply identity or protected game results | Medium | High | Member 2 | Derive identity from validated tokens; validate all requests; reject client-authoritative fields | Open |
-| R-05 | Browser geolocation is inaccurate, stale, denied, unavailable, or manipulated | High | High | Members 1 and 2 | Treat location as a claim; validate coordinates, accuracy, and timestamps; provide safe retry and failure states | Open |
-| R-06 | Event-radius, accuracy, and freshness thresholds are unsuitable for real campus conditions | High | High | Members 1 and 3 | Keep thresholds configurable; conduct device and field testing; record values as provisional until reviewed | Open |
-| R-07 | PostGIS is unavailable or inconsistently configured across development, testing, and deployment | Medium | High | Member 3 | Provide repeatable setup, readiness checks, migration tests, and documented provider requirements | Open |
-| R-08 | Incorrect geospatial type, coordinate order, reference system, or distance unit produces wrong eligibility results | Medium | High | Member 3 | Document coordinate conventions and metres; add known-distance tests; review PostGIS queries | Open |
-| R-09 | The selected database host lacks suitable PostGIS, connection, storage, or free-tier support | Medium | High | Member 3 | Evaluate providers early; verify PostGIS explicitly; record limits and migration options | Open |
-| R-10 | Web and API contracts diverge during parallel development | Medium | High | Member 2 | Use versioned routes, runtime schemas, OpenAPI, shared safe contracts, and integration tests | Open |
-| R-11 | CORS or authentication configuration differs between local and deployed environments | Medium | High | Members 2 and 3 | Use environment-based allowed origins; document redirect URLs, issuer, audience, and deployment configuration | Open |
-| R-12 | The web application and API become tightly coupled and cannot be built or deployed independently | Low | High | Members 2 and 4 | Maintain separate workspaces, builds, environment files, API boundaries, and deployment checks | Open |
-| R-13 | Map tile or style provider licensing, attribution, rate limits, or availability blocks deployment | Medium | Medium | Member 1 | Evaluate licensing early; display attribution; retain a text event fallback; keep provider replaceable | Open |
-| R-14 | The map becomes the only way to discover events, creating accessibility and failure problems | Medium | High | Member 1 | Maintain an accessible text-based event list and status messages independent of the map | Open |
-| R-15 | CI runner configuration or deployment credentials delay collaboration and external demonstration | Medium | High | Members 3 and 4 | Establish CI early; store secrets outside Git; test failing and successful workflows; document manual recovery | Open |
-| R-16 | Local Node.js, npm, or dependency versions differ across team members | Medium | Medium | Member 4 | Pin and document versions; use clean installs; ensure CI uses the same runtime expectations | Open |
-| R-17 | Tests pass in isolation but the deployed vertical journey fails | Medium | High | Member 4 | Add deployment smoke tests and end-to-end validation across the deployed web, API, authentication, and database | Open |
-| R-18 | Duplicate reward submissions later issue the same event reward more than once | Medium | High | Members 2 and 3 | Use idempotency, unique constraints, transactions, and concurrency tests during reward implementation | Open |
-| R-19 | Accepted challenge answers or author-only data are exposed to players | Medium | High | Member 2 | Define player-safe response schemas; separate author routes; add exposure tests and object-level authorisation | Open |
-| R-20 | Card, deck, and battle rules remain unresolved too late for implementation | Medium | High | Member 4 | Resolve `BASIC-08` through `BASIC-10` in the [Basic-tier decision register](../requirements/basic-tier-decision-register.md) before dependent Sprint 2 implementation; keep rules pure and testable | Open |
-| R-21 | The team begins intermediate or advanced features before completing the Basic journey | Medium | High | Member 1 | Apply the stretch-feature gate; review roadmap and critical issues during planning | Open |
-| R-22 | Documentation diverges from the implemented architecture | Medium | Medium | All members | Include documentation updates in the Definition of Done and review documentation during pull requests | Open |
-| R-23 | Insufficient stakeholder, meeting, testing, or Scrum evidence reduces milestone marks | Medium | High | Member 1 | Maintain linked minutes, issue activity, review evidence, test results, screenshots, decisions, and evidence indexes | Open |
-| R-24 | AI-generated content or code is incorrect, unverified, or missing attribution | Medium | High | All members | Review all AI-assisted work; include required document declarations, README declarations, and assisted commit trailers | Open |
-| R-25 | Team members work on overlapping files and create avoidable merge conflicts | Medium | Medium | All members | Use short-lived issue branches, coordinate ownership, pull latest changes, and keep pull requests focused | Open |
-| R-26 | Reduced development time later in the semester threatens completion | High | High | All members | Complete architecture and blockers early; prioritise Basic vertical slices; avoid unnecessary scope expansion | Open |
-| R-27 | A team member does not have meaningful version-control contributions | Low | High | Member 1 | Assign accountable issue ownership and ensure all members contribute reviewed commits | Open |
-| R-28 | Location or identity data is retained longer or more precisely than necessary | Medium | High | Member 2 | Define retention and deletion behaviour; minimise stored precision; restrict access; avoid continuous tracking | Open |
-| R-29 | Account deletion conflicts with audit, match, or reward integrity | Medium | High | Members 2 and 3 | Resolve `BASIC-12` in the [Basic-tier decision register](../requirements/basic-tier-decision-register.md) before implementation; document deletion, pseudonymisation, retention, and privacy implications | Open |
-| R-30 | Free-tier hosting inactivity, quotas, or service limits interrupt demonstrations | Medium | High | Member 3 | Record service limitations; add pre-demonstration smoke checks; maintain repeatable deployment and recovery steps | Open |
+| Store               | Personal data and exposure                                                                                                                                                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Auth0               | Sign-in identity and provider-managed account data; the game database links accounts through issuer and subject identifiers.                                                                                                                                                         |
+| Neon PostgreSQL     | Player Names, optional profile text/study details/avatars, gameplay history, precise movement evidence, and trust/review records. See [accounts](../database/player-schema.md), [movement](../database/movement-evidence.md), and [trust storage](../database/trust-persistence.md). |
+| Browser storage     | Offline sessions, answers, and start/finish location claims in IndexedDB. Cleanup can fail on a shared device; [offline play](../architecture/offline-challenge-play.md) describes the boundary.                                                                                     |
+| External services   | Upstash receives player-linked limit/coordination identifiers; Mapbox receives map-area requests. Hosting and identity providers may retain operational logs. See [external data sharing](../architecture/external-integrations.md).                                                 |
+| Backups and exports | Database recovery copies, provider logs, moderation exports, and user-testing records need separate access and retention controls. An application purge does not remove all such copies.                                                                                             |
 
-## Current review — 25 August 2026
+### Existing safeguards
 
-This review does not overwrite the initial rows. “Mitigation implemented” means
-the repository contains a control or test; it does not mean the underlying risk
-has disappeared.
+The implementation includes API access checks, private-by-default profiles,
+request-log redaction, a **24-hour default** movement-evidence expiry with cleanup,
+and coordinated Auth0/database deletion with retries. Trust records have their
+own retention rules; retained deleted-player cases use profile-free actor
+references and redact free text. The
+[deletion contract](../database/account-deletion-retention.md) defines that scope.
 
-| Risks     | Reviewed status                                                            | Evidence and residual exposure                                                                                                                                                                                                                                                                                                                                                         |
-| --------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R-01      | Mitigating                                                                 | The Basic decision register resolves the core game/role/retention choices, including Mapbox as a permitted team technology choice. Location retention and some operator evidence remain open.                                                                                                                                                                                          |
-| R-02      | Closed for the stated selection risk                                       | Auth0 is selected by ADR-005 and integrated in Web/API. Provider availability and configuration remain under R-03/R-11.                                                                                                                                                                                                                                                                |
-| R-03–R-04 | Mitigation implemented; risk remains                                       | Server-side token validation, redaction, local authority checks, safe schemas, and exposure tests exist. Security regression remains possible.                                                                                                                                                                                                                                         |
-| R-05–R-06 | Mitigating; active                                                         | Claims remain untrusted and ephemeral; active-page watching, retry states, and server checks exist. The `75 m`/two-minute/accuracy thresholds remain provisional.                                                                                                                                                                                                                      |
-| R-07–R-09 | Mitigation implemented; provider risk remains                              | Neon/PostGIS setup, readiness, guarded migrations, integration tests, and recovery procedures exist. Production availability, plan limits, backup, and restore evidence remain operator-owned.                                                                                                                                                                                         |
-| R-10      | Mitigation implemented; risk remains                                       | Runtime schemas, OpenAPI, typed clients, and integration/E2E tests cover current contracts. Parallel-change drift remains a review risk.                                                                                                                                                                                                                                               |
-| R-11      | Occurred; mitigating                                                       | Missing production Auth0 settings caused a documented `503` and were corrected. Exact CORS/custom-domain checks pass, but the shared development/production Auth0 SPA is a known temporary ADR-005 deviation and signed-in release evidence remains manual.                                                                                                                            |
-| R-12      | Mitigation implemented; risk remains                                       | Web/API workspaces, artifacts, and production deployment paths are independent, although both App Services share one plan.                                                                                                                                                                                                                                                             |
-| R-13      | Mitigating; active                                                         | Mapbox is a confirmed team-selected integration and its Standard renderer, attribution, token boundaries, and text fallback are implemented. Licensing/terms, token/CSP/privacy, usage/cost ownership, and campus-data evidence remain outstanding.                                                                                                                                    |
-| R-14      | Mitigation implemented; risk remains                                       | The semantic event list remains usable independently of the map and is exercised by tests. Accessibility still needs manual release checks.                                                                                                                                                                                                                                            |
-| R-15      | Occurred; mitigating                                                       | Runner/deployment failures and an out-of-order rerun informed the managed-identity, IMDS, Linux ZIP, health-check, deterministic-runner, and current-main deployment guards. Operational and credential risk remains.                                                                                                                                                                  |
-| R-16      | Mitigation implemented; risk remains                                       | Node/npm versions and clean-install CI are pinned/documented. Local drift is still possible.                                                                                                                                                                                                                                                                                           |
-| R-17      | Mitigating                                                                 | Deterministic browser/API/database journeys and public smoke evidence exist. Real signed-in production and other manual release checks remain.                                                                                                                                                                                                                                         |
-| R-18–R-19 | Mitigation implemented; risk remains                                       | Atomic uniqueness/locking, private answer-key storage, safe active responses, and concurrency/exposure tests cover the known failure modes.                                                                                                                                                                                                                                            |
-| R-20      | Card, deck, and battle rules remain unresolved too late for implementation | Medium                                                                                                                                                                                                                                                                                                                                                                                 | High | Member 4 | Resolve `BASIC-08` through `BASIC-10` in the [Basic-tier decision register](../requirements/basic-tier-decision-register.md) before dependent Sprint 2 implementation; keep rules pure and testable | Open |
-| R-21      | Monitoring                                                                 | Core Basic gameplay, account-deletion persistence, the protected account page, provider-owned recovery, and deletion UI are implemented, while advanced features remain excluded. External Auth0 evidence remains, so the complete Basic product must not be claimed. Scope discipline is still required through submission.                                                           |
-| R-22      | Occurred; mitigating                                                       | This reconciliation found mixed-current claims. Maintained references, historical notices, docs checks, and review remain the mitigation.                                                                                                                                                                                                                                              |
-| R-23      | Mitigating; active                                                         | Evidence indexes, deterministic journeys, deployment reviews, and reconstructed client/ceremony records exist. Ten Sprint 2 questionnaire responses now have a sanitised finding report and linked issues #240-#244; focused retests, remaining integration evidence, and contemporaneous stakeholder records are still required. Issue closure alone must not be treated as evidence. |
-| R-24      | Mitigating; active                                                         | AI declarations and commit-trailer policy are documented; every assisted change still needs review, verification, and accurate attribution.                                                                                                                                                                                                                                            |
-| R-25–R-26 | Active delivery risks                                                      | Branch/worktree rules and scope gates reduce overlap, but merge pressure and remaining semester time cannot be eliminated by repository controls.                                                                                                                                                                                                                                      |
-| R-27      | Not reassessed                                                             | Current repository evidence was not sufficient for this documentation audit to assess each member's contribution.                                                                                                                                                                                                                                                                      |
-| R-28      | Mitigating; active                                                         | Exact location claims are not persisted by current eligibility/challenge flows and no history is built. The final location-retention policy remains open.                                                                                                                                                                                                                              |
-| R-29      | Mitigation implemented; operational risk remains                           | `BASIC-12` is implemented for transactional local deletion, anonymous history retention, retry, concurrency, audit expiry, and issue #161's user-facing journey. Deployed Auth0 recovery/deletion plus scheduled retry/purge evidence remain operational gates.                                                                                                                        |
-| R-30      | Mitigating; active                                                         | Health checks, deployment recovery, smoke procedures, and cost review are documented; external quotas, inactivity, and outages remain possible.                                                                                                                                                                                                                                        |
+Expiry still depends on configured retention and functioning cleanup. Verify
+hosted deletion and recovery, browser cleanup failures, and whether retained
+history can identify someone through other records. A replacement identifier
+alone should not be treated as proof of anonymisation.
 
-## Sprint 2 governance review — 28 August 2026
+### Actions needed before claiming compliance
 
-This review records current governance exposure without replacing the detailed
-status in Gitea.
+- **Accountability:** Confirm the responsible party, registered Information Officer, and privacy contact (sections 8 and 55).
+- **Purpose and notice:** Record lawful grounds and necessary data; publish a collection notice. Browser location permission is not the full notice (sections 10-13 and 18).
+- **Retention:** Justify each retention period, including unresolved cases, backups, logs, and exports; verify expiry and deletion (section 14).
+- **Providers:** Verify hosting/support regions, written operator agreements, and a valid overseas-transfer ground. Foreign hosting is not automatically prohibited (sections 21 and 72).
+- **Rights and incidents:** Test access, correction, objection, and deletion procedures; establish security-compromise notification to the Regulator and affected users (sections 11, 22-24).
+- **Children and sensitive content:** Assess applicable conditions if children can register or profiles/review evidence contain special personal information (sections 26-35).
 
-| Risks      | Reviewed status                                                            | Owner / related work                                                                                                                                           | Evidence and next control                                                                                                                                                         |
-| ---------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R-17, R-23 | Active                                                                     | `Caleb_P`; [#159](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/159) and [#167](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/167) | Use the Sprint 2 evidence matrix, collect stakeholder/user/release evidence contemporaneously, and keep manual/operator gates explicit.                                           |
-| R-20       | Card, deck, and battle rules remain unresolved too late for implementation | Medium                                                                                                                                                         | High                                                                                                                                                                              | Member 4 | Resolve `BASIC-08` through `BASIC-10` in the [Basic-tier decision register](../requirements/basic-tier-decision-register.md) before dependent Sprint 2 implementation; keep rules pure and testable | Open |
-| R-21, R-26 | Active                                                                     | Current issue owners; Sprint 2 milestone                                                                                                                       | Review scope, dependencies, and estimates weekly; protect Basic completion and record any deferral in Gitea.                                                                      |
-| R-22       | Mitigating                                                                 | `Caleb_P`; #159                                                                                                                                                | The current governance page distinguishes live tracker authority from historical issue plans and dated evidence snapshots. Review links and tracker accuracy with another member. |
-| R-25       | Active                                                                     | All members                                                                                                                                                    | Keep issue branches and PRs focused, use native dependencies for true blockers, and reconcile board state during weekly review.                                                   |
+These checks follow the
+[official POPIA text](https://www.gov.za/sites/default/files/gcis_document/201409/3706726-11act4of2013popi.pdf).
+[Section 72](https://popia.co.za/section-72-transfers-of-personal-information-outside-republic/)
+on the supplied reference site explains transfer conditions; the
+[Information Regulator's incident guidance](https://inforegulator.org.za/2025/08/19/fact-sheet-handling-of-security-compromises/)
+supports the notification procedure.
 
-The audit found a missing native #193 → #171 dependency and no exposed active
-repository project board. The available label set also lacks `usability`, but
-that optional tracker-hygiene improvement is outside this issue and is not a
-blocker. See
-[Sprint 2 governance and evidence](./sprint-2-governance-and-evidence.md#tracker-audit-and-actions-still-required).
+Keep this risk open until the operator's privacy review records the accountable
+owner, notices, provider/retention decisions, and tested rights and incident
+procedures. Technical team roles do not determine the legal responsible party.
 
-## Initial highest-priority risks
+## External services and operations
 
-The following risks require active attention during Sprint 1:
+Auth0, Mapbox, Neon, and Upstash introduce configuration, quota, availability,
+and cost dependencies. Integration tests and failure handling reduce exposure;
+provider settings and hosted recovery need operator verification. The
+[integration reference](../architecture/external-integrations.md) describes the
+service boundaries and configuration.
 
-1. **R-01** — unresolved stakeholder requirements;
-2. **R-02** — authentication-provider selection;
-3. **R-03** — credential or token exposure;
-4. **R-05** — unreliable browser geolocation;
-5. **R-06** — unsuitable location thresholds;
-6. **R-07** — PostGIS environment inconsistency;
-7. **R-10** — web and API contract divergence;
-8. **R-15** — CI and deployment delays;
-9. **R-17** — deployed integration failure;
-10. **R-24** — incorrect or unattributed AI-assisted work.
+Background workers and realtime listeners share limited database capacity.
+Coordination and listener isolation address different sources of contention;
+their deployed benefit depends on configuration and measured behaviour.
+[Gameplay operations](../deployment/ranked-operations.md) and
+[battle responsiveness](scrum/sprint-2/evidence.md#battle-responsiveness) retain the
+rollout requirements and measurement limits.
 
-## Risk-review process
+## Delivery and release evidence
 
-The team should review this register:
+Parallel work can cause contract drift, merge conflicts, and outdated guides.
+Focused branches, independent review, runtime schemas, tests, and documentation
+updates keep the layers aligned. The final period prioritises completing and
+checking existing journeys as described in the [roadmap](delivery-roadmap.md).
 
-- during sprint planning;
-- during sprint review;
-- after client or lecturer feedback;
-- when a risk becomes active;
-- before selecting a hosting or authentication provider;
-- before the milestone demonstration; and
-- before final submission.
+Passing automation can still leave usability, provider, or deployment failures
+unobserved. Participant retests, named-build acceptance, and stakeholder review
+must be recorded separately. The
+[testing strategy](../testing/testing-strategy.md) and
+[Sprint 3 validation record](scrum/sprint-3/evidence.md) identify
+the evidence boundaries. [AI review and disclosure](ai-use.md) address the
+additional risk of incorrect or unattributed generated work.
 
-For each active high-impact risk, the team should:
+## Reviewing risk
 
-1. identify a responsible owner;
-2. create or link a Gitea issue where action is required;
-3. record the mitigation;
-4. record evidence that the mitigation was tested;
-5. update the risk status.
+Planning and release reviews consider impact, likelihood, dependencies, and
+new feedback. Actionable risks need an owner, a linked issue, a mitigation,
+and evidence of its outcome. Implementing a control reduces exposure; a risk
+is closed only when the relevant evidence supports that decision.
 
-## Status values
+The [August baseline and reviews](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/commit/0a70f5bec1a4d179bb5d4996f29deb9966c1b4ac/docs/planning/risk-register.md)
+remain historical evidence. Their initial ratings and owners should not be
+read as current tracker state. Sprint review and retrospective sections record
+later concerns and follow-up recommendations.
 
-Use:
-
-- **Open** — identified but not yet resolved;
-- **Mitigating** — active work is reducing the risk;
-- **Accepted** — the team has consciously accepted the remaining exposure;
-- **Closed** — the threat has been resolved or is no longer applicable;
-- **Occurred** — the risk became an issue and requires response work.
-
-## Review history
-
-| Date       | Review                      | Participants                     | Outcome                                                                   |
-| ---------- | --------------------------- | -------------------------------- | ------------------------------------------------------------------------- |
-| 2026-08-06 | Initial risk identification | Member 2                         | Initial register created for architecture review                          |
-| 2026-08-25 | Repository delivery review  | Not retained                     | Current mitigation and residual exposure recorded                         |
-| 2026-08-28 | Sprint 2 governance review  | Codex audit; team review pending | Active risks linked to current Sprint 2 governance and tracker follow-ups |
-
-Further reviews should be added without removing the historical entries.
-
----
-
-The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
-
-The planning-status notice was added with assistance from Codex-CLI[GPT-5]. The
-dated risk review was added with assistance from Codex[GPT-5] and
-Codex-CLI[gpt-5.6-sol medium].
-
-Teammate evidence integration reviewed with assistance from Codex-CLI[GPT-6].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
+**AI declaration:** The original register and reviews used
+ChatGPT-Web[GPT-5.6 Thinking], Codex-CLI[GPT-5], Codex[GPT-5],
+Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-6]. This revision used
+Codex[GPT-6] for rubric comparison, source and data-flow review, POPIA source
+comparison, and prose editing.

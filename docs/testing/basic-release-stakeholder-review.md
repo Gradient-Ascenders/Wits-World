@@ -44,8 +44,8 @@ to prepare follow-up topics. Their recorded decisions do not fill these future-r
   map-independent expectations.
 - Deployed Web/API/database/docs boundary, OpenAPI availability, recovery,
   monitoring, and known limitations.
-- Poor-GPS decision: ADR-006 remains **Proposed/deferred pending stakeholder and
-  group confirmation**. Issue #167 does not implement or accept QR proof.
+- Poor-GPS alternative proof remains unimplemented and requires stakeholder and
+  group confirmation. Issue #167 does not implement or accept QR proof.
 
 ## Feedback and decisions
 

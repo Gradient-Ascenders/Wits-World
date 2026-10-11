@@ -34,7 +34,7 @@ the selected technology.
 
 Cross-cutting Basic product decisions and unresolved implementation gates are
 tracked in the
-[Basic-tier decision register](../../requirements/basic-tier-decision-register.md).
+[Basic-tier decision register](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/docs/requirements/basic-tier-decision-register.md).
 
 ## Potential future records
 

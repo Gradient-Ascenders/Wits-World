@@ -6,7 +6,7 @@ This dated comparison is preserved as input to the map decision. The current
 authority boundary is recorded in
 [ADR-004](decisions/ADR-004-map-provider-boundary.md), and the implemented
 Mapbox integration is described in the
-[Mapbox Standard 3D integration boundary](mapbox-standard-migration.md).
+[Mapbox section of Integrations](external-integrations.md#mapbox).
 
 :::
 

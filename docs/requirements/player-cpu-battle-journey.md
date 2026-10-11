@@ -1,194 +1,77 @@
 ---
-title: 'CPU battles and match history'
+title: 'CPU battles'
+description: Start a CPU battle, choose actions, resume play, and review saved results.
 ---
 
-# CPU battles and match history
+# CPU battles
 
-## Purpose and sources of truth
+## Player journey
 
-Issue #76 provides the mobile-first browser experience for the Basic CPU match
-implemented by issue #75. The authoritative rules are the
-[Basic game rules](basic-game-rules.md#cpu-battles), and the exact persistence,
-privacy, concurrency, and recovery behavior is documented by the
-[CPU match contract](../database/cpu-match-persistence-design.md).
+1. Open **Battles** at `/matches`. Choose **Start CPU battle** to use your active
+   saved deck, or **Choose deck** if none is selected. Manage decks at
+   `/collection/decks`; the active deck also offers **Start CPU match**.
+2. Select your opening Creature. The CPU selects its own, and the server chooses
+   who goes first.
+3. On your turn, use **Moves**, **Power**, or **Swap** to choose an available
+   action. Review its cost, effects, and your Creature's current HP and Power.
+4. Wait while the action and CPU response resolve. The battlefield updates and
+   the battle log records the outcome before controls become available again.
+5. If your Creature is defeated, select an available replacement when prompted.
+6. Defeat all CPU Creatures to win. At completion, review the saved result and
+   choose **Play another battle** to return to Battles.
 
-The API owns all battle state. The browser renders returned state and submits a
-permitted intent; it never calculates damage, CPU choices, timeouts, turn
-advancement, defeat, replacement consequences, winners, or completion.
+| Tab       | Action                                                                                         |
+| --------- | ---------------------------------------------------------------------------------------------- |
+| **Moves** | Choose a move your active Creature can currently use.                                          |
+| **Power** | Play an available Power card from the match deck. Used cards remain discarded for this battle. |
+| **Swap**  | Switch to a living bench Creature. Swapping uses your turn.                                    |
 
-## Routes and HTTP boundary
+Unavailable actions are disabled with an explanation. Creature details and the
+battle log provide the information needed to compare available choices. The CPU
+view reveals its active and defeated Creatures; unrevealed cards remain hidden,
+with remaining counts shown instead.
 
-- `/matches` is the authenticated battle entry. It first calls
-  `GET /api/v1/matches/cpu`, which accepts no player or match identifier.
-- `/decks` starts from the selected saved deck after the same active lookup.
-  `POST /api/v1/matches/cpu` receives `{ "deckId": "<selected deck ID>" }`.
-- `/matches/:matchId` calls the ownership-scoped
-  `GET /api/v1/matches/:matchId` and renders its coherent state and latest
-  action snapshot.
-- Actions use `POST /api/v1/matches/:matchId/actions` with
-  `{ submissionId, expectedVersion, action }`.
-- `/matches/history` calls `GET /api/v1/matches/history`; each completed item
-  links to its persisted direct detail route.
+## Leave or resume
 
-Authentication is the only source of player ownership. The browser never sends
-a player ID or filters another player's records locally.
+**Save and exit** returns to Battles. Accepted actions are already stored, so
+there is no separate save operation. Choose **Resume CPU battle** to reopen the
+active match. Refreshing or leaving does not reset its turn deadline.
 
-### Swap rollout compatibility
+To end the battle early, choose **Forfeit**, then **Confirm forfeit**. This records
+a permanent loss for you and a CPU victory. **Keep playing** closes the dialog
+without forfeiting. You can have only **1 active CPU battle**; finish or forfeit
+it before starting another.
 
-The current client sends
-`Accept: application/vnd.wits-world.cpu.v2+json, application/json;q=0.9`
-on CPU match and history requests. A client without the v2 media type receives
-the previous projection: no `swap_creature` legal actions, no `creatureId` on
-battle-log events, and no swap action results in `lastAction` or completed
-history. The server still stores and applies every swap. This keeps an older
-open browser bundle able to read a match after the API is deployed. `Accept`
-is CORS-safelisted and does not add a preflight header requirement.
+## Results and history
 
-## Entry, creation, and recovery
+A completed battle shows the winner, final turn, and completion time. Its
+confirmed battle log remains available on the match page at `/matches/:matchId`.
+CPU battle records are private to you.
 
-On entry, `200` from the active lookup presents the returned match as the
-dashboard's only primary action. The player explicitly follows **Resume battle**
-to its detailed route; starting a conflicting match is not offered.
-`404 CPU_MATCH_NOT_FOUND` is the explicit no-active state: the dashboard can
-name the selected saved deck and offer creation, or link to deck selection when
-none is selected. The browser does not reproduce the API's deck validation.
+**Recent battles** on the Battles page combines CPU and player results. Choose
+**View history** to open `/matches/history`, where results are ordered by
+completion time. Select a result to review the saved battle.
 
-One create request is made per activation. A successful response navigates to
-its returned `matchId`. `INVALID_MATCH_DECK`, authentication, and safe network
-failures receive focused recovery UI. When a create transport or success-schema
-failure is ambiguous, the client checks the active lookup at 0, 250, and 750
-milliseconds. These bounded delays cover a transaction that was still
-uncommitted during the immediate lookup without turning browser memory into a
-permanent source of truth. `409 CPU_MATCH_ALREADY_ACTIVE` uses the same active
-lookup sequence. The create POST is not automatically replayed by that sequence.
+## How it works
 
-## Authoritative battle presentation
+The API owns legal actions, damage, CPU choices, turn order, and results. Each
+battle uses saved card snapshots, so later deck or catalogue changes do not alter
+it. Visual resolution presents confirmed server events.
 
-`CpuMatchResponse.state.phase` drives the visible state:
+Normal player turns have a **90-second deadline**. An action received at or after
+it resolves as a timeout instead of the chosen action. Opening selection and
+mandatory replacement do not use that deadline.
 
-- `initial_selection` exposes only returned `select_initial_creature` intents;
-- `active` shows the player's current Creature, the revealed CPU Creature,
-  current side, deadline, move and Power controls represented by `legalActions`;
-- `replacement` explains the server-reported defeat and enables only returned
-  `select_replacement` intents; and
-- `completed` removes all active controls and presents the persisted winner,
-  completion time, final turn, and history navigation.
+Actions include the displayed match version. If the battle changed while you
+were choosing, the page reloads its current state without automatically repeating
+the action. Review the updated choices before continuing.
 
-Creature actions are `{ type: "use_move", moveId }`; Power-card actions are
-`{ type: "use_power_card", powerCardId }`. A v2 client can also submit a
-returned `{ type: "swap_creature", creatureId }` on a normal turn. Unreturned actions stay disabled and
-explain that the server did not advertise them. CPU unplayed card identities are
-never reconstructed: the UI names the hidden information and displays only the
-aggregate remaining counts returned by the API. `lastAction` is the recent
-authoritative compatibility field. The primary battle record is `battleLog`, an
-ordered server projection of persisted actions and outcomes; the browser does
-not derive either representation from card statistics.
+See [battle rules](battle-rules.md) for type matchups, turn order, and effects,
+and the
+[CPU match contract](../database/cpu-match-persistence-design.md) for persistence
+and API details.
 
-The public match view projects existing authoritative card and battle data for
-decisions. Revealed Creature moves include their name, move type, Power cost,
-and ordered effect definition. Player Power cards include their snapshot-backed
-name, affinity, authored ordered effects, and server availability. Each effect
-contains its type and non-null executable value plus modifier stat, operation,
-and authored duration when applicable. Card names come from immutable
-`cpu_match_cards` snapshots; no current catalogue lookup can rename a match.
-For damage modifiers, the API additionally projects the rules-normalized
-multiplier. Previews render that authoritative multiplier, including the
-zero-multiplier clamp for debuffs greater than 100%, rather than calculating a
-combat rule in the browser or showing an impossible raw reduction.
+---
 
-Only persistent damage multipliers appear beside an active Creature. Each
-stored modifier remains a separate entry with a signed percentage and the
-authoritative `remainingTurns`; `null` means rest of battle. A finite duration
-counts the affected Creature's subsequent turns and is displayed exactly as it
-decrements in battle state. Damage, healing, and immediate HP or Power changes
-appear in the battle log but do not remain in active effects. No browser
-timer, combined stacking percentage, effect target, or combat result is
-calculated from these values.
-
-Fresh reads enrich older match state and log events with names already present
-in the historical card snapshots. The API also augments an older persisted
-idempotency receipt with a log reconstructed through the final persisted action
-in that receipt's round, including any synchronous CPU or replacement actions,
-while preserving the receipt's original `lastAction`. Normal action submissions
-extend the cumulative log stored in the latest receipt instead of rereading all
-prior action and round-state JSON. Older results without expiry metadata omit
-only that unrecorded event; neither API nor browser guesses it. Malformed effect,
-modifier, expiry, or log fields reject the response as unavailable.
-
-These response and presentation additions do not change damage, affinity,
-Power, regeneration, stacking, duration, legality, CPU choice, replacement,
-timeout, turn-order, persistence, or snapshot mechanics.
-
-## Submission and state ordering
-
-Each activation generates a fresh UUID `submissionId`, sends the currently
-applied `expectedVersion`, and locks all battle controls until the response
-settles. No local round simulation occurs. Route re-entry always reloads direct
-authoritative state.
-
-Every request has a monotonically increasing local generation. A response is
-applied only to the mounted matching route, never below the displayed server
-version, and never behind a newer same-version response. A completed match is
-absorbing for that mounted page. Aborted/unmounted requests cannot mutate the
-new route. The server's idempotency constraint remains the protection for the
-same submitted UUID; the UI's single-flight lock prevents accidental duplicate
-logical submissions.
-
-`CPU_MATCH_STALE_ACTION`, `ILLEGAL_CPU_MATCH_ACTION`, and
-`CPU_MATCH_COMPLETED` are recoverable authority events. The page announces that
-the intent was not accepted, reloads the direct match, discards the obsolete
-intent, focuses the current phase, and requires a fresh player activation. It
-never replays a gameplay action automatically. Authentication and unavailable
-responses preserve the last applied state and offer sign-in or explicit reload.
-
-## History, accessibility, and responsive behavior
-
-The dashboard loads recent history independently, shows the newest few persisted
-results in compact form, and links to `/matches/history` for the full archive. A
-slow or failed recent-history request does not delay or hide an available Resume
-or Start action. History has loading, empty, populated, authentication,
-unavailable, and retry states. Result, CPU opponent, completion time, and
-submitted-round count come from the persisted history response. Direct detail
-uses the same authoritative completed response and stays completed after refresh.
-
-The battle uses native buttons and links; no drag, gesture, or animation is
-required. Phase changes use a concise polite announcement and move focus to the
-new phase heading after initial selection, replacement, stale reconciliation,
-and completion. Disabled choices have semantic reasons. Card affinity, HP,
-Power, defeated state, hidden CPU information, current side, and result are
-textual rather than color-only.
-
-At 360px and 390px the order is phase/turn, combatants, legal actions, and a
-collapsed latest-outcome/log control beside secondary details. Tablet keeps the
-same compact flow. Desktop keeps the complete independently scrollable log open
-in the secondary rail without competing with the battlefield or action tray.
-Controls keep mobile touch targets and all layouts must satisfy
-`scrollWidth <= clientWidth`.
-
-## Automated evidence
-
-Vitest covers strict contracts, recovery timing, selected-deck creation,
-explicit active resume, compact recent results, initial/move/Power/replacement
-actions, unavailable controls,
-single-flight submission, stale reconciliation, response ordering, completion
-absorption, history/detail, authentication, retry, and keyboard operation.
-
-`playwright/cpu-battle.spec.ts` uses the authenticated production application
-shell with deterministic authentication and intercepted API responses. It
-completes a full frontend match, including a real touch tap, keyboard actions,
-Power use, defeat/replacement, stale recovery, completion, history/detail, and
-refresh. Its effect-rich fixture checks ordered multi-effects, zero Power,
-finite/permanent stacked modifiers, disabled legality, visible keyboard focus,
-control containment, horizontal overflow, and console/runtime errors at
-390x844, 768x1024, 1280x800, and 1600x1000. It also checks grouped log access,
-scroll-to-latest, completion, and reconstruction after refresh. Screenshots remain under the ignored
-`.pr-screenshots/issue-76/` path. It also covers the explicit dashboard resume,
-selected-deck start, no-selected-deck recovery, recent results, and full-history
-navigation at representative mobile, tablet, and desktop widths. This is mocked
-API browser evidence, not a claim that a live backend match was completed end to
-end.
-
-This document was generated and edited with assistance from
-Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5], and Codex[GPT-5].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
+This page was prepared and edited with assistance from Codex-CLI[gpt-5.6-sol],
+Codex-CLI[GPT-5], Codex[GPT-5], Codex-CLI[GPT-6], and Codex[GPT-6].

@@ -411,7 +411,7 @@ operator-run release gate.
 ### Account-retention rules
 
 This evaluation-time blocker was resolved by `BASIC-12` in the
-[Basic-tier decision register](../requirements/basic-tier-decision-register.md).
+[Basic-tier decision register](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/docs/requirements/basic-tier-decision-register.md).
 That confirmed policy must not be confused with proof that every later
 player-owned data cleanup or production retention operation has been completed.
 

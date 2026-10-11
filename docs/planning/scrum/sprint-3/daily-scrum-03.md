@@ -1,26 +1,45 @@
 ---
-title: Sprint 3 coordination snapshot 3 - player and operator workflows
-sidebar_position: 5
+title: Sprint 3 Daily Scrum 3
+sidebar_position: 4
 ---
 
-# Sprint 3 coordination snapshot 3 - player and operator workflows
+# Sprint 3 Daily Scrum 3
 
-This repository-backed reporting window is not a claim that a Daily Scrum or
-stakeholder meeting occurred.
+**Date:** 23–25 September 2026 reporting window.
 
-| Field                | Record                                                                   |
-| -------------------- | ------------------------------------------------------------------------ |
-| Reporting window     | 23-25 September 2026                                                     |
-| Meeting / attendance | No ceremony date, time, attendance, or notes supplied                    |
-| Evidence             | Merged PR history; planned stakeholder records dated 23 and 25 September |
+> Repository evidence; ceremony occurrence, attendance, and agreement were not recorded.
 
-## Sprint goal context
+[Read the complete sprint report](report.md).
+
+## Meeting photo
+
+<figure className="sprint-meeting-photo">
+  <a href="/img/scrum/sprint-3/daily-scrum-04.png" aria-label="Open full-size photo: Sprint 3 supplied team-call photo 4">
+    <img
+      src="/img/scrum/sprint-3/daily-scrum-04.png"
+      alt="Sprint 3 supplied team-call photo 4"
+      width="1672"
+      height="941"
+      loading="lazy"
+      decoding="async"
+    />
+  </a>
+  <figcaption>Supplied Sprint 3 photo 4, displayed with Daily Scrum 3.</figcaption>
+</figure>
+
+Photo placement follows the supplied order for presentation; its meeting date
+and association with this record are unconfirmed. See the
+[photo provenance and layout](../index.md#sprint-3-photo-provenance).
+
+## Summary of Progress
+
+### Sprint goal context
 
 Connect competitive, territory, trading, analytics, and account workflows to
 the previously merged service and persistence foundations, while keeping
 release and user-feedback evidence explicit.
 
-## Progress by stream
+### Progress by stream
 
 - **Product/Web (Kevin, coordination role):** PR #303 integrates the analytics
   console and #306 accessibility/preferences. Player journey polish (#307)
@@ -35,7 +54,16 @@ release and user-feedback evidence explicit.
   trade reservations. Author package/placement PRs #315 and #317 follow in the
   next window.
 
-## Coordination and stakeholder context
+## Blockers and Open Questions {/* #impediments-and-uncertainty */}
+
+- The supplied records do not confirm that either planned stakeholder
+  interaction took place.
+- Feedback collected on 28 September was not yet evidence of a post-change
+  retest; see the [results report](../../../testing/sprint-3-user-feedback-results.md).
+- Deployment, manual review, and release acceptance remain separate from
+  merged PR status.
+
+## Actions Taken {/* #coordination-and-stakeholder-context */}
 
 The [23 September account-deletion review record](../../stakeholder-interactions/2026-09-23-account-deletion-review.md)
 is a **planned interaction**. PR #329 merged on 28 September and implements
@@ -48,16 +76,7 @@ Upstash-backed shared limits are not implemented. Existing fixed territory
 geometry and process-local developer API limits must not be described as those
 proposed features.
 
-## Impediments and uncertainty
-
-- The supplied records do not confirm that either planned stakeholder
-  interaction took place.
-- Feedback collected on 28 September was not yet evidence of a post-change
-  retest; see the [results report](../../../testing/sprint-3-user-feedback-results.md).
-- Deployment, manual review, and release acceptance remain separate from
-  merged PR status.
-
-## Next actions
+## Next Actions {/* #next-actions */}
 
 - Validate account deletion and fresh registration using a dedicated test
   account, recording environment and safe evidence.
@@ -65,9 +84,20 @@ proposed features.
   implementation and multi-instance verification are recorded.
 - Triage feedback into reproducible tasks without declaring related PRs fixes.
 
+## Record Details and Sources
+
+This repository-backed reporting window is not a claim that a Daily Scrum or
+stakeholder meeting occurred.
+
+- **Reporting window:** 23-25 September 2026
+- **Meeting / attendance:** No ceremony date, time, attendance, or notes supplied
+- **Evidence:** Merged PR history; planned stakeholder records dated 23 and 25 September
+
 ## AI declaration
 
 This coordination summary was drafted with Codex-CLI[gpt-6-luna] assistance
 and reviewed and edited with Codex-CLI[gpt-6-sol], using local Git and
 documentation. The referenced stakeholder records are planned interaction
 documents, not meeting minutes.
+
+Layout and section structure revised with assistance from Codex[GPT-6], using `vitaqsprint.pdf` as the presentation reference.

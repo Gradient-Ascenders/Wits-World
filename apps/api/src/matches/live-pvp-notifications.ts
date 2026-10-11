@@ -12,7 +12,14 @@ import {
   LIVE_PVP_NOTIFY_CHANNEL,
   LIVE_PVP_PRESENCE_NOTIFY_CHANNEL,
 } from './live-pvp-service.js';
+import {
+  readGameplayWork,
+  type GameplayWorkSnapshot,
+} from './gameplay-work.js';
+import type { GameplayWorkerKind } from './gameplay-activity-store.js';
 import type { LivePvpGateway } from './live-pvp-gateway.js';
+
+export const GAMEPLAY_WORK_NOTIFY_CHANNEL = 'witsworld_gameplay_work';
 
 const RECONNECT_DELAY_MS = 5_000;
 const MATCH_ID_PATTERN =
@@ -21,6 +28,9 @@ const MATCH_ID_PATTERN =
 export interface LivePvpNotificationListener {
   start(requireReady?: boolean): Promise<void>;
   stop(): Promise<void>;
+  startCoordination(): Promise<void>;
+  stopCoordination(): Promise<void>;
+  readGameplayWork(): Promise<GameplayWorkSnapshot>;
 }
 
 export interface LivePvpNotificationLogger {
@@ -36,11 +46,19 @@ export function createLivePvpNotificationListener(
     'broadcastMatch' | 'broadcastPresence' | 'recoverNotificationGap'
   >,
   logger: LivePvpNotificationLogger = console,
+  coordination: {
+    onWake?: (worker: GameplayWorkerKind) => void;
+    onReady?: () => void;
+    onUnavailable?: () => void;
+  } = {},
 ): LivePvpNotificationListener {
   let client: pg.PoolClient | undefined;
   let detachClientHandlers: (() => void) | undefined;
   let reconnectTimer: NodeJS.Timeout | undefined;
   let stopped = true;
+  let gatewayRequested = false;
+  let coordinationRequested = false;
+  let coordinationListening = false;
   let connecting: Promise<void> | undefined;
   let recoveryRequired = false;
   let lifecycleQueue = Promise.resolve();
@@ -78,11 +96,36 @@ export function createLivePvpNotificationListener(
     reconnectTimer = undefined;
   }
 
+  function sessionQuery(active: pg.PoolClient, text: string) {
+    if (!coordinationRequested && !coordinationListening)
+      return active.query(text);
+    const query = { text, query_timeout: 1_000 };
+    return active.query(query);
+  }
+
   async function connectListener(): Promise<void> {
     if (stopped) return;
     clearReconnectTimer();
     if (connecting) return connecting;
-    if (client) return;
+    if (client) {
+      if (coordinationRequested && !coordinationListening) {
+        try {
+          await sessionQuery(client, `listen ${GAMEPLAY_WORK_NOTIFY_CHANNEL}`);
+          coordinationListening = true;
+          coordination.onReady?.();
+        } catch (error) {
+          const failed = client;
+          client = undefined;
+          detachClientHandlers?.();
+          detachClientHandlers = undefined;
+          recoveryRequired = true;
+          failed.release(true);
+          lifecycle('listener_destroy', error, 'query');
+          throw error;
+        }
+      }
+      return;
+    }
 
     const attempt = (async () => {
       lifecycle('listener_checkout_start');
@@ -119,6 +162,18 @@ export function createLivePvpNotificationListener(
       };
       try {
         const onNotification = (notification: pg.Notification) => {
+          if (released) return;
+          if (
+            coordinationRequested &&
+            notification.channel === GAMEPLAY_WORK_NOTIFY_CHANNEL
+          ) {
+            if (
+              notification.payload === 'ranked' ||
+              notification.payload === 'live'
+            )
+              coordination.onWake?.(notification.payload);
+            return;
+          }
           if (
             notification.channel !== LIVE_PVP_NOTIFY_CHANNEL &&
             notification.channel !== LIVE_PVP_PRESENCE_NOTIFY_CHANNEL
@@ -140,22 +195,32 @@ export function createLivePvpNotificationListener(
           client = undefined;
           detachClientHandlers = undefined;
           recoveryRequired = true;
+          coordinationListening = false;
+          if (coordinationRequested) coordination.onUnavailable?.();
           lifecycle('listener_client_error', error, 'client');
           destroy();
           if (!stopped) scheduleReconnect();
         };
+        const onEnd = () => onError(new Error('Notification session ended.'));
+        next.on('end', onEnd);
         next.on('notification', onNotification);
         next.on('error', onError);
 
-        await next.query(`listen ${LIVE_PVP_NOTIFY_CHANNEL}`);
-        await next.query(`listen ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`);
+        await sessionQuery(next, `listen ${LIVE_PVP_NOTIFY_CHANNEL}`);
+        await sessionQuery(next, `listen ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`);
+        if (coordinationRequested) {
+          await sessionQuery(next, `listen ${GAMEPLAY_WORK_NOTIFY_CHANNEL}`);
+          coordinationListening = true;
+        }
         listening = true;
         client = next;
         detachClientHandlers = () => {
           next.off('notification', onNotification);
           next.off('error', onError);
+          next.off('end', onEnd);
         };
         lifecycle('listener_listen_success');
+        if (coordinationRequested) coordination.onReady?.();
         logger.info({}, 'Live PvP PostgreSQL notification listener started.');
 
         if (recoveryRequired) {
@@ -173,6 +238,8 @@ export function createLivePvpNotificationListener(
           client = undefined;
           detachClientHandlers = undefined;
         }
+        coordinationListening = false;
+        if (coordinationRequested) coordination.onUnavailable?.();
         destroy();
         throw error;
       }
@@ -199,9 +266,55 @@ export function createLivePvpNotificationListener(
     reconnectTimer.unref();
   }
 
+  async function disconnectListener(): Promise<void> {
+    stopped = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
+    if (connecting) {
+      try {
+        await connecting;
+      } catch {
+        // Startup failure is already logged and shutdown is best-effort.
+      }
+    }
+    const active = client;
+    const detach = detachClientHandlers;
+    client = undefined;
+    detachClientHandlers = undefined;
+    if (!active) return;
+    let unlistened = false;
+    try {
+      await sessionQuery(active, `unlisten ${LIVE_PVP_NOTIFY_CHANNEL}`);
+      await sessionQuery(
+        active,
+        `unlisten ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`,
+      );
+      if (coordinationListening)
+        await sessionQuery(active, `unlisten ${GAMEPLAY_WORK_NOTIFY_CHANNEL}`);
+      unlistened = true;
+    } catch (error) {
+      lifecycle('database_error', error, 'query');
+      // Shutdown errors may reach the server logger. Preserve only the safe
+      // classification, never the driver's message, stack or connection data.
+      const cleanupError = new Error(
+        'Live PvP notification listener cleanup failed.',
+        {
+          cause: { error_category: classifyDatabaseError(error, 'query') },
+        },
+      );
+      throw cleanupError;
+    } finally {
+      coordinationListening = false;
+      detach?.();
+      active.release(unlistened ? undefined : true);
+      lifecycle(unlistened ? 'listener_release' : 'listener_destroy');
+    }
+  }
+
   return {
     async start(requireReady = false) {
       return serializeLifecycle(async () => {
+        gatewayRequested = true;
         stopped = false;
         clearReconnectTimer();
         try {
@@ -219,41 +332,94 @@ export function createLivePvpNotificationListener(
 
     async stop() {
       return serializeLifecycle(async () => {
-        stopped = true;
-        if (reconnectTimer) clearTimeout(reconnectTimer);
-        reconnectTimer = undefined;
-        if (connecting) {
+        gatewayRequested = false;
+        if (!coordinationRequested) await disconnectListener();
+      });
+    },
+    async startCoordination() {
+      return serializeLifecycle(async () => {
+        coordinationRequested = true;
+        stopped = false;
+        try {
+          await connectListener();
+        } catch {
+          recoveryRequired = true;
+          coordination.onUnavailable?.();
+          scheduleReconnect();
+          throw new Error('PostgreSQL gameplay listener is unavailable.');
+        }
+      });
+    },
+    async stopCoordination() {
+      return serializeLifecycle(async () => {
+        coordinationRequested = false;
+        if (!gatewayRequested) await disconnectListener();
+        else if (client && coordinationListening) {
+          const active = client;
           try {
-            await connecting;
-          } catch {
-            // Startup failure is already logged and shutdown is best-effort.
+            await sessionQuery(
+              active,
+              `unlisten ${GAMEPLAY_WORK_NOTIFY_CHANNEL}`,
+            );
+            coordinationListening = false;
+          } catch (error) {
+            client = undefined;
+            detachClientHandlers?.();
+            detachClientHandlers = undefined;
+            coordinationListening = false;
+            recoveryRequired = true;
+            active.release(true);
+            lifecycle('listener_destroy', error, 'query');
+            scheduleReconnect();
+            // Retain only the safe category, matching listener shutdown errors.
+            const cleanupError = new Error(
+              'PostgreSQL gameplay listener cleanup failed.',
+              {
+                cause: {
+                  error_category: classifyDatabaseError(error, 'query'),
+                },
+              },
+            );
+            throw cleanupError;
           }
         }
+      });
+    },
+    async readGameplayWork() {
+      return serializeLifecycle(async () => {
         const active = client;
-        const detach = detachClientHandlers;
-        client = undefined;
-        detachClientHandlers = undefined;
-        if (!active) return;
-        let unlistened = false;
+        if (
+          stopped ||
+          !coordinationRequested ||
+          !coordinationListening ||
+          !active
+        )
+          throw new Error('PostgreSQL gameplay listener is unavailable.');
         try {
-          await active.query(`unlisten ${LIVE_PVP_NOTIFY_CHANNEL}`);
-          await active.query(`unlisten ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`);
-          unlistened = true;
+          const snapshot = await readGameplayWork(active);
+          if (client !== active || stopped)
+            throw new Error('PostgreSQL gameplay listener generation changed.');
+          return snapshot;
         } catch (error) {
-          lifecycle('database_error', error, 'query');
-          // Shutdown errors may reach the server logger. Preserve only the safe
-          // classification, never the driver's message, stack or connection data.
-          const cleanupError = new Error(
-            'Live PvP notification listener cleanup failed.',
+          if (client === active) {
+            client = undefined;
+            detachClientHandlers?.();
+            detachClientHandlers = undefined;
+            coordinationListening = false;
+            recoveryRequired = true;
+            active.release(true);
+            lifecycle('listener_destroy', error, 'query');
+            coordination.onUnavailable?.();
+            scheduleReconnect();
+          }
+          // Driver messages and SQL details must not reach the server logger.
+          const discoveryError = new Error(
+            'PostgreSQL gameplay discovery failed.',
             {
               cause: { error_category: classifyDatabaseError(error, 'query') },
             },
           );
-          throw cleanupError;
-        } finally {
-          detach?.();
-          active.release(unlistened ? undefined : true);
-          lifecycle(unlistened ? 'listener_release' : 'listener_destroy');
+          throw discoveryError;
         }
       });
     },

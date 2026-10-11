@@ -1,42 +1,45 @@
 ---
-title: 'Battle database relationships'
+title: 'Battle relationships'
 ---
 
-# Battle database relationships
+# Battle relationships
 
-CPU battles, asynchronous player battles, and live player battles have
-separate persistence models. Each keeps match-owned snapshots and
-server-controlled state, so changing a saved deck or consuming an owned card
-does not rewrite a running match.
+CPU, asynchronous, and live battles have separate match records. Each snapshots
+its battle inputs and saves server-controlled state, so later changes to a
+collection or deck do not rewrite a running match.
 
-These views show selected tables and foreign-key relationships. `||` means one,
-`o|` means zero or one, `o{` means zero or many, and `|{` means one or many.
-Exact constraints and lifecycle rules remain in the linked storage references.
+These diagrams show selected tables and columns. `||` means exactly 1, `o|`
+means 0 or 1, `o{` means 0 or more, and `|{` means 1 or more. `PK` and
+`FK` mark primary and foreign keys. Where a match requires exactly 2
+participants, the text states that rule.
 
-## 1. CPU matches, snapshots and action history
+## CPU battles
 
-<div className="diagram-scroll" role="region" aria-label="CPU battle database relationships" tabIndex={0}>
+<div className="diagram-scroll" role="region" aria-label="CPU match state, card snapshots, rounds, and actions" tabIndex={0}>
 
 ```mermaid
 erDiagram
-    accTitle: CPU battle database relationships
-    accDescr: Players own CPU matches. Matches retain card snapshots and rounds, with ordered actions attached to each round. Definitions describe the cards used in snapshots.
+    direction TB
+    accTitle: CPU matches retain snapshots and ordered actions
+    accDescr: A player owns CPU matches. Each match stores card snapshots and rounds; rounds contain actions. The match's state and version provide the current authoritative position.
+
     players ||--o{ cpu_matches : plays
-    cpu_matches ||--|{ cpu_match_cards : snapshots
-    card_definitions ||--o{ cpu_match_cards : describes
-    cpu_matches ||--o{ cpu_match_rounds : records
-    cpu_match_rounds ||--|{ cpu_match_actions : contains
+    cpu_matches ||--o{ cpu_match_cards : snapshots
+    cpu_matches ||--o{ cpu_match_rounds : rounds
+    cpu_match_rounds ||--o{ cpu_match_actions : actions
+
+    players {
+        uuid id PK
+    }
     cpu_matches {
         uuid id PK
         uuid player_id FK
-        uuid player_deck_id FK
         jsonb state
         integer version
     }
     cpu_match_cards {
         uuid id PK
         uuid match_id FK
-        uuid card_definition_id FK
         jsonb snapshot
     }
     cpu_match_rounds {
@@ -46,7 +49,6 @@ erDiagram
     }
     cpu_match_actions {
         uuid id PK
-        uuid match_id FK
         uuid round_id FK
         uuid submission_id
         integer sequence
@@ -55,44 +57,51 @@ erDiagram
 
 </div>
 
-The match stores current state and its version. Its card snapshots retain the
-battle inputs; rounds and actions preserve what happened. The action's compound
-round/match foreign key prevents it from being attached to another match's
-round. The direct action-to-match link is omitted from the picture for clarity.
+The match stores current state and a version. Snapshot rows preserve the cards
+used, while rounds and actions record play. An action's compound round/match
+reference prevents it from belonging to another match's round.
 
-The source `player_deck_id` can become null when the saved deck is deleted.
-Snapshot `owned_card_id` values are historical identifiers, not foreign keys to
-current ownership rows. A player's active-match uniqueness constraint and
-transactional row locking prevent conflicting updates. Repeating a submission
-returns its recorded response instead of applying the action again.
+The optional source deck can be deleted without removing the match snapshots.
+Snapshot ownership IDs identify the original copies rather than current
+ownership rows. Row locks, active-match uniqueness, and submission receipts
+prevent conflicting or repeated actions.
 
-Source: [CPU match storage and API](../../database/cpu-match-persistence-design.md)
-and migration `0012_create_cpu_matches.sql`. Cardinalities describe committed
-game records; the server also checks roster and battle rules.
+See [CPU match storage](../../database/cpu-match-persistence-design.md).
 
-## 2. Player invitations, participants and actions
+## Asynchronous player battles
 
-<div className="diagram-scroll" role="region" aria-label="Asynchronous player battle database relationships" tabIndex={0}>
+<div className="diagram-scroll" role="region" aria-label="Asynchronous invitations, snapshots, participants, and actions" tabIndex={0}>
 
 ```mermaid
 erDiagram
-    accTitle: Asynchronous player battle database relationships
-    accDescr: An invitation can create one match. Players join through match participants, each using a private deck snapshot. Participant actions are stored in order.
+    direction TB
+    accTitle: Accepted invitations create asynchronous matches
+    accDescr: An invitation can create one match. Its private deck snapshots belong to historical actors and are used by match participants. Exactly two participants play a committed match, and their actions are stored in order.
+
     async_pvp_invitations ||--o| async_pvp_matches : accepted_as
-    async_pvp_invitations ||--o{ async_pvp_deck_snapshots : snapshots
-    async_pvp_matches ||--|{ async_pvp_match_participants : has
-    players ||--o{ async_pvp_match_participants : participates
+    async_pvp_invitations ||--o{ async_pvp_deck_snapshots : captures
+    async_pvp_matches ||--|{ async_pvp_match_participants : participants
+    player_history_actors ||--o{ async_pvp_match_participants : represented_by
     async_pvp_deck_snapshots ||--o| async_pvp_match_participants : used_by
     async_pvp_match_participants ||--o{ async_pvp_match_actions : submits
+
     async_pvp_invitations {
         uuid id PK
         uuid challenger_player_id FK
-        uuid challenged_player_id FK
+        uuid recipient_player_id FK
     }
     async_pvp_matches {
         uuid id PK
         uuid invitation_id FK
         integer version
+    }
+    async_pvp_deck_snapshots {
+        uuid id PK
+        uuid invitation_id FK
+        uuid player_id FK
+    }
+    player_history_actors {
+        uuid id PK
     }
     async_pvp_match_participants {
         uuid match_id PK, FK
@@ -103,180 +112,191 @@ erDiagram
         uuid id PK
         uuid match_id FK
         uuid actor_player_id FK
-        uuid submission_id
-        integer sequence
     }
 ```
 
 </div>
 
-An invitation identifies the challenger and challenged player through separate
-foreign keys to `players`. Acceptance creates one match with two participants.
-The participant's compound snapshot/player foreign key binds its deck snapshot
-to the correct player, and an action's compound match/actor key binds the action
-to a participant in that match.
+Acceptance creates a match with exactly 2 participants. Compound references
+bind each participant's private snapshot to the correct actor and each action
+to a participant in that match. Server deadlines, expected versions, locks,
+and saved receipts govern turns and retries.
 
-`async_pvp_deck_snapshots` is in the **private** schema; the other relations
-shown here are in `public`. Private card snapshots, match state, transitions,
-and submission receipts are omitted to keep this overview readable. A `public`
-schema name does not make a table publicly accessible through the API: routes
-still enforce authentication, ownership and safe response projections.
+`player_history_actors` and the deck snapshots are in the `private` schema.
+Retained PvP records reference the historical actor rather than requiring a
+permanent player profile. Account deletion replaces that actor key with a
+profile-free surrogate. Historical participation grants no authentication or
+gameplay access.
 
-Server deadlines, expected versions, row locks and submission receipts govern
-progress and retries. The browser does not choose the winner or disclose the
-opponent's private deck. Internal engine side names are implementation labels;
-both participants in this model are human players.
+See [asynchronous battle storage](../../database/asynchronous-pvp-persistence.md),
+[the API contract](../asynchronous-pvp-api-contract.md), and
+[deletion retention](../../database/account-deletion-retention.md).
 
-Source: [asynchronous player battle storage](../../database/asynchronous-pvp-persistence.md),
-[the API contract](../asynchronous-pvp-api-contract.md), and migration
-`0028_create_asynchronous_pvp_persistence.sql`.
+## Live player battles
 
-## 3. Live player matches, connections and transition history
-
-<div className="diagram-scroll" role="region" aria-label="Live player battle database relationships" tabIndex={0}>
+<div className="diagram-scroll" role="region" aria-label="Live participants, snapshots, current state, and action history" tabIndex={0}>
 
 ```mermaid
 erDiagram
-    accTitle: Live player battle database relationships
-    accDescr: A live match has two participants with private deck snapshots. Match versions point to private current state and append spectator-safe transition history. Short-lived ticket digests create participant or spectator access records, while participant messages retain private idempotency receipts.
-    live_pvp_matches ||--|{ live_pvp_match_participants : has
-    players ||--o{ live_pvp_match_participants : participates
+    direction TB
+    accTitle: Live battles separate current state from viewer-safe history
+    accDescr: A live match has exactly two participants linked to historical actors and private deck snapshots. Private current state follows the match version; public actions record viewer-safe transitions. Full transition details remain private.
+
+    live_pvp_matches ||--|{ live_pvp_match_participants : participants
+    player_history_actors ||--o{ live_pvp_match_participants : represented_by
     live_pvp_deck_snapshots ||--o| live_pvp_match_participants : used_by
     live_pvp_matches ||--|| live_pvp_match_states : current_state
-    live_pvp_matches ||--o{ live_pvp_match_actions : records
-    live_pvp_match_actions ||--|| live_pvp_match_transitions : has_private_transition
-    live_pvp_match_participants ||--o{ live_pvp_submission_receipts : submits
-    live_pvp_connection_tickets ||--o| live_pvp_connection_access : redeems_as
-    live_pvp_matches ||--o{ live_pvp_completion_sources : completes
+    live_pvp_matches ||--o{ live_pvp_match_actions : history
+
     live_pvp_matches {
         uuid id PK
         integer version
-        text phase
-        uuid current_actor_player_id FK
         timestamptz turn_deadline
-        uuid winner_player_id FK
+    }
+    player_history_actors {
+        uuid id PK
     }
     live_pvp_match_participants {
         uuid match_id PK, FK
         uuid player_id PK, FK
         uuid deck_snapshot_id FK
-        integer consecutive_timeout_count
         bigint connection_generation
+    }
+    live_pvp_deck_snapshots {
+        uuid id PK
+        uuid match_id FK
+        uuid player_id FK
+    }
+    live_pvp_match_states {
+        uuid match_id PK, FK
+        integer version FK
+        jsonb battle_state
     }
     live_pvp_match_actions {
         uuid id PK
         uuid match_id FK
         integer committed_version
-        text transition_kind
-        uuid actor_player_id FK
+    }
+```
+
+</div>
+
+A committed transition advances the match and private state versions together.
+It also appends a viewer-safe action record and a corresponding private
+transition containing the full resolution. The gateway constructs participant
+or spectator views from committed state.
+
+Match state, snapshots, and historical actor anchors are private. A table in
+the `public` schema still requires the API's access checks and response
+projection; the schema name does not grant public access.
+
+See [live battle storage](../../database/live-pvp-persistence.md) and
+[the live API contract](../live-pvp-api-contract.md).
+
+## Live connection access
+
+<div className="diagram-scroll" role="region" aria-label="Live connection tickets and redeemed access records" tabIndex={0}>
+
+```mermaid
+erDiagram
+    direction LR
+    accTitle: Connection tickets create role-bound live access
+    accDescr: An active player receives short-lived connection tickets. A ticket can be redeemed once into a participant or spectator access record. Both records are private and refer to the relevant live match.
+
+    players ||--o{ live_pvp_connection_tickets : receives
+    live_pvp_connection_tickets ||--o| live_pvp_connection_access : redeemed_as
+
+    players {
+        uuid id PK
     }
     live_pvp_connection_tickets {
         uuid id PK
-        bytea ticket_digest
         uuid match_id FK
         uuid player_id FK
-        text role
         timestamptz expires_at
     }
     live_pvp_connection_access {
         uuid id PK
         uuid ticket_id FK
-        uuid match_id FK
-        uuid player_id FK
+        text role
         bigint participant_generation
     }
 ```
 
 </div>
 
-`live_pvp_matches`, `live_pvp_match_participants`, and the spectator-safe
-`live_pvp_match_actions` history are in `public`. Deck/card snapshots, current
-full state, authoritative transitions, ticket digests, connection access,
-idempotency receipts, and completion sources are in `private`. A database
-schema name is not an API authorization decision; the future realtime gateway
-must still derive the connection role and construct a role-safe projection.
+Tickets and access rows are private, temporary records tied to a current
+player account and match. Ticket digests are stored instead of raw tickets.
+Spectator access cannot submit battle actions.
 
-Gameplay `version` and participant `connection_generation` are intentionally
-separate. A committed battle transition advances the gameplay version and
-appends one public/private transition pair. Redeeming a newer participant ticket
-advances only that participant's connection generation and supersedes the old
-connection without changing battle state or the one-minute deadline.
+Redeeming a newer participant ticket advances its connection generation and
+supersedes the previous connection. It does not advance the gameplay version
+or restart the turn deadline. Account deletion closes connections and removes
+these access records.
 
-Source: [live player battle storage](../../database/live-pvp-persistence.md),
-[the live PvP contract](../live-pvp-api-contract.md), and migration
-`0044_create_live_pvp_persistence.sql`.
+## Ranked result settlement
 
-## 4. Ranked seasons, proposals and settlements
-
-<div className="diagram-scroll" role="region" aria-label="Ranked competition database relationships" tabIndex={0}>
+<div className="diagram-scroll" role="region" aria-label="Ranked match receipts, rating inputs, settlements, and ledger entries" tabIndex={0}>
 
 ```mermaid
 erDiagram
-    accTitle: Ranked competition database relationships
-    accDescr: A season contains player ratings and private queue entries. Two claimed entries share one proposal. An accepted proposal binds to one live match whose terminal result creates one settlement and two ledger entries. Closing the season archives established standings.
-    ranked_seasons ||--o{ ranked_player_season_ratings : contains
-    players ||--o{ ranked_player_season_ratings : owns
-    ranked_player_season_ratings ||--o{ ranked_queue_entries : queues
-    ranked_queue_entries ||--o{ ranked_matchmaking_proposal_participants : claimed_by
-    ranked_matchmaking_proposals ||--|{ ranked_matchmaking_proposal_participants : has_two
-    ranked_matchmaking_proposals ||--o| ranked_matchmaking_receipts : accepted_as
+    direction TB
+    accTitle: Ranked rating changes retain match inputs and settlement evidence
+    accDescr: A ranked season has matchmaking receipts linked to live matches. Each receipt preserves two rating inputs and can have one settlement. Settlement records two ledger entries. Casual live matches have no ranked receipt.
+
+    ranked_seasons ||--o{ ranked_matchmaking_receipts : contains
     live_pvp_matches ||--o| ranked_matchmaking_receipts : ranked_as
     ranked_matchmaking_receipts ||--|{ ranked_match_rating_inputs : snapshots
-    live_pvp_matches ||--o| ranked_rating_settlements : settles
-    ranked_rating_settlements ||--|{ ranked_rating_ledger_entries : records_two
-    ranked_seasons ||--o{ ranked_season_standing_archives : archives
+    ranked_matchmaking_receipts ||--o| ranked_rating_settlements : settles
+    ranked_rating_settlements ||--|{ ranked_rating_ledger_entries : changes
+
     ranked_seasons {
         uuid id PK
         text status
-        text policy_version FK
     }
-    ranked_queue_entries {
+    live_pvp_matches {
         uuid id PK
-        uuid season_id FK
-        uuid player_id FK
-        timestamptz lease_expires_at
     }
-    ranked_matchmaking_proposals {
-        uuid id PK
+    ranked_matchmaking_receipts {
+        uuid proposal_id PK, FK
+        uuid match_id FK
         uuid season_id FK
-        timestamptz acceptance_deadline
+    }
+    ranked_match_rating_inputs {
+        uuid match_id PK, FK
+        uuid player_id PK, FK
+        integer pre_match_rating
     }
     ranked_rating_settlements {
         uuid match_id PK, FK
         uuid season_id FK
-        uuid winner_player_id FK
     }
-    ranked_season_standing_archives {
-        uuid season_id PK, FK
+    ranked_rating_ledger_entries {
+        uuid match_id PK, FK
         uuid player_id PK, FK
-        integer rank
-        integer rating
+        integer rating_after
     }
 ```
 
 </div>
 
-Queue state, proposal decisions, rating inputs, settlement receipts, and
-ledger entries are in the **private** schema. The public season rating and
-archived facts still require the API's authenticated/private and safe public
-projections. A proposal has exactly two participants, and each ranked match
-has two snapshotted rating inputs and two ledger entries; the diagram's `|{`
-means one or more because Mermaid does not express exactly two. A casual live
-match has no ranked matchmaking receipt or settlement.
+An accepted ranked proposal creates a receipt linking its season and live match.
+Each ranked match has exactly 2 saved rating inputs. A terminal result produces
+at most 1 settlement with exactly 2 ledger entries, preventing repeat settlement.
 
-Source: [ranked competition storage](../../database/ranked-competition-persistence.md),
-[ranked-v1 policy](../../requirements/ranked-competition-policy.md), and
-migration `0047_persist_ranked_competition.sql`.
+Player season ratings and closed-season standings are stored separately from
+this retained match evidence. Historical queue entries now refer directly to
+the season and historical actor; they no longer depend on retaining the
+player's season-rating row. The [deletion contract](../../database/account-deletion-retention.md)
+defines which personal standings are removed and which shared history remains.
 
-## Related diagrams
+See [ranked storage](../../database/ranked-competition-persistence.md) and
+[ranked rules](../../requirements/ranked-competition-policy.md). Territory
+contributions consume eligible settled results through their
+[separate storage model](../../database/contested-campus-territory-persistence.md).
 
-- [Players, challenges, cards, decks and progression](database-relationships.md).
-- [Events and ordered-trail membership](../../database/event-schema.md).
-- [All diagrams](index.md).
+[Data relationships](database-relationships.md) covers owned cards, saved
+decks, challenge completions, and permanent progression.
 
-## AI declaration
-
-Prepared from repository migrations and battle persistence contracts with
-assistance from Codex-CLI[GPT-6] and ChatGPT-Web[GPT-5.6 Sol].
-
-Ranked overlay updated with assistance from Codex[GPT-5.6 Sol].
+**AI declaration:** Prepared and updated with assistance from Codex-CLI[GPT-6],
+ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5.6 Sol], and Codex[GPT-6].

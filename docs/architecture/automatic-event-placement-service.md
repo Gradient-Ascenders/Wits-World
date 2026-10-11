@@ -1,153 +1,151 @@
 ---
-title: Automatic event placement service
+title: 'Manage event placement'
+description: Review automatic assignments, preview changes, apply a plan, and manage temporary overrides.
 ---
 
-# Automatic event placement service
+# Manage event placement
 
-Issue `#262` connects the reviewed `placement-v1` catalogue to player event
-locations. The API selects assignments from published events whose Authors
-enabled **Automatic placement**, active reviewed sites, and active coverage zones. Published events
-without portability history continue to use their authored points. A portable
-event without a valid current assignment is unavailable to players; it never
-falls back to its authored point.
+The **Event placement** workspace at `/author/placement` controls where published
+automatic-placement events appear. Fixed events keep their authored locations.
+Use [Placement rules](../requirements/automatic-event-placement-policy.md) for
+the selection policy, limits, rotation schedule, and catalogue.
 
-## Rotation and consistency
+## Prepare eligible content
 
-The API placement worker evaluates the current Johannesburg rotation bucket at
-startup, at the next `04:00 Africa/Johannesburg` boundary, and every 30 minutes
-for invalidation and override expiry. PostgreSQL time determines the bucket and
-the boundary delay. The singleton placement-state row is
-locked for each apply, override, lifecycle change, and scheduled evaluation.
-One scheduled committed plan per policy and bucket is enforced by a unique
-index. An Author change or invalidated assignment can produce a later
-`reconcile` plan in the same bucket.
+Enable **Automatic placement** in the normal
+[event editor](author-curation-api-contract.md#create-an-event), then prepare,
+review, and publish the event. There is no separate portability-approval step.
+Only use it for content that remains valid at different reviewed campus sites.
 
-The planner reads the persisted policy, active sites and zones, eligible event
-and challenge publication state, campaign availability, fixed-event positions,
-current assignments, active overrides, and assignment history. PostGIS computes
-the authoritative metre distances. The planner uses stable UUID tie-breakers;
-it reserves pins, preserves valid current assignments where possible, and fills
-the six slots while prioritising the one-per-zone floor and then two per zone.
-For the mandatory floor it revisits ranked site and event choices, including
-which current assignments to retain within the rotation replacement limit, so
-an early choice cannot hide a feasible zone assignment. It records shortfalls
-and cooldown-floor exceptions. An entirely unserved zone prevents application
-and leaves still-valid assignments in place.
+An automatically placed event has no fixed point to fall back to. Without a
+valid current assignment, it is unavailable to players. Publication does not
+guarantee a slot when capacity or coverage constraints prevent assignment.
 
-Preview creation writes an immutable plan and its proposed entries without
-changing player-visible assignments. Apply locks placement state, checks the
-expected version, policy, bucket, expiry, actor, and a fresh input digest,
-recomputes the proposal, and commits assignment ends, starts, state, and audit
-in one transaction. The Author workspace only displays a preview after its
-current-state baseline has the same state version, refreshing or discarding the
-preview when generation races another placement change. A stale apply returns
-HTTP `409`. Rollback creates a new plan after validating historical choices
-under the current policy; it does not reopen historical assignments.
+## Preview and apply
 
-The Author state response exposes the complete immutable policy snapshot and
-portable-event display names. Preview responses include server-generated
-coverage and separation validation. Coverage diagnostics report actual,
-mandatory, and preferred counts per zone. Separation diagnostics identify
-reviewed candidate sites blocked by selected assignments or fixed events,
-without exposing fixed-event coordinates. The workspace names each blocked site
-and zone and describes whether a live fixed event or another selected site caused
-the conflict. These fields are presentation evidence only: the browser does not
-recompute placement outcomes.
+1. Open Event placement and inspect the live assignments and automation status.
+2. Choose **Create preview**, or **Preview another rotation** when placement is healthy.
+3. Review **Changes** for current and proposed sites. Check **Coverage & sites**
+   and the preview's coverage and blocked-site diagnostics.
+4. If the proposed changes are suitable, choose **Review and apply**, enter a
+   reason, and confirm.
+5. Review the returned live assignments and **Recent history**.
 
-## Author API
+<div className="diagram-scroll" role="region" aria-label="Placement preview and apply workflow" tabIndex={0}>
 
-All routes below use `/api/v1`, require an authenticated active Author, and
-return `Cache-Control: no-store` where they expose a preview or current state.
-Mutation bodies require `expectedVersion` and a bounded nonempty `reason`.
-The Author identity comes from the validated token, never the request body.
+```mermaid
+flowchart LR
+    accTitle: Placement changes are reviewed before they go live
+    accDescr: The server derives a preview from current content, sites, and overrides. An Author checks proposed changes and coverage, then confirms with a reason. The server revalidates the preview and saves live assignments and history together.
+    State["Current state<br/>Content, sites, overrides"] --> Preview["Server preview<br/>Proposed assignments"]
+    Preview --> Check["Author review<br/>Changes and coverage"]
+    Check --> Apply["Confirm apply<br/>Reason and version"]
+    Apply --> Live["Live assignments<br/>Saved with history"]
+    classDef source fill:#f4f0e8,stroke:#968674,color:#302820
+    classDef review fill:#fff1c5,stroke:#a88124,color:#49370d
+    classDef live fill:#e2f2e9,stroke:#487d63,color:#203e2d
+    class State source
+    class Preview,Check,Apply review
+    class Live live
+```
 
-| Route                                                 | Purpose                                                                                                                                                         |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /author/event-placement`                         | Current policy, bucket, state version, assignment and coverage metrics, recent safe failure, active assignments, site and zone presentation data, and overrides |
-| `GET /author/event-placement/history`                 | Recent plan status and safe failure history                                                                                                                     |
-| `POST /author/event-placement/previews`               | Persist and return a proposed plan                                                                                                                              |
-| `POST /author/event-placement/apply`                  | Apply `planId` with the expected state version                                                                                                                  |
-| `POST /author/event-placement/overrides`              | Create a pin, site exclusion, or automation pause with `idempotencyKey` and `durationHours`                                                                     |
-| `POST /author/event-placement/overrides/:id/end`      | End an override early                                                                                                                                           |
-| `POST /author/event-placement/sites/:id/status`       | Suspend, reactivate, or retire a reviewed site                                                                                                                  |
-| `POST /author/event-placement/zones/:id/status`       | Suspend, reactivate, or retire a reviewed zone                                                                                                                  |
-| `POST /author/event-placement/events/:id/portability` | Legacy operational compatibility for enabling or withdrawing placement management; normal Authoring uses the event editor checkbox                              |
-| `POST /author/event-placement/rollback`               | Create and apply a new plan from `sourcePlanId`                                                                                                                 |
+</div>
 
-## Author workspace
+A preview is saved for inspection but does not change player locations. **Discard**
+removes it from the current view; **New preview** requests another proposal.
+Only the Author who requested a preview can apply it.
 
-Issue `#265` adds the protected `/author/placement` workspace. The semantic
-current-versus-proposed ledger, coverage table, and candidate-site register are
-the complete operational representation; the synchronized Mapbox layers are a
-visual aid. Marker labels and patterns distinguish current, proposed, excluded,
-overridden, and unused candidate sites, while zone fill and line patterns show
-served, preferred-shortfall, and unserved coverage.
+Apply sends the saved `planId` and current `expectedVersion`. The server checks
+its expiry, policy, rotation bucket, input digest, and proposed entries again.
+If the state changed, it rejects the apply without partially changing assignments.
+The console reloads current state and history; review them and create a fresh
+preview before another apply. It does not automatically replay the rejected change.
 
-Preview is non-consequential. Apply, pause, pin, temporary site exclusion,
-ending an override, and rollback require a reason and an explicit confirmation.
-The workspace sends the API-provided state version and, for apply, the persisted
-preview identifier. HTTP `409` clears the stale preview and refreshes current
-state and history without retrying the mutation. Applying then requires a fresh
-preview. Author navigation and route guards hide the workspace from ordinary
-players; every API route independently enforces authentication, active-player
-status, and the Author role.
+## Read placement feedback
 
-The workspace intentionally does not expose site/zone lifecycle controls or a
-separate portable-event approval. An Author enables **Automatic placement** in
-the normal event create/edit form. A portable event stores no authored point;
-its latitude and longitude remain unset while its interaction radius remains an
-explicit Author choice. Disabling Automatic placement therefore requires the
-Author to choose a real fixed location instead of reviving a hidden fallback.
-Once the event is published and content-ready, it enters the placement pool
-without another approval action. Map failure leaves all placement data and
-actions available through the semantic tables and controls. The map receives
-reviewed site points and zone geometry only; it receives no player location,
-fixed-event coordinate, or placement-decision input.
+The map and tables represent the same server records. The **Changes** view shows
+which assignments stay, move, are added, or are removed. **Coverage & sites**
+shows zone counts and reviewed candidate sites. The map can help locate a site;
+all placement decisions remain available through the tables if it cannot load.
 
-Pins require `eventId` and `siteId`; site exclusions require `siteId`; pauses
-take neither. An idempotency key replay with the same payload returns the
-existing override. A changed payload returns HTTP `409`. Site exclusion,
-suspension, retirement, and disabling Automatic placement close affected
-assignments in the same transaction. Event retirement also ends its active
-portability record so retired content cannot remain currently placed. Authors
-should enable Automatic placement only when event wording and evidence remain
-valid at any reviewed campus site. Existing fixed, landmark-specific published
-content should remain fixed; the appropriate path is a separately reviewed
-replacement event.
+Coverage diagnostics compare actual counts with the required floor and preferred
+allocation. Separation diagnostics name blocked candidate sites and whether a
+fixed event or another selected site caused the conflict. Fixed-event coordinates
+are not included in that diagnostic view.
 
-## Player and offline behavior
+A preview that leaves a required zone unserved cannot be applied. A smaller,
+valid plan can be applied with a degraded status. See
+[coverage rules](../requirements/automatic-event-placement-policy.md#coverage-and-separation)
+for the exact distinction.
 
-Discovery, eligibility, and trail reads resolve the effective location in the
-database. Challenge start retains the selected assignment identifier on the
-attempt, so a later rotation cannot move an attempt already started. The
-player API does not expose placement history or Author review data.
+## Temporary overrides and rollback
 
-Offline packs for assigned events are signed with the assignment identifier
-and expire no later than the next rotation boundary. Submission checks that
-the assignment matched the event and site at the claimed start time; an old
-pack cannot claim a replacement location. Assignment history remains
-available for a valid start before a later rotation or site suspension.
+Open **Manual controls** to create an override with a duration and reason:
 
-## Release and operations
+| Control                  | Effect                                                                      |
+| ------------------------ | --------------------------------------------------------------------------- |
+| Pause automatic rotation | Stops new automatic rotations during the override.                          |
+| Pin event to site        | Keeps an eligible event at a reviewed site, subject to all placement rules. |
+| Exclude site             | Removes a site from selection and ends its current assignment.              |
+| End an active override   | Ends it early and lets normal placement resume.                             |
 
-Apply migrations through `0060_allow_unlocated_portable_events.sql` and the existing
-`0003_event_placement_catalogue.sql` seed before starting this API version.
-The migrations preserve existing authored event coordinates and attempts while
-allowing only actively portable or retired events to omit an authored point.
-They add an optional assignment reference to attempts, adjust plan constraints
-for Author and reconciliation plans, and install the location resolver.
-There are no new environment variables. The API process hosts the scheduler;
-Azure App Service `Always On` must stay enabled. Multiple API instances use
-the same placement-state lock and scheduled-plan uniqueness boundary.
+The server enforces the [override limits](../requirements/automatic-event-placement-policy.md#author-overrides).
+Creating or ending an override requires confirmation. A pause does not permit
+invalid assignments to stay active, and a pin cannot bypass availability,
+separation, or coverage checks.
 
-The initial seed has no automatic-placement events, so the worker may record a
-safe unserved-zone failure until suitable events are created and published.
-Authors can inspect recent plans through the history route. Operational logs
-contain outcome and duration, without player location or challenge answers.
-Deployment verification should confirm migration `0060`, seed completion, API
-health, an Author preview/history response, and unchanged fixed-event
-discovery. A live rotation requires published automatic-placement content and should not
-be manufactured from existing landmark-specific events.
+**Recent history** offers rollback for eligible applied plans. Rollback requires
+a reason and confirmation; it creates a new plan using historical choices
+validated against current rules. It does not reopen old assignments or restore
+retired content.
 
-The preceding document was generated and edited with the assistance of:
-Codex[GPT-5].
+Site and zone lifecycle operations exist in the API, but the workspace does not
+provide those controls or a site-creation editor.
+
+## Runtime and saved gameplay
+
+The API worker evaluates placement at startup, at the configured daily boundary,
+and every 30 minutes for invalid assignments and override expiry. PostgreSQL time
+and a shared placement-state lock coordinate all API instances. Scheduled plan
+uniqueness prevents the same rotation from being applied twice; a later content
+change can produce a reconciliation plan in that bucket.
+
+Player discovery and eligibility read the effective assigned location. Challenge
+start saves the assignment that passed eligibility, so later movement cannot
+move a started attempt. Assignment-bound offline behavior and unchanged reward
+identity are covered by
+[Placement rules](../requirements/automatic-event-placement-policy.md#player-progress-and-privacy)
+and the [offline challenge contract](offline-challenge-play.md).
+
+## API and operations
+
+Routes use `/api/v1` and require an active Author. Preview and state responses
+are not cached. Every mutation includes `expectedVersion` and a nonblank reason;
+override creation also includes an `idempotencyKey` and `durationHours`.
+Reusing an override key with the same payload returns its saved result; a
+changed payload is rejected.
+
+| Route under `/author/event-placement`                 | Purpose                                                                     |
+| ----------------------------------------------------- | --------------------------------------------------------------------------- |
+| `GET` at the base path and `GET /history`             | Current state and recent plan history.                                      |
+| `POST /previews` and `POST /apply`                    | Save a preview, then apply its identifier.                                  |
+| `POST /overrides` and `POST /overrides/:id/end`       | Create or end a pause, pin, or exclusion.                                   |
+| `POST /rollback`                                      | Create a new plan from `sourcePlanId`.                                      |
+| `POST /sites/:id/status` and `POST /zones/:id/status` | Change reviewed site or zone lifecycle.                                     |
+| `POST /events/:id/portability`                        | Operational compatibility; normal authoring uses the event-editor checkbox. |
+
+Placement depends on the checked-in schema and reviewed catalogue seed
+`database/seeds/0003_event_placement_catalogue.sql`. An empty eligible-event pool
+can produce an unserved preview; publish suitable content rather than converting
+landmark-specific events. There are no placement-specific environment variables.
+The API process hosts the worker, so deployed instances must remain running;
+Azure App Service uses **Always On**.
+
+See [placement storage](../database/automatic-event-placement-persistence.md)
+for locks, assignment history, schema, and rollout details, and the
+[API reference](../api-reference.md) for exact schemas.
+
+---
+
+This page was prepared and edited with assistance from Codex[GPT-5]
+and Codex[GPT-6].

@@ -4,147 +4,101 @@ title: 'Points and achievement storage'
 
 # Points and achievement storage
 
-Migration `0026_create_player_progression.sql` adds the authoritative data
-foundation for points, achievements, Johannesburg activity days, streaks, and
-all-time/monthly standings. The browser cannot insert point values, unlocks,
-activity days, totals, or ranks.
+Progression stores authoritative point awards, activity days, streaks,
+achievements, and campus standings. The server saves these records with the
+completed gameplay result. The [progression rules](../requirements/player-progression-rules.md)
+define award values and player-visible behaviour.
 
-Points are permanent and non-spendable. This migration and its persistence
-adapter neither read nor write coin wallets or coin-ledger entries. Applied
-migrations that introduced the legacy coin schema remain immutable. Migration
-`0034_retire_coin_rewards.sql` completes issue `#193`: active responses omit
-coins, new completions persist zero in the compatibility column, wallets accept
-no inserts or updates, and the historical ledger accepts no mutations.
+## Stored model
 
-## Relations
+| Relation                     | Responsibility                                                                     |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| `progression_point_rules`    | Versioned award values; existing versions retain their definition.                 |
+| `player_point_awards`        | Immutable award decisions linked to authoritative gameplay sources.                |
+| `player_activity_days`       | One row per player and Johannesburg day, with completion count and award evidence. |
+| `player_progression_state`   | All-time total, streak at the latest activity day, and best streak.                |
+| `player_monthly_progression` | Calendar-month total and completion count.                                         |
+| `achievement_definitions`    | Achievement metric, threshold, name, and description.                              |
+| `player_achievement_unlocks` | One immutable unlock per player and achievement, linked to its triggering award.   |
 
-| Relation                     | Responsibility                                                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `progression_point_rules`    | Versioned challenge-score and CPU-result values; only activation may change on an existing version     |
-| `player_point_awards`        | Immutable ledger decision for exactly one authoritative event completion or completed CPU match        |
-| `player_activity_days`       | One Johannesburg calendar row per player/day, with first/last award evidence and completion count      |
-| `player_progression_state`   | Indexed all-time total and streak ending at the latest persisted activity day                          |
-| `player_monthly_progression` | Indexed calendar-month total and completion count                                                      |
-| `achievement_definitions`    | Data-driven metric, threshold, accessible display name, and description                                |
-| `player_achievement_unlocks` | Immutable unique player/achievement unlock linked to the award that first satisfied the persisted rule |
+Points cannot be spent. Progression does not use the retired coin wallet or
+ledger.
 
-Composite foreign keys ensure an award source belongs to the same player. Each
-event-completion and CPU-match source has a unique partial index, so even
-different workers cannot create two awards. Insert validation checks the source
-status, player, result/score, completion timestamp, point rule, and awarded
-value before accepting a ledger row. Ledger and unlock update/delete triggers
-then keep the audit history immutable.
+## Award transaction
 
-## Transaction interface
+`createProgressionPersistence()` accepts the owning gameplay transaction
+client and an authoritative source ID:
 
-`createProgressionPersistence()` exposes two internal operations:
+| Operation                         | Source                                            |
+| --------------------------------- | ------------------------------------------------- |
+| `recordChallengeCompletion`       | Finalised event completion.                       |
+| `recordCpuMatch`                  | Completed CPU match.                              |
+| `recordAsynchronousPvpCompletion` | Completed async match; records both participants. |
 
-- `recordChallengeCompletion(client, completionId)`
-- `recordCpuMatch(client, matchId)`
+The database loads and validates the source's player, terminal result,
+completion time, applicable rule version, and award value. Per-player
+transaction locks serialise updates to totals and activity. Composite foreign
+keys prevent an award from referring to another player's source.
 
-The caller supplies its existing transaction client. Each operation invokes a
-private PostgreSQL function that loads the authoritative source, takes a
-transaction-scoped per-player advisory lock, and returns either the newly
-inserted award or the existing result on replay. A new award updates activity,
-monthly and all-time totals, recomputes streak islands, and inserts newly met
-achievements with conflict-safe uniqueness.
+A new award updates daily activity, monthly and all-time totals, streaks, and
+newly met achievements in the same transaction. If progression fails, the
+gameplay finalisation rolls back.
 
-An unknown or unfinished source raises an error. Challenge finalisation and the
-terminal CPU-match transition call the adapter with their existing transaction
-client before commit. If the finaliser encounters an already-completed source,
-the same operation returns the immutable existing award; HTTP idempotency-receipt
-replays return the response produced by the original atomic commit without
-awarding again. Any progression failure propagates so the owning gameplay
-transaction rolls back. The adapter does not add placeholder, asynchronous, or
-browser-authoritative behavior.
+Unique source indexes prevent duplicate awards across workers and retries.
+Reprocessing a completed source returns its existing award. A saved HTTP
+idempotency response replays the original committed outcome.
 
-### Asynchronous PvP extension
+### Async and live battles
 
-Migration `0028_create_asynchronous_pvp_persistence.sql` extends the checked
-source shape without editing applied migration `0026`. It adds:
+An async match has one award decision per `(match, participant)`. Both
+participant decisions commit together; player locks are taken in canonical UUID
+order. Zero-point outcomes still count as activity.
 
-- a dedicated `asynchronous_pvp` source linked by composite foreign key to the
-  authoritative match participant;
-- one unique award decision for each `(matchId, participantId)` pair;
-- source validation against the terminal outcome, completion reason,
-  participant, timestamp, active rule, and awarded value; and
-- `recordAsynchronousPvpCompletion(client, matchId)`, which records both
-  participant decisions in canonical player-ID order using the existing
-  per-player advisory locks.
+Async awards do not increment CPU or challenge achievement metrics. Live PvP
+has no progression award or activity-day source. Seasonal rating and territory
+influence use separate storage; see [ranked storage](ranked-competition-persistence.md).
 
-The approved winner receives 25 points and the loser or forfeiter receives zero
-for defeat, turn forfeit, and account-deletion forfeit. Both decisions update
-activity, monthly/all-time totals, and streaks. They do not increment CPU or
-challenge achievement metrics and introduce no PvP achievement. See the
-[progression rules](../requirements/player-progression-rules.md#asynchronous-pvp-progression)
-and [PvP persistence design](./asynchronous-pvp-persistence.md).
+## Activity dates and streaks
 
-Issue `#180` must call this operation before committing the terminal match. It
-must not overload `cpu_match` or write one participant outside the owning
-transaction.
+The authoritative completion timestamp is converted to **Africa/Johannesburg**.
+`activity_day` stores that calendar date; `activity_month` stores the month's
+first date.
 
-## Time and standings
+Persisted daily rows allow late or out-of-order results to recompute consecutive
+activity runs. Several completions on one date increase its completion count
+without adding another streak day.
 
-`activity_day` is the authoritative completion timestamp converted with
-`Africa/Johannesburg`; `activity_month` is the first date of that local calendar
-month. Persisting the individual days means late or out-of-order processing can
-recompute streaks correctly.
+`streak_at_last_activity` describes the run ending at the latest saved activity
+day. Read models derive the effective current streak: it becomes 0 after a
+complete Johannesburg day is missed. No midnight rewrite is required.
+
+## Standings reads
 
 `player_progression_all_time_standings` and
-`player_progression_monthly_standings(month)` apply competition ranking. Their
-queries include every active player through a left join, so an account with no
-progression row receives zero points. Indexes lead on all-time points or the
-month and monthly points. Consumers must order tied rows by Player Name and
-then internal UUID for deterministic pagination.
+`player_progression_monthly_standings(month)` use competition ranking:
+equal point totals share a rank. Every active account participates, including
+accounts with no progression row and a total of 0.
 
-The authenticated HTTP read service uses one parameterised statement for each
-profile or standings response. A standings statement returns the requested
-bounded page, total active-player count, and current-player row from the same
-statement snapshot. Neither the internal UUID nor deleted-player rows are
-serialised.
+The authenticated read service returns each standings page, total active-player
+count, and the caller's own standing from one parameterised statement snapshot.
+Ties are ordered by Player Name, then UUID for deterministic pagination.
+Player responses omit internal UUIDs and accounts that are no longer active.
 
-The persisted `streak_at_last_activity` is the run ending at the latest
-activity date. Read models turn it into an effective current streak of zero
-after a complete Johannesburg day is missed; no scheduled midnight update is
-required.
+The external developer leaderboard uses a smaller public projection.
+[Developer API](../architecture/developer-api.md) defines its fields.
 
-## Backfill and rule changes
+## Rule versions and retention
 
-The migration processes retained event completions and completed CPU matches
-in timestamp/source/ID order through the same private functions used for new
-awards. This reconstructs historical totals, months, activity, streaks, and
-achievement unlocks for players present when the migration runs.
+Rule changes apply to future awards. A new version replaces the active rule
+transactionally; saved awards retain their original version and value.
+Ordinary updates and deletes cannot rewrite award or unlock history.
 
-Point-rule changes are prospective. Add a new inactive version, deactivate the
-old version and activate the new version in one transaction. Existing awards
-retain their original version and value. Applied migration history and ledger
-rows must never be edited to rebalance points.
+Progression stores no Auth0 identity, email, or precise location. Account
+deletion removes awards, activity, totals, and achievements along with personal
+gameplay sources. Shared PvP history can remain under a profile-free actor, but
+it does not preserve the deleted account's progression or standing.
 
-## Privacy and retention
+See [account retention](account-deletion-retention.md) for the cleanup boundary.
 
-Progression stores no email, Auth0 subject, or location. Account deletion removes
-the player's awards, activity, totals, and unlock history. The deletion purge
-also removes completed challenge and CPU match sources; shared PvP outcomes
-can retain a profile-free actor UUID. Deleted accounts have no live standing.
-
-## Verification
-
-`apps/api/tests/progression-persistence.integration.test.ts` creates a
-disposable database at the pre-`0026` schema, inserts retained history, applies
-the migration, and verifies backfill, zero-point records, Johannesburg
-boundaries, out-of-order streaks, duplicate and concurrent writes, unique
-unlocks, prospective versions, competition ties, zero-point standings, source
-validation, immutability, and deleted-player filtering. The explicit database
-runner registers this file so `npm run test:database --workspace
-@wits-world/api` executes the suite.
-
-`apps/api/tests/asynchronous-pvp-persistence.integration.test.ts` additionally
-upgrades a populated pre-`0028` database and verifies two-participant 25/0
-awards, activity, immutable source validation, replay, and concurrent calls.
-
-The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
-
-Page title clarified with assistance from Codex-CLI[GPT-6].
-
-This account-deletion update was edited with assistance from Codex[GPT-6].
+**AI declaration:** Prepared and updated with assistance from
+Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], Codex-CLI[GPT-6], and Codex[GPT-6].

@@ -1,68 +1,97 @@
-# Player profile showcase API
+---
+title: Profiles API
+description: Read published player profiles and update your own profile with privacy and version checks.
+---
 
-All routes require an interactive authenticated active player. Read and write
-responses use `Cache-Control: private, no-store`. Player Name, progression rules,
-achievement definitions and card ownership retain their existing authority.
+# Profiles API
 
-| Method | Route                                  | Result                                                                                                    |
-| ------ | -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/v1/profiles/me`                  | Owner snapshot including settings version, selected copy IDs, all achievement progress and daily activity |
-| GET    | `/api/v1/profiles/players/:playerName` | Published player snapshot; owner projection if the viewer owns this profile                               |
-| PUT    | `/api/v1/profiles/me`                  | Validate and save the authenticated player's complete edit, then return its owner snapshot                |
+The Profiles API lets an authenticated, active player edit their own profile
+and read profiles that other players have published. Profiles start private;
+publishing a profile and sharing its activity are separate choices.
 
-The snapshot contains `playerName`, `points`, `rank`, `currentStreak`,
-`longestStreak`, `achievements`, `bio`, `degree`, `studyYear`, `avatarDataUrl`,
-`status`, `isPublic`, `activityVisible`, `featuredCards`, `featuredOwnedCardIds`,
-`activity`, `activityThrough`, `isOwner`, `version` and `requestId`.
+See the [player profile guide](../design/profile-showcase.md) for the player
+experience, and the [API reference](../api-reference.md) for bearer
+authentication and the shared error format. Successful profile responses use
+`Cache-Control: private, no-store`.
 
-Publication defaults to false. Missing, private, nameless, pending-deletion and
-deleted targets all return `404 PROFILE_NOT_FOUND`, without exposing target
-account state. Visitors receive a null version and no copy IDs. Featured cards
-contain only card presentation (definition, artwork, rarity, stats and rules).
-Only earned achievements appear to visitors. Activity is null unless shared,
-otherwise it contains `{ date, count }` entries from authoritative
-`player_activity_days`, bounded to the 365 days ending at `activityThrough`.
-Zero days are supplied only as calendar presentation in the browser. All date
-boundaries follow Africa/Johannesburg. No provider identity, email, locations,
-precise activity timestamps, hidden cards or inventory are projected.
+## Routes
 
-The edit requires `expectedVersion`, `bio`, `degree`, `studyYear`,
-`avatarDataUrl`, `statusEmoji`, `statusText`, `statusExpiry`, `isPublic`,
-`activityVisible` and `featuredOwnedCardIds`. Character limits are 280 for bio,
-100 for degree, 32 for study year, 16 for emoji and 80 for status. Academic details
-are optional self-reported text. The client crops a JPEG/PNG/WebP input locally;
-the API accepts at most 200,000 characters of encoded image input, decodes with a
-pixel limit and emits a metadata-free 256×256 JPEG. Null removes the picture.
+| Method | Route                                  | Result                                                          |
+| ------ | -------------------------------------- | --------------------------------------------------------------- |
+| GET    | `/api/v1/profiles/me`                  | Your profile, including editing settings and progress.          |
+| GET    | `/api/v1/profiles/players/:playerName` | A published profile, or your owner view when the name is yours. |
+| PUT    | `/api/v1/profiles/me`                  | Save a complete edit and return the updated owner view.         |
 
-`statusExpiry` is `keep`, `today`, `week` or `never`. Today ends at the next
-Johannesburg midnight; week is seven days from the server's transaction time.
-Status may contain an emoji, text, or both. Clearing both fields clears the visible status. Both projections suppress expired
-status. The browser honors the returned expiry while the page remains open.
+A missing, private, or unavailable profile returns `404 PROFILE_NOT_FOUND`.
+The response does not reveal whether the target account exists or is being
+deleted.
 
-A new profile has version zero; each save increments it. The write locks the
-active player, checks the version and locks selected copies in deterministic
-order before replacing settings and ordered showcase membership. Up to four
-distinct owned-copy UUIDs are allowed. Stale saves return
-`409 PROFILE_VERSION_CONFLICT`; unavailable copies return
-`409 PROFILE_CARD_UNAVAILABLE`. Both failures roll back the full write. The
-browser retains the draft and offers a reload rather than claiming success.
+## Owner and visitor views
 
-Migration 0064 removes showcase membership after a copy changes owner and uses
-ON DELETE CASCADE when a copy is consumed or removed. Reads additionally join
-current ownership. Publication never blocks trading or evolution. Account
-deletion purges personal metadata in the lifecycle transaction; pending accounts
-are immediately excluded from reads.
+GET and PUT responses return the profile fields directly, with a `requestId`.
+`isOwner` identifies the view returned to the caller.
 
-Focused verification covers SQL migration on an isolated database, publication
-privacy, foreign selections, concurrent writes, status expiry, transfers,
-deletion, image decoding, client validation and responsive browser flows.
+| Fields                                                           | Meaning and visibility                                                                                     |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `playerName`, `points`, `rank`, `currentStreak`, `longestStreak` | Current player identity and progression.                                                                   |
+| `achievements`                                                   | Owners receive earned achievements and progress towards others; visitors receive earned achievements only. |
+| `bio`, `degree`, `studyYear`, `avatarDataUrl`, `status`          | Profile content. Academic details are self-reported text.                                                  |
+| `isPublic`, `activityVisible`                                    | Publication and activity-sharing settings, both false by default.                                          |
+| `featuredCards`                                                  | Ordered card presentations, including artwork and game details.                                            |
+| `featuredOwnedCardIds`, `version`                                | Owners receive selected copy IDs and an editing version. Visitors receive `[]` and `null`.                 |
+| `activity`, `activityThrough`                                    | Daily activity and the last date covered by the response.                                                  |
 
-The favourite-card editor requests `GET /api/v1/cards/collection?unique=true`.
-The collection service selects the newest currently owned copy per definition
-before loading presentation details. The regular collection response still
-includes every copy. Saved favourites retain their original copy IDs, even when
-the picker represents the same definition with another copy. The browser shows
-12 unique cards at a time and searches all returned definitions. Selected cards
-can be reordered by dragging artwork or grips, or by using arrow keys on a grip.
+Owners always receive their activity. Visitors receive `activity: null` unless
+activity sharing is enabled. Shared activity contains `{ date, count }` entries
+for days with activity, within the 365 days ending at `activityThrough`. Dates
+follow Africa/Johannesburg; a calendar can fill missing dates with zero counts.
 
-The preceding document was edited with assistance from Codex[GPT-6].
+`status` is either `null` or `{ emoji, text, expiresAt }`; `expiresAt` is a
+timestamp or `null`. Expired statuses are hidden. Profile responses exclude
+email, authentication-provider details, locations, precise activity timestamps,
+and the player's wider collection.
+
+## Saving an edit
+
+PUT replaces the editable settings. Send every field below, even when clearing
+text or leaving a setting unchanged. Extra fields are rejected.
+
+| Field                         | Accepted value                                                                                  |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- |
+| `expectedVersion`             | The integer `version` from your latest owner view; a new profile starts at 0.                   |
+| `bio`                         | Text up to 280 characters.                                                                      |
+| `degree`                      | Text up to 100 characters.                                                                      |
+| `studyYear`                   | Text up to 32 characters.                                                                       |
+| `avatarDataUrl`               | A base64 JPEG, PNG, or WebP data URL up to 200,000 characters, or `null` to remove the picture. |
+| `statusEmoji`                 | Text up to 16 characters.                                                                       |
+| `statusText`                  | Text up to 80 characters.                                                                       |
+| `statusExpiry`                | `keep`, `today`, `week`, or `never`.                                                            |
+| `isPublic`, `activityVisible` | Boolean settings.                                                                               |
+| `featuredOwnedCardIds`        | Up to 4 distinct owned-copy UUIDs, in display order. An empty array clears the showcase.        |
+
+Text is trimmed on save. The API re-encodes accepted pictures as a 256 × 256
+JPEG without image metadata. An invalid image returns `400 INVALID_PROFILE_AVATAR`.
+
+For status expiry, `keep` preserves the existing expiry, `today` means the next
+Johannesburg midnight, `week` means 7 days from the save, and `never` means no
+expiry. Clearing both status fields removes the visible status.
+
+Showcase selections refer to exact owned copies. They do not reserve cards;
+trading or consuming a selected copy removes it from the showcase. Use
+`GET /api/v1/cards/collection?unique=true` to list one currently owned copy per
+definition, while preserving the saved copy IDs for unchanged selections.
+
+## Version conflicts
+
+Each successful save increments `version`. A stale edit returns
+`409 PROFILE_VERSION_CONFLICT`; a selected copy that is no longer owned returns
+`409 PROFILE_CARD_UNAVAILABLE`. Neither failure applies part of the edit.
+
+Keep the draft, fetch your current profile, and resolve the changed settings or
+card selection before submitting again. If a save's response is lost, read the
+profile to establish its current state before retrying with a version.
+
+## AI declaration
+
+Rewritten with assistance from Codex[GPT-6], using the profile routes, response
+handling, and privacy rules.
