@@ -156,6 +156,19 @@ The interface feels adventurous and scholarly. Deep Night Sky surfaces establish
 
 The system uses clear controls and crafted rewards. Common panels, forms, and navigation share restrained geometry and readable spacing. Collectible card frames carry the dense celestial academic metalwork, with material and engraving changes for rarity. The approved Campus Seal and W/star marks anchor the identity. This record describes the existing React interface in `src/styles/`, page styles, and assets; it does not prescribe a new visual direction.
 
+The saved challenge player uses an open navy surface with an event heading,
+labelled timer, question progress and one full-width answer action. Ordering
+rows keep numbered items, drag handles and named arrow controls with 44 px touch
+targets. Loading identifies device progress restoration; recovery places locked
+answer counts, the specific failure and its retry together. Saved results show
+arrival, local answers and pending server confirmation as separate steps, with
+the reconnect deadline below. Pending results keep the status summary, numbered
+journey steps, sync feedback and recovery action in one continuous reading path.
+Confirmed receipts reuse the same compact status mark, then separate the event
+name from the primary result action and quiet saved-events return. Desktop and
+mobile browser captures cover both formats and legacy location recovery;
+real-device GPS acceptance remains separate.
+
 Live Ranked is an approved scoped extension of this identity. Its competitive entry uses a compact Live Ranked label beside the tabs, a plain Night Sky stage with a thin gold border, and the active deck’s actual card faces. Both battle lobbies use Collection-style icon-and-label tabs with ivory selected text and a short gold underline. `/matches/pvp` has its own open inbox composition: a full serif page title, challenge action, separate tab row, and divided battle lists. The shared campus chrome and other surfaces retain their established rules. The Live Ranked surface contract and approved `duel-table-v3.png` carry that page's composition; final pixel-fidelity review remains pending.
 
 **Key Characteristics:**

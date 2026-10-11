@@ -196,16 +196,21 @@ export function SelectedEventDetails({
   return (
     <div className="selected-event">
       <div className="selected-event__heading">
-        <span className={`status-badge status-badge--${event.availability}`}>
-          {availabilityLabels[event.availability]}
-        </span>
         <h2 tabIndex={-1}>{event.title}</h2>
+        <div className="selected-event__availability">
+          <span className={`status-badge status-badge--${event.availability}`}>
+            {availabilityLabels[event.availability]}
+          </span>
+          {event.offlineStatus && (
+            <span className="offline-download-status">
+              {event.offlineStatus}
+            </span>
+          )}
+        </div>
       </div>
 
       {savedAction ? (
         <div className="selected-event__offline-action" aria-live="polite">
-          <strong>{event.offlineStatus}</strong>
-          <p>{savedAction.detail}</p>
           {savedAction.onPlay && (
             <button
               type="button"
@@ -216,6 +221,7 @@ export function SelectedEventDetails({
               {savedAction.label}
             </button>
           )}
+          <p>{savedAction.detail}</p>
         </div>
       ) : (
         <EligibilityStatus

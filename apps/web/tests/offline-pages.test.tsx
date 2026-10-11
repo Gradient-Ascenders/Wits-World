@@ -56,7 +56,7 @@ const location: LocationClaim = {
   latitude: -26.19205,
   longitude: 28.03038,
   accuracyMetres: 12,
-  acquiredAt: '2026-10-08T08:00:00.000Z',
+  acquiredAt: new Date().toISOString(),
 };
 
 function makePack(
@@ -154,6 +154,7 @@ beforeEach(() => {
     attempts: [],
     receipts: [],
   };
+  location.acquiredAt = new Date().toISOString();
   mocks.requestLocation.mockResolvedValue(location);
   mocks.readState.mockImplementation(async () => localState);
   mocks.createAttempt.mockImplementation(async (cached: CachedPack) => {
@@ -186,6 +187,68 @@ afterEach(() => {
 });
 
 describe('offline saved pages', () => {
+  it.each([true, false])(
+    'uses the server completion deadline rather than a delayed finishing location (all answers: %s)',
+    async (complete) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-10T08:04:00.000Z'));
+      const cached = makePack();
+      localState.attempts = [
+        makeAttempt(cached, {
+          status: 'pending',
+          startedAt: '2026-10-10T08:00:00.000Z',
+          finishedAt: '2026-10-10T08:03:50.000Z',
+          answers: cached.pack.questions
+            .slice(0, complete ? 5 : 4)
+            .map((question, index) => ({
+              questionId: question.id,
+              optionIds: ['first'],
+              answeredAt: new Date(
+                Date.parse('2026-10-10T08:00:00.000Z') + index * 10_000,
+              ).toISOString(),
+            })),
+        }),
+      ];
+      renderPage('attempt');
+      await screen.findByRole('heading', { name: 'Answers saved' });
+      expect(document.querySelector('.offline-deadline time')).toHaveAttribute(
+        'datetime',
+        complete ? '2026-10-10T20:00:40.000Z' : '2026-10-10T20:02:00.000Z',
+      );
+      expect(
+        screen.getAllByText(
+          'Saved on this device. Pending server validation; no reward confirmed.',
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
+  it('updates a saved result in place after confirmation and focuses its result heading', async () => {
+    localState.attempts = [makeAttempt(makePack(), { status: 'pending' })];
+    renderPage('attempt');
+    await screen.findByRole('heading', { name: 'Answers saved' });
+    localState.attempts = [];
+    localState.receipts = [
+      {
+        clientAttemptId: 'local-attempt-1',
+        playerId: 'player',
+        title: 'Great Hall Quest',
+        outcome: 'accepted',
+        attemptId: 'server-attempt',
+        receivedAt: Date.now(),
+      },
+    ];
+    await act(async () => window.dispatchEvent(new Event('storage')));
+    const result = await screen.findByRole('heading', {
+      name: 'Attempt confirmed',
+    });
+    await waitFor(() => expect(result).toHaveFocus());
+    expect(window.location.pathname).toBe('/offline-attempts/local-attempt-1');
+    expect(
+      screen.getByRole('link', { name: 'View confirmed result' }),
+    ).toHaveAttribute('href', '/challenge-attempts/server-attempt');
+  });
+
   it('offers retry saving, never GPS, when arrival-policy finalisation cannot write to storage', async () => {
     const cached = makePack();
     cached.pack.locationPolicy = 'arrival-v1';
@@ -305,10 +368,9 @@ describe('offline saved pages', () => {
     expect(
       screen.getByRole('link', { name: 'Back to Explore' }),
     ).toHaveAttribute('href', '/explore');
-    expect(screen.getByRole('link', { name: 'Explore' })).toHaveAttribute(
-      'href',
-      '/explore?event=event-1',
-    );
+    expect(
+      screen.getByRole('link', { name: 'Explore: Great Hall Quest' }),
+    ).toHaveAttribute('href', '/explore?event=event-1');
     expect(
       screen.queryByRole('button', { name: 'Open saved challenge' }),
     ).toBeNull();
@@ -375,15 +437,22 @@ describe('offline saved pages', () => {
       screen
         .getAllByRole('status')
         .find((status) =>
-          status.textContent?.includes('answers are provisional'),
+          status.textContent?.includes('Each submitted answer saves'),
         ),
-    ).toHaveTextContent('answers are provisional');
+    ).toHaveTextContent('Each submitted answer saves');
     expect(
       screen.getByRole('group', { name: /Choose one answer/ }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Submit answer' }),
     ).toBeDisabled();
+    expect(screen.getByRole('link', { name: 'Back to Explore' })).toHaveClass(
+      'button',
+      'button--quiet',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Saved events and attempts' }),
+    ).toHaveClass('button', 'button--quiet');
     fireEvent.click(screen.getByRole('radio', { name: 'Second answer' }));
     expect(screen.getByRole('button', { name: 'Submit answer' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Submit answer' }));

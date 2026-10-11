@@ -49,6 +49,42 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
       eventsReachable = true,
       accept = false,
       submitted = 0;
+    const captureViewports = async (state: string) => {
+      if (format !== 'multiple_choice') return;
+      for (const [width, height, name] of [
+        [1440, 900, 'desktop'],
+        [390, 844, 'mobile'],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        if (state === 'event') {
+          const play = page.getByRole('button', { name: 'Play', exact: true });
+          await expect(play).toBeInViewport();
+          await expect
+            .poll(() =>
+              play.evaluate((button) => {
+                const rect = button.getBoundingClientRect();
+                return button.contains(
+                  document.elementFromPoint(
+                    rect.x + rect.width / 2,
+                    rect.y + rect.height / 2,
+                  ),
+                );
+              }),
+            )
+            .toBe(true);
+        }
+        await captureScreenshot(test.info(), page, {
+          path: `offline-${state}-${name}.png`,
+          fullPage: true,
+          animations: 'disabled',
+        });
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+          ),
+        ).toBe(true);
+      }
+    };
     await context.route('http://127.0.0.1:3999/api/v1/**', async (route) => {
       if (!connected) return route.abort('internetdisconnected');
       const pathname = new URL(route.request().url()).pathname;
@@ -124,29 +160,51 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
         }),
       )
       .toBe(true);
-    await page.goto('/offline');
     await expect(
-      page.getByText('Ready for offline play.', { exact: false }),
+      page.getByRole('complementary', { name: 'Download readiness' }),
+    ).toHaveCount(0);
+    await page
+      .getByRole('button', {
+        name: 'offline-player, account menu',
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByRole('link', {
+        name: 'Downloads & saved attempts',
+        exact: true,
+      }),
     ).toBeVisible();
-    if (format === 'multiple_choice') {
-      await page.setViewportSize({ width: 1440, height: 900 });
-      await captureScreenshot(test.info(), page, {
-        path: 'offline-desktop.png',
-        fullPage: true,
-        animations: 'disabled',
-      });
-      await page.setViewportSize({ width: 390, height: 844 });
-      await captureScreenshot(test.info(), page, {
-        path: 'offline-mobile.png',
-        fullPage: true,
-        animations: 'disabled',
-      });
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= window.innerWidth,
-        ),
-      ).toBe(true);
-    }
+    await page
+      .getByRole('button', {
+        name: 'offline-player, account menu',
+        exact: true,
+      })
+      .click();
+    // Wait for downloaded data without visiting or warming either offline route.
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open('wits-world-offline');
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+          try {
+            return await new Promise<number>((resolve, reject) => {
+              const request = db
+                .transaction('packs')
+                .objectStore('packs')
+                .count();
+              request.onsuccess = () => resolve(request.result);
+              request.onerror = () => reject(request.error);
+            });
+          } finally {
+            db.close();
+          }
+        }),
+      )
+      .toBe(1);
     // A network interface can remain connected while the API is unreachable.
     eventsReachable = false;
     await page.goto('/explore');
@@ -168,8 +226,10 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
       page.getByRole('heading', { name: 'Explore the campus map' }),
     ).toBeVisible();
     await expect(
-      page.getByText('Playing offline as offline-player'),
-    ).toBeVisible();
+      page.getByRole('button', {
+        name: 'offline-player, offline account menu',
+      }),
+    ).toHaveText('offline-player');
     await expect(
       page.getByRole('button', { name: 'Sign in', exact: true }),
     ).toHaveCount(0);
@@ -185,6 +245,37 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
       ] as const) {
         await page.setViewportSize({ width, height });
         await page.emulateMedia({ reducedMotion: 'reduce' });
+        for (const control of [
+          page.locator('.explore-connection-status a'),
+          page.getByRole('button', { name: 'Zoom in campus map' }),
+        ]) {
+          await expect
+            .poll(() =>
+              control.evaluate((element) => {
+                const rect = element.getBoundingClientRect();
+                return element.contains(
+                  document.elementFromPoint(
+                    rect.x + rect.width / 2,
+                    rect.y + rect.height / 2,
+                  ),
+                );
+              }),
+            )
+            .toBe(true);
+        }
+        await expect(page.locator('.explore-connection-status a')).toHaveCSS(
+          'text-decoration-line',
+          'none',
+        );
+        await page
+          .getByRole('button', { name: /offline account menu/ })
+          .click();
+        await expect(
+          page.getByRole('button', { name: 'Restore online session' }),
+        ).toHaveCount(0);
+        await page
+          .getByRole('button', { name: /offline account menu/ })
+          .click();
         await captureScreenshot(test.info(), page, {
           path: `offline-account-${name}.png`,
           fullPage: true,
@@ -200,6 +291,7 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
     await page
       .getByRole('button', { name: 'View Offline campus challenge on map' })
       .click();
+    await captureViewports('event');
     await page.getByRole('button', { name: 'Play', exact: true }).click();
     for (let index = 1; index <= 5; index++) {
       await expect(
@@ -208,6 +300,7 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
           exact: true,
         }),
       ).toBeVisible();
+      if (index === 1) await captureViewports('question');
       if (format === 'multiple_choice')
         await page.getByRole('radio').first().check();
       if (format === 'multiple_choice' && index === 5) {
@@ -245,10 +338,51 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
         { exact: true },
       ),
     ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Sign in to check answers' }),
+    ).toHaveCount(0);
+    for (const navigation of [
+      page.getByRole('link', { name: 'Back to Explore' }),
+      page.getByRole('link', { name: 'Saved events and attempts' }),
+    ]) {
+      await expect(navigation).toHaveCSS('text-decoration-line', 'none');
+      await expect(navigation).toHaveCSS('border-top-style', 'solid');
+    }
+    await captureViewports('pending');
+    const attemptPath = new URL(page.url()).pathname;
+    await page.goto('/offline');
+    await expect(
+      page.getByRole('heading', {
+        name: 'Downloads & saved attempts',
+        exact: true,
+      }),
+    ).toBeVisible();
+    if (format === 'multiple_choice') {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await captureScreenshot(test.info(), page, {
+        path: 'offline-desktop.png',
+        fullPage: true,
+        animations: 'disabled',
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await captureScreenshot(test.info(), page, {
+        path: 'offline-mobile.png',
+        fullPage: true,
+        animations: 'disabled',
+      });
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      ).toBe(true);
+    }
+    await page.goto(attemptPath);
     await page.reload();
     await expect(
-      page.getByText('Playing offline as offline-player'),
-    ).toBeVisible();
+      page.getByRole('button', {
+        name: 'offline-player, offline account menu',
+      }),
+    ).toHaveText('offline-player');
     await expect(
       page.getByText(
         'Saved on this device. Pending server validation; no reward confirmed.',
@@ -266,6 +400,8 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
     await expect(
       page.getByRole('heading', { name: 'Attempt confirmed' }),
     ).toBeVisible({ timeout: 25_000 });
+    expect(new URL(page.url()).pathname).toMatch(/^\/offline-attempts\//);
+    await captureViewports('confirmed');
     const cachedURLs = await page.evaluate(async () => {
       const requests = await Promise.all(
         (await caches.keys()).map(async (key) =>

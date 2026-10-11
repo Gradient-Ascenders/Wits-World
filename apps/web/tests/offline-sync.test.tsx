@@ -389,7 +389,7 @@ describe('offline synchronization recovery', () => {
     });
     expect(
       screen.getByRole('region', { name: 'Downloads & saved attempts' }),
-    ).toHaveTextContent('A server result could not be saved');
+    ).toHaveTextContent('Confirmed');
     expect(
       screen.getByText(
         /The server confirmed this result. The receipt could not be saved/,

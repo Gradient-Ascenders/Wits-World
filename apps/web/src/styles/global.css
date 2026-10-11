@@ -339,18 +339,6 @@ a:hover {
   .site-frame .site-header__inner .account-control--offline {
     max-width: min(100%, 15rem);
   }
-
-  .account-control--offline
-    .account-disclosure__trigger
-    .account-control__identity {
-    display: grid;
-    gap: 0;
-    text-align: start;
-    font-size: var(--text-xs);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
 }
 
 .account-control__error {

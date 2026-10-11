@@ -3,7 +3,8 @@ import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: /(?:offline|offline-explore|game-artwork)\.spec\.ts/,
+  testMatch:
+    /(?:offline|offline-first-open|offline-explore|game-artwork)\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   timeout: 90_000,

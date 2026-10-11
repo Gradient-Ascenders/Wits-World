@@ -53,7 +53,10 @@ import { useTerritoryDiscovery } from '../components/exploration/useTerritoryDis
 import { selectReportedLocation } from '../reported-location-selection';
 import { useOffline } from '../offline/OfflineProvider';
 import { useOfflineExploration } from '../offline/useOfflineExploration';
-import { checkOfflineLocation } from '../offline/location';
+import {
+  checkOfflineLocation,
+  offlineLocationMessage,
+} from '../offline/location';
 import {
   createLocalAttempt,
   OFFLINE_ARRIVAL_WINDOW_MS,
@@ -1032,6 +1035,8 @@ export default function ExplorePage({
           Date.parse(item.pack.validUntil) > Date.now(),
       );
       if (cached) {
+        const controller = new AbortController();
+        challengeStartRequest.current = controller;
         setStartingEventId(eventId);
         setSavedStartMessage('Checking arrival…');
         try {
@@ -1053,18 +1058,30 @@ export default function ExplorePage({
             Date.parse(arrival.acquiredAt) >= Date.parse(cached.pack.validFrom)
           ) {
             try {
-              checkOfflineLocation(arrival, cached.pack.event, true);
+              checkOfflineLocation(arrival, cached.pack.event, true, {
+                maxAgeMs: maximumAge,
+                validFrom:
+                  cached.pack.locationPolicy === 'arrival-v1'
+                    ? cached.pack.validFrom
+                    : undefined,
+              });
               usable = true;
             } catch {
               /* Try a new acquisition. */
             }
           }
           const claim =
-            usable && arrival
-              ? arrival
-              : await acquireNewerReportedLocation(latestClaimRef.current);
-          if (!mounted.current) return;
-          checkOfflineLocation(claim, cached.pack.event, true);
+            usable && arrival ? arrival : await locationClaimProvider();
+          if (!mounted.current || controller.signal.aborted) return;
+          // A fresh acquisition can share a timestamp with a watch callback.
+          // Validate the claim itself instead of requiring a newer timestamp.
+          checkOfflineLocation(claim, cached.pack.event, true, {
+            maxAgeMs: usable ? maximumAge : undefined,
+            validFrom:
+              cached.pack.locationPolicy === 'arrival-v1'
+                ? cached.pack.validFrom
+                : undefined,
+          });
           const value = await createLocalAttempt(cached, claim);
           if (!mounted.current) return;
           refresh();
@@ -1072,16 +1089,15 @@ export default function ExplorePage({
         } catch (error) {
           if (mounted.current)
             setSavedStartMessage(
-              error instanceof BrowserLocationError
-                ? error.failure === 'denied'
-                  ? 'Allow location access in your browser settings to record arrival.'
-                  : 'Your arrival could not be recorded. Move to an open area and try Play again.'
-                : error instanceof Error
-                  ? error.message
-                  : 'This challenge could not open. Your saved attempts are kept.',
+              error instanceof Error
+                ? offlineLocationMessage(error)
+                : 'This challenge could not open. Your saved attempts are kept.',
             );
         } finally {
-          if (mounted.current) setStartingEventId(null);
+          if (challengeStartRequest.current === controller) {
+            challengeStartRequest.current = null;
+            if (mounted.current) setStartingEventId(null);
+          }
         }
         return;
       }
@@ -1156,6 +1172,7 @@ export default function ExplorePage({
       apiBaseUrl,
       getAccessToken,
       acquireNewerReportedLocation,
+      locationClaimProvider,
       onChallengeStarted,
       startingEventId,
       navigate,
@@ -1220,11 +1237,14 @@ export default function ExplorePage({
     );
     if (localAttempt || event.offlineStatus === 'Downloaded' || usingSaved) {
       savedActions[event.id] = {
-        label: localAttempt
-          ? localAttempt.status === 'active'
-            ? 'Continue challenge'
-            : 'View saved attempt'
-          : 'Play',
+        label:
+          startingEventId === event.id
+            ? 'Checking location…'
+            : localAttempt
+              ? localAttempt.status === 'active'
+                ? 'Continue challenge'
+                : 'View saved attempt'
+              : 'Play',
         detail:
           savedStartMessage && selectedEventId === event.id
             ? savedStartMessage
@@ -1234,12 +1254,14 @@ export default function ExplorePage({
                 : 'Answers saved. Waiting for the server to confirm your result.'
               : event.offlineStatus === 'Downloaded'
                 ? cachedPack?.pack.locationPolicy === 'arrival-v1'
-                  ? `Start within ${event.radiusMetres} metres. A recorded arrival is valid for five minutes; results are provisional until checked.`
-                  : `Start within ${event.radiusMetres} metres with a fresh location. This older download also needs a finishing location; results are provisional until checked.`
+                  ? `Start within ${event.radiusMetres} metres. Answers are saved on this device.`
+                  : `Start within ${event.radiusMetres} metres. Location is also needed when you finish this older download.`
                 : event.offlineStatus === 'Expired'
                   ? 'This download has expired. Reconnect to refresh it.'
                   : 'These questions were not downloaded. Reconnect to play this event.',
-        disabled: !localAttempt && event.availability !== 'active',
+        disabled:
+          startingEventId === event.id ||
+          (!localAttempt && event.availability !== 'active'),
         onPlay:
           localAttempt || event.offlineStatus === 'Downloaded'
             ? () => void startChallenge(event.id)

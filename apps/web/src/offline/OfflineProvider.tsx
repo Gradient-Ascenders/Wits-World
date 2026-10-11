@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { Link, useLocation } from 'wouter';
-import { WifiSlash } from '@phosphor-icons/react';
+import { WifiSlash, DownloadSimple } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { READ_TIMEOUT_MS } from '../components/loading-policy';
 import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
@@ -168,9 +168,18 @@ export function OfflineProvider({
   }, []);
   useEffect(() => {
     let active = true;
+    let checkGeneration = 0;
     const check = () => {
+      const generation = ++checkGeneration;
+      const controller = navigator.serviceWorker?.controller;
+      setShellReady(false);
       void offlineShellReady().then((ready) => {
-        if (active) setShellReady(ready);
+        if (
+          active &&
+          generation === checkGeneration &&
+          controller === navigator.serviceWorker?.controller
+        )
+          setShellReady(ready);
       });
     };
     check();
@@ -877,28 +886,38 @@ export function OfflinePreparation({
       className="offline-preparation"
       aria-busy={preparing}
     >
-      <h2>Download readiness</h2>
-      <p role="status">
-        {preparing
-          ? 'Saving campus events…'
-          : message ||
-            (savedCount
-              ? `${savedCount} ${savedCount === 1 ? 'event' : 'events'} saved on this device.`
-              : 'Challenges download automatically while connected.')}
-      </p>
-      <p>
-        {shellReady && savedCount > 0
-          ? 'Ready for offline play. Open downloaded challenges from Explore.'
-          : savedCount > 0
-            ? 'Questions are saved, but offline reopening is not ready. Stay connected while the app finishes downloading, then check again.'
-            : 'No challenges are ready for offline play yet.'}
-      </p>
-      {preparationTotal > savedCount && (
-        <p>
-          {savedCount} of {preparationTotal} eligible events downloaded. Events
-          without downloaded questions need a connection.
+      <DownloadSimple aria-hidden="true" size={22} />
+      <div className="offline-preparation__copy">
+        <p role="status">
+          <strong>
+            {preparing
+              ? 'Saving campus events…'
+              : shellReady && savedCount > 0
+                ? 'Ready for offline play'
+                : 'Offline play is not ready yet'}
+          </strong>
+          <span>
+            {savedCount} {savedCount === 1 ? 'event' : 'events'} saved on this
+            device
+            {preparationTotal > savedCount
+              ? ` · ${preparationTotal} eligible`
+              : ''}
+            .
+          </span>
         </p>
-      )}
+        {preparationFailed && message && <p>{message}</p>}
+        <details>
+          <summary>Download details</summary>
+          {!preparationFailed && message && <p>{message}</p>}
+          <p>
+            {shellReady && savedCount > 0
+              ? 'Open downloaded challenges from Explore. Events without downloaded questions need a connection.'
+              : savedCount > 0
+                ? 'Questions are saved, but offline reopening is not ready. Stay connected while the app finishes downloading, then check again.'
+                : 'Challenges download automatically while connected. Location access is not needed for downloads.'}
+          </p>
+        </details>
+      </div>
       {preparationFailed && (
         <button
           className="button button--secondary"

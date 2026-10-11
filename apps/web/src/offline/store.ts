@@ -1,6 +1,7 @@
 import { openDB, type DBSchema } from 'idb';
 import type { LocationClaim } from '../browser-location';
 import type { PlayerEvent } from '../api/events';
+import { checkOfflineLocation, OFFLINE_LOCATION_MAX_AGE_MS } from './location';
 
 export const OFFLINE_CONTENT_BUDGET_BYTES = 4 * 1024 * 1024;
 export const OFFLINE_ARRIVAL_WINDOW_MS = 5 * 60 * 1000;
@@ -184,13 +185,6 @@ export async function createLocalAttempt(
   const db = await database();
   if (boundOfflinePlayer() !== cached.pack.playerId)
     throw new Error('Sign in with the original account.');
-  if (
-    Date.now() < Date.parse(cached.pack.validFrom) ||
-    Date.now() >= Date.parse(cached.pack.validUntil)
-  )
-    throw new Error(
-      'This download is not currently available. Reconnect to refresh it.',
-    );
   const tx = db.transaction('attempts', 'readwrite');
   const existing = (await tx.store.getAll()).find(
     (item) =>
@@ -201,11 +195,30 @@ export async function createLocalAttempt(
     await tx.done;
     return existing;
   }
+  const now = Date.now();
+  if (
+    now < Date.parse(cached.pack.validFrom) ||
+    now >= Date.parse(cached.pack.validUntil)
+  )
+    throw new Error(
+      'This download is not currently available. Reconnect to refresh it.',
+    );
+  checkOfflineLocation(location, cached.pack.event, true, {
+    now,
+    maxAgeMs:
+      cached.pack.locationPolicy === 'arrival-v1'
+        ? OFFLINE_ARRIVAL_WINDOW_MS
+        : OFFLINE_LOCATION_MAX_AGE_MS,
+    validFrom:
+      cached.pack.locationPolicy === 'arrival-v1'
+        ? cached.pack.validFrom
+        : undefined,
+  });
   const attempt: LocalAttempt = {
     clientAttemptId: crypto.randomUUID(),
     playerId: cached.pack.playerId,
     cached,
-    startedAt: new Date().toISOString(),
+    startedAt: new Date(now).toISOString(),
     answers: [],
     startLocation: location,
     status: 'active',
@@ -270,8 +283,29 @@ export async function finishLocalAttempt(id: string, location?: LocationClaim) {
       throw new Error(
         'This older saved challenge still needs a finishing location.',
       );
+    const now = Date.now();
+    if (
+      now < Date.parse(attempt.answers.at(-1)?.answeredAt ?? attempt.startedAt)
+    )
+      throw new Error(
+        'The device clock moved backwards. Restore automatic date and time before continuing.',
+      );
+    if (
+      attempt.answers.length < attempt.cached.pack.questions.length &&
+      now <
+        Date.parse(attempt.startedAt) +
+          attempt.cached.pack.timeLimitSeconds * 1000
+    )
+      throw new Error(
+        'Continue answering before finishing this challenge. The original timer still applies.',
+      );
+    if (location && attempt.cached.pack.locationPolicy !== 'arrival-v1')
+      checkOfflineLocation(location, attempt.cached.pack.event, false, {
+        now,
+        previousAcquiredAt: attempt.startLocation.acquiredAt,
+      });
     attempt.status = 'pending';
-    attempt.finishedAt = new Date().toISOString();
+    attempt.finishedAt = new Date(now).toISOString();
     if (location) attempt.finishLocation = location;
     await tx.store.put(attempt);
   }

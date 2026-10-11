@@ -74,6 +74,12 @@ function openOfflineMenu() {
   fireEvent.click(screen.getByRole('button', { name: /offline account menu/ }));
 }
 
+function findOfflineAccount(name = 'Ari') {
+  return screen.findByRole('button', {
+    name: `${name}, offline account menu`,
+  });
+}
+
 describe('saved offline account header', () => {
   it('does not suggest signing in when the network is connected but the API is unavailable', async () => {
     await saveAccount();
@@ -84,7 +90,7 @@ describe('saved offline account header', () => {
       setupPlayerName: vi.fn(),
     });
     renderHeader();
-    await screen.findByText(/Playing offline as/);
+    await findOfflineAccount();
     openOfflineMenu();
     expect(
       screen.queryByRole('button', { name: 'Restore online session' }),
@@ -106,7 +112,7 @@ describe('saved offline account header', () => {
       setupPlayerName: vi.fn(),
     });
     renderHeader();
-    await screen.findByText(/Playing offline as/);
+    await findOfflineAccount();
     expect(screen.getByRole('main')).toHaveClass('main-content--explore');
     expect(screen.queryByRole('contentinfo')).toBeNull();
   });
@@ -121,9 +127,9 @@ describe('saved offline account header', () => {
       await saveAccount();
       const loginWithRedirect = vi.fn();
       renderHeader({ ...auth, loginWithRedirect });
-      expect(await screen.findByText(/Playing offline as/)).toHaveTextContent(
-        'Playing offline as Ari',
-      );
+      const account = await findOfflineAccount();
+      expect(account).toHaveTextContent('Ari');
+      expect(account).not.toHaveTextContent('Playing offline as');
       openOfflineMenu();
       expect(
         screen.getByRole('link', { name: 'Downloads & saved attempts' }),
@@ -146,7 +152,7 @@ describe('saved offline account header', () => {
     const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
     renderHeader({ loginWithRedirect });
-    await screen.findByText(/Playing offline as/);
+    await findOfflineAccount();
     online.mockReturnValue(true);
     await act(async () => window.dispatchEvent(new Event('online')));
     openOfflineMenu();
@@ -166,12 +172,14 @@ describe('saved offline account header', () => {
   it('removes the old identity immediately when the device account binding changes', async () => {
     await saveAccount();
     renderHeader();
-    await screen.findByText(/Playing offline as/);
+    await findOfflineAccount();
     await act(async () => {
       clearAuthenticatedPlayerBinding();
       bindAuthenticatedPlayer(crypto.randomUUID());
     });
-    expect(screen.queryByText(/Playing offline as/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Ari, offline account menu' }),
+    ).toBeNull();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeVisible();
   });
 
@@ -179,7 +187,7 @@ describe('saved offline account header', () => {
     await saveAccount();
     const logout = vi.fn().mockResolvedValue(undefined);
     renderHeader({ logout });
-    await screen.findByText(/Playing offline as/);
+    await findOfflineAccount();
     openOfflineMenu();
     await act(async () => {
       fireEvent.click(
@@ -195,7 +203,9 @@ describe('saved offline account header', () => {
     expect(
       window.localStorage.getItem('wits-world.authenticated-player-id'),
     ).toBeNull();
-    expect(screen.queryByText(/Playing offline as/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Ari, offline account menu' }),
+    ).toBeNull();
   });
 
   it('retains the account when the pending-work sign-out warning is cancelled', async () => {
@@ -205,7 +215,7 @@ describe('saved offline account header', () => {
     );
     const logout = vi.fn();
     renderHeader({ logout });
-    await screen.findByText(/Playing offline as/);
+    await findOfflineAccount();
     openOfflineMenu();
     await act(async () =>
       fireEvent.click(
@@ -216,7 +226,9 @@ describe('saved offline account header', () => {
     expect(
       window.localStorage.getItem('wits-world.authenticated-player-id'),
     ).toBe(playerId);
-    expect(screen.getByText(/Playing offline as/)).toHaveTextContent('Ari');
+    expect(
+      screen.getByRole('button', { name: 'Ari, offline account menu' }),
+    ).toHaveTextContent('Ari');
   });
 
   it('does not expose another saved identity to a different authenticated player', async () => {
@@ -240,6 +252,8 @@ describe('saved offline account header', () => {
     expect(
       await screen.findByRole('button', { name: 'Other player, account menu' }),
     ).toBeVisible();
-    expect(screen.queryByText(/Playing offline as/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Ari, offline account menu' }),
+    ).toBeNull();
   });
 });

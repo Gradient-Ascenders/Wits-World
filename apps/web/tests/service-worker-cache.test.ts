@@ -30,13 +30,26 @@ function worker({ failedInstall = false, failedPut = false } = {}) {
     if (failedPut) throw new Error('quota unavailable');
     stored.set(request.url, value);
   });
-  const keys = ['wits-world-shell-old', 'unrelated-cache'];
+  const previous = new Map<string, Response>([
+    [`${origin}/index.html`, response()],
+  ]);
+  const older = new Map<string, Response>();
+  const keys = [
+    'wits-world-shell-older',
+    'wits-world-shell-old',
+    'unrelated-cache',
+  ];
   const caches = {
-    open: vi.fn(async () => ({
+    open: vi.fn(async (key: string) => ({
       addAll,
       put,
       match: vi.fn(async (request: Request | string) =>
-        stored
+        (key === 'wits-world-shell-old'
+          ? previous
+          : key === 'wits-world-shell-older'
+            ? older
+            : stored
+        )
           .get(
             typeof request === 'string'
               ? new URL(request, origin).href
@@ -89,7 +102,18 @@ function worker({ failedInstall = false, failedPut = false } = {}) {
     await Promise.all(pending);
     return reply;
   }
-  return { dispatch, stored, addAll, put, caches, fetch, skipWaiting, claim };
+  return {
+    dispatch,
+    stored,
+    previous,
+    older,
+    addAll,
+    put,
+    caches,
+    fetch,
+    skipWaiting,
+    claim,
+  };
 }
 
 describe('service worker shell cache', () => {
@@ -127,6 +151,35 @@ describe('service worker shell cache', () => {
     expect((await state.dispatch('fetch', { request }))?.status).toBe(200);
     expect(state.fetch).not.toHaveBeenCalled();
   });
+  it('opens an event deep link with its selection query while offline', async () => {
+    const state = worker();
+    await state.dispatch('install');
+    state.fetch.mockRejectedValue(new Error('offline'));
+    const request = {
+      method: 'GET',
+      mode: 'navigate',
+      url: `${origin}/explore?event=saved-event`,
+    };
+    expect((await state.dispatch('fetch', { request }))?.status).toBe(200);
+    expect(state.fetch).not.toHaveBeenCalled();
+  });
+
+  it('serves an old page module from the retained previous build after activation', async () => {
+    const state = worker();
+    state.previous.set(`${origin}/assets/ExplorePage-previous.js`, response());
+    await state.dispatch('install');
+    await state.dispatch('activate');
+    state.fetch.mockRejectedValue(new Error('offline'));
+    const request = new Request(`${origin}/assets/ExplorePage-previous.js`);
+    expect((await state.dispatch('fetch', { request }))?.status).toBe(200);
+    expect(state.fetch).not.toHaveBeenCalled();
+    expect(state.put).not.toHaveBeenCalled();
+    const unknown = new Request(`${origin}/assets/unknown.js`);
+    await expect(state.dispatch('fetch', { request: unknown })).rejects.toThrow(
+      'offline',
+    );
+  });
+
   it('installs only offline-essential assets and reuses immutable HTTP cache', async () => {
     const state = worker();
     await state.dispatch('install');
@@ -200,7 +253,9 @@ describe('service worker shell cache', () => {
     await state.dispatch('message', { data: 'ACTIVATE_UPDATE' });
     expect(state.skipWaiting).toHaveBeenCalledOnce();
     await state.dispatch('activate');
-    expect(state.caches.delete.mock.calls).toEqual([['wits-world-shell-old']]);
+    expect(state.caches.delete.mock.calls).toEqual([
+      ['wits-world-shell-older'],
+    ]);
     expect(state.claim).toHaveBeenCalledOnce();
     state.fetch.mockRejectedValue(new Error('offline'));
     const request = {

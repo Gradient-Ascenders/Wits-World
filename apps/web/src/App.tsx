@@ -8,6 +8,7 @@ import { AppShell } from './components/AppShell';
 import { OfflineProvider, useOffline } from './offline/OfflineProvider';
 import { ServiceWorkerUpdate } from './offline/ServiceWorkerUpdate';
 import { boundOfflinePlayer } from './offline/store';
+import { OfflineAttemptPage } from './offline/OfflineAttemptPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingState } from './components/LoadingState';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -35,11 +36,6 @@ const OfflinePages = () => import('./offline/OfflinePages');
 const OfflineExplorePage = lazy(() =>
   OfflinePages().then(({ OfflineExplorePage }) => ({
     default: OfflineExplorePage,
-  })),
-);
-const OfflineAttemptPage = lazy(() =>
-  OfflinePages().then(({ OfflineAttemptPage }) => ({
-    default: OfflineAttemptPage,
   })),
 );
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
@@ -70,7 +66,7 @@ function prepareRoute(path: string) {
       import('./pages/AuthorConsolePage'),
       prepareAuthorWorkspace(path),
     ]);
-  if (path.startsWith('/offline')) return OfflinePages();
+  if (path === '/offline') return OfflinePages();
   if (path.startsWith('/challenge-attempts/'))
     return import('./pages/ChallengePage');
   if (path === '/explore') return import('./pages/ExplorePage');

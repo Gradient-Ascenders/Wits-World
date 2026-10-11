@@ -141,7 +141,9 @@ describe('one exploration journey', () => {
     delete cached.pack.locationPolicy;
     await replacePacks('player', [cached]);
     mount();
-    await screen.findByText(/older download also needs a finishing location/);
+    await screen.findByText(
+      /Location is also needed when you finish this older download/,
+    );
     expect(
       screen.queryByText(/recorded arrival is valid for five minutes/),
     ).toBeNull();
@@ -170,6 +172,72 @@ describe('one exploration journey', () => {
     expect((await readOfflineState()).attempts).toHaveLength(1);
     expect(location).toHaveBeenCalledOnce();
   });
+  it('accepts a corrected, precise position sharing the last watch timestamp', async () => {
+    const acquiredAt = new Date().toISOString();
+    const location = vi.fn(async () => ({
+      latitude: cached.pack.event.latitude,
+      longitude: cached.pack.event.longitude,
+      accuracyMetres: 10,
+      acquiredAt,
+    }));
+    mount(location, (handlers) => {
+      queueMicrotask(() =>
+        handlers.onLocation({
+          latitude: cached.pack.event.latitude,
+          longitude: cached.pack.event.longitude,
+          accuracyMetres: 300,
+          acquiredAt,
+        }),
+      );
+      return () => {};
+    });
+    await screen.findByText('Downloaded');
+    fireEvent.click(await screen.findByRole('button', { name: 'Play' }));
+    await waitFor(() =>
+      expect(window.location.pathname).toMatch(/^\/offline-attempts\//),
+    );
+    expect(location).toHaveBeenCalledOnce();
+    expect(
+      (await readOfflineState()).attempts[0]?.startLocation.accuracyMetres,
+    ).toBe(10);
+  });
+
+  it.each(['stale', 'future', 'denied', 'timeout'] as const)(
+    'keeps a download recoverable after a %s first reading',
+    async (failure) => {
+      const claim = {
+        latitude: cached.pack.event.latitude,
+        longitude: cached.pack.event.longitude,
+        accuracyMetres: 10,
+        acquiredAt: new Date(
+          Date.now() + (failure === 'future' ? 60_000 : -600_000),
+        ).toISOString(),
+      };
+      const provider = vi.fn(async () => claim);
+      if (failure === 'denied' || failure === 'timeout')
+        provider.mockRejectedValueOnce(new BrowserLocationError(failure));
+      mount(provider);
+      fireEvent.click(await screen.findByRole('button', { name: 'Play' }));
+      await screen.findByText(
+        failure === 'stale'
+          ? /location reading is too old/
+          : failure === 'future'
+            ? /ahead of the device clock/
+            : failure === 'denied'
+              ? /Location access is denied/
+              : /location took too long/,
+      );
+      expect((await readOfflineState()).attempts).toHaveLength(0);
+      expect((await readOfflineState()).packs).toHaveLength(1);
+      claim.acquiredAt = new Date().toISOString();
+      fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+      await waitFor(() =>
+        expect(window.location.pathname).toMatch(/^\/offline-attempts\//),
+      );
+      expect((await readOfflineState()).attempts).toHaveLength(1);
+    },
+  );
+
   it('does not consume an attempt for distant or imprecise arrival', async () => {
     const location = vi.fn(async () => ({
       latitude: -26.19205,

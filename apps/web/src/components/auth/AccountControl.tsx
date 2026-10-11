@@ -144,8 +144,8 @@ export function AccountControl() {
             type="button"
           >
             <UserIcon aria-hidden="true" size={20} />
-            <span className="account-control__identity">
-              Playing offline as <strong>{offlineSession.playerName}</strong>
+            <span className="account-disclosure__name">
+              {offlineSession.playerName}
             </span>
             <CaretDownIcon aria-hidden="true" size={16} />
           </button>

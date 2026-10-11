@@ -17,7 +17,13 @@ interface FixtureAuthState {
 
 let authState: FixtureAuthState = {
   error: undefined,
-  getAccessTokenSilently: async () => ACCESS_TOKEN,
+  getAccessTokenSilently: async () => {
+    if (localStorage.getItem('wits-world.e2e.auth-unavailable') === 'true')
+      throw new TypeError(
+        'Local fixture: authentication connection unavailable',
+      );
+    return ACCESS_TOKEN;
+  },
   getIdTokenClaims: async () => ({
     __raw: 'wits-world-browser-fixture-recent-id-token',
   }),

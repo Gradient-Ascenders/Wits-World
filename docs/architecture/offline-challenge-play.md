@@ -26,15 +26,31 @@ Event details distinguish **Downloaded**, **Not downloaded** and **Expired**.
 **Play** starts a downloaded challenge directly; an existing attempt instead offers continuation or its saved
 status. An unavailable download cannot be created after disconnection.
 
-`/offline` is the secondary **Downloads & saved attempts** page. It shows readiness,
-download progress and failures, opening/expiry times, and pending or confirmed
-attempts. **Back to Explore** returns to play; event links select that event in
-Explore. Routine download, GPS-check and sync buttons are absent. Retry actions
+`/offline` is the secondary **Downloads & saved attempts** page, available from the
+account menu both online and offline. A compact readiness summary precedes
+attempts needing attention and searchable downloaded-event rows. Download and
+event details are collapsed; failures and their recovery actions remain visible.
+**Back to Explore** returns to play; event links select that event in Explore.
+Routine download, GPS-check and sync buttons are absent. Retry actions
 appear only when preparation, authentication or synchronisation needs recovery.
+
+Saved challenges use the shared challenge timer, progress and answer controls.
+Saving feedback reserves space so acknowledging an answer does not move the next
+question. Completion shows one pending state and a reconnect deadline derived
+from the last timely answer when all five are saved, or from the original timer
+deadline for a partial attempt. A delayed finishing GPS reading does not extend
+the twelve-hour submission window. Reconnection updates the current saved-result
+screen in place; **View confirmed result** opens the canonical result explicitly.
 
 **Ready for offline play** requires downloaded packs and confirmation from the
 controlling service worker that its essential application files are present.
 Saved questions alone do not establish that the browser can reopen offline.
+The saved challenge player and both answer formats are static dependencies of
+the application entry, so starting an attempt does not fetch another route
+module. Downloads management remains lazy and is not needed to enter play.
+The build follows the complete static dependency graph for the entry, Home,
+Explore and downloads routes, and caches their styles and fonts. Readiness
+responses from a replaced worker cannot mark the new shell ready.
 Preparation has a bounded timeout, keeps usable packs after failed or partial
 downloads, and never discards pending answers. Location failures at challenge
 start or finish explain recovery; an imprecise or distant start does not consume
@@ -47,6 +63,13 @@ reading. While Explore is open, its foreground location watcher records eligible
 arrivals in memory. **Play** reuses one, or obtains a fresh location when needed.
 An inaccurate or distant reading cannot start or consume an attempt. The arrival
 window is not alternative proof of presence: both location and time remain claims.
+Fresh acquisitions are checked against a two-minute age limit; recorded eligible
+arrivals may be reused for the signed five-minute window. A valid acquisition
+may share a timestamp with a watch callback. It does not need to be newer than
+an unrelated rejected reading. Invalid coordinates, future or stale timestamps,
+excessive reported uncertainty and out-of-range positions have distinct recovery.
+Exact event coordinates still fail if reported accuracy exceeds the policy's
+limit (for example, 149 m accuracy exceeds a 60 m event's 120 m ceiling).
 
 One-shot requests have an application-controlled 10-second deadline, including
 permission waits. Legacy packs without the signed arrival policy retain their
@@ -178,6 +201,14 @@ Compact attribution keeps the OpenStreetMap and ODbL links visible. A map-data
 disclosure contains the extract date, provenance and walking-directions caveat.
 Provenance is recorded in `apps/web/src/offline/campus-map.provenance.md`; the
 build-time refresh script is `apps/web/scripts/generate-offline-campus-map.mjs`.
+
+Navigation fallback also handles event-selection query strings, so a saved
+`/explore?event=…` link can open directly offline. Query-bearing asset and API
+requests remain excluded from caching. On activation the worker retains the
+current shell and one complete previous shell. Already open documents can load
+their previous build's exact cached asset URLs while an update takes control;
+older and failed shells are removed. This can temporarily retain two builds,
+separate from the downloaded-content budget.
 The locally measured essential shell is approximately **4.12 MB before
 compression**, across 83 assets in the verified production build. A per-file gzip
 estimate is 2.22 MB; actual transfer size depends on deployment compression. This
