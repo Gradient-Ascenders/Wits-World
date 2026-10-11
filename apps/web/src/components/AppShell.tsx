@@ -82,7 +82,7 @@ const AUTHOR_NAVIGATION_ITEM: NavigationItem = {
 function pageTitle(pathname: string): string {
   if (pathname === '/') return 'Wits World';
   if (pathname === '/explore') return 'Explore · Wits World';
-  if (pathname === '/offline') return 'Downloads & saved attempts · Wits World';
+  if (pathname === '/offline') return 'Saved play · Wits World';
   if (pathname.startsWith('/offline-attempts/'))
     return 'Saved attempt · Wits World';
   if (pathname.startsWith('/challenge-attempts/'))

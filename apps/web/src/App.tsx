@@ -9,6 +9,8 @@ import { OfflineProvider, useOffline } from './offline/OfflineProvider';
 import { ServiceWorkerUpdate } from './offline/ServiceWorkerUpdate';
 import { boundOfflinePlayer } from './offline/store';
 import { OfflineAttemptPage } from './offline/OfflineAttemptPage';
+import { OfflineExplorePage } from './offline/OfflinePages';
+import { ChallengeConnectionGate } from './offline/ChallengeConnectionGate';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingState } from './components/LoadingState';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -32,12 +34,8 @@ import type { MapFactory } from './components/exploration/map-provider';
 import type { AuthConfig } from './config/environment';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
-const OfflinePages = () => import('./offline/OfflinePages');
-const OfflineExplorePage = lazy(() =>
-  OfflinePages().then(({ OfflineExplorePage }) => ({
-    default: OfflineExplorePage,
-  })),
-);
+// Saved play is the connection-loss escape route. It must already be loaded
+// with the shell, including in development where there is no app-shell cache.
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const ChallengePage = lazy(() => import('./pages/ChallengePage'));
 const CollectionPage = lazy(() => import('./pages/CollectionPage'));
@@ -66,7 +64,6 @@ function prepareRoute(path: string) {
       import('./pages/AuthorConsolePage'),
       prepareAuthorWorkspace(path),
     ]);
-  if (path === '/offline') return OfflinePages();
   if (path.startsWith('/challenge-attempts/'))
     return import('./pages/ChallengePage');
   if (path === '/explore') return import('./pages/ExplorePage');
@@ -184,9 +181,11 @@ export function AppRoutes({
                   component={OfflineAttemptPage}
                 />
                 <Route path="/challenge-attempts/:attemptId">
-                  <ProtectedRoute>
-                    <ChallengePage apiBaseUrl={apiBaseUrl} />
-                  </ProtectedRoute>
+                  <ChallengeConnectionGate>
+                    <ProtectedRoute>
+                      <ChallengePage apiBaseUrl={apiBaseUrl} />
+                    </ProtectedRoute>
+                  </ChallengeConnectionGate>
                 </Route>
                 <Route path="/collection/trades/new">
                   <ProtectedRoute destination="start a card trade">

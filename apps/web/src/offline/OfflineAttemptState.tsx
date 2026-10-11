@@ -38,20 +38,37 @@ function reconnectDeadline(attempt: LocalAttempt) {
 export function ReconnectDeadline({
   attempt,
   now,
+  compact = false,
 }: {
   attempt: LocalAttempt;
   now: number;
+  compact?: boolean;
 }) {
   const deadline = reconnectDeadline(attempt);
   if (deadline === null) return null;
+  const day = createAppDateTimeFormatter(undefined, {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  });
+  const sameDay = day.format(new Date(deadline)) === day.format(new Date(now));
   return (
     <p className="offline-deadline">
       {now > deadline
         ? 'The reconnect window has ended. Connect to check the final outcome.'
         : 'Reconnect before '}
       {now <= deadline && (
-        <time dateTime={new Date(deadline).toISOString()}>
-          {formatSavedTime(deadline)}
+        <time
+          dateTime={new Date(deadline).toISOString()}
+          title={formatSavedTime(deadline)}
+        >
+          {compact && sameDay
+            ? createAppDateTimeFormatter(undefined, {
+                hour: '2-digit',
+                minute: '2-digit',
+                hourCycle: 'h23',
+              }).format(new Date(deadline))
+            : formatSavedTime(deadline)}
         </time>
       )}
       {now <= deadline && '.'}
@@ -106,10 +123,12 @@ export function useLocalState() {
 
 export function SyncFeedback({
   controlsOnly = false,
+  connectionControl = true,
   attempt,
   now = Date.now(),
 }: {
   controlsOnly?: boolean;
+  connectionControl?: boolean;
   attempt?: LocalAttempt;
   now?: number;
 }) {
@@ -124,17 +143,19 @@ export function SyncFeedback({
     connectionFailed,
     restoreSession,
     attemptSync,
+    retryConnection,
   } = useOffline();
+  const current = attempt ? attemptSync[attempt.clientAttemptId] : undefined;
+  const failed = attempt
+    ? current?.status === 'failed' ||
+      (current?.status === 'confirmed' && syncFailed)
+    : syncFailed;
   return (
     <div className="offline-sync" aria-busy={syncing}>
       {!controlsOnly &&
-      (attemptSync[attempt?.clientAttemptId ?? '']?.message ||
-        (syncFailed && syncMessage)) ? (
-        <StatusMessage tone={syncFailed ? 'error' : 'info'} role={undefined}>
-          <strong>
-            {attemptSync[attempt?.clientAttemptId ?? '']?.message ||
-              syncMessage}
-          </strong>
+      (current?.message || (!attempt && syncFailed && syncMessage)) ? (
+        <StatusMessage tone={failed ? 'error' : 'info'} role={undefined}>
+          <strong>{current?.message || syncMessage}</strong>
         </StatusMessage>
       ) : (
         !controlsOnly && (
@@ -146,7 +167,11 @@ export function SyncFeedback({
       )}
       {attempt && <ReconnectDeadline attempt={attempt} now={now} />}
       <div className="offline-sync__actions">
-        {online && !connectionFailed && !canSync ? (
+        {online && connectionFailed && connectionControl ? (
+          <button className="button" onClick={retryConnection} type="button">
+            Retry connection
+          </button>
+        ) : online && !connectionFailed && !canSync ? (
           <button
             className="button"
             onClick={() => void restoreSession()}
@@ -154,9 +179,9 @@ export function SyncFeedback({
           >
             Sign in to check answers
           </button>
-        ) : syncFailed ? (
+        ) : failed && !connectionFailed ? (
           <button
-            className="button"
+            className={`button${controlsOnly || current?.status === 'confirmed' ? ' button--quiet' : ''}`}
             disabled={syncing || !online}
             onClick={() => void sync()}
             type="button"

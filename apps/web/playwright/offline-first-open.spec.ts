@@ -315,7 +315,10 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
           .click();
       }
       await expect(
-        page.getByRole('heading', { name: 'Answers saved', exact: true }),
+        page.getByRole('heading', {
+          name: 'Awaiting reconnection',
+          exact: true,
+        }),
       ).toBeVisible();
       expect(navigations).toHaveLength(legacy ? 2 : 1);
       expect(submissions).toBe(0);

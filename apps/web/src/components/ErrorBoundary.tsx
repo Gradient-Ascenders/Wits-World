@@ -1,6 +1,17 @@
 import { StateIcon } from './StatusMessage';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Link } from 'wouter';
+import { RouteLoadRecovery } from './RouteLoadRecovery';
+
+/** Do not misclassify API, authentication or rendering errors as page files. */
+function isPageModuleError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Loading chunk [\w-]+ failed|ChunkLoadError/i.test(
+      `${error.name}: ${error.message}`,
+    )
+  );
+}
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -10,16 +21,17 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
+  error: unknown;
 }
 
 export class ErrorBoundary extends Component<
   ErrorBoundaryProps,
   ErrorBoundaryState
 > {
-  public state: ErrorBoundaryState = { hasError: false };
+  public state: ErrorBoundaryState = { hasError: false, error: null };
 
-  public static getDerivedStateFromError(): ErrorBoundaryState {
-    return { hasError: true };
+  public static getDerivedStateFromError(error: unknown): ErrorBoundaryState {
+    return { hasError: true, error };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -32,7 +44,7 @@ export class ErrorBoundary extends Component<
 
   public componentDidUpdate(previous: ErrorBoundaryProps) {
     if (this.state.hasError && previous.resetKey !== this.props.resetKey) {
-      this.setState({ hasError: false });
+      this.setState({ hasError: false, error: null });
     }
   }
 
@@ -43,6 +55,14 @@ export class ErrorBoundary extends Component<
   public render() {
     if (this.state.hasError) {
       if (this.props.withinShell) {
+        if (isPageModuleError(this.state.error)) {
+          return (
+            <RouteLoadRecovery
+              pathname={this.props.resetKey}
+              onReload={this.reloadPage}
+            />
+          );
+        }
         return (
           <section className="state-message state-message--error" role="alert">
             <h1>This page could not be opened</h1>
@@ -62,9 +82,21 @@ export class ErrorBoundary extends Component<
               <Link className="button button--quiet" href="/">
                 Return home
               </Link>
-              <Link className="button button--quiet" href="/offline">
-                Open saved events
-              </Link>
+              {this.props.resetKey === '/offline' ? (
+                <button
+                  className="button button--quiet"
+                  onClick={() =>
+                    this.setState({ hasError: false, error: null })
+                  }
+                  type="button"
+                >
+                  Retry saved play
+                </button>
+              ) : (
+                <Link className="button button--quiet" href="/offline">
+                  Open saved events
+                </Link>
+              )}
             </div>
           </section>
         );

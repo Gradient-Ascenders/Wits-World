@@ -25,7 +25,9 @@ export function createPrecachePolicy() {
       );
       const roots = offlineRoots.map((path) => {
         const chunk = chunks.find((output) =>
-          output.facadeModuleId?.replaceAll('\\', '/').endsWith(path),
+          [output.facadeModuleId, ...Object.keys(output.modules ?? {})].some(
+            (id) => id?.replaceAll('\\', '/').endsWith(path),
+          ),
         );
         if (!chunk) throw new Error(`Missing offline build root: ${path}`);
         return chunk.fileName;

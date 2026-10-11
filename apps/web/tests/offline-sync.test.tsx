@@ -270,7 +270,7 @@ describe('offline synchronization recovery', () => {
     expect(announcements[0]).toHaveTextContent('Syncing saved attempts');
     expect(announcements[0]?.closest('[aria-busy="true"]')).toBeNull();
     expect(
-      await screen.findByText(/Awaiting confirmation/),
+      await screen.findByRole('region', { name: 'Awaiting confirmation' }),
     ).toBeInTheDocument();
     window.dispatchEvent(new Event('focus'));
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -318,7 +318,7 @@ describe('offline synchronization recovery', () => {
       await screen.findByRole('button', { name: 'Retry sync' }),
     ).toBeEnabled();
     expect(
-      screen.getByRole('region', { name: 'Downloads & saved attempts' }),
+      screen.getByRole('region', { name: 'Saved play' }),
     ).toHaveTextContent('Server confirmation is unknown');
     expect(
       screen.queryByRole('complementary', { name: 'Offline play' }),
@@ -362,10 +362,18 @@ describe('offline synchronization recovery', () => {
         await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS);
       });
       expect(
-        screen.getByRole('region', { name: 'Downloads & saved attempts' }),
-      ).toHaveTextContent('Sync timed out');
+        screen.getByRole('region', { name: 'Saved play' }),
+      ).toHaveTextContent(
+        phase === 'storage'
+          ? 'Device storage is taking too long'
+          : 'Sync timed out',
+      );
       expect(mocks.recordOfflineReceipt).not.toHaveBeenCalled();
-      expect(screen.getByRole('button', { name: 'Retry sync' })).toBeEnabled();
+      expect(
+        screen.getByRole('button', {
+          name: phase === 'storage' ? 'Retry device storage' : 'Retry sync',
+        }),
+      ).toBeEnabled();
     },
   );
 
@@ -388,7 +396,7 @@ describe('offline synchronization recovery', () => {
       await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS);
     });
     expect(
-      screen.getByRole('region', { name: 'Downloads & saved attempts' }),
+      screen.getByRole('region', { name: 'Saved play' }),
     ).toHaveTextContent('Confirmed');
     expect(
       screen.getByText(
@@ -396,6 +404,12 @@ describe('offline synchronization recovery', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry sync' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Retry sync' })).toHaveClass(
+      'button--quiet',
+    );
+    expect(
+      screen.getByRole('link', { name: 'View confirmed result: Saved event' }),
+    ).toHaveAttribute('href', '/challenge-attempts/confirmed');
   });
 
   it('leaves an unconfirmed attempt saved when the provider unmounts during upload', async () => {
@@ -409,7 +423,7 @@ describe('offline synchronization recovery', () => {
     });
     vi.stubGlobal('fetch', fetch);
     const view = renderOffline();
-    await screen.findByText(/Awaiting confirmation/);
+    await screen.findByRole('region', { name: 'Awaiting confirmation' });
     view.unmount();
     expect(signal.aborted).toBe(true);
     await act(async () =>
@@ -443,7 +457,7 @@ describe('offline synchronization recovery', () => {
       await screen.findByRole('button', { name: 'Retry sync' }),
     ).toBeEnabled();
     expect(
-      screen.getByRole('region', { name: 'Downloads & saved attempts' }),
+      screen.getByRole('region', { name: 'Saved play' }),
     ).toHaveTextContent(
       'Stopped waiting for sync. Server confirmation is unknown',
     );

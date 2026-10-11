@@ -150,12 +150,8 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
           );
           const urls = requests.flat().map((request) => request.url);
           return (
-            urls.some(
-              (url) => url.includes('/OfflinePages-') && url.endsWith('.js'),
-            ) &&
-            urls.some(
-              (url) => url.includes('/challenge-') && url.endsWith('.css'),
-            )
+            urls.some((url) => /\/main-[^/]+\.js$/.test(url)) &&
+            urls.some((url) => /\/main-[^/]+\.css$/.test(url))
           );
         }),
       )
@@ -292,7 +288,32 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
       .getByRole('button', { name: 'View Offline campus challenge on map' })
       .click();
     await captureViewports('event');
-    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    if (format === 'multiple_choice') {
+      await page.goto('/offline');
+      await expect(
+        page.getByRole('heading', { name: 'Saved play', exact: true }),
+      ).toBeVisible();
+      // Refresh the downloads page with the network already disconnected.
+      // The cached document must restore both the page and its saved events.
+      await page.reload();
+      await expect(
+        page.getByRole('heading', { name: 'Saved play', exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('button', {
+          name: 'offline-player, offline account menu',
+        }),
+      ).toHaveText('offline-player');
+      const play = page.getByRole('button', {
+        name: 'Play: Offline campus challenge',
+        exact: true,
+      });
+      await expect(play).toBeInViewport();
+      await captureViewports('ready');
+      await play.click();
+    } else {
+      await page.getByRole('button', { name: 'Play', exact: true }).click();
+    }
     for (let index = 1; index <= 5; index++) {
       await expect(
         page.getByRole('heading', {
@@ -327,6 +348,15 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
           }),
         ).toBeVisible();
         await page.reload();
+        if (format === 'multiple_choice') {
+          await page.goto('/offline');
+          const resume = page.getByRole('link', {
+            name: 'Continue: Offline campus challenge',
+          });
+          await expect(resume).toBeInViewport();
+          await captureViewports('continue');
+          await resume.click();
+        }
       }
     }
     await expect(
@@ -353,9 +383,13 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
     await page.goto('/offline');
     await expect(
       page.getByRole('heading', {
-        name: 'Downloads & saved attempts',
+        name: 'Saved play',
         exact: true,
       }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByRole('region', { name: 'Awaiting confirmation' }),
     ).toBeVisible();
     if (format === 'multiple_choice') {
       await page.setViewportSize({ width: 1440, height: 900 });
@@ -402,6 +436,19 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
     ).toBeVisible({ timeout: 25_000 });
     expect(new URL(page.url()).pathname).toMatch(/^\/offline-attempts\//);
     await captureViewports('confirmed');
+    await page.goto('/offline');
+    await page.getByText('Past results').click();
+    await expect(
+      page.getByRole('link', { name: 'View confirmed result' }),
+    ).toBeVisible();
+    connected = false;
+    await context.setOffline(true);
+    await page.getByRole('link', { name: 'View confirmed result' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Reconnect to open this result' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /Sign in/ })).toHaveCount(0);
+    await captureViewports('result-reconnect');
     const cachedURLs = await page.evaluate(async () => {
       const requests = await Promise.all(
         (await caches.keys()).map(async (key) =>

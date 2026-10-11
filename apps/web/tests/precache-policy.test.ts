@@ -2,7 +2,7 @@ import type { OutputBundle } from 'rolldown';
 import { describe, expect, it } from 'vitest';
 import { createPrecachePolicy } from '../precache-policy';
 
-function buildPolicy(omit?: string, empty?: string) {
+function buildPolicy(omit?: string, empty?: string, eagerSavedPlay = false) {
   const policy = createPrecachePolicy();
   const bundle = Object.fromEntries(
     [
@@ -35,6 +35,15 @@ function buildPolicy(omit?: string, empty?: string) {
         },
       ]),
   ) as unknown as OutputBundle;
+  if (eagerSavedPlay) {
+    const main = bundle['main.js'];
+    if (main?.type !== 'chunk') throw new Error('Expected main chunk');
+    main.modules = {
+      '/project/src/offline/OfflinePages.tsx': {} as never,
+    };
+    main.imports.push('question.js');
+    delete bundle['offline.js'];
+  }
   const hook = policy.plugin.generateBundle;
   if (typeof hook !== 'function') throw new Error('Expected build hook');
   hook.call(
@@ -47,6 +56,27 @@ function buildPolicy(omit?: string, empty?: string) {
 }
 
 describe('offline shell dependency selection', () => {
+  it('finds saved play and its dependencies when it is part of the eager shell', async () => {
+    const entries = [
+      'boot.js',
+      'main.js',
+      'home.js',
+      'explore.js',
+      'question.js',
+      'common.js',
+      'profile.js',
+    ].map((url) => ({ url, revision: null }));
+    const { manifest } = await buildPolicy(
+      undefined,
+      undefined,
+      true,
+    ).transform(entries);
+    expect(
+      manifest
+        .filter((entry) => entry.precache === false)
+        .map((entry) => entry.url),
+    ).toEqual(['profile.js']);
+  });
   it('keeps dependencies of CSS-only chunks without requiring phantom JavaScript files', async () => {
     const entries = [
       'boot.js',

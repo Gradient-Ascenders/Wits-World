@@ -1,0 +1,19 @@
+.route-load-recovery__connection {
+  min-block-size: 3em;
+}
+
+/* Explore is a full-bleed map with an overlapping mobile header. Its escape
+   route needs ordinary page insets, not the map's edge-to-edge placement. */
+.main-content--explore > .route-load-recovery {
+  width: min(calc(100% - 2 * var(--space-4)), 44rem);
+  margin-block: var(--space-5);
+  overflow-y: auto;
+}
+
+@media (max-width: 47.999rem) {
+  .main-content--explore > .route-load-recovery {
+    margin-block-start: calc(
+      var(--explore-header-height, 4.5rem) + var(--space-5)
+    );
+  }
+}

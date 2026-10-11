@@ -1,19 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'wouter';
-import {
-  CheckCircle,
-  LockSimple,
-  WarningCircle,
-  WifiSlash,
-} from '@phosphor-icons/react';
+import { CheckCircle, LockSimple, WarningCircle } from '@phosphor-icons/react';
 import { LoadingState } from '../components/LoadingState';
 import { StatusMessage } from '../components/StatusMessage';
-import { requestBrowserLocation } from '../browser-location';
+import {
+  requestBrowserLocation,
+  type LocationClaim,
+} from '../browser-location';
 import { ChallengeQuestion } from '../components/challenge/ChallengeQuestion';
 import { OrderingChallengeQuestion } from '../components/challenge/OrderingChallengeQuestion';
 import { formatChallengeTime } from '../challenge-deadline';
 import { useOffline } from './OfflineProvider';
-import { checkOfflineLocation, offlineLocationMessage } from './location';
+import {
+  checkOfflineLocation,
+  offlineLocationMessage,
+  OFFLINE_LOCATION_MAX_AGE_MS,
+} from './location';
 import {
   finishLocalAttempt,
   saveLocalAnswer,
@@ -30,7 +32,14 @@ import './offline.css';
 export function OfflineAttemptPage() {
   const { clientAttemptId } = useParams<{ clientAttemptId: string }>();
   const { state, error, reading } = useLocalState();
-  const { refresh, revision, sync, attemptSync = {} } = useOffline();
+  const {
+    refresh,
+    revision,
+    sync,
+    attemptSync = {},
+    online,
+    connectionFailed,
+  } = useOffline();
   const attempt = state?.attempts.find(
     (item) => item.clientAttemptId === clientAttemptId,
   );
@@ -42,6 +51,13 @@ export function OfflineAttemptPage() {
   const [order, setOrder] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [finishStage, setFinishStage] = useState<'location' | 'saving'>(
+    'location',
+  );
+  const [finishProblem, setFinishProblem] = useState<
+    'location' | 'saving' | null
+  >(null);
+  const finishingLocation = useRef<LocationClaim | undefined>(undefined);
   const finishing = useRef(false);
   const finishRequest = useRef<AbortController | null>(null);
   const automaticFinish = useRef<string | null>(null);
@@ -71,6 +87,8 @@ export function OfflineAttemptPage() {
     automaticFinish.current = null;
     setBusy(false);
     setMessage('');
+    setFinishProblem(null);
+    finishingLocation.current = undefined;
     return () => {
       finishRequest.current?.abort();
       finishRequest.current = null;
@@ -92,21 +110,36 @@ export function OfflineAttemptPage() {
     const controller = new AbortController();
     finishRequest.current = controller;
     setBusy(true);
-    const requiresLocation = value.cached.pack.locationPolicy !== 'arrival-v1';
+    if (
+      finishingLocation.current &&
+      Date.now() - Date.parse(finishingLocation.current.acquiredAt) >
+        OFFLINE_LOCATION_MAX_AGE_MS
+    )
+      finishingLocation.current = undefined;
+    const requiresLocation =
+      value.cached.pack.locationPolicy !== 'arrival-v1' &&
+      !finishingLocation.current;
+    let stage: 'location' | 'saving' = requiresLocation ? 'location' : 'saving';
+    setFinishStage(stage);
+    setFinishProblem(null);
     setMessage(
       requiresLocation
-        ? 'Getting your location. Your answers are saved on this device.'
-        : 'Saving your completed attempt. Your answers are saved on this device.',
+        ? 'Checking location. Your answers are saved on this device.'
+        : 'Saving your completed attempt on this device…',
     );
     try {
       const location = requiresLocation
         ? await requestBrowserLocation(controller.signal)
-        : undefined;
+        : finishingLocation.current;
       controller.signal.throwIfAborted();
       if (location)
         checkOfflineLocation(location, value.cached.pack.event, false, {
           previousAcquiredAt: value.startLocation.acquiredAt,
         });
+      finishingLocation.current = location;
+      stage = 'saving';
+      setFinishStage(stage);
+      setMessage('Saving your completed attempt on this device…');
       await finishLocalAttempt(value.clientAttemptId, location);
       controller.signal.throwIfAborted();
       setMessage(
@@ -117,10 +150,13 @@ export function OfflineAttemptPage() {
       void sync();
     } catch (failure) {
       if (controller.signal.aborted) return;
+      setFinishProblem(stage);
       setMessage(
-        failure instanceof Error && !(failure instanceof DOMException)
+        stage === 'location' &&
+          failure instanceof Error &&
+          !(failure instanceof DOMException)
           ? `Your answers are saved. ${offlineLocationMessage(failure)}`
-          : requiresLocation
+          : stage === 'location'
             ? 'Your answers are saved. Location is needed to finish verification; retry when a location is available.'
             : 'Your answers are saved, but the completed attempt could not be finalised on this device. Retry saving.',
       );
@@ -176,7 +212,7 @@ export function OfflineAttemptPage() {
   if (!state && !error)
     return (
       <section
-        className="challenge-page offline-play offline-play--loading"
+        className="challenge-page challenge-panel offline-play offline-play--loading"
         aria-busy="true"
       >
         <h1>Opening your saved challenge</h1>
@@ -192,7 +228,7 @@ export function OfflineAttemptPage() {
     );
   if (!attempt)
     return (
-      <section className="challenge-page offline-play offline-play--result offline-play--receipt">
+      <section className="challenge-page challenge-result offline-play offline-play--result offline-play--receipt">
         <div className="offline-play__result-heading">
           {receipt?.outcome === 'accepted' ? (
             <span className="offline-play__state-mark offline-play__state-mark--success">
@@ -207,7 +243,9 @@ export function OfflineAttemptPage() {
             <h1 className="status-title" tabIndex={-1} ref={resultHeading}>
               {receipt?.outcome === 'accepted'
                 ? 'Attempt confirmed'
-                : 'Saved attempt'}
+                : receipt
+                  ? 'Attempt rejected'
+                  : 'Saved attempt'}
             </h1>
             <p>
               {error ||
@@ -249,14 +287,10 @@ export function OfflineAttemptPage() {
     );
   return (
     <section
-      className={`challenge-page offline-play ${attempt.status === 'pending' ? 'offline-play--result' : ''}`}
+      className={`challenge-page challenge-panel offline-play ${attempt.status === 'pending' ? 'offline-play--result' : ''}`}
     >
       <header className="challenge-header">
         <div>
-          <p className="offline-play__mode">
-            <WifiSlash aria-hidden="true" size={18} />
-            Saved challenge
-          </p>
           <h1>{attempt.cached.pack.event.title}</h1>
         </div>
         {attempt.status === 'active' && !expired && question && (
@@ -298,7 +332,9 @@ export function OfflineAttemptPage() {
                   ? 'Attempt confirmed'
                   : currentAttemptSync?.status === 'syncing'
                     ? 'Checking answers…'
-                    : 'Answers saved'}
+                    : !online || connectionFailed
+                      ? 'Awaiting reconnection'
+                      : 'Answers saved'}
               </h2>
               <p>
                 {attempt.answers.length} of{' '}
@@ -335,6 +371,14 @@ export function OfflineAttemptPage() {
             </li>
           </ol>
           <SyncFeedback attempt={attempt} now={now} />
+          {serverConfirmed && currentAttemptSync?.attemptId && (
+            <Link
+              className="button"
+              href={`/challenge-attempts/${currentAttemptSync.attemptId}`}
+            >
+              View confirmed result
+            </Link>
+          )}
         </div>
       ) : expired || !question ? (
         <div className="offline-play__completion" aria-busy={busy}>
@@ -354,18 +398,12 @@ export function OfflineAttemptPage() {
               : 'All questions are complete.'}{' '}
             Your answers stay on this device while you finish.
           </p>
-          {needsFinishLocation && (
-            <p>
-              This older download needs a fresh finishing location before the
-              server can verify your result.
-            </p>
-          )}
-          <p role="status">
+          <p role="status" className="offline-answer-feedback">
             {message ||
               (needsFinishLocation
                 ? busy
-                  ? 'Answers locked. Completing location evidence…'
-                  : 'Answers locked and saved. Location is still needed to finish.'
+                  ? 'Checking location. Your answers are saved on this device.'
+                  : 'This older saved event needs a fresh finishing location. Retry location to have your answers checked.'
                 : busy
                   ? 'Answers locked. Saving your attempt…'
                   : 'Answers locked and saved. Retry saving to complete this attempt on your device.')}
@@ -376,7 +414,12 @@ export function OfflineAttemptPage() {
             onClick={() => void finish(attempt)}
             type="button"
           >
-            {needsFinishLocation
+            {(
+              busy
+                ? finishStage === 'location'
+                : finishProblem === 'location' ||
+                  (needsFinishLocation && finishProblem !== 'saving')
+            )
               ? busy
                 ? 'Getting location…'
                 : 'Retry location'
@@ -407,7 +450,7 @@ export function OfflineAttemptPage() {
               itemIds={order}
               onOrderChange={setOrder}
               onSubmit={() => void answer()}
-              totalQuestions={5}
+              totalQuestions={attempt.cached.pack.questions.length}
               question={{
                 attemptQuestionId: question.id,
                 prompt: question.prompt,
@@ -427,7 +470,7 @@ export function OfflineAttemptPage() {
               selectedChoiceId={selected}
               onSelectChoice={setSelected}
               onSubmit={() => void answer()}
-              totalQuestions={5}
+              totalQuestions={attempt.cached.pack.questions.length}
               question={{
                 attemptQuestionId: question.id,
                 prompt: question.prompt,

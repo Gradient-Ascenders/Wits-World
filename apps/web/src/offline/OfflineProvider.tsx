@@ -30,6 +30,7 @@ import {
 export type AttemptSyncState = {
   status: 'pending' | 'syncing' | 'confirmed' | 'failed';
   message: string;
+  attemptId?: string;
 };
 
 type OfflineContext = {
@@ -354,6 +355,7 @@ export function OfflineProvider({
             const outcome: AttemptSyncState = {
               status: 'confirmed',
               message: 'The server confirmed this result.',
+              attemptId: body.attempt.attemptId,
             };
             serverOutcomes.set(attempt.clientAttemptId, outcome);
             updateAttempt(attempt.clientAttemptId, outcome);
@@ -861,8 +863,18 @@ export function ExploreConnectionStatus() {
 
 export function OfflinePreparation({
   detailed = false,
+  compact = false,
+  savedEvents,
+  readyEvents,
+  savedAttempts = 0,
+  reading = false,
 }: {
   detailed?: boolean;
+  compact?: boolean;
+  savedEvents?: number;
+  readyEvents?: number;
+  savedAttempts?: number;
+  reading?: boolean;
 }) {
   const {
     online,
@@ -874,51 +886,100 @@ export function OfflinePreparation({
     connectionFailed,
     preparationFailed,
     preparationTotal,
+    retryConnection,
   } = useOffline();
   const [path] = useLocation();
+  const events = savedEvents ?? savedCount;
+  const ready = readyEvents ?? savedCount;
   if (path !== '/offline' && path !== '/explore') return null;
   if (!detailed && (path === '/offline' || !online || connectionFailed))
     return null;
   if (!detailed) return null;
+  const readiness = preparing
+    ? 'Saving campus events…'
+    : reading
+      ? 'Reading saved play…'
+      : shellReady && ready > 0
+        ? 'Ready for offline play'
+        : savedAttempts > 0
+          ? 'Progress saved on this device'
+          : ready > 0
+            ? import.meta.env.PROD
+              ? 'Finishing offline setup'
+              : 'Ready for this visit'
+            : events > 0
+              ? 'No events ready to play'
+              : 'No saved events yet';
+  const savedSummary = reading
+    ? 'Loading your events and progress'
+    : `${events} ${events === 1 ? 'event' : 'events'}${savedAttempts ? ` · ${savedAttempts} saved ${savedAttempts === 1 ? 'attempt' : 'attempts'}` : ''} on this device`;
+  const connectionSummary =
+    online && connectionFailed
+      ? 'Connection unavailable'
+      : !online
+        ? 'Offline'
+        : '';
   return (
     <section
       aria-label="Offline preparation"
-      className="offline-preparation"
+      className={`offline-preparation${compact ? ' offline-preparation--compact' : ''}`}
       aria-busy={preparing}
     >
       <DownloadSimple aria-hidden="true" size={22} />
       <div className="offline-preparation__copy">
-        <p role="status">
-          <strong>
-            {preparing
-              ? 'Saving campus events…'
-              : shellReady && savedCount > 0
-                ? 'Ready for offline play'
-                : 'Offline play is not ready yet'}
-          </strong>
-          <span>
-            {savedCount} {savedCount === 1 ? 'event' : 'events'} saved on this
-            device
-            {preparationTotal > savedCount
-              ? ` · ${preparationTotal} eligible`
-              : ''}
-            .
-          </span>
-        </p>
-        {preparationFailed && message && <p>{message}</p>}
+        {!compact && (
+          <p role="status">
+            <strong>{readiness}</strong>
+            <span>
+              {savedSummary}
+              {connectionSummary && ` · ${connectionSummary}`}.
+            </span>
+          </p>
+        )}
+        {preparationFailed && message && !connectionFailed && <p>{message}</p>}
+        {online && connectionFailed && (
+          <p>
+            The server could not be reached. Saved challenges stay available.
+          </p>
+        )}
         <details>
-          <summary>Download details</summary>
+          <summary
+            aria-label={compact ? `${readiness}. Download details` : undefined}
+          >
+            {compact ? (
+              <>
+                <strong role="status">{readiness}</strong>
+                {connectionSummary && <span> · {connectionSummary}</span>}
+              </>
+            ) : (
+              'Download details'
+            )}
+          </summary>
+          {compact && <p>{savedSummary}.</p>}
           {!preparationFailed && message && <p>{message}</p>}
+          {preparationTotal > savedCount && (
+            <p>{preparationTotal} events eligible for download.</p>
+          )}
           <p>
             {shellReady && savedCount > 0
-              ? 'Open downloaded challenges from Explore. Events without downloaded questions need a connection.'
+              ? 'Play saved events here or in Explore. Events without saved questions need a connection.'
               : savedCount > 0
-                ? 'Questions are saved, but offline reopening is not ready. Stay connected while the app finishes downloading, then check again.'
+                ? import.meta.env.PROD
+                  ? 'Questions are saved, but offline reopening is not ready. Stay connected while the app finishes downloading, then check again.'
+                  : 'Play saved events here or in Explore. Reconnect before reloading this development preview.'
                 : 'Challenges download automatically while connected. Location access is not needed for downloads.'}
           </p>
         </details>
       </div>
-      {preparationFailed && (
+      {online && connectionFailed ? (
+        <button
+          className="button button--quiet"
+          onClick={retryConnection}
+          type="button"
+        >
+          Retry connection
+        </button>
+      ) : preparationFailed ? (
         <button
           className="button button--secondary"
           disabled={!online || preparing}
@@ -927,7 +988,7 @@ export function OfflinePreparation({
         >
           {preparing ? 'Saving events…' : 'Retry downloads'}
         </button>
-      )}
+      ) : null}
     </section>
   );
 }

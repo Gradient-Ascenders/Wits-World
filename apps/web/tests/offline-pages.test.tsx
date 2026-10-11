@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route, Router } from 'wouter';
@@ -187,6 +188,71 @@ afterEach(() => {
 });
 
 describe('offline saved pages', () => {
+  it('explains the open-tab development boundary without promising an offline reload', async () => {
+    renderPage('explore');
+    expect(
+      await screen.findByText('Ready for this visit', { exact: true }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        'Play saved events here or in Explore. Reconnect before reloading this development preview.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Finishing offline setup'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('identifies device loading before exposing a launch action', async () => {
+    let resolve!: (value: typeof localState) => void;
+    mocks.readState.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    renderPage('explore');
+    expect(await screen.findByText('Loading saved events…')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^Play/ })).toBeNull();
+    await act(async () => resolve(localState));
+    expect(
+      await screen.findByRole('button', { name: 'Play: Great Hall Quest' }),
+    ).toBeVisible();
+  });
+
+  it('distinguishes location checking from saving and starts no timer before the device write', async () => {
+    let resolveLocation!: (value: LocationClaim) => void;
+    let resolveAttempt!: (value: LocalAttempt) => void;
+    mocks.requestLocation.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolveLocation = done;
+        }),
+    );
+    mocks.createAttempt.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolveAttempt = done;
+        }),
+    );
+    renderPage('explore');
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Play: Great Hall Quest' }),
+    );
+    expect(
+      screen.getByRole('button', {
+        name: 'Checking location: Great Hall Quest',
+      }),
+    ).toBeDisabled();
+    await act(async () => resolveLocation(location));
+    expect(
+      screen.getByRole('button', { name: 'Saving: Great Hall Quest' }),
+    ).toBeDisabled();
+    expect(window.location.pathname).toBe('/offline');
+    expect(screen.queryByRole('timer')).toBeNull();
+    await act(async () => resolveAttempt(makeAttempt()));
+    expect(window.location.pathname).toBe('/offline-attempts/local-attempt-1');
+  });
+
   it.each([true, false])(
     'uses the server completion deadline rather than a delayed finishing location (all answers: %s)',
     async (complete) => {
@@ -210,7 +276,7 @@ describe('offline saved pages', () => {
         }),
       ];
       renderPage('attempt');
-      await screen.findByRole('heading', { name: 'Answers saved' });
+      await screen.findByRole('heading', { name: 'Awaiting reconnection' });
       expect(document.querySelector('.offline-deadline time')).toHaveAttribute(
         'datetime',
         complete ? '2026-10-10T20:00:40.000Z' : '2026-10-10T20:02:00.000Z',
@@ -226,7 +292,7 @@ describe('offline saved pages', () => {
   it('updates a saved result in place after confirmation and focuses its result heading', async () => {
     localState.attempts = [makeAttempt(makePack(), { status: 'pending' })];
     renderPage('attempt');
-    await screen.findByRole('heading', { name: 'Answers saved' });
+    await screen.findByRole('heading', { name: 'Awaiting reconnection' });
     localState.attempts = [];
     localState.receipts = [
       {
@@ -358,19 +424,19 @@ describe('offline saved pages', () => {
     await act(async () => lateSuccess(location));
     expect(mocks.finishAttempt).not.toHaveBeenCalled();
   });
-  it('keeps downloads secondary and never starts a challenge or requests GPS from this page', async () => {
+  it('launches Play through the shared saved-challenge path only after activation', async () => {
     renderPage('explore');
     expect(
       await screen.findByRole('heading', {
-        name: 'Downloads & saved attempts',
+        name: 'Saved play',
       }),
     ).toBeVisible();
     expect(
       screen.getByRole('link', { name: 'Back to Explore' }),
     ).toHaveAttribute('href', '/explore');
     expect(
-      screen.getByRole('link', { name: 'Explore: Great Hall Quest' }),
-    ).toHaveAttribute('href', '/explore?event=event-1');
+      screen.getByRole('button', { name: 'Play: Great Hall Quest' }),
+    ).toBeEnabled();
     expect(
       screen.queryByRole('button', { name: 'Open saved challenge' }),
     ).toBeNull();
@@ -379,14 +445,37 @@ describe('offline saved pages', () => {
     ).toBeNull();
     expect(mocks.requestLocation).not.toHaveBeenCalled();
     expect(mocks.createAttempt).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Play: Great Hall Quest' }),
+    );
+    await waitFor(() =>
+      expect(mocks.createAttempt).toHaveBeenCalledWith(
+        localState.packs[0],
+        location,
+      ),
+    );
+    expect(mocks.requestLocation).toHaveBeenCalledOnce();
+    expect(window.location.pathname).toBe('/offline-attempts/local-attempt-1');
   });
 
   it('filters downloaded events and exposes opening time, radius and timer', async () => {
+    for (let index = 2; index <= 5; index++) {
+      const cached = makePack();
+      cached.pack.packId = `pack-${index}`;
+      cached.pack.event.eventId = `event-${index}`;
+      cached.pack.event.title = `Campus quest ${index}`;
+      localState.packs.push(cached);
+    }
     renderPage('explore');
     await screen.findByRole('heading', { name: 'Great Hall Quest' });
-    expect(screen.getByText(/Start within 75 metres/)).toHaveTextContent(
-      '5 questions',
+    expect(screen.getAllByText('5 questions · 2:00 timer')[0]).toBeVisible();
+    const firstRow = screen
+      .getByRole('heading', { name: 'Great Hall Quest' })
+      .closest('li')!;
+    fireEvent.click(
+      within(firstRow).getByLabelText('Event details: Great Hall Quest'),
     );
+    expect(within(firstRow).getByText(/Start within 75 metres/)).toBeVisible();
     fireEvent.change(
       screen.getByRole('searchbox', { name: 'Search saved events' }),
       { target: { value: 'missing event' } },
@@ -397,6 +486,305 @@ describe('offline saved pages', () => {
     expect(
       screen.getByText('No saved events match your search.'),
     ).toBeVisible();
+  });
+
+  it('keeps a failed location launch in its row and retries without consuming an attempt', async () => {
+    mocks.requestLocation.mockRejectedValueOnce(
+      new BrowserLocationError('denied'),
+    );
+    renderPage('explore');
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Play: Great Hall Quest' }),
+    );
+    expect(await screen.findByText(/Location access is denied/)).toBeVisible();
+    expect(screen.getAllByText(/Location access is denied/)).toHaveLength(1);
+    expect(mocks.createAttempt).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Play: Great Hall Quest' }),
+    );
+    await waitFor(() => expect(mocks.createAttempt).toHaveBeenCalledOnce());
+  });
+
+  it('ignores a launch location that arrives after leaving saved play', async () => {
+    let resolve!: (value: LocationClaim) => void;
+    mocks.requestLocation.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const view = renderPage('explore');
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Play: Great Hall Quest' }),
+    );
+    view.unmount();
+    await act(async () => resolve(location));
+    expect(mocks.createAttempt).not.toHaveBeenCalled();
+  });
+
+  it('leads with active timers, keeps locked attempts reachable, and collapses confirmed history', async () => {
+    const other = makePack();
+    other.pack.event.title = 'Library Quest';
+    other.pack.event.eventId = 'event-2';
+    localState.attempts = [
+      makeAttempt(makePack(), { clientAttemptId: 'playing' }),
+      makeAttempt(other, {
+        clientAttemptId: 'locked',
+        startedAt: new Date(Date.now() - 130_000).toISOString(),
+      }),
+    ];
+    localState.receipts = [
+      {
+        clientAttemptId: 'confirmed',
+        playerId: 'player',
+        title: 'Past Quest',
+        outcome: 'accepted',
+        attemptId: 'server',
+        receivedAt: Date.now(),
+      },
+    ];
+    renderPage('explore');
+    await screen.findByRole('link', { name: 'Continue: Great Hall Quest' });
+    const active = screen.getByRole('region', { name: 'In progress' });
+    const attention = screen.getByRole('region', { name: 'Needs attention' });
+    expect(
+      active.compareDocumentPosition(attention) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const rows = within(attention).getAllByRole('listitem');
+    expect(rows[0]).toHaveTextContent('Library Quest');
+    expect(
+      within(rows[0]!).getByRole('link', { name: 'View saved: Library Quest' }),
+    ).toBeVisible();
+    expect(
+      screen.getByText('Past results').closest('details'),
+    ).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Past results'));
+    expect(
+      screen.getByRole('link', { name: 'View confirmed result' }),
+    ).toHaveAttribute('href', '/challenge-attempts/server');
+  });
+
+  it('gives expired and upcoming events a saved-event path without offering an invalid Play', async () => {
+    localState.packs[0]!.pack.validUntil = new Date(
+      Date.now() - 1_000,
+    ).toISOString();
+    const upcoming = makePack();
+    upcoming.pack.packId = 'upcoming';
+    upcoming.pack.event.title = 'Upcoming Quest';
+    upcoming.pack.validFrom = new Date(Date.now() + 60_000).toISOString();
+    localState.packs.push(upcoming);
+    renderPage('explore');
+    await screen.findByText('Expired downloads');
+    expect(
+      screen.getByText('Expired downloads').closest('details'),
+    ).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Expired downloads'));
+    expect(
+      await screen.findByRole('link', { name: 'View saved: Great Hall Quest' }),
+    ).toHaveAttribute('href', '/explore?event=event-1');
+    expect(
+      screen.getByRole('link', { name: 'View saved: Upcoming Quest' }),
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^Play/ })).toBeNull();
+    const expiredRow = screen
+      .getByRole('heading', { name: 'Great Hall Quest' })
+      .closest('li')!;
+    fireEvent.click(
+      within(expiredRow).getByLabelText('Event details: Great Hall Quest'),
+    );
+    expect(
+      screen.getByText('Reconnect to refresh this saved event.'),
+    ).toBeVisible();
+  });
+
+  it('keeps a focused saved-result link in place when sync replaces the attempt with a receipt', async () => {
+    localState.attempts = [makeAttempt(makePack(), { status: 'pending' })];
+    renderPage('explore');
+    const link = await screen.findByRole('link', {
+      name: 'View saved: Great Hall Quest',
+    });
+    act(() => link.focus());
+    localState.attempts = [];
+    localState.receipts = [
+      {
+        clientAttemptId: 'local-attempt-1',
+        playerId: 'player',
+        title: 'Great Hall Quest',
+        outcome: 'accepted',
+        attemptId: 'confirmed-attempt',
+        receivedAt: Date.now(),
+      },
+    ];
+    act(() => window.dispatchEvent(new Event('storage')));
+    await waitFor(() => {
+      expect(link).toHaveAttribute(
+        'href',
+        '/challenge-attempts/confirmed-attempt',
+      );
+      expect(link).toHaveFocus();
+    });
+    expect(
+      screen.getByRole('link', {
+        name: 'View confirmed result: Great Hall Quest',
+      }),
+    ).toBe(link);
+    act(() => screen.getByRole('link', { name: 'Back to Explore' }).focus());
+    expect(
+      screen.queryByRole('region', { name: 'Awaiting confirmation' }),
+    ).toBeNull();
+    expect(
+      screen.getByText('Past results').closest('details'),
+    ).not.toHaveAttribute('open');
+  });
+
+  it('uses the original timer and retains focus when continuation expires', async () => {
+    vi.useFakeTimers();
+    localState.attempts = [
+      makeAttempt(makePack(), {
+        startedAt: new Date(Date.now() - 119_000).toISOString(),
+      }),
+    ];
+    renderPage('explore');
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    const link = screen.getByRole('link', {
+      name: 'Continue: Great Hall Quest',
+    });
+    expect(
+      screen.getByLabelText('Original challenge time remaining'),
+    ).toHaveTextContent('0:01');
+    act(() => link.focus());
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    expect(
+      screen.queryByRole('link', { name: 'Continue: Great Hall Quest' }),
+    ).toBeNull();
+    expect(link).toHaveFocus();
+    expect(link).toHaveAccessibleName('View saved: Great Hall Quest');
+    expect(localState.attempts[0]?.startedAt).toBe(
+      new Date(Date.now() - 121_000).toISOString(),
+    );
+  });
+
+  it('orders active challenges by their original deadlines across different timer lengths', async () => {
+    const longer = makePack();
+    longer.pack.timeLimitSeconds = 150;
+    const shorter = makePack();
+    shorter.pack.timeLimitSeconds = 90;
+    shorter.pack.event.title = 'Library Quest';
+    shorter.pack.event.eventId = 'library';
+    localState.attempts = [
+      makeAttempt(longer, {
+        clientAttemptId: 'longer',
+        startedAt: new Date(Date.now() - 20_000).toISOString(),
+      }),
+      makeAttempt(shorter, {
+        clientAttemptId: 'shorter',
+        startedAt: new Date(Date.now() - 10_000).toISOString(),
+      }),
+    ];
+    renderPage('explore');
+    const region = await screen.findByRole('region', { name: 'In progress' });
+    expect(within(region).getAllByRole('listitem')[0]).toHaveTextContent(
+      'Library Quest',
+    );
+  });
+
+  it('orders available events by closing time and upcoming events by opening time', async () => {
+    const now = Date.now();
+    localState.packs = [
+      ['Ready late', -60_000, 120_000],
+      ['Future late', 180_000, 240_000],
+      ['Ready early', -60_000, 60_000],
+      ['Future early', 120_000, 300_000],
+    ].map(([title, start, end], index) => {
+      const cached = makePack();
+      cached.pack.packId = `pack-${index}`;
+      cached.pack.event.eventId = `event-${index}`;
+      cached.pack.event.title = String(title);
+      cached.pack.validFrom = new Date(now + Number(start)).toISOString();
+      cached.pack.validUntil = new Date(now + Number(end)).toISOString();
+      return cached;
+    });
+    renderPage('explore');
+    await screen.findByRole('heading', { name: 'Ready early' });
+    expect(
+      screen
+        .getAllByRole('heading', { level: 3 })
+        .map((node) => node.textContent),
+    ).toEqual(['Ready early', 'Ready late', 'Future early', 'Future late']);
+  });
+
+  it('offers a saving retry after legacy GPS succeeds but storage fails, without asking for GPS again', async () => {
+    const cached = makePack();
+    const attempt = makeAttempt(cached, {
+      answers: cached.pack.questions.map((question) => ({
+        questionId: question.id,
+        optionIds: ['first'],
+        answeredAt: new Date().toISOString(),
+      })),
+    });
+    localState.attempts = [attempt];
+    mocks.finishAttempt.mockRejectedValueOnce(new Error('Storage failed'));
+    renderPage('attempt');
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Retry saving' }),
+    );
+    await waitFor(() => expect(mocks.finishAttempt).toHaveBeenCalledTimes(2));
+    expect(mocks.requestLocation).toHaveBeenCalledOnce();
+  });
+
+  it('reacquires a finishing location when a delayed saving retry outlives its freshness window', async () => {
+    const cached = makePack();
+    localState.attempts = [
+      makeAttempt(cached, {
+        answers: cached.pack.questions.map((question) => ({
+          questionId: question.id,
+          optionIds: ['first'],
+          answeredAt: new Date().toISOString(),
+        })),
+      }),
+    ];
+    mocks.finishAttempt.mockRejectedValueOnce(new Error('Storage failed'));
+    renderPage('attempt');
+    const retry = await screen.findByRole('button', { name: 'Retry saving' });
+    const future = Date.now() + 121_000;
+    vi.spyOn(Date, 'now').mockReturnValue(future);
+    const fresh = { ...location, acquiredAt: new Date(future).toISOString() };
+    mocks.requestLocation.mockResolvedValueOnce(fresh);
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.finishAttempt).toHaveBeenCalledTimes(2));
+    expect(mocks.requestLocation).toHaveBeenCalledTimes(2);
+    expect(mocks.finishAttempt).toHaveBeenLastCalledWith(
+      'local-attempt-1',
+      fresh,
+    );
+  });
+
+  it('counts saved progress and keeps rejected terminal results secondary', async () => {
+    localState.attempts = [makeAttempt()];
+    localState.receipts = [
+      {
+        clientAttemptId: 'rejected',
+        playerId: 'player',
+        title: 'Past Quest',
+        outcome: 'OFFLINE_SYNC_EXPIRED',
+        receivedAt: Date.now(),
+      },
+    ];
+    renderPage('explore');
+    await screen.findByRole('link', { name: 'Continue: Great Hall Quest' });
+    expect(screen.getByText('Progress saved on this device')).toBeVisible();
+    fireEvent.click(
+      screen.getByLabelText('Progress saved on this device. Download details'),
+    );
+    expect(
+      screen.getByText(/0 events · 1 saved attempt on this device/),
+    ).toBeVisible();
+    expect(
+      screen.getByText('Past results').closest('details'),
+    ).not.toHaveAttribute('open');
+    expect(screen.getByText('0 confirmed · 1 rejected')).toBeInTheDocument();
+    expect(screen.queryByText('No saved events yet')).toBeNull();
   });
 
   it('completes signed arrival-policy attempts without a finishing GPS request', async () => {
@@ -453,6 +841,11 @@ describe('offline saved pages', () => {
     expect(
       screen.getByRole('link', { name: 'Saved events and attempts' }),
     ).toHaveClass('button', 'button--quiet');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('radio', { name: 'Second answer' }),
+      ).toBeEnabled(),
+    );
     fireEvent.click(screen.getByRole('radio', { name: 'Second answer' }));
     expect(screen.getByRole('button', { name: 'Submit answer' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Submit answer' }));
@@ -524,11 +917,13 @@ describe('offline saved pages', () => {
     renderPage('explore');
 
     expect(
-      await screen.findByRole('link', { name: 'Great Hall Quest' }),
+      await screen.findByRole('link', { name: 'View saved: Great Hall Quest' }),
     ).toHaveAttribute('href', '/offline-attempts/local-attempt-1');
-    const attemptLink = screen.getByRole('link', { name: 'Great Hall Quest' });
+    const attemptLink = screen.getByRole('link', {
+      name: 'View saved: Great Hall Quest',
+    });
     expect(attemptLink.closest('li')).toHaveTextContent(
-      'Saved locally — pending server validation; no reward confirmed.',
+      'Saved locally. No reward confirmed.',
     );
     expect(
       screen.queryByRole('button', { name: 'Sync saved attempts' }),
@@ -546,6 +941,7 @@ describe('offline saved pages', () => {
       },
     ];
     window.dispatchEvent(new Event('storage'));
+    fireEvent.click(await screen.findByText('Past results'));
     expect(
       await screen.findByRole('link', { name: 'View confirmed result' }),
     ).toHaveAttribute('href', '/challenge-attempts/server-attempt-7');
@@ -564,7 +960,7 @@ describe('offline saved pages', () => {
     renderPage('attempt');
 
     expect(
-      await screen.findByRole('heading', { name: 'Saved attempt' }),
+      await screen.findByRole('heading', { name: 'Attempt rejected' }),
     ).toBeVisible();
     expect(screen.getByText(/12-hour sync window has ended/)).toBeVisible();
     expect(screen.getByRole('link', { name: 'Saved events' })).toHaveAttribute(

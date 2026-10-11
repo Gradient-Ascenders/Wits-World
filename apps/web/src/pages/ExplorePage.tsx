@@ -57,10 +57,7 @@ import {
   checkOfflineLocation,
   offlineLocationMessage,
 } from '../offline/location';
-import {
-  createLocalAttempt,
-  OFFLINE_ARRIVAL_WINDOW_MS,
-} from '../offline/store';
+import { launchSavedChallenge } from '../offline/launch-saved-challenge';
 import { READ_TIMEOUT_MS } from '../components/loading-policy';
 
 const CAMPUS_MAP_CONFIGURATION: MapConfiguration = {
@@ -1040,49 +1037,15 @@ export default function ExplorePage({
         setStartingEventId(eventId);
         setSavedStartMessage('Checking arrival…');
         try {
-          const arrival =
-            arrivalsRef.current.get(cached.pack.packId) ??
-            latestClaimRef.current;
-          const age = arrival
-            ? Date.now() - Date.parse(arrival.acquiredAt)
-            : Infinity;
-          const maximumAge =
-            cached.pack.locationPolicy === 'arrival-v1'
-              ? OFFLINE_ARRIVAL_WINDOW_MS
-              : MAX_REUSABLE_CHALLENGE_LOCATION_AGE_MS;
-          let usable = false;
-          if (
-            arrival &&
-            age >= 0 &&
-            age <= maximumAge &&
-            Date.parse(arrival.acquiredAt) >= Date.parse(cached.pack.validFrom)
-          ) {
-            try {
-              checkOfflineLocation(arrival, cached.pack.event, true, {
-                maxAgeMs: maximumAge,
-                validFrom:
-                  cached.pack.locationPolicy === 'arrival-v1'
-                    ? cached.pack.validFrom
-                    : undefined,
-              });
-              usable = true;
-            } catch {
-              /* Try a new acquisition. */
-            }
-          }
-          const claim =
-            usable && arrival ? arrival : await locationClaimProvider();
-          if (!mounted.current || controller.signal.aborted) return;
-          // A fresh acquisition can share a timestamp with a watch callback.
-          // Validate the claim itself instead of requiring a newer timestamp.
-          checkOfflineLocation(claim, cached.pack.event, true, {
-            maxAgeMs: usable ? maximumAge : undefined,
-            validFrom:
-              cached.pack.locationPolicy === 'arrival-v1'
-                ? cached.pack.validFrom
-                : undefined,
+          const value = await launchSavedChallenge({
+            cached,
+            arrival:
+              arrivalsRef.current.get(cached.pack.packId) ??
+              latestClaimRef.current,
+            acquireLocation: locationClaimProvider,
+            signal: controller.signal,
+            onSaving: () => setSavedStartMessage('Saving your challenge…'),
           });
-          const value = await createLocalAttempt(cached, claim);
           if (!mounted.current) return;
           refresh();
           navigate(`/offline-attempts/${value.clientAttemptId}`);

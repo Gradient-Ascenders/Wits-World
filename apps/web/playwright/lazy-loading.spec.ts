@@ -249,7 +249,7 @@ test('Author permissions and signed-out Profile access remain guarded', async ({
   expect(calls.filter((path) => path === '/profiles/me')).toHaveLength(1);
 });
 
-test('failed workspace imports use the existing page error and reload recovery', async ({
+test('failed workspace imports use page-file recovery and reload', async ({
   page,
   context,
 }) => {
@@ -259,7 +259,7 @@ test('failed workspace imports use the existing page error and reload recovery',
   );
   await page.goto('/author/analytics');
   await expect(
-    page.getByRole('heading', { name: 'This page could not be opened' }),
+    page.getByRole('heading', { name: 'This page needs to reload' }),
   ).toBeVisible();
   await page.unroute('**/assets/AnalyticsWorkspace-*.js');
   await page.getByRole('button', { name: 'Reload this page' }).click();
@@ -311,7 +311,7 @@ test('failed emoji imports use page recovery and do not leave a dialog behind', 
   await page.goto('/profile');
   await page.getByRole('button', { name: 'Set a status', exact: true }).click();
   await expect(
-    page.getByRole('heading', { name: 'This page could not be opened' }),
+    page.getByRole('heading', { name: 'This page needs to reload' }),
   ).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.unroute('**/assets/StatusEmojiPicker-*.js');

@@ -1,8 +1,11 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
+import { ChallengeConnectionGate } from '../src/offline/ChallengeConnectionGate';
+import { SyncFeedback } from '../src/offline/OfflineAttemptState';
 import {
   OfflineProvider,
+  OfflinePreparation,
   ExploreConnectionStatus,
   useOffline,
 } from '../src/offline/OfflineProvider';
@@ -37,6 +40,17 @@ function renderStatus(path: string, online: boolean) {
     <Router>
       <OfflineProvider apiBaseUrl="https://api.example.test/api/v1">
         {path === '/explore' && <ExploreConnectionStatus />}
+        {path === '/offline' && (
+          <>
+            <OfflinePreparation detailed />
+            <SyncFeedback controlsOnly connectionControl={false} />
+          </>
+        )}
+        {path.startsWith('/challenge-attempts/') && (
+          <ChallengeConnectionGate>
+            <h1>Protected result</h1>
+          </ChallengeConnectionGate>
+        )}
         <ConnectionFailureControl />
       </OfflineProvider>
     </Router>,
@@ -44,6 +58,37 @@ function renderStatus(path: string, online: boolean) {
 }
 
 describe('connectivity feedback', () => {
+  it('keeps one connection recovery action and no sign-in prompt on saved play', () => {
+    renderStatus('/offline', true);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Report connection failure' }),
+    );
+    expect(
+      screen.getAllByRole('button', { name: 'Retry connection' }),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /Sign in/ })).toBeNull();
+  });
+  it.each([false, true])(
+    'prioritises result connection recovery instead of sign-in (online: %s)',
+    (online) => {
+      renderStatus('/challenge-attempts/confirmed', online);
+      if (online)
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Report connection failure' }),
+        );
+      expect(
+        screen.getByRole('heading', { name: 'Reconnect to open this result' }),
+      ).toBeVisible();
+      expect(
+        screen.queryByRole('heading', { name: 'Protected result' }),
+      ).toBeNull();
+      expect(screen.getByRole('link', { name: 'Saved play' })).toHaveAttribute(
+        'href',
+        '/offline',
+      );
+      expect(screen.queryByRole('button', { name: /Sign in/ })).toBeNull();
+    },
+  );
   it('retains saved-event access on product routes when offline', () => {
     renderStatus('/explore', false);
     expect(
