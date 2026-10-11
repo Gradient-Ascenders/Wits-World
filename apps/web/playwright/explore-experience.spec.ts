@@ -745,7 +745,7 @@ test('desktop rail shortcuts open each section with keyboard focus and active fe
     route.fulfill({ json: { trails: [], requestId: 'rail-trails' } }),
   );
   await page.route('**/api/v1/territory/zones', (route) =>
-    route.fulfill({ json: { zones: [], requestId: 'rail-territories' } }),
+    route.fulfill({ json: { zones: [] } }),
   );
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/explore');
@@ -883,11 +883,16 @@ for (const mode of ['empty', 'error'] as const) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/explore');
     await page.getByRole('button', { name: /^Events —/ }).click();
-    await expect(
-      page.getByText(
-        mode === 'empty' ? 'No events available.' : 'Events could not load.',
-      ),
-    ).toBeVisible();
+    await expect(page.getByText('No events available.')).toBeVisible();
+    if (mode === 'error') {
+      await expect(page.locator('.offline-campus-map')).toBeVisible();
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Connection unavailable' }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('link', { name: 'Downloads & saved attempts' }),
+      ).toHaveAttribute('href', '/offline');
+    }
     await captureScreenshot(test.info(), page, {
       animations: 'disabled',
       path: info.outputPath(`mobile-events-${mode}.png`),
