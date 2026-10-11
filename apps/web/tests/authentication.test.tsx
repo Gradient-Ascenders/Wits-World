@@ -13,6 +13,7 @@ import { Router } from 'wouter';
 import { AppRoutes } from '../src/App';
 import { getSafeReturnTo, returnToWitsQuest } from '../src/auth/AuthProvider';
 import { bindAuthenticatedPlayer } from '../src/auth/player-session-binding';
+import { clearOfflineData } from '../src/offline/store';
 import { useApiAccessToken } from '../src/auth/useApiAccessToken';
 import type {
   LocationObservationProvider,
@@ -24,10 +25,11 @@ const mapboxAccessToken = 'pk.test-token';
 const playerAId = '6fe7dc26-cdea-4275-a2df-861724137cbc';
 const playerBId = '5a78ce0d-d15f-4039-ac4a-3c59d1c591c2';
 
-afterEach(() => {
+afterEach(async () => {
+  vi.restoreAllMocks();
+  await clearOfflineData();
   window.localStorage.clear();
   window.sessionStorage.clear();
-  vi.restoreAllMocks();
 });
 
 vi.mock(

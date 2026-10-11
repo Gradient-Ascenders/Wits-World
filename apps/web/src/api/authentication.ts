@@ -47,8 +47,24 @@ export async function getCurrentPlayer({
 
   try {
     accessToken = await getAccessToken();
-  } catch {
-    throw new CurrentPlayerError('authorization');
+  } catch (error) {
+    if (signal.aborted) throw error;
+    // A failed token connection does not mean the player needs to sign in.
+    // Only explicit SDK authentication failures establish that next step.
+    const code =
+      isRecord(error) && typeof error.error === 'string' ? error.error : '';
+    throw new CurrentPlayerError(
+      [
+        'login_required',
+        'consent_required',
+        'interaction_required',
+        'missing_refresh_token',
+        'invalid_grant',
+        'access_denied',
+      ].includes(code)
+        ? 'authorization'
+        : 'unavailable',
+    );
   }
 
   let response: Response;

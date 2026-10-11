@@ -2,6 +2,7 @@ import {
   type ChallengeAnswerLockQueryable,
   lockChallengeAnswer,
 } from './challenge-answer-lock.js';
+import type { OfflineRewardContext } from './challenge-reward-policy.js';
 import {
   calculateChallengeAttemptScore,
   type ChallengeAttemptMarkingQueryable,
@@ -34,6 +35,7 @@ export interface ChallengeAttemptFinalizationInput {
   completionReason: 'answered' | 'timeout';
   scoreCorrect: number;
   completedAt: Date;
+  offlineRewardContext?: OfflineRewardContext;
 }
 
 export interface ChallengeAttemptCompletionFinalizer {

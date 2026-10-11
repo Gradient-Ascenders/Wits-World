@@ -6,6 +6,7 @@ import {
   createMapboxMap,
   DEFAULT_MAP_LAYER_VISIBILITY,
   type MapArea,
+  type MapBounds,
   type MapConfiguration,
   type MapCoordinate,
   type MapController,
@@ -17,6 +18,8 @@ import {
 } from './map-provider';
 
 interface CampusMapProps {
+  onViewChange?: (bounds: MapBounds) => void;
+  resumeView?: boolean;
   accessibleLabel?: string;
   areas?: readonly MapArea[];
   configuration: MapConfiguration;
@@ -43,6 +46,8 @@ type MapStatus = 'error' | 'loading' | 'ready';
 const MAP_LOAD_TIMEOUT_MS = 15_000;
 
 export function CampusMap({
+  onViewChange,
+  resumeView = false,
   accessibleLabel = 'Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list.',
   areas = [],
   configuration,
@@ -65,9 +70,19 @@ export function CampusMap({
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
+  const focusedPointRef = useRef({
+    request: resumeView ? focusPointRequest : 0,
+    id: resumeView ? selectedPoint?.id : undefined,
+  });
+  const focusedRegionRef = useRef({
+    request: resumeView ? focusRegionRequest : 0,
+    id: resumeView ? selectedRegion?.id : undefined,
+  });
   const initialDiscoveryPendingRef = useRef(initialDiscoveryPending);
   const resumeInitializationRef = useRef<(() => void) | null>(null);
   const onCoordinateSelectRef = useRef(onCoordinateSelect);
+  const onViewChangeRef = useRef(onViewChange);
+  onViewChangeRef.current = onViewChange;
   const onFollowStateChangeRef = useRef(onFollowStateChange);
   const onPointSelectRef = useRef(onPointSelect);
   const onRegionSelectRef = useRef(onRegionSelect);
@@ -129,14 +144,34 @@ export function CampusMap({
   }, [selectedRegion]);
 
   useEffect(() => {
-    if (focusPointRequest > 0 && selectedPoint !== null) {
-      controllerRef.current?.focusPoint(selectedPoint);
+    if (
+      focusPointRequest > 0 &&
+      selectedPoint !== null &&
+      controllerRef.current &&
+      (focusedPointRef.current.request !== focusPointRequest ||
+        focusedPointRef.current.id !== selectedPoint.id)
+    ) {
+      controllerRef.current.focusPoint(selectedPoint);
+      focusedPointRef.current = {
+        request: focusPointRequest,
+        id: selectedPoint.id,
+      };
     }
   }, [focusPointRequest, selectedPoint]);
 
   useEffect(() => {
-    if (focusRegionRequest > 0 && selectedRegion !== null) {
-      controllerRef.current?.focusRegion?.(selectedRegion);
+    if (
+      focusRegionRequest > 0 &&
+      selectedRegion !== null &&
+      controllerRef.current &&
+      (focusedRegionRef.current.request !== focusRegionRequest ||
+        focusedRegionRef.current.id !== selectedRegion.id)
+    ) {
+      controllerRef.current.focusRegion?.(selectedRegion);
+      focusedRegionRef.current = {
+        request: focusRegionRequest,
+        id: selectedRegion.id,
+      };
     }
   }, [focusRegionRequest, selectedRegion]);
 
@@ -273,16 +308,26 @@ export function CampusMap({
           map.setSelectedPoint?.(selectedPointRef.current);
           map.setSelectedRegion?.(selectedRegionRef.current);
           if (
+            !resumeView &&
             focusPointRequestRef.current > 0 &&
             selectedPointRef.current !== null
           ) {
             map.focusPoint(selectedPointRef.current);
+            focusedPointRef.current = {
+              request: focusPointRequestRef.current,
+              id: selectedPointRef.current.id,
+            };
           }
           if (
+            !resumeView &&
             focusRegionRequestRef.current > 0 &&
             selectedRegionRef.current !== null
           ) {
             map.focusRegion?.(selectedRegionRef.current);
+            focusedRegionRef.current = {
+              request: focusRegionRequestRef.current,
+              id: selectedRegionRef.current.id,
+            };
           }
           map.setCoordinateSelectionListener?.(
             onCoordinateSelectRef.current ?? null,
@@ -290,6 +335,9 @@ export function CampusMap({
           map.setPointSelectionListener?.(onPointSelectRef.current ?? null);
           map.setRegionSelectionListener?.(onRegionSelectRef.current ?? null);
           map.setFollowStateListener?.(onFollowStateChangeRef.current ?? null);
+          map.setViewChangeListener?.((bounds) =>
+            onViewChangeRef.current?.(bounds),
+          );
           map.onLoad(() => {
             if (active) {
               loaded = true;
@@ -358,7 +406,7 @@ export function CampusMap({
       }
       controller?.remove();
     };
-  }, [attempt, configuration, mapFactory]);
+  }, [attempt, configuration, mapFactory, resumeView]);
 
   useEffect(() => {
     if (!initialDiscoveryPending) resumeInitializationRef.current?.();

@@ -6,12 +6,15 @@ import type { TrustService } from '../trust/trust-service.js';
 
 import { createEventDiscoveryService } from '../events/event-discovery.js';
 import {
-  evaluateLocationTiming,
   evaluateReachabilityWithAccuracy,
   maximumEventLocationAccuracy,
 } from '../events/location-claim.js';
 import { evaluateJourney } from '../events/journey-evaluation.js';
 import { calculateChallengeTiming } from './challenge-timing.js';
+import {
+  CHALLENGE_REWARD_POLICY_VERSION,
+  type RewardCardRarity,
+} from './challenge-reward-policy.js';
 import {
   selectChallengeQuestions,
   shuffleChallengeItems,
@@ -23,6 +26,7 @@ import {
   createOfflinePackCodec,
   OfflineRejection,
   OFFLINE_PACK_LIFETIME_MS,
+  validateOfflineLocationTiming,
   validateOfflineTiming,
   type OfflinePack,
   type OfflineSubmission,
@@ -38,6 +42,24 @@ interface Options {
   clock?: () => Date;
   trustRestrictions?: Pick<TrustRestrictionService, 'assertAllowed'>;
   trustService?: Pick<TrustService, 'recordSubmissionConflict'>;
+}
+
+interface OfflinePackSource extends pg.QueryResultRow {
+  id: string;
+  event_id: string;
+  version: number;
+  event_version: number;
+  format: OfflinePack['format'];
+  placement_assignment_id: string | null;
+  next_boundary: Date | null;
+}
+
+interface OfflinePackQuestion extends pg.QueryResultRow {
+  id: string;
+  challenge_id: string;
+  version: number;
+  prompt: string;
+  difficulty: 1 | 2 | 3;
 }
 
 export type OfflineChallengeService = ReturnType<
@@ -75,77 +97,127 @@ export function createOfflineChallengeService(
           clock: () => now,
         }).list();
         const result: Array<{ pack: OfflinePack; packToken: string }> = [];
-        for (const event of events.filter(
-          (item) =>
-            eventIds.includes(item.eventId) &&
-            item.availability !== 'ended' &&
-            Date.parse(item.startsAt) <
+        const eligible = events.filter(
+          (event) =>
+            eventIds.includes(event.eventId) &&
+            event.availability !== 'ended' &&
+            Date.parse(event.startsAt) <
               now.getTime() + OFFLINE_PACK_LIFETIME_MS,
-        )) {
-          const placement = await client.query<{
-            placement_assignment_id: string | null;
-            next_boundary: Date;
-          }>(
-            `select location.placement_assignment_id::text,
-                    (((((now() at time zone policy.rotation_timezone) -
-                       (policy.rotation_local_time - time '00:00'))::date + 1)::timestamp +
-                       (policy.rotation_local_time - time '00:00'))
-                       at time zone policy.rotation_timezone) as next_boundary
-               from public.event_placement_state state
-               join public.event_placement_policy_versions policy
-                 on policy.id=state.current_policy_version_id
-               cross join lateral public.resolve_event_placement_location($1::uuid,$2) location
-              where state.singleton=true`,
-            [event.eventId, now],
+        );
+        if (!eligible.length) {
+          await client.query('commit');
+          return result;
+        }
+        // A fixed number of round trips, all on the same read-only snapshot.
+        // Never issue per-event or per-question reads against the remote database.
+        const sources = await client.query<OfflinePackSource>(
+          `select challenge.id, challenge.version, event.id::text as event_id,
+                  event.version as event_version, challenge.format,
+                  placement.placement_assignment_id::text, placement.next_boundary
+             from public.event_challenges challenge join public.events event on event.id = challenge.event_id
+             left join lateral (
+               select location.placement_assignment_id,
+                      ((((($3::timestamptz at time zone policy.rotation_timezone) -
+                          (policy.rotation_local_time - time '00:00'))::date + 1)::timestamp +
+                          (policy.rotation_local_time - time '00:00'))
+                          at time zone policy.rotation_timezone) as next_boundary
+                 from public.event_placement_state state
+                 join public.event_placement_policy_versions policy
+                   on policy.id = state.current_policy_version_id
+                 cross join lateral public.resolve_event_placement_location(event.id, $3) location
+                where state.singleton = true
+             ) placement on true
+            where event.id = any($1::uuid[]) and challenge.status = 'published'
+              and not exists (select 1 from public.challenge_attempts where player_id = $2 and event_id = event.id)
+            order by event.id, challenge.id`,
+          [eligible.map((event) => event.eventId), playerId, now],
+        );
+        if (!sources.rows.length) {
+          await client.query('commit');
+          return result;
+        }
+        const published = await client.query<OfflinePackQuestion>(
+          `select id, challenge_id, version, prompt, difficulty
+             from public.challenge_questions
+            where challenge_id = any($1::uuid[]) and status = 'published'
+            order by id`,
+          [sources.rows.map((source) => source.id)],
+        );
+        const candidates = eligible.flatMap((event) => {
+          const challenge = sources.rows.find(
+            (source) => source.event_id === event.eventId,
           );
-          const assignmentId =
-            placement.rows[0]?.placement_assignment_id ?? null;
-          const source = await client.query<{
-            id: string;
-            version: number;
-            event_version: number;
-            format: OfflinePack['format'];
-          }>(
-            `
-            select challenge.id, challenge.version, event.version as event_version, challenge.format
-            from public.event_challenges challenge join public.events event on event.id = challenge.event_id
-            where event.id = $1 and challenge.status = 'published'
-              and not exists (select 1 from public.challenge_attempts where player_id = $2 and event_id = $1)
-          `,
-            [event.eventId, playerId],
+          if (!challenge) return [];
+          const questions = published.rows.filter(
+            (question) => question.challenge_id === challenge.id,
           );
-          const challenge = source.rows[0];
-          if (!challenge) continue;
-          const questions = await client.query<{
-            id: string;
-            version: number;
-            prompt: string;
-            difficulty: 1 | 2 | 3;
-          }>(
-            `
-            select id, version, prompt, difficulty from public.challenge_questions
-            where challenge_id = $1 and status = 'published' order by id
-          `,
-            [challenge.id],
-          );
-          if (questions.rows.length < 5) continue;
-          const selected: OfflinePack['questions'] = [];
-          for (const question of selectChallengeQuestions(questions.rows)) {
-            const items = await client.query<{ id: string; text: string }>(
-              challenge.format === 'ordering'
-                ? 'select id, item_text as text from public.challenge_ordering_items where question_id = $1 order by id'
-                : 'select id, choice_text as text from public.challenge_choices where question_id = $1 order by id',
-              [question.id],
+          if (questions.length < 5) return [];
+          return [
+            {
+              event,
+              challenge,
+              questions: selectChallengeQuestions(questions),
+            },
+          ];
+        });
+        if (!candidates.length) {
+          await client.query('commit');
+          return result;
+        }
+        const questionIds = (format: OfflinePack['format']) =>
+          candidates
+            .filter((candidate) => candidate.challenge.format === format)
+            .flatMap((candidate) =>
+              candidate.questions.map((question) => question.id),
             );
-            if (items.rows.length !== 4)
-              throw new Error(
-                'Published offline question has invalid options.',
-              );
-            selected.push({
-              ...question,
-              options: shuffleChallengeItems(items.rows),
-            });
-          }
+        const items = await client.query<{
+          question_id: string;
+          id: string;
+          text: string;
+        }>(
+          `select question_id::text, id, choice_text as text from public.challenge_choices
+            where question_id = any($1::uuid[])
+           union all
+           select question_id::text, id, item_text as text from public.challenge_ordering_items
+            where question_id = any($2::uuid[])
+           order by question_id, id`,
+          [questionIds('multiple_choice'), questionIds('ordering')],
+        );
+        const itemsByQuestion = new Map<
+          string,
+          Array<{ id: string; text: string }>
+        >();
+        for (const item of items.rows) {
+          const group = itemsByQuestion.get(item.question_id) ?? [];
+          group.push({ id: item.id, text: item.text });
+          itemsByQuestion.set(item.question_id, group);
+        }
+        const catalogue = await client.query<{
+          id: string;
+          rarity: RewardCardRarity;
+        }>(
+          `select id::text as id, rarity from public.card_definitions
+           where is_active = true and authoring_status = 'published' and reward_eligible = true
+           order by id`,
+        );
+        for (const { event, challenge, questions } of candidates) {
+          const assignmentId = challenge.placement_assignment_id;
+          const selected: OfflinePack['questions'] = questions.map(
+            (question) => {
+              const options = itemsByQuestion.get(question.id) ?? [];
+              if (options.length !== 4)
+                throw new Error(
+                  'Published offline question has invalid options.',
+                );
+              return {
+                id: question.id,
+                version: question.version,
+                prompt: question.prompt,
+                difficulty: question.difficulty,
+                options: shuffleChallengeItems(options),
+              };
+            },
+          );
           const validFromMs = Math.max(
             now.getTime(),
             Date.parse(event.startsAt),
@@ -153,16 +225,22 @@ export function createOfflineChallengeService(
           const validUntilMs = Math.min(
             Date.parse(event.endsAt),
             now.getTime() + OFFLINE_PACK_LIFETIME_MS,
-            ...(assignmentId
-              ? [placement.rows[0]!.next_boundary.getTime()]
-              : []),
+            ...(assignmentId ? [challenge.next_boundary!.getTime()] : []),
           );
           if (validUntilMs <= validFromMs) continue;
           const pack: OfflinePack = {
             version: 1,
             packId: randomUUID(),
             playerId,
+            locationPolicy: 'arrival-v1',
             issuedAt: now.toISOString(),
+            rewardContext: {
+              policyVersion: CHALLENGE_REWARD_POLICY_VERSION,
+              cards: catalogue.rows.map((card) => ({
+                cardDefinitionId: card.id,
+                rarity: card.rarity,
+              })),
+            },
             validFrom: new Date(validFromMs).toISOString(),
             validUntil: new Date(validUntilMs).toISOString(),
             ...(assignmentId ? { placementAssignmentId: assignmentId } : {}),
@@ -332,6 +410,9 @@ export function createOfflineChallengeService(
           attemptId,
           completionReason: timing.completionReason,
           completedAt: timing.completedAt,
+          ...(pack.rewardContext
+            ? { offlineRewardContext: pack.rewardContext }
+            : {}),
           scoreCorrect: score.scoreCorrect,
         });
         const attempt = await createChallengeAttemptReader(
@@ -485,14 +566,8 @@ async function validateMovement(
 ) {
   const start = input.startLocation;
   const finish = input.finishLocation;
-  if (
-    evaluateLocationTiming(start.acquiredAt, new Date(input.startedAt))
-      .outcome !== 'valid' ||
-    evaluateLocationTiming(finish.acquiredAt, new Date(input.finishedAt))
-      .outcome !== 'valid' ||
-    Date.parse(finish.acquiredAt) < Date.parse(start.acquiredAt)
-  )
-    throw new OfflineRejection('OFFLINE_LOCATION_UNVERIFIABLE');
+  const arrivalPolicy = pack.locationPolicy === 'arrival-v1';
+  validateOfflineLocationTiming(pack, input);
   const reachable = evaluateReachabilityWithAccuracy(
     await distance(client, start, pack.event),
     pack.event.radiusMetres,
@@ -506,19 +581,24 @@ async function validateMovement(
     );
   // An extremely imprecise finish sample cannot corroborate movement.
   if (
+    !arrivalPolicy &&
+    finish &&
     finish.accuracyMetres >
-    maximumEventLocationAccuracy(pack.event.radiusMetres)
+      maximumEventLocationAccuracy(pack.event.radiusMetres)
   )
     throw new OfflineRejection('OFFLINE_LOCATION_UNVERIFIABLE');
-  const within = evaluateJourney({
-    distanceMetres: await distance(client, start, finish),
-    previousAccuracyMetres: start.accuracyMetres,
-    currentAccuracyMetres: finish.accuracyMetres,
-    previousReceivedAt: new Date(start.acquiredAt),
-    currentReceivedAt: new Date(finish.acquiredAt),
-    maxPlausibleSpeedMetresPerSecond: options.maxSpeed,
-  });
-  if (within.outcome === 'too_fast')
+  const within =
+    !arrivalPolicy && finish
+      ? evaluateJourney({
+          distanceMetres: await distance(client, start, finish),
+          previousAccuracyMetres: start.accuracyMetres,
+          currentAccuracyMetres: finish.accuracyMetres,
+          previousReceivedAt: new Date(start.acquiredAt),
+          currentReceivedAt: new Date(finish.acquiredAt),
+          maxPlausibleSpeedMetresPerSecond: options.maxSpeed,
+        })
+      : null;
+  if (within?.outcome === 'too_fast')
     throw new OfflineRejection('OFFLINE_JOURNEY_TOO_FAST');
   const prior = await client.query<{
     id: string;

@@ -1,6 +1,12 @@
-import { UserIcon, CaretDownIcon, GearIcon } from '@phosphor-icons/react';
+import {
+  UserIcon,
+  CaretDownIcon,
+  GearIcon,
+  DownloadSimpleIcon,
+} from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { confirmOfflineSignOut } from '../../offline/store';
+import { useOffline } from '../../offline/OfflineProvider';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation, useRoute } from 'wouter';
 
@@ -18,8 +24,9 @@ export function AccountControl() {
   const disclosureId = useId();
   const disclosureRef = useRef<HTMLDivElement>(null);
   const disclosureTriggerRef = useRef<HTMLButtonElement>(null);
-  const [, navigate] = useLocation();
+  const [pathname, navigate] = useLocation();
   const { state: currentPlayer } = useCurrentPlayer();
+  const { online, connectionFailed, offlineSession } = useOffline();
   const [isProtectedExploreRoute] = useRoute('/explore');
   const [isProtectedCollectionRoute] = useRoute('/collection');
   const [isProtectedProfileRoute] = useRoute('/profile');
@@ -46,27 +53,30 @@ export function AccountControl() {
     };
   }, [isDisclosureOpen]);
 
-  if (isLoading) {
-    return null;
-  }
-
   async function signIn() {
     setActionFailed(false);
 
     try {
-      await loginWithRedirect({ appState: { returnTo: '/explore' } });
+      await loginWithRedirect({
+        appState: {
+          returnTo: offlineSession
+            ? `${window.location.pathname}${window.location.search}`
+            : '/explore',
+        },
+      });
     } catch {
       setActionFailed(true);
     }
   }
 
-  async function signOut() {
+  async function signOut(localOnly = false) {
     if ((await confirmOfflineSignOut()) === 'cancelled') return;
     setActionFailed(false);
     clearAuthenticatedPlayerBinding();
 
     try {
       await logout({
+        ...(localOnly ? { openUrl: false } : {}),
         logoutParams: {
           returnTo: window.location.origin,
         },
@@ -104,6 +114,94 @@ export function AccountControl() {
       setActionFailed(true);
     }
   }
+
+  const usingOfflineAccount =
+    offlineSession &&
+    (!online ||
+      connectionFailed ||
+      ((!isAuthenticated || isLoading || currentPlayer.status === 'loading') &&
+        (pathname === '/explore' ||
+          pathname === '/offline' ||
+          pathname.startsWith('/offline-attempts/'))) ||
+      (currentPlayer.status === 'error' &&
+        (currentPlayer.failure === 'unavailable' ||
+          currentPlayer.failure === 'timeout')));
+  if (usingOfflineAccount) {
+    return (
+      <div className="account-control account-control--offline">
+        <div
+          className="account-disclosure"
+          onKeyDown={closeDisclosureOnEscape}
+          ref={disclosureRef}
+        >
+          <button
+            aria-controls={disclosureId}
+            aria-expanded={isDisclosureOpen}
+            aria-label={`${offlineSession.playerName}, offline account menu`}
+            className="button button--quiet account-disclosure__trigger"
+            onClick={() => setIsDisclosureOpen((value) => !value)}
+            ref={disclosureTriggerRef}
+            type="button"
+          >
+            <UserIcon aria-hidden="true" size={20} />
+            <span className="account-disclosure__name">
+              {offlineSession.playerName}
+            </span>
+            <CaretDownIcon aria-hidden="true" size={16} />
+          </button>
+          {isDisclosureOpen && (
+            <div className="account-disclosure__panel" id={disclosureId}>
+              <p className="account-control__identity">
+                Reconnect to restore online access.
+              </p>
+              <Link
+                aria-label="Downloads & saved attempts"
+                className="account-disclosure__destination"
+                href="/offline"
+                onClick={() => setIsDisclosureOpen(false)}
+              >
+                <DownloadSimpleIcon
+                  aria-hidden="true"
+                  className="account-disclosure__destination-icon"
+                  size={20}
+                />
+                <span>
+                  <strong>Downloads & saved attempts</strong>
+                  <small>Saved on this device</small>
+                </span>
+              </Link>
+              {online &&
+                !connectionFailed &&
+                !isLoading &&
+                !isAuthenticated && (
+                  <button
+                    className="button button--quiet"
+                    onClick={signIn}
+                    type="button"
+                  >
+                    Restore online session
+                  </button>
+                )}
+              <button
+                className="button button--quiet"
+                onClick={() => void signOut(true)}
+                type="button"
+              >
+                Sign out on this device
+              </button>
+            </div>
+          )}
+        </div>
+        {actionFailed && (
+          <span className="account-control__error" role="alert">
+            The account action could not start. Try again.
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (isLoading) return null;
 
   if (error) {
     if (
@@ -213,9 +311,26 @@ export function AccountControl() {
                 </span>
               </Link>
               <div aria-hidden="true" className="account-disclosure__divider" />
+              <Link
+                aria-current={pathname === '/offline' ? 'page' : undefined}
+                aria-label="Downloads & saved attempts"
+                className="account-disclosure__destination"
+                href="/offline"
+                onClick={() => setIsDisclosureOpen(false)}
+              >
+                <DownloadSimpleIcon
+                  aria-hidden="true"
+                  className="account-disclosure__destination-icon"
+                  size={20}
+                />
+                <span>
+                  <strong>Downloads & saved attempts</strong>
+                  <small>Saved on this device</small>
+                </span>
+              </Link>
               <button
                 className="button button--quiet account-disclosure__sign-out"
-                onClick={signOut}
+                onClick={() => void signOut()}
                 type="button"
               >
                 Sign out

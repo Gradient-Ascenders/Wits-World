@@ -136,7 +136,10 @@ export const observeBrowserLocation: LocationObservationProvider = ({
   };
 };
 
-export function requestBrowserLocation(): Promise<LocationClaim> {
+export function requestBrowserLocation(
+  signal?: AbortSignal,
+): Promise<LocationClaim> {
+  if (signal?.aborted) return Promise.reject(signal.reason);
   const developmentOverride = getDevelopmentLocationOverride();
 
   if (developmentOverride !== null) {
@@ -148,26 +151,48 @@ export function requestBrowserLocation(): Promise<LocationClaim> {
   }
 
   return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const claim = toLocationClaim(position);
-
-        if (claim === null) {
-          reject(new BrowserLocationError('unavailable'));
-          return;
-        }
-
-        resolve(claim);
-      },
-      (error) => {
-        reject(new BrowserLocationError(toLocationFailure(error.code)));
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: LOCATION_TIMEOUT_MS,
-      },
+    let settled = false;
+    const settle = (claim: LocationClaim | null, failure?: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      if (claim) resolve(claim);
+      else reject(failure);
+    };
+    const abort = () => settle(null, signal?.reason);
+    // The browser's timeout excludes permission/visibility waits. Bound the
+    // whole request ourselves and ignore callbacks arriving after settlement.
+    const timer = setTimeout(
+      () => settle(null, new BrowserLocationError('timeout')),
+      LOCATION_TIMEOUT_MS,
     );
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (settled) return;
+          const claim = toLocationClaim(position);
+
+          if (claim === null) {
+            settle(null, new BrowserLocationError('unavailable'));
+            return;
+          }
+
+          settle(claim);
+        },
+        (error) => {
+          settle(null, new BrowserLocationError(toLocationFailure(error.code)));
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: LOCATION_TIMEOUT_MS,
+        },
+      );
+    } catch {
+      settle(null, new BrowserLocationError('blocked'));
+    }
   });
 }
 

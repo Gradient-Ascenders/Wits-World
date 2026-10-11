@@ -2,6 +2,8 @@ import { captureScreenshot } from './visual-capture';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { buildStarterCards } from '../tests/fixtures/cards';
 import { buildSavedDeck } from '../tests/fixtures/decks';
+import { randomUUID } from 'node:crypto';
+import type { CachedPack } from '../src/offline/store';
 
 const playerId = '00000000-0000-4000-8000-000000000001';
 
@@ -343,14 +345,165 @@ test('a failed destination module keeps the shell and offers recovery', async ({
   );
   await page.goto('/matches');
   await expect(
-    page.getByRole('heading', { name: 'This page could not be opened' }),
+    page.getByRole('heading', { name: 'This page needs to reload' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('link', { name: 'Return home', exact: true }),
+    page.getByRole('link', { name: 'Saved play', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('banner')).toBeVisible();
   await capture(page, info, 'module-failure');
 });
+
+for (const width of [390, 1440]) {
+  test(`development: first saved visit recovers a failed Explore import offline at ${width}px`, async ({
+    page,
+    context,
+  }, info) => {
+    await fixture(page);
+    await page.setViewportSize({ width, height: 900 });
+    await context.grantPermissions(['geolocation']);
+    await context.setGeolocation({
+      latitude: -26.19205,
+      longitude: 28.03038,
+      accuracy: 10,
+    });
+    const cached: CachedPack = {
+      packToken: 'synthetic-dev-recovery-fixture',
+      pack: {
+        version: 1,
+        playerId,
+        packId: randomUUID(),
+        issuedAt: new Date().toISOString(),
+        validFrom: new Date(Date.now() - 60_000).toISOString(),
+        validUntil: new Date(Date.now() + 3_600_000).toISOString(),
+        locationPolicy: 'arrival-v1',
+        challengeId: randomUUID(),
+        challengeVersion: 1,
+        format: 'multiple_choice',
+        timeLimitSeconds: 150,
+        event: {
+          eventId: randomUUID(),
+          version: 1,
+          title: 'Great Hall Quest',
+          description: 'Discover Great Hall.',
+          latitude: -26.19205,
+          longitude: 28.03038,
+          radiusMetres: 75,
+        },
+        questions: Array.from({ length: 5 }, (_, i) => ({
+          id: randomUUID(),
+          version: 1,
+          difficulty: 1,
+          prompt: `Campus question ${i + 1}`,
+          options: Array.from({ length: 4 }, (_, n) => ({
+            id: randomUUID(),
+            text: `Answer ${n + 1}`,
+          })),
+        })),
+      },
+    };
+    await page.route('**/api/v1/events', (route) =>
+      route.fulfill({
+        json: {
+          events: [
+            {
+              ...cached.pack.event,
+              availability: 'active',
+              startsAt: cached.pack.validFrom,
+              endsAt: cached.pack.validUntil,
+            },
+          ],
+          requestId: 'fixture',
+        },
+      }),
+    );
+    await page.route('**/api/v1/offline-challenge-packs', (route) =>
+      route.fulfill({ json: { packs: [cached], requestId: 'fixture' } }),
+    );
+    await page.goto('/');
+    await expect(page.locator('.hero')).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open('wits-world-offline');
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+          try {
+            return await new Promise<number>((resolve, reject) => {
+              const request = db
+                .transaction('packs')
+                .objectStore('packs')
+                .count();
+              request.onsuccess = () => resolve(request.result);
+              request.onerror = () => reject(request.error);
+            });
+          } finally {
+            db.close();
+          }
+        }),
+      )
+      .toBe(1);
+    // No visit to /offline, no development service worker, and no manual preload.
+    expect(
+      await page.evaluate(() => Boolean(navigator.serviceWorker.controller)),
+    ).toBe(false);
+    await page.route('**/src/pages/ExplorePage.tsx*', (route) => route.abort());
+    await context.setOffline(true);
+    await page.evaluate(() => window.history.pushState({}, '', '/explore'));
+    await expect(
+      page.getByRole('heading', { name: 'This page needs to reload' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Reload this page' }),
+    ).toBeDisabled();
+    const heading = page.getByRole('heading', {
+      name: 'This page needs to reload',
+    });
+    expect(
+      await heading.evaluate((element) => element.getBoundingClientRect().top),
+    ).toBeGreaterThanOrEqual(
+      await page
+        .getByRole('banner')
+        .evaluate((element) => element.getBoundingClientRect().bottom),
+    );
+    const saved = page.getByRole('link', { name: 'Saved play', exact: true });
+    await expect(saved).toBeInViewport();
+    await capture(page, info, `dev-page-recovery-${width}`);
+    await saved.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/offline$/);
+    const play = page.getByRole('button', { name: 'Play: Great Hall Quest' });
+    await expect(play).toBeInViewport();
+    await expect(
+      page.getByText('Ready for this visit', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'This page needs to reload' }),
+    ).toHaveCount(0);
+    await capture(page, info, `dev-saved-recovered-${width}`);
+    await play.click();
+    await expect(
+      page.getByRole('heading', { name: 'Campus question 1' }),
+    ).toBeVisible();
+    await page.getByRole('radio', { name: 'Answer 1', exact: true }).check();
+    await page
+      .getByRole('button', { name: 'Submit answer', exact: true })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Campus question 2' }),
+    ).toBeVisible();
+    await page.evaluate(() => window.history.pushState({}, '', '/offline'));
+    await page
+      .getByRole('link', { name: 'Continue: Great Hall Quest' })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Campus question 2' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /Sign in/i })).toHaveCount(0);
+  });
+}
 
 test('fast identity and content skip the generic takeover and respect reduced motion', async ({
   page,

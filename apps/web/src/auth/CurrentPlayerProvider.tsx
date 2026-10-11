@@ -1,6 +1,7 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -58,6 +59,7 @@ export function CurrentPlayerProvider({
   getAccessTokenRef.current = getAccessToken;
   logoutRef.current = logout;
   const [attempt, setAttempt] = useState(0);
+  const reload = useCallback(() => setAttempt((current) => current + 1), []);
   const [state, setState] = useState<CurrentPlayerState>(
     isLoading || isAuthenticated
       ? { status: 'loading' }
@@ -133,7 +135,7 @@ export function CurrentPlayerProvider({
 
   const value = useMemo<CurrentPlayerContextValue>(
     () => ({
-      reload: () => setAttempt((current) => current + 1),
+      reload,
       setupPlayerName: async (playerName, signal) => {
         if (state.status !== 'ready') {
           throw new PlayerNameSetupError('unavailable');
@@ -221,7 +223,7 @@ export function CurrentPlayerProvider({
       },
       state,
     }),
-    [apiBaseUrl, getAccessToken, state],
+    [apiBaseUrl, getAccessToken, reload, state],
   );
 
   return (

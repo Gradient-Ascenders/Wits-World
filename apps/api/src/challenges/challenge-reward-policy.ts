@@ -1,4 +1,10 @@
 export type RewardCardRarity = 'common' | 'rare' | 'epic' | 'legendary';
+export const CHALLENGE_REWARD_POLICY_VERSION = 'points-cards-v2';
+
+export interface OfflineRewardContext {
+  policyVersion: string;
+  cards: Array<{ cardDefinitionId: string; rarity: RewardCardRarity }>;
+}
 
 export interface ChallengeRewardPlan {
   cardRarities: RewardCardRarity[];

@@ -7,27 +7,34 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
+import { WifiSlash, DownloadSimple } from '@phosphor-icons/react';
+import { useAuth0 } from '@auth0/auth0-react';
 import { READ_TIMEOUT_MS } from '../components/loading-policy';
 import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { listPlayerEvents } from '../api/events';
-import { requestBrowserLocation } from '../browser-location';
+import { offlineShellReady } from './shell-readiness';
+import './offline.css';
 import {
   boundOfflinePlayer,
   readOfflineState,
   recordOfflineReceipt,
   replacePacks,
   saveOfflineSession,
+  saveOfflineCatalogue,
+  OFFLINE_CONTENT_BUDGET_BYTES,
   type CachedPack,
 } from './store';
 
 export type AttemptSyncState = {
   status: 'pending' | 'syncing' | 'confirmed' | 'failed';
   message: string;
+  attemptId?: string;
 };
 
 type OfflineContext = {
+  offlineSession: { playerId: string; playerName: string } | null;
   online: boolean;
   revision: number;
   message: string;
@@ -35,11 +42,23 @@ type OfflineContext = {
   syncMessage: string;
   syncFailed: boolean;
   attemptSync: Record<string, AttemptSyncState>;
+  preparing: boolean;
+  shellReady: boolean;
+  savedCount: number;
+  connectionFailed: boolean;
+  preparationFailed: boolean;
+  preparationTotal: number;
+  canSync: boolean;
+  restoreSession: () => Promise<void>;
+  prepare: () => void;
+  reportConnectionFailure: () => void;
+  retryConnection: () => void;
   refresh: () => void;
   sync: () => Promise<void>;
   cancelSync: () => void;
 };
 const Context = createContext<OfflineContext>({
+  offlineSession: null,
   online: true,
   revision: 0,
   message: '',
@@ -47,6 +66,17 @@ const Context = createContext<OfflineContext>({
   syncMessage: '',
   syncFailed: false,
   attemptSync: {},
+  preparing: false,
+  shellReady: false,
+  savedCount: 0,
+  connectionFailed: false,
+  preparationFailed: false,
+  preparationTotal: 0,
+  canSync: false,
+  restoreSession: async () => {},
+  prepare: () => {},
+  reportConnectionFailure: () => {},
+  retryConnection: () => {},
   refresh: () => {},
   sync: async () => {},
   cancelSync: () => {},
@@ -62,9 +92,43 @@ export function OfflineProvider({
 }) {
   const { state, reload } = useCurrentPlayer();
   const getToken = useApiAccessToken();
+  const { loginWithRedirect } = useAuth0();
   const [online, setOnline] = useState(navigator.onLine);
   const [revision, setRevision] = useState(0);
   const [message, setMessage] = useState('');
+  const [preparing, setPreparing] = useState(false);
+  const [shellReady, setShellReady] = useState(false);
+  const [savedCount, setSavedCount] = useState(0);
+  const [preparationFailed, setPreparationFailed] = useState(false);
+  const [preparationTotal, setPreparationTotal] = useState(0);
+  const restoreSession = useCallback(async () => {
+    try {
+      await loginWithRedirect({
+        appState: {
+          returnTo: `${window.location.pathname}${window.location.search}`,
+        },
+      });
+    } catch {
+      setSyncMessage(
+        'Sign-in could not open. Your answers remain saved; try signing in again.',
+      );
+      setSyncFailed(true);
+    }
+  }, [loginWithRedirect]);
+  const [offlineSession, setOfflineSession] =
+    useState<OfflineContext['offlineSession']>(null);
+  const [preparationRevision, setPreparationRevision] = useState(0);
+  const [connectionFailed, setConnectionFailed] = useState(false);
+  const reportConnectionFailure = useCallback(
+    () => setConnectionFailed(true),
+    [],
+  );
+  const retryConnection = useCallback(() => {
+    setOnline(navigator.onLine);
+    setConnectionFailed(false);
+    setPreparationRevision((value) => value + 1);
+    reload();
+  }, [reload]);
   const busy = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -90,11 +154,92 @@ export function OfflineProvider({
       ? state.player.id
       : null;
   const playerName = state.status === 'ready' ? state.player.playerName : null;
+  const prepare = useCallback(() => {
+    if (!playerId && boundOfflinePlayer()) reload();
+    setPreparationRevision((value) => value + 1);
+  }, [reload, playerId]);
   const currentPlayer = useRef(playerId);
   currentPlayer.current = playerId;
+  const sessionRecoveryFailures = useRef(0);
+  const sessionUnavailable =
+    state.status === 'error' &&
+    (state.failure === 'unavailable' || state.failure === 'timeout');
   const refresh = useCallback(() => {
     if (mounted.current) setRevision((value) => value + 1);
   }, []);
+  useEffect(() => {
+    let active = true;
+    let checkGeneration = 0;
+    const check = () => {
+      const generation = ++checkGeneration;
+      const controller = navigator.serviceWorker?.controller;
+      setShellReady(false);
+      void offlineShellReady().then((ready) => {
+        if (
+          active &&
+          generation === checkGeneration &&
+          controller === navigator.serviceWorker?.controller
+        )
+          setShellReady(ready);
+      });
+    };
+    check();
+    navigator.serviceWorker?.addEventListener('controllerchange', check);
+    window.addEventListener('focus', check);
+    return () => {
+      active = false;
+      navigator.serviceWorker?.removeEventListener('controllerchange', check);
+      window.removeEventListener('focus', check);
+    };
+  }, [preparationRevision]);
+  useEffect(() => {
+    let active = true;
+    let expiryTimer: number | undefined;
+    setSavedCount(0);
+    const update = async () => {
+      try {
+        const local = await readOfflineState();
+        if (!active) return;
+        setOfflineSession(
+          local.session
+            ? {
+                playerId: local.session.playerId,
+                playerName: local.session.playerName,
+              }
+            : null,
+        );
+        const packs = local.packs.filter(
+          (item) =>
+            Date.parse(item.pack.validUntil) > Date.now() &&
+            !local.attempts.some(
+              (attempt) =>
+                attempt.cached.pack.event.eventId === item.pack.event.eventId,
+            ),
+        );
+        setSavedCount(packs.length);
+        if (packs.length)
+          expiryTimer = window.setTimeout(
+            () => void update(),
+            Math.max(
+              1,
+              Math.min(
+                ...packs.map((item) => Date.parse(item.pack.validUntil)),
+              ) -
+                Date.now() +
+                1,
+            ),
+          );
+      } catch {
+        if (active) setOfflineSession(null);
+        /* Storage failures never imply offline readiness. */
+      }
+    };
+    void update();
+    return () => {
+      active = false;
+      clearTimeout(expiryTimer);
+    };
+  }, [revision, playerId]);
   useEffect(() => {
     window.addEventListener('wits-player-binding-change', refresh);
     window.addEventListener('storage', refresh);
@@ -138,7 +283,8 @@ export function OfflineProvider({
           .filter(
             (attempt) =>
               attempt.status === 'pending' &&
-              attempt.finishLocation &&
+              (attempt.finishLocation ||
+                attempt.cached.pack.locationPolicy === 'arrival-v1') &&
               (retryFailed ||
                 !['failed', 'confirmed'].includes(
                   attemptSyncRef.current[attempt.clientAttemptId]?.status ?? '',
@@ -209,6 +355,7 @@ export function OfflineProvider({
             const outcome: AttemptSyncState = {
               status: 'confirmed',
               message: 'The server confirmed this result.',
+              attemptId: body.attempt.attemptId,
             };
             serverOutcomes.set(attempt.clientAttemptId, outcome);
             updateAttempt(attempt.clientAttemptId, outcome);
@@ -269,9 +416,9 @@ export function OfflineProvider({
             ? 'Sync timed out. Server confirmation is unknown. Your answers remain saved; retry to check this same attempt.'
             : controller.signal.reason === 'cancelled'
               ? 'Stopped waiting for sync. Server confirmation is unknown. Your answers remain saved; retry to check this same attempt.'
-              : failure instanceof Error && failure.message === 'account'
-                ? 'Sign in with the original account to sync. Your answers remain saved.'
-                : 'Sync failed. Server confirmation is unknown. Your answers remain saved; retry to check this same attempt.';
+              : isAuthenticationFailure(failure)
+                ? 'Sign in with the original account to check your answers. Your answers remain saved.'
+                : 'Sync failed. Server confirmation is unknown. Your answers remain saved; we’ll retry automatically.';
         const knownResults = [...remaining].some((id) =>
           serverOutcomes.has(id),
         );
@@ -311,6 +458,9 @@ export function OfflineProvider({
     setSyncMessage('');
     setSyncFailed(false);
     setSyncing(false);
+    setMessage('');
+    setConnectionFailed(false);
+    setPreparing(false);
     return () => {
       syncController.current?.abort('cancelled');
       syncController.current = null;
@@ -321,9 +471,13 @@ export function OfflineProvider({
   useEffect(() => {
     const update = (event: Event) => {
       setOnline(navigator.onLine);
-      if (event.type === 'online' && boundOfflinePlayer() && !playerId)
-        reload();
-      if (document.visibilityState !== 'hidden') void sync();
+      if (navigator.onLine && boundOfflinePlayer() && !playerId) reload();
+      if (document.visibilityState !== 'hidden') void sync(true);
+      if (event.type === 'online') {
+        sessionRecoveryFailures.current = 0;
+        setConnectionFailed(false);
+        setPreparationRevision((value) => value + 1);
+      }
     };
     window.addEventListener('online', update);
     window.addEventListener('offline', update);
@@ -339,81 +493,233 @@ export function OfflineProvider({
   }, [sync, reload, playerId]);
 
   useEffect(() => {
-    if (!playerId || !playerName || !online || !('indexedDB' in window)) return;
+    if (playerId) sessionRecoveryFailures.current = 0;
+    if (!online || !sessionUnavailable || !boundOfflinePlayer()) return;
+    // An interface may stay "online" while its API connection is unavailable.
+    // Retry only transient session failures, with backoff and foreground checks;
+    // never retry identity or authorization failures as connection failures.
+    const timer = window.setTimeout(
+      () => {
+        if (navigator.onLine && document.visibilityState !== 'hidden') {
+          sessionRecoveryFailures.current += 1;
+          reload();
+        }
+      },
+      Math.min(
+        1_000 * 2 ** Math.min(sessionRecoveryFailures.current, 5),
+        30_000,
+      ),
+    );
+    return () => clearTimeout(timer);
+  }, [online, sessionUnavailable, playerId, reload]);
+
+  useEffect(() => {
+    if (!playerId || !playerName || !online || !('indexedDB' in window)) {
+      setPreparing(false);
+      return;
+    }
     const controller = new AbortController();
+    const timer = window.setTimeout(
+      () => controller.abort('timeout'),
+      READ_TIMEOUT_MS,
+    );
+    const current = () =>
+      mounted.current &&
+      currentPlayer.current === playerId &&
+      boundOfflinePlayer() === playerId &&
+      !controller.signal.aborted;
+    setPreparing(true);
+    setPreparationFailed(false);
     void (async () => {
-      await saveOfflineSession(playerId, playerName);
+      await syncWork(
+        saveOfflineSession(playerId, playerName),
+        controller.signal,
+      );
+      if (!current()) return;
       refresh();
-      const local = await readOfflineState();
-      // Keep existing packs stable during a session instead of repeatedly rerolling questions.
-      if (
-        local.packs.length &&
-        local.packs.every(
-          (item) => Date.now() - Date.parse(item.pack.issuedAt) < 3600_000,
-        )
-      )
-        return;
-      const location = await requestBrowserLocation();
-      const events = await listPlayerEvents({
-        apiBaseUrl,
-        getAccessToken: getToken,
-        signal: controller.signal,
-      });
-      const eventIds = events
+      const local = await syncWork(readOfflineState(), controller.signal);
+      const events = await syncWork(
+        listPlayerEvents({
+          apiBaseUrl,
+          getAccessToken: getToken,
+          signal: controller.signal,
+        }),
+        controller.signal,
+      );
+      if (!current()) return;
+      setConnectionFailed(false);
+      await syncWork(saveOfflineCatalogue(playerId, events), controller.signal);
+      refresh();
+      const eligibleEvents = events.filter(
+        (event) =>
+          event.availability !== 'ended' &&
+          Date.parse(event.startsAt) < Date.now() + 86400_000,
+      );
+      const attemptedEvents = new Set([
+        ...local.attempts.map((item) => item.cached.pack.event.eventId),
+        ...local.receipts
+          .filter((item) => item.outcome === 'accepted')
+          .map((item) => item.eventId),
+      ]);
+      const targets = eligibleEvents.filter(
+        (event) => !attemptedEvents.has(event.eventId),
+      );
+      setPreparationTotal(targets.length);
+      const eventIds = targets
         .filter(
           (event) =>
-            event.availability !== 'ended' &&
-            Date.parse(event.startsAt) < Date.now() + 86400_000,
+            !local.packs.some(
+              (item) =>
+                item.pack.event.eventId === event.eventId &&
+                item.pack.locationPolicy === 'arrival-v1' &&
+                Date.now() - Date.parse(item.pack.issuedAt) < 3600_000 &&
+                Date.parse(item.pack.validUntil) > Date.now() + 60_000,
+            ),
         )
-        .sort(
-          (a, b) =>
-            (a.latitude - location.latitude) ** 2 +
-            (a.longitude - location.longitude) ** 2 -
-            ((b.latitude - location.latitude) ** 2 +
-              (b.longitude - location.longitude) ** 2),
-        )
-        .slice(0, 10)
         .map((event) => event.eventId);
-      if (!eventIds.length) return;
-      const token = await getToken();
-      const response = await fetch(`${apiBaseUrl}/offline-challenge-packs`, {
-        method: 'POST',
-        signal: controller.signal,
-        cache: 'no-store',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-Wits-Offline-Contract-Version': '1',
-        },
-        body: JSON.stringify({ eventIds }),
-      });
-      if (!response.ok) {
-        if (!controller.signal.aborted)
-          setMessage(
-            'Offline packs are unavailable. Online play is unchanged.',
-          );
+      if (!eventIds.length) {
+        setMessage(
+          local.packs.length
+            ? `${local.packs.length} ${local.packs.length === 1 ? 'event' : 'events'} saved on this device.`
+            : 'No upcoming campus challenges are available to save. Existing saved attempts are kept.',
+        );
         return;
       }
-      const body: unknown = await response.json();
-      const packs = parsePacks(body, playerId);
-      if (!controller.signal.aborted && boundOfflinePlayer() === playerId) {
-        await replacePacks(playerId, packs);
-        setMessage(
-          `${packs.length} events saved on this device. Offline answers remain provisional until synced.`,
+      const token = await syncWork(getToken(), controller.signal);
+      let merged = local.packs.filter(
+        (item) => Date.parse(item.pack.validUntil) > Date.now(),
+      );
+      let budgetReached = false;
+      for (let offset = 0; offset < eventIds.length; offset += 10) {
+        const response = await syncWork(
+          fetch(`${apiBaseUrl}/offline-challenge-packs`, {
+            method: 'POST',
+            signal: controller.signal,
+            cache: 'no-store',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'X-Wits-Offline-Contract-Version': '1',
+            },
+            body: JSON.stringify({
+              eventIds: eventIds.slice(offset, offset + 10),
+            }),
+          }),
+          controller.signal,
         );
-        refresh();
+        if (!response.ok) {
+          throw new Error('Offline packs are unavailable.');
+        }
+        const body: unknown = await syncWork(
+          response.json(),
+          controller.signal,
+        );
+        const packs = parsePacks(body, playerId);
+        if (current()) {
+          // A partial response must not wipe still-valid downloaded events.
+          const sizeOf = (item: CachedPack) =>
+            new TextEncoder().encode(JSON.stringify(item)).length;
+          let bytes = merged.reduce((total, item) => total + sizeOf(item), 0);
+          for (const item of packs) {
+            const previous = merged.find(
+              (value) => value.pack.event.eventId === item.pack.event.eventId,
+            );
+            const size = new TextEncoder().encode(JSON.stringify(item)).length;
+            const replacementBytes =
+              bytes + size - (previous ? sizeOf(previous) : 0);
+            if (replacementBytes > OFFLINE_CONTENT_BUDGET_BYTES) {
+              budgetReached = true;
+              continue;
+            }
+            bytes = replacementBytes;
+            merged = [
+              ...merged.filter(
+                (value) => value.pack.event.eventId !== item.pack.event.eventId,
+              ),
+              item,
+            ];
+          }
+          await syncWork(replacePacks(playerId, merged), controller.signal);
+          if (!current()) return;
+          setMessage(
+            `${merged.length} ${merged.length === 1 ? 'event' : 'events'} saved on this device.${budgetReached ? ' The offline content budget is full; other events need a connection.' : ''}`,
+          );
+          refresh();
+        }
+        if (budgetReached || !current()) break;
       }
-    })().catch(() => {
-      if (!controller.signal.aborted)
-        setMessage(
-          'Offline preparation needs a connection and location access.',
-        );
-    });
-    return () => controller.abort();
-  }, [apiBaseUrl, getToken, online, playerId, playerName, refresh]);
+    })()
+      .catch(() => {
+        if (
+          mounted.current &&
+          currentPlayer.current === playerId &&
+          boundOfflinePlayer() === playerId &&
+          controller.signal.reason !== 'cancelled'
+        ) {
+          setPreparationFailed(true);
+          setMessage(
+            controller.signal.reason === 'timeout'
+              ? 'Saving events timed out. Your existing saved events and answers are kept. Retry when connected.'
+              : 'Events could not be saved. Your existing saved events and answers are kept. Check your connection and retry.',
+          );
+        }
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        if (
+          mounted.current &&
+          currentPlayer.current === playerId &&
+          controller.signal.reason !== 'cancelled'
+        )
+          setPreparing(false);
+      });
+    return () => {
+      clearTimeout(timer);
+      controller.abort('cancelled');
+    };
+  }, [
+    apiBaseUrl,
+    getToken,
+    online,
+    playerId,
+    playerName,
+    refresh,
+    preparationRevision,
+  ]);
+  useEffect(() => {
+    if (!online || !playerId) return;
+    const timer = window.setTimeout(
+      () => {
+        if (navigator.onLine && document.visibilityState !== 'hidden')
+          setPreparationRevision((value) => value + 1);
+      },
+      preparationFailed || connectionFailed ? 30_000 : 5 * 60_000,
+    );
+    return () => clearTimeout(timer);
+  }, [
+    online,
+    playerId,
+    preparationFailed,
+    connectionFailed,
+    preparationRevision,
+  ]);
+  useEffect(() => {
+    if (!online || !playerId || !syncFailed || syncMessage.includes('Sign in'))
+      return;
+    const timer = window.setTimeout(() => {
+      if (navigator.onLine && document.visibilityState !== 'hidden')
+        void sync(true);
+    }, 15_000);
+    return () => clearTimeout(timer);
+  }, [online, playerId, syncFailed, syncMessage, sync]);
   return (
     <Context.Provider
       value={{
+        offlineSession:
+          offlineSession?.playerId === boundOfflinePlayer() &&
+          (!playerId || playerId === offlineSession.playerId)
+            ? offlineSession
+            : null,
         online,
         revision,
         message,
@@ -421,10 +727,25 @@ export function OfflineProvider({
         syncMessage,
         syncFailed,
         attemptSync,
+        preparing,
+        shellReady,
+        savedCount,
+        preparationFailed,
+        preparationTotal,
+        canSync: !!playerId && !syncMessage.includes('Sign in'),
+        restoreSession,
+        connectionFailed:
+          connectionFailed ||
+          (state.status === 'error' &&
+            (state.failure === 'unavailable' || state.failure === 'timeout')),
+        prepare,
+        reportConnectionFailure,
+        retryConnection,
         cancelSync,
         refresh,
         sync: async () => {
-          if (!playerId && boundOfflinePlayer() && navigator.onLine) reload();
+          if (!playerId && boundOfflinePlayer() && navigator.onLine)
+            await restoreSession();
           else await sync(true);
         },
       }}
@@ -507,14 +828,167 @@ function syncWork<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
-export function OfflineStatus() {
-  const { online } = useOffline();
-  const { state } = useCurrentPlayer();
-  if (state.status !== 'ready' && !boundOfflinePlayer()) return null;
-  if (online) return null;
+function isAuthenticationFailure(failure: unknown) {
+  if (!failure || typeof failure !== 'object') return false;
+  const value = failure as { error?: string; message?: string };
   return (
-    <aside aria-label="Offline play" className="offline-status">
-      <Link href="/offline">You are offline — open saved events</Link>
-    </aside>
+    value.message === 'account' ||
+    ['login_required', 'consent_required', 'interaction_required'].includes(
+      value.error ?? '',
+    )
+  );
+}
+
+export function ExploreConnectionStatus() {
+  const { online, connectionFailed, savedCount } = useOffline();
+  if (online && !connectionFailed) return null;
+  return (
+    <div className="explore-connection-status">
+      <WifiSlash aria-hidden="true" size={18} />
+      <span role="status">
+        {online ? 'Connection unavailable' : 'Offline'}
+        <span className="sr-only">
+          {online ? '. We can’t reach Wits World.' : '.'}
+          {savedCount > 0
+            ? ' Saved events available.'
+            : ' No downloaded challenges are ready.'}
+        </span>
+      </span>
+      <Link href="/offline" aria-label="Downloads & saved attempts">
+        {savedCount > 0 ? 'Saved events' : 'View downloads'}
+      </Link>
+    </div>
+  );
+}
+
+export function OfflinePreparation({
+  detailed = false,
+  compact = false,
+  savedEvents,
+  readyEvents,
+  savedAttempts = 0,
+  reading = false,
+}: {
+  detailed?: boolean;
+  compact?: boolean;
+  savedEvents?: number;
+  readyEvents?: number;
+  savedAttempts?: number;
+  reading?: boolean;
+}) {
+  const {
+    online,
+    message,
+    preparing,
+    shellReady,
+    savedCount,
+    prepare,
+    connectionFailed,
+    preparationFailed,
+    preparationTotal,
+    retryConnection,
+  } = useOffline();
+  const [path] = useLocation();
+  const events = savedEvents ?? savedCount;
+  const ready = readyEvents ?? savedCount;
+  if (path !== '/offline' && path !== '/explore') return null;
+  if (!detailed && (path === '/offline' || !online || connectionFailed))
+    return null;
+  if (!detailed) return null;
+  const readiness = preparing
+    ? 'Saving campus events…'
+    : reading
+      ? 'Reading saved play…'
+      : shellReady && ready > 0
+        ? 'Ready for offline play'
+        : savedAttempts > 0
+          ? 'Progress saved on this device'
+          : ready > 0
+            ? import.meta.env.PROD
+              ? 'Finishing offline setup'
+              : 'Ready for this visit'
+            : events > 0
+              ? 'No events ready to play'
+              : 'No saved events yet';
+  const savedSummary = reading
+    ? 'Loading your events and progress'
+    : `${events} ${events === 1 ? 'event' : 'events'}${savedAttempts ? ` · ${savedAttempts} saved ${savedAttempts === 1 ? 'attempt' : 'attempts'}` : ''} on this device`;
+  const connectionSummary =
+    online && connectionFailed
+      ? 'Connection unavailable'
+      : !online
+        ? 'Offline'
+        : '';
+  return (
+    <section
+      aria-label="Offline preparation"
+      className={`offline-preparation${compact ? ' offline-preparation--compact' : ''}`}
+      aria-busy={preparing}
+    >
+      <DownloadSimple aria-hidden="true" size={22} />
+      <div className="offline-preparation__copy">
+        {!compact && (
+          <p role="status">
+            <strong>{readiness}</strong>
+            <span>
+              {savedSummary}
+              {connectionSummary && ` · ${connectionSummary}`}.
+            </span>
+          </p>
+        )}
+        {preparationFailed && message && !connectionFailed && <p>{message}</p>}
+        {online && connectionFailed && (
+          <p>
+            The server could not be reached. Saved challenges stay available.
+          </p>
+        )}
+        <details>
+          <summary
+            aria-label={compact ? `${readiness}. Download details` : undefined}
+          >
+            {compact ? (
+              <>
+                <strong role="status">{readiness}</strong>
+                {connectionSummary && <span> · {connectionSummary}</span>}
+              </>
+            ) : (
+              'Download details'
+            )}
+          </summary>
+          {compact && <p>{savedSummary}.</p>}
+          {!preparationFailed && message && <p>{message}</p>}
+          {preparationTotal > savedCount && (
+            <p>{preparationTotal} events eligible for download.</p>
+          )}
+          <p>
+            {shellReady && savedCount > 0
+              ? 'Play saved events here or in Explore. Events without saved questions need a connection.'
+              : savedCount > 0
+                ? import.meta.env.PROD
+                  ? 'Questions are saved, but offline reopening is not ready. Stay connected while the app finishes downloading, then check again.'
+                  : 'Play saved events here or in Explore. Reconnect before reloading this development preview.'
+                : 'Challenges download automatically while connected. Location access is not needed for downloads.'}
+          </p>
+        </details>
+      </div>
+      {online && connectionFailed ? (
+        <button
+          className="button button--quiet"
+          onClick={retryConnection}
+          type="button"
+        >
+          Retry connection
+        </button>
+      ) : preparationFailed ? (
+        <button
+          className="button button--secondary"
+          disabled={!online || preparing}
+          onClick={prepare}
+          type="button"
+        >
+          {preparing ? 'Saving events…' : 'Retry downloads'}
+        </button>
+      ) : null}
+    </section>
   );
 }

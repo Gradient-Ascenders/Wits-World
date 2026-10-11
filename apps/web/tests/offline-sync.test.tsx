@@ -6,12 +6,14 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { OfflineProvider, OfflineStatus } from '../src/offline/OfflineProvider';
+import { OfflineProvider } from '../src/offline/OfflineProvider';
 import { OfflineExplorePage } from '../src/offline/OfflinePages';
 import type { CachedPack, LocalAttempt } from '../src/offline/store';
 import { READ_TIMEOUT_MS } from '../src/components/loading-policy';
 
 const mocks = vi.hoisted(() => ({
+  sessionFailure: null as
+    null | 'unavailable' | 'timeout' | 'authorization' | 'identity_changed',
   getToken: vi.fn(async () => 'token'),
   reload: vi.fn(),
   readOfflineState: vi.fn(),
@@ -20,7 +22,9 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('../src/auth/CurrentPlayerProvider', () => ({
   useCurrentPlayer: () => ({
-    state: { status: 'ready', player: { id: 'player', playerName: 'Player' } },
+    state: mocks.sessionFailure
+      ? { status: 'error', failure: mocks.sessionFailure }
+      : { status: 'ready', player: { id: 'player', playerName: 'Player' } },
     reload: mocks.reload,
   }),
 }));
@@ -87,13 +91,14 @@ const attempt: LocalAttempt = {
 function renderOffline() {
   return render(
     <OfflineProvider apiBaseUrl="https://api.example.test/api/v1">
-      <OfflineStatus />
       <OfflineExplorePage />
     </OfflineProvider>,
   );
 }
 
 beforeEach(() => {
+  mocks.sessionFailure = null;
+  mocks.reload.mockClear();
   mocks.getToken.mockResolvedValue('token');
   mocks.recordOfflineReceipt.mockResolvedValue(undefined);
   mocks.readOfflineState.mockResolvedValue({
@@ -111,6 +116,53 @@ afterEach(() => {
 });
 
 describe('offline synchronization recovery', () => {
+  it('keeps answers and asks for sign-in when the SDK requires authentication instead of retrying forever', async () => {
+    vi.useFakeTimers();
+    mocks.getToken.mockRejectedValue(
+      Object.assign(new Error('Login required'), { error: 'login_required' }),
+    );
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    renderOffline();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      screen.getByRole('button', { name: 'Sign in to check answers' }),
+    ).toBeEnabled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mocks.recordOfflineReceipt).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['unavailable', true],
+    ['timeout', true],
+    ['authorization', false],
+    ['identity_changed', false],
+  ] as const)(
+    'automatically recovers only transient session errors: %s',
+    async (failure, recovers) => {
+      vi.useFakeTimers();
+      mocks.sessionFailure = failure;
+      render(
+        <OfflineProvider apiBaseUrl="https://api.example.test/api/v1">
+          <h1>Saved play</h1>
+        </OfflineProvider>,
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(999);
+      });
+      expect(mocks.reload).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(mocks.reload).toHaveBeenCalledTimes(recovers ? 1 : 0);
+    },
+  );
+
   it('keeps uploads and sync failures out of regular pages', async () => {
     let failUpload!: (error: Error) => void;
     const fetch = vi.fn(
@@ -123,17 +175,25 @@ describe('offline synchronization recovery', () => {
     render(
       <OfflineProvider apiBaseUrl="https://api.example.test/api/v1">
         <h1>Your campus</h1>
-        <OfflineStatus />
       </OfflineProvider>,
     );
 
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(
+      screen.queryByRole('complementary', { name: 'Offline play' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('link', {
+        name: 'Downloads & saved attempts',
+      }),
+    ).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Your campus' })).toBeVisible();
 
     await act(async () => failUpload(new TypeError('network unavailable')));
-    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(
+      screen.queryByRole('complementary', { name: 'Offline play' }),
+    ).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Your campus' })).toBeVisible();
     expect(mocks.recordOfflineReceipt).not.toHaveBeenCalled();
@@ -161,7 +221,7 @@ describe('offline synchronization recovery', () => {
       vi.stubGlobal('fetch', fetch);
       render(
         <OfflineProvider apiBaseUrl="https://api.example.test/api/v1">
-          <OfflineStatus />
+          <h1>Your campus</h1>
         </OfflineProvider>,
       );
 
@@ -198,11 +258,10 @@ describe('offline synchronization recovery', () => {
     );
     vi.stubGlobal('fetch', fetch);
     renderOffline();
-    const buttons = await screen.findAllByRole('button', {
-      name: 'Syncing saved attempts…',
-    });
-    const button = buttons[0]!;
-    expect(button).toBeDisabled();
+    await screen.findByRole('button', { name: 'Cancel sync' });
+    expect(
+      screen.queryByRole('button', { name: 'Sync saved attempts' }),
+    ).toBeNull();
     expect(
       screen.queryByRole('complementary', { name: 'Offline play' }),
     ).toBeNull();
@@ -211,9 +270,8 @@ describe('offline synchronization recovery', () => {
     expect(announcements[0]).toHaveTextContent('Syncing saved attempts');
     expect(announcements[0]?.closest('[aria-busy="true"]')).toBeNull();
     expect(
-      await screen.findByText(/Awaiting confirmation/),
+      await screen.findByRole('region', { name: 'Awaiting confirmation' }),
     ).toBeInTheDocument();
-    fireEvent.click(button);
     window.dispatchEvent(new Event('focus'));
     expect(fetch).toHaveBeenCalledTimes(1);
     await act(async () =>
@@ -239,11 +297,11 @@ describe('offline synchronization recovery', () => {
       'Server checks finished',
     );
     expect(
-      screen.getByRole('button', { name: 'Sync saved attempts' }),
-    ).toBeEnabled();
+      screen.queryByRole('button', { name: 'Sync saved attempts' }),
+    ).toBeNull();
   });
 
-  it('shows online failure without losing answers and only retries the identical attempt explicitly', async () => {
+  it('shows online failure without losing answers and retries the identical attempt on foreground', async () => {
     const fetch = vi
       .fn()
       .mockRejectedValueOnce(new TypeError('network unavailable'))
@@ -260,7 +318,7 @@ describe('offline synchronization recovery', () => {
       await screen.findByRole('button', { name: 'Retry sync' }),
     ).toBeEnabled();
     expect(
-      screen.getByRole('region', { name: 'Saved campus events' }),
+      screen.getByRole('region', { name: 'Saved play' }),
     ).toHaveTextContent('Server confirmation is unknown');
     expect(
       screen.queryByRole('complementary', { name: 'Offline play' }),
@@ -273,8 +331,6 @@ describe('offline synchronization recovery', () => {
     expect(mocks.recordOfflineReceipt).not.toHaveBeenCalled();
     window.dispatchEvent(new Event('focus'));
     await act(async () => {});
-    expect(fetch).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Retry sync' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     expect(fetch.mock.calls[0]?.[1]?.body).toBe(fetch.mock.calls[1]?.[1]?.body);
     await waitFor(() =>
@@ -306,10 +362,18 @@ describe('offline synchronization recovery', () => {
         await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS);
       });
       expect(
-        screen.getByRole('region', { name: 'Saved campus events' }),
-      ).toHaveTextContent('Sync timed out');
+        screen.getByRole('region', { name: 'Saved play' }),
+      ).toHaveTextContent(
+        phase === 'storage'
+          ? 'Device storage is taking too long'
+          : 'Sync timed out',
+      );
       expect(mocks.recordOfflineReceipt).not.toHaveBeenCalled();
-      expect(screen.getByRole('button', { name: 'Retry sync' })).toBeEnabled();
+      expect(
+        screen.getByRole('button', {
+          name: phase === 'storage' ? 'Retry device storage' : 'Retry sync',
+        }),
+      ).toBeEnabled();
     },
   );
 
@@ -332,14 +396,20 @@ describe('offline synchronization recovery', () => {
       await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS);
     });
     expect(
-      screen.getByRole('region', { name: 'Saved campus events' }),
-    ).toHaveTextContent('A server result could not be saved');
+      screen.getByRole('region', { name: 'Saved play' }),
+    ).toHaveTextContent('Confirmed');
     expect(
       screen.getByText(
         /The server confirmed this result. The receipt could not be saved/,
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry sync' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Retry sync' })).toHaveClass(
+      'button--quiet',
+    );
+    expect(
+      screen.getByRole('link', { name: 'View confirmed result: Saved event' }),
+    ).toHaveAttribute('href', '/challenge-attempts/confirmed');
   });
 
   it('leaves an unconfirmed attempt saved when the provider unmounts during upload', async () => {
@@ -353,7 +423,7 @@ describe('offline synchronization recovery', () => {
     });
     vi.stubGlobal('fetch', fetch);
     const view = renderOffline();
-    await screen.findByText(/Awaiting confirmation/);
+    await screen.findByRole('region', { name: 'Awaiting confirmation' });
     view.unmount();
     expect(signal.aborted).toBe(true);
     await act(async () =>
@@ -387,7 +457,7 @@ describe('offline synchronization recovery', () => {
       await screen.findByRole('button', { name: 'Retry sync' }),
     ).toBeEnabled();
     expect(
-      screen.getByRole('region', { name: 'Saved campus events' }),
+      screen.getByRole('region', { name: 'Saved play' }),
     ).toHaveTextContent(
       'Stopped waiting for sync. Server confirmation is unknown',
     );

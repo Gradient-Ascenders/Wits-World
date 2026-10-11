@@ -1,4 +1,10 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OfflineProvider, useOffline } from '../src/offline/OfflineProvider';
@@ -12,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   location: vi.fn(),
   read: vi.fn(),
   saveSession: vi.fn(async () => {}),
+  saveCatalogue: vi.fn(async () => {}),
   replacePacks: vi.fn(async () => {}),
 }));
 
@@ -33,15 +40,21 @@ vi.mock('../src/offline/store', async (original) => ({
   boundOfflinePlayer: () => mocks.binding,
   readOfflineState: mocks.read,
   saveOfflineSession: mocks.saveSession,
+  saveOfflineCatalogue: mocks.saveCatalogue,
   replacePacks: mocks.replacePacks,
 }));
 
 function PreparationState() {
-  const { message, online } = useOffline();
+  const { message, online, prepare, preparing } = useOffline();
   return (
-    <p role="note">
-      {online ? 'Online' : 'Offline'}: {message}
-    </p>
+    <>
+      <p role="note">
+        {online ? 'Online' : 'Offline'}: {message}
+      </p>
+      <button disabled={preparing} onClick={prepare}>
+        Save events
+      </button>
+    </>
   );
 }
 
@@ -77,6 +90,7 @@ function pack(playerId = 'player-one'): CachedPack {
     packToken: 'signed-pack-token',
     pack: {
       version: 1,
+      locationPolicy: 'arrival-v1',
       playerId,
       packId: `pack-${playerId}`,
       issuedAt: '2026-10-08T08:00:00.000Z',
@@ -139,7 +153,112 @@ afterEach(() => {
 });
 
 describe('offline cache preparation', () => {
-  it('requests only the ten nearest eligible events and stores only valid packs for the current player', async () => {
+  it('upgrades a fresh legacy pack to the arrival policy automatically', async () => {
+    const fresh = pack();
+    fresh.pack.issuedAt = new Date().toISOString();
+    delete fresh.pack.locationPolicy;
+    mocks.read.mockResolvedValue({
+      packs: [fresh],
+      attempts: [],
+      receipts: [],
+    });
+    const upgraded = {
+      ...fresh,
+      pack: { ...fresh.pack, locationPolicy: 'arrival-v1' as const },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response({ events: [event(1)], requestId: 'discovery' }),
+      )
+      .mockResolvedValueOnce(response({ packs: [upgraded] }));
+    vi.stubGlobal('fetch', fetchMock);
+    mount();
+    await waitFor(() =>
+      expect(mocks.replacePacks).toHaveBeenCalledWith('player-one', [upgraded]),
+    );
+    expect(mocks.location).not.toHaveBeenCalled();
+  });
+
+  it('can download events without a usable GPS fix', async () => {
+    mocks.location.mockRejectedValue(new Error('GPS unavailable indoors'));
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          response({ events: [event(1)], requestId: 'discovery' }),
+        )
+        .mockResolvedValueOnce(response({ packs: [pack()] })),
+    );
+    mount();
+    await waitFor(() =>
+      expect(mocks.replacePacks).toHaveBeenCalledWith('player-one', [pack()]),
+    );
+  });
+
+  it('does not wait for a stalled optional GPS lookup before downloading', async () => {
+    mocks.location.mockImplementationOnce(() => new Promise(() => {}));
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          response({ events: [event(1)], requestId: 'discovery' }),
+        )
+        .mockResolvedValueOnce(response({ packs: [pack()] })),
+    );
+    mount();
+    await waitFor(() =>
+      expect(mocks.replacePacks).toHaveBeenCalledWith('player-one', [pack()]),
+    );
+    expect(screen.getByRole('note')).toHaveTextContent('1 event saved');
+    expect(screen.getByRole('button', { name: 'Save events' })).toBeEnabled();
+  });
+
+  it('preserves usable packs when refresh returns no replacement and allows retry after failure', async () => {
+    mocks.read.mockResolvedValue({
+      packs: [pack()],
+      attempts: [],
+      receipts: [],
+    });
+    const fetch = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('network disconnected'))
+      .mockResolvedValueOnce(
+        response({ events: [event(1)], requestId: 'discovery' }),
+      )
+      .mockResolvedValueOnce(response({ packs: [] }));
+    vi.stubGlobal('fetch', fetch);
+    mount();
+    await waitFor(() =>
+      expect(screen.getByRole('note')).toHaveTextContent(
+        'Events could not be saved',
+      ),
+    );
+    expect(mocks.replacePacks).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Save events' }));
+    await waitFor(() =>
+      expect(mocks.replacePacks).toHaveBeenCalledWith('player-one', [pack()]),
+    );
+  });
+
+  it('bounds stalled token acquisition and keeps existing packs for retry', async () => {
+    vi.useFakeTimers();
+    mocks.token.mockImplementationOnce(() => new Promise(() => {}));
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    mount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'Saving events timed out',
+    );
+    expect(screen.getByRole('button', { name: 'Save events' })).toBeEnabled();
+    expect(mocks.replacePacks).not.toHaveBeenCalled();
+  });
+  it('requests all eligible events in batches of ten and stores only valid packs for the current player', async () => {
     const valid = pack();
     const malformed = { ...valid, pack: { ...valid.pack, questions: [] } };
     const events = [
@@ -155,7 +274,8 @@ describe('offline cache preparation', () => {
       .mockResolvedValueOnce(response({ events, requestId: 'discovery' }))
       .mockResolvedValueOnce(
         response({ packs: [valid, pack('other-player'), malformed] }),
-      );
+      )
+      .mockResolvedValueOnce(response({ packs: [] }));
     vi.stubGlobal('fetch', fetchMock);
     mount();
 
@@ -163,13 +283,17 @@ describe('offline cache preparation', () => {
       expect(mocks.replacePacks).toHaveBeenCalledWith('player-one', [valid]),
     );
     expect(mocks.saveSession).toHaveBeenCalledWith('player-one', 'Ari');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(
+      JSON.parse(fetchMock.mock.calls[2]![1]!.body as string).eventIds,
+    ).toEqual(['event-2', 'event-1']);
     expect(fetchMock.mock.calls[1]).toEqual([
       'https://api.example.test/api/v1/offline-challenge-packs',
       expect.objectContaining({
         body: JSON.stringify({
           eventIds: Array.from(
             { length: 10 },
-            (_, index) => `event-${index + 1}`,
+            (_, index) => `event-${12 - index}`,
           ),
         }),
         cache: 'no-store',
@@ -183,7 +307,7 @@ describe('offline cache preparation', () => {
     ]);
     await waitFor(() =>
       expect(screen.getByRole('note')).toHaveTextContent(
-        '1 events saved on this device.',
+        '1 event saved on this device.',
       ),
     );
   });
@@ -199,12 +323,18 @@ describe('offline cache preparation', () => {
       attempts: [],
       receipts: [],
     });
-    const fetchMock = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        response({ events: [event(1)], requestId: 'discovery' }),
+      );
     vi.stubGlobal('fetch', fetchMock);
     mount();
-    await waitFor(() => expect(mocks.read).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByRole('note')).toHaveTextContent('1 event saved'),
+    );
     expect(mocks.location).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledOnce();
     expect(mocks.replacePacks).not.toHaveBeenCalled();
   });
 
@@ -221,7 +351,7 @@ describe('offline cache preparation', () => {
     mount();
     await waitFor(() =>
       expect(screen.getByRole('note')).toHaveTextContent(
-        'Offline packs are unavailable. Online play is unchanged.',
+        'Events could not be saved.',
       ),
     );
     expect(
@@ -244,7 +374,7 @@ describe('offline cache preparation', () => {
     mount();
     await waitFor(() =>
       expect(screen.getByRole('note')).toHaveTextContent(
-        'Offline preparation needs a connection and location access.',
+        'Events could not be saved. Your existing saved events and answers are kept. Check your connection and retry.',
       ),
     );
     expect(mocks.replacePacks).not.toHaveBeenCalled();

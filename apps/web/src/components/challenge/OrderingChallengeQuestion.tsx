@@ -1,14 +1,16 @@
 import {
-  useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
   type Ref,
 } from 'react';
+import { ArrowDown, ArrowUp, DotsSixVertical } from '@phosphor-icons/react';
 
 import type { OrderingChallengeQuestion as OrderingQuestionData } from '../../api/challenges';
 
 interface OrderingChallengeQuestionProps {
+  compact?: boolean;
   headingRef?: Ref<HTMLHeadingElement>;
   isSubmitting: boolean;
   itemIds: string[];
@@ -24,6 +26,7 @@ interface ActivePointer {
 }
 
 export function OrderingChallengeQuestion({
+  compact = false,
   headingRef,
   isSubmitting,
   itemIds,
@@ -39,7 +42,7 @@ export function OrderingChallengeQuestion({
   const activePointer = useRef<ActivePointer | null>(null);
   const orderRef = useRef(itemIds);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     orderRef.current = itemIds;
   }, [itemIds]);
 
@@ -153,8 +156,9 @@ export function OrderingChallengeQuestion({
             Arrange the items from first to last
           </legend>
           <p className="challenge-ordering__instruction">
-            Drag an item, or use its Move Up and Move Down controls. The
-            numbered list is your current order.
+            {compact
+              ? 'Drag to reorder, or use the up and down buttons.'
+              : 'Drag an item, or use its Move Up and Move Down controls. The numbered list is your current order.'}
           </p>
           <div aria-live="polite" className="sr-only" role="status">
             {announcement}
@@ -162,7 +166,7 @@ export function OrderingChallengeQuestion({
           <ol
             aria-describedby={instructionId}
             aria-label="Current order"
-            className="challenge-ordering"
+            className={`challenge-ordering${compact ? ' challenge-ordering--compact' : ''}`}
             onPointerCancel={finishPointerMove}
             onPointerMove={trackPointer}
             onPointerUp={finishPointerMove}
@@ -181,7 +185,7 @@ export function OrderingChallengeQuestion({
                     startPointerMove(event, item.itemId)
                   }
                 >
-                  Drag
+                  {compact ? <DotsSixVertical size={20} /> : 'Drag'}
                 </span>
                 <span className="challenge-ordering__position">
                   {index + 1}
@@ -195,7 +199,11 @@ export function OrderingChallengeQuestion({
                     onClick={() => moveItem(item.itemId, index - 1)}
                     type="button"
                   >
-                    Move up
+                    {compact ? (
+                      <ArrowUp aria-hidden="true" size={18} />
+                    ) : (
+                      'Move up'
+                    )}
                   </button>
                   <button
                     aria-label={`Move ${item.text} down from position ${index + 1}`}
@@ -204,7 +212,11 @@ export function OrderingChallengeQuestion({
                     onClick={() => moveItem(item.itemId, index + 1)}
                     type="button"
                   >
-                    Move down
+                    {compact ? (
+                      <ArrowDown aria-hidden="true" size={18} />
+                    ) : (
+                      'Move down'
+                    )}
                   </button>
                 </span>
               </li>

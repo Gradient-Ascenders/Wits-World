@@ -12,6 +12,7 @@ const offlineRoots = [
   '/src/main.tsx',
   '/src/pages/HomePage.tsx',
   '/src/offline/OfflinePages.tsx',
+  '/src/pages/ExplorePage.tsx',
 ];
 
 export function createPrecachePolicy() {
@@ -24,7 +25,9 @@ export function createPrecachePolicy() {
       );
       const roots = offlineRoots.map((path) => {
         const chunk = chunks.find((output) =>
-          output.facadeModuleId?.replaceAll('\\', '/').endsWith(path),
+          [output.facadeModuleId, ...Object.keys(output.modules ?? {})].some(
+            (id) => id?.replaceAll('\\', '/').endsWith(path),
+          ),
         );
         if (!chunk) throw new Error(`Missing offline build root: ${path}`);
         return chunk.fileName;
@@ -37,6 +40,10 @@ export function createPrecachePolicy() {
           throw new Error(`Missing offline build dependency: ${fileName}`);
         scripts.add(fileName);
         chunk.imports.forEach(visit);
+        // Rolldown lists CSS-only chunks in this graph but removes their
+        // empty JavaScript file and imports before writing the bundle.
+        // Their emitted CSS remains covered by the CSS manifest rule.
+        if (chunk.code === '') scripts.delete(fileName);
       }
       [
         ...roots,

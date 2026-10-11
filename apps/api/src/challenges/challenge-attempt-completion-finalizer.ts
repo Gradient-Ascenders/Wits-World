@@ -9,6 +9,8 @@ import type {
 } from './challenge-answer-submission.js';
 import {
   calculateChallengeRewardPlan,
+  CHALLENGE_REWARD_POLICY_VERSION,
+  RewardCatalogUnavailableError,
   type RewardCardRarity,
   type RewardRandomInt,
 } from './challenge-reward-policy.js';
@@ -41,14 +43,12 @@ export interface ChallengeAttemptCompletionFinalizerOptions {
   territoryOwnerBonus?: Pick<TerritoryOwnerBonusService, 'finalizeAttempt'>;
 }
 
-const DEFAULT_REWARD_POLICY_VERSION = 'points-cards-v2';
-
 export function createChallengeAttemptCompletionFinalizer(
   options: ChallengeAttemptCompletionFinalizerOptions = {},
 ): ChallengeAttemptCompletionFinalizer {
   const randomInteger = options.randomInt ?? randomInt;
   const rewardPolicyVersion =
-    options.rewardPolicyVersion ?? DEFAULT_REWARD_POLICY_VERSION;
+    options.rewardPolicyVersion ?? CHALLENGE_REWARD_POLICY_VERSION;
   const progressionPersistence =
     options.progressionPersistence ?? createProgressionPersistence();
   const territoryOwnerBonus = options.territoryOwnerBonus;
@@ -72,7 +72,19 @@ export function createChallengeAttemptCompletionFinalizer(
         return;
       }
 
-      const cardDefinitions = await loadActiveCardDefinitions(database);
+      const context = input.offlineRewardContext;
+      if (
+        context &&
+        context.policyVersion !== CHALLENGE_REWARD_POLICY_VERSION
+      ) {
+        // Retryable server failure: never silently substitute a newer policy.
+        throw new RewardCatalogUnavailableError(
+          'The saved reward policy is temporarily unavailable.',
+        );
+      }
+      const cardDefinitions = context
+        ? await loadSavedCardDefinitions(database, context.cards)
+        : await loadActiveCardDefinitions(database);
       const rewardPlan = calculateChallengeRewardPlan(
         input.scoreCorrect,
         [...new Set(cardDefinitions.map((card) => card.rarity))],
@@ -88,7 +100,7 @@ export function createChallengeAttemptCompletionFinalizer(
       );
 
       const completion = await insertCompletion(database, input, attempt, {
-        rewardPolicyVersion,
+        rewardPolicyVersion: context?.policyVersion ?? rewardPolicyVersion,
       });
 
       if (!completion) {
@@ -238,6 +250,35 @@ async function loadActiveCardDefinitions(
   );
 
   return result.rows;
+}
+
+async function loadSavedCardDefinitions(
+  database: ChallengeAnswerSubmissionQueryable,
+  cards: NonNullable<
+    ChallengeAttemptFinalizationInput['offlineRewardContext']
+  >['cards'],
+): Promise<CardDefinitionRow[]> {
+  const result = await database.query<CardDefinitionRow>(
+    `select id::text as card_definition_id, rarity from public.card_definitions
+     where id = any($1::uuid[]) order by id`,
+    [cards.map((card) => card.cardDefinitionId)],
+  );
+  const definitions = new Map(
+    result.rows.map((card) => [card.card_definition_id, card]),
+  );
+  if (
+    cards.some(
+      (card) => definitions.get(card.cardDefinitionId)?.rarity !== card.rarity,
+    )
+  ) {
+    throw new RewardCatalogUnavailableError(
+      'The saved reward catalogue is temporarily unavailable.',
+    );
+  }
+  return cards.map((card) => ({
+    card_definition_id: card.cardDefinitionId,
+    rarity: card.rarity,
+  }));
 }
 
 async function insertCompletion(

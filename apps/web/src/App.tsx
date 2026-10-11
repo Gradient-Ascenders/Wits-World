@@ -5,12 +5,12 @@ import { Redirect, Route, Switch, useLocation } from 'wouter';
 import { MatchModuleLoadError } from './api/match-errors';
 import { useApiAccessToken } from './auth/useApiAccessToken';
 import { AppShell } from './components/AppShell';
-import {
-  OfflineProvider,
-  OfflineStatus,
-  useOffline,
-} from './offline/OfflineProvider';
+import { OfflineProvider, useOffline } from './offline/OfflineProvider';
 import { ServiceWorkerUpdate } from './offline/ServiceWorkerUpdate';
+import { boundOfflinePlayer } from './offline/store';
+import { OfflineAttemptPage } from './offline/OfflineAttemptPage';
+import { OfflineExplorePage } from './offline/OfflinePages';
+import { ChallengeConnectionGate } from './offline/ChallengeConnectionGate';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingState } from './components/LoadingState';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -34,17 +34,8 @@ import type { MapFactory } from './components/exploration/map-provider';
 import type { AuthConfig } from './config/environment';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
-const OfflinePages = () => import('./offline/OfflinePages');
-const OfflineExplorePage = lazy(() =>
-  OfflinePages().then(({ OfflineExplorePage }) => ({
-    default: OfflineExplorePage,
-  })),
-);
-const OfflineAttemptPage = lazy(() =>
-  OfflinePages().then(({ OfflineAttemptPage }) => ({
-    default: OfflineAttemptPage,
-  })),
-);
+// Saved play is the connection-loss escape route. It must already be loaded
+// with the shell, including in development where there is no app-shell cache.
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const ChallengePage = lazy(() => import('./pages/ChallengePage'));
 const CollectionPage = lazy(() => import('./pages/CollectionPage'));
@@ -73,7 +64,6 @@ function prepareRoute(path: string) {
       import('./pages/AuthorConsolePage'),
       prepareAuthorWorkspace(path),
     ]);
-  if (path.startsWith('/offline')) return OfflinePages();
   if (path.startsWith('/challenge-attempts/'))
     return import('./pages/ChallengePage');
   if (path === '/explore') return import('./pages/ExplorePage');
@@ -167,7 +157,6 @@ export function AppRoutes({
       <OfflineProvider apiBaseUrl={apiBaseUrl}>
         <SessionCollectionShell apiBaseUrl={apiBaseUrl}>
           <AppToaster />
-          <OfflineStatus />
           <ServiceWorkerUpdate />
           <StartupSettler />
           <ErrorBoundary resetKey={pathname} withinShell>
@@ -176,18 +165,14 @@ export function AppRoutes({
                 <Route path="/" component={HomePage} />
                 <Route path="/explore">
                   <OfflineExploreGate>
-                    <ProtectedRoute>
-                      <ExplorePage
-                        apiBaseUrl={apiBaseUrl}
-                        locationClaimProvider={locationClaimProvider}
-                        locationObservationProvider={
-                          locationObservationProvider
-                        }
-                        locationPermissionProvider={locationPermissionProvider}
-                        mapFactory={mapFactory}
-                        mapboxAccessToken={mapboxAccessToken}
-                      />
-                    </ProtectedRoute>
+                    <ExplorePage
+                      apiBaseUrl={apiBaseUrl}
+                      locationClaimProvider={locationClaimProvider}
+                      locationObservationProvider={locationObservationProvider}
+                      locationPermissionProvider={locationPermissionProvider}
+                      mapFactory={mapFactory}
+                      mapboxAccessToken={mapboxAccessToken}
+                    />
                   </OfflineExploreGate>
                 </Route>
                 <Route path="/offline" component={OfflineExplorePage} />
@@ -196,9 +181,11 @@ export function AppRoutes({
                   component={OfflineAttemptPage}
                 />
                 <Route path="/challenge-attempts/:attemptId">
-                  <ProtectedRoute>
-                    <ChallengePage apiBaseUrl={apiBaseUrl} />
-                  </ProtectedRoute>
+                  <ChallengeConnectionGate>
+                    <ProtectedRoute>
+                      <ChallengePage apiBaseUrl={apiBaseUrl} />
+                    </ProtectedRoute>
+                  </ChallengeConnectionGate>
                 </Route>
                 <Route path="/collection/trades/new">
                   <ProtectedRoute destination="start a card trade">
@@ -353,15 +340,26 @@ function SessionCollectionShell({
       ? `${apiBaseUrl}:${state.player.id}:${state.player.role}`
       : `${apiBaseUrl}:${state.status}`;
   return (
-    <CollectionReadProvider key={scope}>
+    <CollectionReadProvider scope={scope}>
       <AppShell>{children}</AppShell>
     </CollectionReadProvider>
   );
 }
 
 function OfflineExploreGate({ children }: { children: ReactNode }) {
-  const { online } = useOffline();
-  return online ? children : <OfflineExplorePage />;
+  const { revision, offlineSession } = useOffline();
+  const { state } = useCurrentPlayer();
+  void revision;
+  const binding = boundOfflinePlayer();
+  // A local binding only opens cached exploration. It never authorizes API reads.
+  return binding &&
+    (state.status === 'ready'
+      ? state.player.id === binding && !state.player.playerNameSetupRequired
+      : offlineSession?.playerId === binding) ? (
+    children
+  ) : (
+    <ProtectedRoute>{children}</ProtectedRoute>
+  );
 }
 
 function DecksRoute({ apiBaseUrl }: { apiBaseUrl: string }) {

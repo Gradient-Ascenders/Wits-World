@@ -61,6 +61,31 @@ afterEach(() => {
 });
 
 describe('useTerritoryDiscovery', () => {
+  it.each(['unavailable', 'authorization'] as const)(
+    'reports only a connection failure for %s territory reads',
+    async (failure) => {
+      territoryApi.listZones.mockRejectedValueOnce(
+        new TerritoryApiError(failure),
+      );
+      const onConnectionFailure = vi.fn();
+      renderHook(() =>
+        useTerritoryDiscovery({
+          apiBaseUrl: 'https://api.example.test/api/v1',
+          enabled: true,
+          getAccessToken,
+          onConnectionFailure,
+          onSelectedZoneUnavailable,
+          selectedZoneId: null,
+        }),
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(onConnectionFailure).toHaveBeenCalledTimes(
+        failure === 'unavailable' ? 1 : 0,
+      );
+    },
+  );
   it('refreshes on re-entry when a settlement boundary passed while hidden', async () => {
     const { rerender, result } = renderHook(
       ({ enabled }) =>

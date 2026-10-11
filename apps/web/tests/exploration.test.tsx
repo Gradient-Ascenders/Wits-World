@@ -16,6 +16,7 @@ import {
   createGeodesicCircle,
   MOBILE_2D_MAP_STYLE,
   type MapConfiguration,
+  type MapBounds,
   type MapController,
   type MapFactory,
   type MapPoint,
@@ -282,6 +283,122 @@ describe('initial discovery paint before mobile map startup', () => {
 });
 
 describe('map-first campus exploration', () => {
+  it.each(['Nearby', 'Trails', 'Territories'])(
+    'returns from %s to Events offline and restores navigation without a reload',
+    async (section) => {
+      vi.spyOn(window, 'matchMedia').mockImplementation(
+        (query) =>
+          ({
+            matches: query === '(min-width: 64rem)',
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+          }) as unknown as MediaQueryList,
+      );
+      const user = userEvent.setup();
+      const props = explorerProps(async () => createController());
+      const view = render(<CampusExplorer {...props} />);
+      await user.click(screen.getByRole('button', { name: section }));
+      const onlineMode =
+        section === 'Territories'
+          ? ('territories' as const)
+          : ('discover' as const);
+      view.rerender(
+        <CampusExplorer {...props} exploreMode={onlineMode} offlineMap />,
+      );
+      expect(
+        screen.getByRole('heading', { name: 'Campus events' }),
+      ).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Events' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+      for (const label of ['Nearby', 'Trails', 'Territories']) {
+        expect(screen.queryByRole('button', { name: label })).toBeNull();
+      }
+      await user.click(screen.getByRole('button', { name: 'Collapse events' }));
+      expect(screen.getByRole('button', { name: 'Open Events' })).toBeVisible();
+      for (const label of ['Nearby', 'Trails', 'Territories']) {
+        expect(
+          screen.queryByRole('button', { name: `Open ${label}` }),
+        ).toBeNull();
+      }
+      view.rerender(<CampusExplorer {...props} />);
+      for (const label of ['Events', 'Nearby', 'Trails', 'Territories']) {
+        expect(
+          screen.getByRole('button', { name: `Open ${label}` }),
+        ).toBeVisible();
+      }
+    },
+  );
+
+  it('retains the event search and selection across connection changes', async () => {
+    const user = userEvent.setup();
+    const controller = createController();
+    const mapFactory = vi.fn<MapFactory>(async () => controller);
+    const props = {
+      ...explorerProps(mapFactory),
+      discovery: { events: [event, upcomingEvent], status: 'ready' as const },
+    };
+    const view = render(<CampusExplorer {...props} />);
+    await user.click(screen.getByRole('button', { name: /^Events/ }));
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search campus events' }),
+      'Great Hall',
+    );
+    await user.click(
+      screen.getByRole('button', { name: /View on map.*Great Hall Quest/ }),
+    );
+    view.rerender(<CampusExplorer {...props} selectedEventId={event.id} />);
+    expect(screen.getByRole('heading', { name: event.title })).toBeVisible();
+    await waitFor(() => expect(controller.focusPoint).toHaveBeenCalledOnce());
+    view.rerender(
+      <CampusExplorer {...props} selectedEventId={event.id} offlineMap />,
+    );
+    expect(screen.getByRole('heading', { name: event.title })).toBeVisible();
+    view.rerender(<CampusExplorer {...props} selectedEventId={event.id} />);
+    expect(screen.getByRole('heading', { name: event.title })).toBeVisible();
+    await waitFor(() => expect(mapFactory).toHaveBeenCalledTimes(2));
+    expect(controller.focusPoint).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: 'All events' }));
+    expect(
+      screen.getByRole('searchbox', { name: 'Search campus events' }),
+    ).toHaveValue('Great Hall');
+    expect(props.onClearEventSelection).not.toHaveBeenCalled();
+  });
+
+  it('carries the geographic view through offline panning and reconnection without remounting on ordinary updates', async () => {
+    const controller = createController();
+    let reportView!: (bounds: MapBounds) => void;
+    controller.setViewChangeListener = (listener) => {
+      if (listener) reportView = listener;
+    };
+    const factory = vi.fn<MapFactory>(async () => controller);
+    const props = explorerProps(factory);
+    const view = render(<CampusExplorer {...props} />);
+    await waitFor(() => expect(factory).toHaveBeenCalledOnce());
+    const bounds: MapBounds = [
+      [28.025, -26.195],
+      [28.035, -26.185],
+    ];
+    act(() => reportView(bounds));
+    view.rerender(<CampusExplorer {...props} eligibilityBusy />);
+    expect(factory).toHaveBeenCalledOnce();
+    view.rerender(<CampusExplorer {...props} offlineMap />);
+    const map = screen.getByRole('group', { name: /Downloaded campus map/ });
+    const before = map.getAttribute('viewBox');
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole('button', { name: 'Zoom in campus map' }),
+    );
+    expect(map.getAttribute('viewBox')).not.toBe(before);
+    view.rerender(<CampusExplorer {...props} />);
+    await waitFor(() => expect(factory).toHaveBeenCalledTimes(2));
+    const resumed = factory.mock.calls[1]![1];
+    expect(resumed.preserveInitialView).toBe(true);
+    expect(resumed.initialBounds![0][0]).toBeGreaterThan(bounds[0][0]);
+    expect(resumed.initialBounds![1][0]).toBeLessThan(bounds[1][0]);
+  });
+
   it('keeps the map host absolute and reserves event-panel clearance', () => {
     expect(explorationStyles).toMatch(
       /\.campus-map\s*>\s*\.campus-map__canvas\s*{[^}]*position:\s*absolute\s*!important;/,

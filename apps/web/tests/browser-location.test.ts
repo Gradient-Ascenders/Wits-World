@@ -8,6 +8,7 @@ import {
 } from '../src/browser-location';
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -114,6 +115,73 @@ describe('browser location claims', () => {
     await expect(requestBrowserLocation()).rejects.toEqual(
       new BrowserLocationError('unsupported'),
     );
+  });
+
+  it('bounds a browser that never calls back and ignores its late result after retry', async () => {
+    vi.useFakeTimers();
+    let lateSuccess!: PositionCallback;
+    const getCurrentPosition = vi
+      .fn()
+      .mockImplementationOnce((success: PositionCallback) => {
+        lateSuccess = success;
+      })
+      .mockImplementationOnce((success: PositionCallback) => {
+        success(createPosition());
+      });
+    vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
+
+    const stalled = requestBrowserLocation();
+    const rejected = expect(stalled).rejects.toMatchObject({
+      failure: 'timeout',
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await rejected;
+    await expect(requestBrowserLocation()).resolves.toMatchObject({
+      accuracyMetres: 12,
+    });
+    lateSuccess(createPosition());
+    expect(vi.getTimerCount()).toBe(0);
+    expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels a location request and ignores late callbacks', async () => {
+    vi.useFakeTimers();
+    let lateSuccess!: PositionCallback;
+    vi.stubGlobal('navigator', {
+      geolocation: {
+        getCurrentPosition: vi.fn((success: PositionCallback) => {
+          lateSuccess = success;
+        }),
+      },
+    });
+    const controller = new AbortController();
+    const request = requestBrowserLocation(controller.signal);
+    const rejected = expect(request).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    controller.abort();
+    await rejected;
+    lateSuccess(createPosition());
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(
+      requestBrowserLocation(controller.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(navigator.geolocation.getCurrentPosition).toHaveBeenCalledOnce();
+  });
+
+  it('cleans up the deadline when geolocation throws synchronously', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('navigator', {
+      geolocation: {
+        getCurrentPosition: vi.fn(() => {
+          throw new Error('Blocked');
+        }),
+      },
+    });
+    await expect(requestBrowserLocation()).rejects.toMatchObject({
+      failure: 'blocked',
+    });
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('rejects invalid browser position values as unavailable', async () => {

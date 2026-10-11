@@ -12,14 +12,14 @@ accepts the saved attempt. Battles and trading still need a connection.
 ## Prepare before going offline
 
 1. Open the app while connected, sign in, and complete Player Name setup.
-2. Allow browser location access. The app automatically prepares up to ten
-   nearby events; availability determines which events can be saved.
-3. Open `/offline` to check **Saved campus events** and their **Available until**
-   times before disconnecting. The offline notice also links to saved events.
+2. Let the app automatically prepare eligible active and upcoming events.
+   Downloads do not need location access.
+3. Open `/offline` to check **Saved play**, event closing times, and **Ready for
+   offline play** before disconnecting. The account menu links to this board.
 
 Events are saved in this browser on this device. Preparation needs a working
-server connection and location access. If no events are saved, check your
-connection and permissions; you can still use online challenges while connected.
+server connection. If no events are saved, check your
+connection and event availability; you can still use online challenges while connected.
 **Retry device storage** retries reading local data when the page offers it.
 
 Saved events expire at their displayed time, which can be earlier than 24 hours
@@ -28,26 +28,25 @@ An event listed for a future window cannot be started before that window begins.
 
 ## Play a saved challenge
 
-Move within the event's interaction radius and choose **Open saved challenge**.
+Move within the event's interaction radius and choose **Play**.
 Location access is still required to check your starting position. Answer using
 the normal [challenge controls](player-challenge-journey.md).
 
-Submitted answers are saved locally. Reopen an in-progress attempt under
-**Attempts on this device** to continue it; leaving or reloading does not reset
-its timer. At completion the app also needs a location reading. If it shows
-**Answers locked. Completing location evidence…**, choose **Retry location**
-and allow the reading to finish.
+Submitted answers are saved locally. Choose **Continue** beside an in-progress event in Saved play; leaving or
+reloading does not reset its timer. New saved events use an eligible starting arrival and need no finishing GPS.
+Older downloads may still need a finishing location. If offered, choose
+**Retry location** and allow the reading to finish; your locked answers stay saved.
 
 ## Reconnect and confirm the result
 
 Reconnect **within 12 hours of completing the challenge**, using the same account
 and browser. The app attempts to sync when reopened, reconnected, or brought to
-the foreground. You can also choose **Sync saved attempts**, **Sync now**, or
-**Retry sync** where offered.
+the foreground. Failures offer **Retry sync**, connection recovery, or session restoration
+when needed; routine synchronisation happens automatically.
 
 | Status                        | What to do                                                                         |
 | ----------------------------- | ---------------------------------------------------------------------------------- |
-| Pending server validation     | Keep the saved attempt and reconnect; rewards are still unconfirmed.               |
+| Awaiting confirmation         | Keep the saved attempt and reconnect; rewards are still unconfirmed.               |
 | Connection or sign-in failure | Restore access and retry sync using the same saved attempt.                        |
 | Accepted                      | Choose **View confirmed result** to inspect the score, answer review, and rewards. |
 | Rejected or sync window ended | Read the saved receipt. That attempt has no newly confirmed reward.                |

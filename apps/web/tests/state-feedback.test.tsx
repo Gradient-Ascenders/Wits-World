@@ -5,6 +5,7 @@ import { authorErrorDetail } from '../src/components/author/author-error-copy';
 import { OfflineExplorePage } from '../src/offline/OfflinePages';
 
 vi.mock('../src/offline/OfflineProvider', () => ({
+  OfflinePreparation: () => null,
   useOffline: () => ({
     revision: 0,
     online: false,

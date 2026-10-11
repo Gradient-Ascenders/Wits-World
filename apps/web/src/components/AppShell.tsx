@@ -20,6 +20,7 @@ import { Link, useLocation } from 'wouter';
 import { AccountControl } from './auth/AccountControl';
 import { CampusSeal } from './branding/CampusSeal';
 import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
+import { useOffline } from '../offline/OfflineProvider';
 import { ReadPageControl } from '../accessibility/ReadPageControl';
 import { useAccessibilityPreferences } from '../accessibility/preferences';
 
@@ -42,7 +43,10 @@ const PLAYER_NAVIGATION_ITEMS: NavigationItem[] = [
     href: '/explore',
     icon: 'explore',
     isActive: (pathname) =>
-      pathname === '/explore' || pathname.startsWith('/challenge-attempts/'),
+      pathname === '/explore' ||
+      pathname === '/offline' ||
+      pathname.startsWith('/offline-attempts/') ||
+      pathname.startsWith('/challenge-attempts/'),
     label: 'Explore',
   },
   {
@@ -78,7 +82,7 @@ const AUTHOR_NAVIGATION_ITEM: NavigationItem = {
 function pageTitle(pathname: string): string {
   if (pathname === '/') return 'Wits World';
   if (pathname === '/explore') return 'Explore · Wits World';
-  if (pathname === '/offline') return 'Saved events · Wits World';
+  if (pathname === '/offline') return 'Saved play · Wits World';
   if (pathname.startsWith('/offline-attempts/'))
     return 'Saved attempt · Wits World';
   if (pathname.startsWith('/challenge-attempts/'))
@@ -165,8 +169,11 @@ export function AppShell({ children }: AppShellProps) {
   const { speech } = useAccessibilityPreferences();
   const { isAuthenticated, isLoading } = useAuth0();
   const { state: currentPlayer } = useCurrentPlayer();
+  const { online, connectionFailed, offlineSession } = useOffline();
   const [pathname] = useLocation();
-  const isExplore = pathname === '/explore' && currentPlayer.status !== 'error';
+  const isExplore =
+    pathname === '/explore' &&
+    (currentPlayer.status !== 'error' || !!offlineSession);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [headerDragOffset, setHeaderDragOffset] = useState<number | null>(null);
   const headerDrawerRef = useRef<HTMLDivElement>(null);
@@ -301,7 +308,15 @@ export function AppShell({ children }: AppShellProps) {
     isAuthorRoute;
   const showsSiteFooter = !isFooterlessProductRoute;
   const isRestoring =
-    isLoading || (isAuthenticated && currentPlayer.status === 'loading');
+    (isLoading || (isAuthenticated && currentPlayer.status === 'loading')) &&
+    !(
+      offlineSession &&
+      (!online ||
+        connectionFailed ||
+        pathname === '/explore' ||
+        pathname === '/offline' ||
+        pathname.startsWith('/offline-attempts/'))
+    );
   const hasPlayerNavigation =
     isAuthenticated && currentPlayer.status === 'ready';
   const isAuthor =

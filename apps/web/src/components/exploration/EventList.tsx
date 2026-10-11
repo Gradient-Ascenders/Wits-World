@@ -15,6 +15,7 @@ export interface EventPresentation {
   radiusMetres: number;
   startsAt: string;
   title: string;
+  offlineStatus?: 'Downloaded' | 'Not downloaded' | 'Expired';
 }
 
 export type EventDiscoveryState =
@@ -137,6 +138,11 @@ export function EventList({
                   {availabilityLabels[event.availability]}
                 </span>
                 <KnownEligibility state={state} />
+                {event.offlineStatus && (
+                  <span className="offline-download-status">
+                    {event.offlineStatus}
+                  </span>
+                )}
               </div>
               <button
                 aria-pressed={selected}
@@ -156,6 +162,12 @@ export function EventList({
 }
 
 interface SelectedEventDetailsProps {
+  savedAction?: {
+    label: string;
+    detail: string;
+    disabled?: boolean;
+    onPlay?: () => void;
+  };
   eligibilityBusy: boolean;
   event: EventPresentation;
   locationState: LocationExperienceState;
@@ -165,6 +177,7 @@ interface SelectedEventDetailsProps {
 }
 
 export function SelectedEventDetails({
+  savedAction,
   eligibilityBusy,
   event,
   locationState,
@@ -183,21 +196,44 @@ export function SelectedEventDetails({
   return (
     <div className="selected-event">
       <div className="selected-event__heading">
-        <span className={`status-badge status-badge--${event.availability}`}>
-          {availabilityLabels[event.availability]}
-        </span>
         <h2 tabIndex={-1}>{event.title}</h2>
+        <div className="selected-event__availability">
+          <span className={`status-badge status-badge--${event.availability}`}>
+            {availabilityLabels[event.availability]}
+          </span>
+          {event.offlineStatus && (
+            <span className="offline-download-status">
+              {event.offlineStatus}
+            </span>
+          )}
+        </div>
       </div>
 
-      <EligibilityStatus
-        emphasizeDecision={emphasizeDecision}
-        eligibilityBusy={eligibilityBusy}
-        event={event}
-        locationState={locationState}
-        onRetryEligibility={onRetryEligibility}
-        onStart={onStart}
-        state={state}
-      />
+      {savedAction ? (
+        <div className="selected-event__offline-action" aria-live="polite">
+          {savedAction.onPlay && (
+            <button
+              type="button"
+              className="button selected-event__start"
+              disabled={savedAction.disabled || eligibilityBusy}
+              onClick={savedAction.onPlay}
+            >
+              {savedAction.label}
+            </button>
+          )}
+          <p>{savedAction.detail}</p>
+        </div>
+      ) : (
+        <EligibilityStatus
+          emphasizeDecision={emphasizeDecision}
+          eligibilityBusy={eligibilityBusy}
+          event={event}
+          locationState={locationState}
+          onRetryEligibility={onRetryEligibility}
+          onStart={onStart}
+          state={state}
+        />
+      )}
       <details className="selected-event__more">
         <summary>About this event</summary>
         {event.description ? (

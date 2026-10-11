@@ -95,11 +95,7 @@ test('essential shell installs; unrelated modules wait for demand and remain ava
   await expect(page.locator('.hero')).toBeVisible();
   await installed(page);
   const initial = await paths(page);
-  expect(
-    initial.some(
-      (path) => path.includes('OfflinePages-') && path.endsWith('.js'),
-    ),
-  ).toBe(true);
+  expect(initial.some((path) => /\/main-[^/]+\.js$/.test(path))).toBe(true);
   expect(
     initial.filter((path) =>
       /(?:Workspace|ProfilePage|StatusEmojiPicker|mapbox-gl|worker)-.*\.js$/.test(
@@ -144,7 +140,7 @@ test('essential shell installs; unrelated modules wait for demand and remain ava
   ).toEqual([200, 200, 200]);
   await page.goto('/offline');
   await expect(
-    page.getByRole('heading', { name: 'Saved campus events' }),
+    page.getByRole('heading', { name: 'Saved play', exact: true }),
   ).toBeVisible();
   await page.goto('/');
   await expect(page.locator('.hero')).toBeVisible();
@@ -161,6 +157,7 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
         version: 1,
         packId: randomUUID(),
         playerId,
+        locationPolicy: 'arrival-v1',
         issuedAt: new Date().toISOString(),
         validFrom: new Date(Date.now() - 1000).toISOString(),
         validUntil: new Date(Date.now() + 3600000).toISOString(),
@@ -218,16 +215,9 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
     await installed(page);
     connected = false;
     await context.setOffline(true);
-    // The installed PWA starts at /explore. Its existing identity recovery
-    // offers saved events when online session restoration is unavailable.
-    await page.goto('/explore');
-    await page
-      .getByRole('link', { name: 'Open saved events', exact: true })
-      .click();
-    await expect(
-      page.getByRole('heading', { name: 'Saved campus events' }),
-    ).toBeVisible();
-    await page.getByRole('button', { name: 'Open saved challenge' }).click();
+    // First entry comes directly from the downloaded event link.
+    await page.goto(`/explore?event=${pack.pack.event.eventId}`);
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
     for (let index = 1; index <= 5; index++) {
       await expect(
         page.getByRole('heading', {
@@ -288,9 +278,8 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
     expect(state).toEqual({ answers: 5, status: 'pending' });
     connected = true;
     await context.setOffline(false);
-    // Restore the authenticated player after the offline reload's failed
-    // identity check; saved answers must survive this online recovery too.
-    await page.reload();
+    // Saved answers survive automatic session restoration after reconnect.
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect.poll(() => submissions).toBeGreaterThan(0);
     await expect(
       page.getByRole('button', { name: 'Retry sync', exact: true }),
@@ -314,7 +303,7 @@ test('failed first installation leaves online navigation usable and retries succ
   request,
 }) => {
   await request.post('/__audit__/failure', {
-    data: { prefix: '/assets/OfflinePages-' },
+    data: { prefix: '/assets/ExplorePage-' },
   });
   await reads(context);
   await page.addInitScript(() => {
@@ -354,7 +343,7 @@ test('failed first installation leaves online navigation usable and retries succ
   await installed(page);
 });
 
-test('upgrade failure preserves the active shell; successful activation cleans old caches and preserves IndexedDB', async ({
+test('upgrade failure preserves the active shell; activation retains one previous build and preserves IndexedDB', async ({
   page,
   context,
   request,
@@ -366,7 +355,7 @@ test('upgrade failure preserves the active shell; successful activation cleans o
   const oldKeys = await page.evaluate(() => caches.keys());
   await navigate(page, '/offline');
   await expect(
-    page.getByRole('heading', { name: 'Saved campus events' }),
+    page.getByRole('heading', { name: 'Saved play', exact: true }),
   ).toBeVisible();
   await page.evaluate(async () => {
     await caches.open('unrelated-fixture-cache');
@@ -425,9 +414,9 @@ test('upgrade failure preserves the active shell; successful activation cleans o
           ).length,
       ),
     )
-    .toBe(1);
+    .toBe(2);
   const keys = await page.evaluate(() => caches.keys());
-  expect(keys.some((key) => oldKeys.includes(key))).toBe(false);
+  expect(keys.some((key) => oldKeys.includes(key))).toBe(true);
   expect(keys).toContain('unrelated-fixture-cache');
   expect(
     (await page.evaluate(() => indexedDB.databases())).some(
@@ -437,7 +426,7 @@ test('upgrade failure preserves the active shell; successful activation cleans o
   await context.setOffline(true);
   await page.reload();
   await expect(
-    page.getByRole('heading', { name: 'Saved campus events' }),
+    page.getByRole('heading', { name: 'Saved play', exact: true }),
   ).toBeVisible();
 });
 
@@ -482,7 +471,7 @@ test('comparable installation and warm-navigation measurements', async ({
         const warmStarted = performance.now();
         await navigate(page, '/offline');
         await expect(
-          page.getByRole('heading', { name: 'Saved campus events' }),
+          page.getByRole('heading', { name: 'Saved play', exact: true }),
         ).toBeVisible();
         const warmReadyMs = performance.now() - warmStarted;
         await navigate(page, '/');

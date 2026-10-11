@@ -131,6 +131,7 @@ export interface CampusLayerConfiguration {
 }
 
 export interface MapConfiguration {
+  preserveInitialView?: boolean;
   accessToken: string;
   bearing: number;
   campusLayer?: CampusLayerConfiguration;
@@ -145,6 +146,9 @@ export interface MapConfiguration {
 }
 
 export interface MapController {
+  setViewChangeListener?: (
+    listener: ((bounds: MapBounds) => void) | null,
+  ) => void;
   focusPoint: (point: MapPoint) => boolean;
   focusRegion?: (region: MapRegion) => boolean;
   onError: (listener: () => void) => void;
@@ -668,11 +672,21 @@ function createController(
   renderRegions: (regions: readonly MapRegion[]) => void,
   setSelectedRegion: (region: MapRegion | null) => void,
   renderAreas: (areas: readonly MapArea[]) => void,
+  preserveInitialView = false,
 ): MapController {
   let reportedLocation: ReportedMapLocation | null = null;
   let reportedLocationPointer: HTMLSpanElement | undefined;
   let reportedLocationMarker: MapboxMarker | undefined;
   let followStateListener: ((following: boolean) => void) | null = null;
+  let viewChangeListener: ((bounds: MapBounds) => void) | null = null;
+  const reportView = () => {
+    const bounds = map.getBounds?.();
+    if (bounds)
+      viewChangeListener?.([
+        [bounds.getWest(), bounds.getSouth()],
+        [bounds.getEast(), bounds.getNorth()],
+      ]);
+  };
   let following = false;
   let hasReceivedFirstFix = false;
   let lastFollowedLocation: ReportedMapLocation | null = null;
@@ -788,7 +802,7 @@ function createController(
 
     if (!hasReceivedFirstFix) {
       hasReceivedFirstFix = true;
-      focusReportedLocation(true);
+      if (!preserveInitialView) focusReportedLocation(true);
       return;
     }
 
@@ -803,6 +817,7 @@ function createController(
   };
 
   map.on('dragstart', handleDeliberatePan);
+  map.on('moveend', reportView);
 
   return {
     focusPoint,
@@ -826,6 +841,8 @@ function createController(
       map.once('load', listener);
     },
     remove() {
+      viewChangeListener = null;
+      map.off('moveend', reportView);
       markerInteraction.coordinateSelectionListener = null;
       followStateListener = null;
       markerInteraction.listener = null;
@@ -856,6 +873,10 @@ function createController(
     setFollowStateListener(listener) {
       followStateListener = listener;
       listener?.(following);
+    },
+    setViewChangeListener(listener) {
+      viewChangeListener = listener;
+      if (listener) reportView();
     },
     setPointSelectionListener(listener) {
       markerInteraction.listener = listener;
@@ -1478,6 +1499,7 @@ export const createMapboxMap: MapFactory = async (
       updateOverlayWhenReady(syncRegions);
     },
     renderAreas,
+    configuration.preserveInitialView,
   );
   const setBasemapProperty = (key: string, value: unknown): void => {
     // Standard setters re-evaluate style dependencies even for equal values.

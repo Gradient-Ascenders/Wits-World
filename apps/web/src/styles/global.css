@@ -326,6 +326,21 @@ a:hover {
   color: var(--colour-text-primary);
 }
 
+.account-control--offline {
+  max-width: 30rem;
+}
+
+.account-control--offline .account-control__identity {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 47.99rem) {
+  .site-frame .site-header__inner .account-control--offline {
+    max-width: min(100%, 15rem);
+  }
+}
+
 .account-control__error {
   flex-basis: 100%;
   color: var(--colour-text-primary);
@@ -675,20 +690,6 @@ a:hover {
 
 .site-frame--product-navigation .main-content.main-content--explore {
   padding: 0;
-}
-
-.main-content--explore > .offline-status {
-  flex: 0 0 auto;
-  margin: 0;
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--colour-border-subtle);
-  font-size: var(--text-sm);
-  line-height: var(--leading-compact);
-}
-
-.main-content--explore > .offline-status p {
-  margin: var(--space-1) 0 0;
-  color: var(--colour-text-secondary);
 }
 
 .site-frame--product-navigation .main-content--battle-focus {

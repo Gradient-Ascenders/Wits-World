@@ -13,3 +13,6 @@ apps/web/src/assets/fonts/source-serif-4/LICENSE.md
 # Docusaurus generated output
 apps/docs/build/
 apps/docs/.docusaurus/
+
+# Generated, compact geographic data; regenerate with the campus-map script.
+apps/web/src/offline/campus-map.json

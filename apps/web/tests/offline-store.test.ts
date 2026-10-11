@@ -11,6 +11,8 @@ import {
   replacePacks,
   saveLocalAnswer,
   saveOfflineSession,
+  saveOfflineCatalogue,
+  readOfflineCatalogue,
   type CachedPack,
 } from '../src/offline/store';
 
@@ -61,6 +63,41 @@ beforeEach(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 describe('durable offline state', () => {
+  it('stores more than ten packs without evicting pending work', async () => {
+    const attempt = await createLocalAttempt(cached, location);
+    const packs = Array.from({ length: 12 }, (_, index) => ({
+      ...cached,
+      pack: {
+        ...cached.pack,
+        packId: `pack-${index}`,
+        event: { ...cached.pack.event, eventId: `event-${index}` },
+      },
+    }));
+    await replacePacks('player', packs);
+    const state = await readOfflineState();
+    expect(state.packs).toHaveLength(12);
+    expect(state.attempts[0]?.clientAttemptId).toBe(attempt.clientAttemptId);
+  });
+  it('persists an account-scoped event catalogue and removes it on sign out', async () => {
+    const events = [
+      {
+        ...cached.pack.event,
+        availability: 'active' as const,
+        startsAt: cached.pack.validFrom,
+        endsAt: cached.pack.validUntil,
+      },
+    ];
+    await saveOfflineCatalogue('player', events);
+    expect((await readOfflineCatalogue())?.events).toEqual(events);
+    localStorage.setItem(
+      'wits-world.authenticated-player-id',
+      'another-player',
+    );
+    expect(await readOfflineCatalogue()).toBeNull();
+    localStorage.setItem('wits-world.authenticated-player-id', 'player');
+    await clearOfflineData('player');
+    expect(await readOfflineCatalogue()).toBeNull();
+  });
   it('does not discard data when only the generic binding is cleared', async () => {
     await createLocalAttempt(cached, location);
     clearAuthenticatedPlayerBinding();
@@ -136,7 +173,14 @@ describe('durable offline state', () => {
   it('keeps pending attempts through pack replacement and removes evidence after a receipt', async () => {
     await replacePacks('player', [cached]);
     const attempt = await createLocalAttempt(cached, location);
-    const pending = await finishLocalAttempt(attempt.clientAttemptId, location);
+    for (let index = 0; index < 5; index++)
+      await saveLocalAnswer(attempt.clientAttemptId, `q${index}`, [
+        `q${index}o0`,
+      ]);
+    const pending = await finishLocalAttempt(attempt.clientAttemptId, {
+      ...location,
+      acquiredAt: new Date().toISOString(),
+    });
     await replacePacks('player', []);
     expect((await readOfflineState()).attempts).toHaveLength(1);
     await recordOfflineReceipt(pending, 'accepted', 'server-attempt');
@@ -145,6 +189,90 @@ describe('durable offline state', () => {
     expect(result.receipts[0]).not.toHaveProperty('startLocation');
     expect(result.receipts[0]!.attemptId).toBe('server-attempt');
   });
+  it('creates a single local attempt when two starts race', async () => {
+    const results = await Promise.all([
+      createLocalAttempt(cached, location),
+      createLocalAttempt(cached, location),
+    ]);
+    expect(results[0]!.clientAttemptId).toBe(results[1]!.clientAttemptId);
+    expect((await readOfflineState()).attempts).toHaveLength(1);
+  });
+
+  it('refuses premature completion and retains the original deadline', async () => {
+    const attempt = await createLocalAttempt(cached, location);
+    await saveLocalAnswer(attempt.clientAttemptId, 'q0', ['q0o0']);
+    await expect(
+      finishLocalAttempt(attempt.clientAttemptId, location),
+    ).rejects.toThrow('Continue answering');
+    const restored = (await readOfflineState()).attempts[0]!;
+    expect(restored.startedAt).toBe(attempt.startedAt);
+    expect(restored.status).toBe('active');
+    expect(restored.answers).toHaveLength(1);
+  });
+
+  it.each(['stale', 'future', 'accuracy'] as const)(
+    'keeps locked legacy answers through a %s finishing-location failure and valid retry',
+    async (reason) => {
+      const attempt = await createLocalAttempt(cached, {
+        ...location,
+        acquiredAt: new Date().toISOString(),
+      });
+      for (let index = 0; index < 5; index++)
+        await saveLocalAnswer(attempt.clientAttemptId, `q${index}`, [
+          `q${index}o0`,
+        ]);
+      const bad = {
+        ...location,
+        acquiredAt: new Date(
+          Date.now() +
+            (reason === 'future' ? 60_000 : reason === 'stale' ? -300_000 : 0),
+        ).toISOString(),
+        accuracyMetres: reason === 'accuracy' ? 300 : 10,
+      };
+      await expect(
+        finishLocalAttempt(attempt.clientAttemptId, bad),
+      ).rejects.toThrow();
+      const restored = (await readOfflineState()).attempts[0]!;
+      expect(restored.startedAt).toBe(attempt.startedAt);
+      expect(restored.answers).toHaveLength(5);
+      expect(restored.status).toBe('active');
+      expect(restored.finishLocation).toBeUndefined();
+      const pending = await finishLocalAttempt(attempt.clientAttemptId, {
+        ...location,
+        acquiredAt: new Date().toISOString(),
+      });
+      expect(pending.status).toBe('pending');
+      expect(pending.answers).toEqual(restored.answers);
+      expect(
+        (await finishLocalAttempt(attempt.clientAttemptId)).finishedAt,
+      ).toBe(pending.finishedAt);
+    },
+  );
+
+  it('finishes new signed-policy packs without another location and never changes locked answers', async () => {
+    const arrivalPack = {
+      ...cached,
+      pack: { ...cached.pack, locationPolicy: 'arrival-v1' as const },
+    };
+    const attempt = await createLocalAttempt(arrivalPack, {
+      ...location,
+      acquiredAt: new Date().toISOString(),
+    });
+    for (let index = 0; index < 5; index++)
+      await saveLocalAnswer(attempt.clientAttemptId, `q${index}`, [
+        `q${index}o0`,
+      ]);
+    const pending = await finishLocalAttempt(attempt.clientAttemptId);
+    expect(pending.status).toBe('pending');
+    expect(pending.finishLocation).toBeUndefined();
+    await expect(
+      saveLocalAnswer(attempt.clientAttemptId, 'q4', ['q4o1']),
+    ).rejects.toThrow('Time has ended');
+    expect((await readOfflineState()).attempts[0]!.answers).toEqual(
+      pending.answers,
+    );
+  });
+
   it('does not expose another player’s cached data', async () => {
     await createLocalAttempt(cached, location);
     localStorage.setItem('wits-world.authenticated-player-id', 'other');
