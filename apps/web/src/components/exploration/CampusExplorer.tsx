@@ -46,6 +46,7 @@ import type {
 } from './useTerritoryDiscovery';
 import type {
   MapConfiguration,
+  MapBounds,
   MapFactory,
   MapPoint,
   MapRegion,
@@ -180,7 +181,7 @@ export function CampusExplorer({
   locationState,
   mapConfiguration,
   mapFactory,
-  exploreMode = 'discover',
+  exploreMode: requestedExploreMode = 'discover',
   nearbyDiscovery = { status: 'idle' },
   onEnableLocation,
   onExploreModeChange = () => undefined,
@@ -204,6 +205,7 @@ export function CampusExplorer({
   trailDetail = { status: 'idle' },
   trailDiscovery = { status: 'idle' },
 }: CampusExplorerProps) {
+  const exploreMode = offlineMap ? 'discover' : requestedExploreMode;
   const preparing = discovery.status === 'loading';
   const [isMobileMapViewport, setIsMobileMapViewport] = useState(
     () => window.matchMedia?.(MOBILE_MAP_QUERY).matches ?? false,
@@ -215,8 +217,9 @@ export function CampusExplorer({
   const [layerVisibility, setLayerVisibility] = useState(
     DEFAULT_MAP_LAYER_VISIBILITY,
   );
-  const [discoverySection, setDiscoverySection] =
+  const [onlineDiscoverySection, setDiscoverySection] =
     useState<DiscoverySection>('events');
+  const discoverySection = offlineMap ? 'events' : onlineDiscoverySection;
   const [following, setFollowing] = useState(false);
   const [panelMode, setPanelMode] = useState<EventPanelMode>(() =>
     window.matchMedia?.('(min-width: 64rem)').matches ? 'list' : 'peek',
@@ -230,6 +233,10 @@ export function CampusExplorer({
     useState<EventAvailabilityFilter>('all');
   const [focusAnnouncement, setFocusAnnouncement] = useState('');
   const panelRef = useRef<HTMLElement>(null);
+  const mapBoundsRef = useRef<MapBounds | undefined>(undefined);
+  const rememberMapView = useCallback((bounds: MapBounds) => {
+    mapBoundsRef.current = bounds;
+  }, []);
   const peekButtonRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const selectionOriginRef =
@@ -240,8 +247,14 @@ export function CampusExplorer({
   const filteredSelectionClearRef = useRef<string | null>(null);
   const events = discovery.status === 'ready' ? discovery.events : [];
   useEffect(() => {
-    if (offlineMap) setDiscoverySection('events');
-  }, [offlineMap]);
+    if (!offlineMap) return;
+    setDiscoverySection('events');
+    selectionOriginRef.current = 'events';
+    if (requestedExploreMode === 'territories' && selectedEventId === null) {
+      setPanelMode('list');
+      setSheetSnap('medium');
+    }
+  }, [offlineMap, requestedExploreMode, selectedEventId]);
   const nearbyEvents =
     nearbyDiscovery.status === 'ready'
       ? nearbyDiscovery.events.map((event) => ({
@@ -335,12 +348,20 @@ export function CampusExplorer({
   const hasActiveFilters =
     searchQuery.trim().length > 0 || availabilityFilter !== 'all';
   const effectiveMapConfiguration = useMemo(() => {
+    const resumed = mapBoundsRef.current
+      ? {
+          ...mapConfiguration,
+          preserveInitialView: true,
+          initialBounds: mapBoundsRef.current,
+          initialBoundsPadding: 0,
+        }
+      : mapConfiguration;
     if (!isMobileMapViewport || mobile3dEnabled) {
-      return mapConfiguration;
+      return resumed;
     }
 
     return {
-      ...mapConfiguration,
+      ...resumed,
       pitch: 0,
       styleUrl: MOBILE_2D_MAP_STYLE,
       standardConfig: {
@@ -351,7 +372,7 @@ export function CampusExplorer({
         show3dTrees: false,
       },
     };
-  }, [isMobileMapViewport, mapConfiguration, mobile3dEnabled]);
+  }, [isMobileMapViewport, mapConfiguration, mobile3dEnabled, offlineMap]);
 
   useEffect(() => {
     const media = window.matchMedia?.(MOBILE_MAP_QUERY);
@@ -737,51 +758,46 @@ export function CampusExplorer({
           ['trails', 'Trails', Path],
           ['territories', 'Territories', FlagBanner],
         ] as const
-      ).map(([section, label, Icon]) => (
-        <button
-          aria-controls="explore-event-sheet-content"
-          aria-current={
-            (
-              section === 'territories'
-                ? exploreMode === 'territories'
-                : exploreMode === 'discover' &&
-                  (discoverySection === section ||
-                    (section === 'trails' &&
-                      discoverySection === 'trail-detail'))
-            )
-              ? 'page'
-              : undefined
-          }
-          key={section}
-          disabled={offlineMap && section !== 'events'}
-          title={
-            offlineMap && section !== 'events'
-              ? 'This view needs a connection. Downloaded events remain available in Events.'
-              : rail
-                ? label
+      )
+        .filter(([section]) => !offlineMap || section === 'events')
+        .map(([section, label, Icon]) => (
+          <button
+            aria-controls="explore-event-sheet-content"
+            aria-current={
+              (
+                section === 'territories'
+                  ? exploreMode === 'territories'
+                  : exploreMode === 'discover' &&
+                    (discoverySection === section ||
+                      (section === 'trails' &&
+                        discoverySection === 'trail-detail'))
+              )
+                ? 'page'
                 : undefined
-          }
-          onClick={() => {
-            if (section === 'territories') {
-              showExploreMode('territories');
-              if (rail) {
-                onClearTerritorySelection();
+            }
+            key={section}
+            title={rail ? label : undefined}
+            onClick={() => {
+              if (section === 'territories') {
+                showExploreMode('territories');
+                if (rail) {
+                  onClearTerritorySelection();
+                  setPanelMode('list');
+                  setSheetSnap('expanded');
+                }
+              } else {
+                onExploreModeChange('discover');
+                showDiscoverySection(section);
                 setPanelMode('list');
                 setSheetSnap('expanded');
               }
-            } else {
-              onExploreModeChange('discover');
-              showDiscoverySection(section);
-              setPanelMode('list');
-              setSheetSnap('expanded');
-            }
-          }}
-          aria-label={rail ? `Open ${label}` : undefined}
-          type="button"
-        >
-          {rail ? <Icon aria-hidden="true" size={22} /> : label}
-        </button>
-      ))}
+            }}
+            aria-label={rail ? `Open ${label}` : undefined}
+            type="button"
+          >
+            {rail ? <Icon aria-hidden="true" size={22} /> : label}
+          </button>
+        ))}
     </nav>
   );
   const modeNavigation = renderModeNavigation();
@@ -806,6 +822,8 @@ export function CampusExplorer({
 
       {offlineMap ? (
         <OfflineCampusMap
+          initialBounds={mapBoundsRef.current}
+          onViewChange={rememberMapView}
           points={points}
           selectedPoint={selectedPoint}
           onPointSelect={selectEvent}
@@ -816,6 +834,8 @@ export function CampusExplorer({
         />
       ) : (
         <CampusMap
+          onViewChange={rememberMapView}
+          resumeView={effectiveMapConfiguration.preserveInitialView}
           accessibleLabel={
             exploreMode === 'territories'
               ? 'Interactive campus territory map. Zone ownership and activity are also available in the keyboard-accessible territories list.'

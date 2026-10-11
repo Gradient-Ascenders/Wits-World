@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: /(?:offline|game-artwork)\.spec\.ts/,
+  testMatch: /(?:offline|offline-explore|game-artwork)\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   timeout: 90_000,
@@ -12,6 +12,9 @@ export default defineConfig({
   reporter: 'line',
   use: {
     ...devices['Desktop Chrome'],
+    launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+      : undefined,
     baseURL: 'http://127.0.0.1:4180',
     permissions: ['geolocation'],
     geolocation: { latitude: -26.19205, longitude: 28.03038, accuracy: 10 },

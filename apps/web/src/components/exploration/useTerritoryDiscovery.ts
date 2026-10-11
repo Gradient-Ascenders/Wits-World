@@ -64,6 +64,7 @@ interface UseTerritoryDiscoveryOptions {
   apiBaseUrl: string;
   enabled: boolean;
   getAccessToken: ApiAccessTokenProvider;
+  onConnectionFailure?: () => void;
   onSelectedZoneUnavailable: () => void;
   selectedZoneId: string | null;
 }
@@ -72,6 +73,7 @@ export function useTerritoryDiscovery({
   apiBaseUrl,
   enabled,
   getAccessToken,
+  onConnectionFailure,
   onSelectedZoneUnavailable,
   selectedZoneId,
 }: UseTerritoryDiscoveryOptions) {
@@ -117,6 +119,15 @@ export function useTerritoryDiscovery({
       if (controller.signal.aborted || selectedZoneRef.current !== zoneId) {
         return;
       }
+      if (
+        [zoneResult, standingsResult, historyResult].some(
+          (result) =>
+            result.status === 'rejected' &&
+            result.reason instanceof TerritoryApiError &&
+            result.reason.failure === 'unavailable',
+        )
+      )
+        onConnectionFailure?.();
 
       if (
         zoneResult.status === 'rejected' &&
@@ -181,7 +192,12 @@ export function useTerritoryDiscovery({
         };
       });
     },
-    [apiBaseUrl, getAccessToken, onSelectedZoneUnavailable],
+    [
+      apiBaseUrl,
+      getAccessToken,
+      onConnectionFailure,
+      onSelectedZoneUnavailable,
+    ],
   );
 
   const loadZones = useCallback(
@@ -220,6 +236,12 @@ export function useTerritoryDiscovery({
         if (selected) void loadDetail(selected, true);
       } catch (error) {
         if (controller.signal.aborted) return;
+        if (
+          error instanceof TerritoryApiError &&
+          error.failure === 'unavailable'
+        ) {
+          onConnectionFailure?.();
+        }
         const message =
           error instanceof TerritoryApiError &&
           error.failure === 'authorization'
@@ -245,11 +267,20 @@ export function useTerritoryDiscovery({
         );
       }
     },
-    [apiBaseUrl, getAccessToken, loadDetail, onSelectedZoneUnavailable],
+    [
+      apiBaseUrl,
+      getAccessToken,
+      loadDetail,
+      onConnectionFailure,
+      onSelectedZoneUnavailable,
+    ],
   );
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      listRequest.current?.abort();
+      return;
+    }
     const current = listRef.current;
     const crossedSettlementBoundary = current.zones.some(
       (zone) =>

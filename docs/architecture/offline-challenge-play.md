@@ -15,11 +15,15 @@ validates the submitted attempt.
 
 ## Player journey and recovery
 
-`/explore` keeps the same event list, selected-event details and mobile bottom
-sheet as connectivity changes. A calm banner explains offline operation without
-redirecting or interrupting an active challenge. Event details distinguish
-**Downloaded**, **Not downloaded** and **Expired**. **Play** starts a downloaded
-challenge directly; an existing attempt instead offers continuation or its saved
+`/explore` keeps the same event list, selected-event details, search, geographic
+map view and mobile bottom sheet as connectivity changes. A compact status in the
+saved map controls explains offline operation without a global download strip,
+redirect or interruption to an active challenge.
+Offline and saved exploration exposes only **Events**, including the desktop
+rail. Nearby, Trails and Territories return after reconnection without a reload;
+a failed connection in another section switches safely to Events.
+Event details distinguish **Downloaded**, **Not downloaded** and **Expired**.
+**Play** starts a downloaded challenge directly; an existing attempt instead offers continuation or its saved
 status. An unavailable download cannot be created after disconnection.
 
 `/offline` is the secondary **Downloads & saved attempts** page. It shows readiness,
@@ -161,13 +165,17 @@ The API stores only the accepted start sample under the existing movement
 retention/cleanup policy. Account deletion removes that evidence and its decision
 audit. Offline payloads are redacted from API logs.
 
-The service worker caches only application assets and navigation fallback.
-It never caches API, Auth0 or Mapbox traffic. It does not download commercial
+The service worker caches application assets and navigation fallback, including
+every size of the existing responsive Great Hall homepage artwork. Authentication
+and connectivity changes retain the same hero image. It never caches API, Auth0
+or Mapbox traffic. It does not download commercial
 map tiles. The downloaded campus map uses a bounded OpenStreetMap extract with
 paths, buildings and labels, attribution and recorded provenance. The committed
 compact dataset is **533,987 bytes**, below its 2 MiB generation guard; that is
 not the size of the entire application shell. It supports pan, zoom, keyboard
 operation and an accessible event list, but is not verified walking navigation.
+Compact attribution keeps the OpenStreetMap and ODbL links visible. A map-data
+disclosure contains the extract date, provenance and walking-directions caveat.
 Provenance is recorded in `apps/web/src/offline/campus-map.provenance.md`; the
 build-time refresh script is `apps/web/scripts/generate-offline-campus-map.mjs`.
 The locally measured essential shell is approximately **4.12 MB before
@@ -256,8 +264,12 @@ and requires installed Playwright Chromium. It does not use real Auth0 or Neon.
 The test checks both formats, offline reload, answer persistence, transient sync
 failure with automatic retry, receipt recovery and the same Explore layout while
 the browser still reports online but the API is unreachable. It also checks the
-new arrival policy needs no finishing GPS. Database tests separately verify real marking and
-one-time card issuance. Run the offline database suite via the existing
+new arrival policy needs no finishing GPS.
+The Spec 1 browser regression also checks fresh, signed-in and saved signed-out
+homepages, uncached offline hero reads, Events-only navigation, connection
+recovery, search and selection retention, and desktop/mobile control clearance.
+Database tests separately verify real marking and one-time card issuance.
+Run the offline database suite via the existing
 `npm run test:database --workspace @wits-world/api` command.
 
 Offline PvP, battles, decks, authoring, trails and poor-GPS alternative proof are

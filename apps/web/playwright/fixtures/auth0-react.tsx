@@ -2,6 +2,7 @@ import { useSyncExternalStore, type ReactNode } from 'react';
 
 const ACCESS_TOKEN = 'wits-world-sprint1-e2e-obvious-local-test-token';
 const listeners = new Set<() => void>();
+const signedOut = localStorage.getItem('wits-world.e2e.signed-out') === 'true';
 
 interface FixtureAuthState {
   error: undefined;
@@ -20,14 +21,14 @@ let authState: FixtureAuthState = {
   getIdTokenClaims: async () => ({
     __raw: 'wits-world-browser-fixture-recent-id-token',
   }),
-  isAuthenticated: true,
+  isAuthenticated: !signedOut,
   isLoading: false,
   loginWithRedirect: async () => undefined,
   logout: async () => {
     authState = { ...authState, isAuthenticated: false, user: undefined };
     listeners.forEach((listener) => listener());
   },
-  user: { name: 'player@example.test' },
+  user: signedOut ? undefined : { name: 'player@example.test' },
 };
 
 export function Auth0Provider({ children }: { children: ReactNode }) {

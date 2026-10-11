@@ -6,7 +6,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { OfflineProvider, OfflineStatus } from '../src/offline/OfflineProvider';
+import { OfflineProvider } from '../src/offline/OfflineProvider';
 import { OfflineExplorePage } from '../src/offline/OfflinePages';
 import type { CachedPack, LocalAttempt } from '../src/offline/store';
 import { READ_TIMEOUT_MS } from '../src/components/loading-policy';
@@ -91,7 +91,6 @@ const attempt: LocalAttempt = {
 function renderOffline() {
   return render(
     <OfflineProvider apiBaseUrl="https://api.example.test/api/v1">
-      <OfflineStatus />
       <OfflineExplorePage />
     </OfflineProvider>,
   );
@@ -176,7 +175,6 @@ describe('offline synchronization recovery', () => {
     render(
       <OfflineProvider apiBaseUrl="https://api.example.test/api/v1">
         <h1>Your campus</h1>
-        <OfflineStatus />
       </OfflineProvider>,
     );
 
@@ -185,10 +183,10 @@ describe('offline synchronization recovery', () => {
       screen.queryByRole('complementary', { name: 'Offline play' }),
     ).toBeNull();
     expect(
-      screen.getByRole('link', {
+      screen.queryByRole('link', {
         name: 'Downloads & saved attempts',
       }),
-    ).toHaveAttribute('href', '/offline');
+    ).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Your campus' })).toBeVisible();
 
@@ -223,7 +221,7 @@ describe('offline synchronization recovery', () => {
       vi.stubGlobal('fetch', fetch);
       render(
         <OfflineProvider apiBaseUrl="https://api.example.test/api/v1">
-          <OfflineStatus />
+          <h1>Your campus</h1>
         </OfflineProvider>,
       );
 

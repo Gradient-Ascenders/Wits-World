@@ -43,7 +43,10 @@ const PLAYER_NAVIGATION_ITEMS: NavigationItem[] = [
     href: '/explore',
     icon: 'explore',
     isActive: (pathname) =>
-      pathname === '/explore' || pathname.startsWith('/challenge-attempts/'),
+      pathname === '/explore' ||
+      pathname === '/offline' ||
+      pathname.startsWith('/offline-attempts/') ||
+      pathname.startsWith('/challenge-attempts/'),
     label: 'Explore',
   },
   {

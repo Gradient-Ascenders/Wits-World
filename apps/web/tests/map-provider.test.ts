@@ -1096,6 +1096,24 @@ describe('Mapbox Standard provider', () => {
     );
   });
 
+  it('keeps the resumed map view on its first location fix and still allows explicit recentering', async () => {
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      { ...configuration, preserveInitialView: true },
+      [],
+      new AbortController().signal,
+    );
+    controller.setReportedLocation({
+      accuracyMetres: 12,
+      latitude: -26.19205,
+      longitude: 28.03038,
+    });
+    expect(mapboxState.easeTo).not.toHaveBeenCalled();
+    expect(controller.recenterReportedLocation?.()).toBe(true);
+    expect(mapboxState.easeTo).toHaveBeenCalled();
+    controller.remove();
+  });
+
   it('centres the first fix, stops following after a drag, and recentres without resetting camera language', async () => {
     const controller = await createMapboxMap(
       document.createElement('div'),

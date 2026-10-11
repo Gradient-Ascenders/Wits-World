@@ -5,12 +5,7 @@ import { Redirect, Route, Switch, useLocation } from 'wouter';
 import { MatchModuleLoadError } from './api/match-errors';
 import { useApiAccessToken } from './auth/useApiAccessToken';
 import { AppShell } from './components/AppShell';
-import {
-  OfflineProvider,
-  OfflineStatus,
-  OfflinePreparation,
-  useOffline,
-} from './offline/OfflineProvider';
+import { OfflineProvider, useOffline } from './offline/OfflineProvider';
 import { ServiceWorkerUpdate } from './offline/ServiceWorkerUpdate';
 import { boundOfflinePlayer } from './offline/store';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -169,8 +164,6 @@ export function AppRoutes({
       <OfflineProvider apiBaseUrl={apiBaseUrl}>
         <SessionCollectionShell apiBaseUrl={apiBaseUrl}>
           <AppToaster />
-          <OfflineStatus />
-          <OfflinePreparation />
           <ServiceWorkerUpdate />
           <StartupSettler />
           <ErrorBoundary resetKey={pathname} withinShell>

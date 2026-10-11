@@ -75,6 +75,25 @@ function openOfflineMenu() {
 }
 
 describe('saved offline account header', () => {
+  it('does not suggest signing in when the network is connected but the API is unavailable', async () => {
+    await saveAccount();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    vi.mocked(useCurrentPlayer).mockReturnValue({
+      state: { status: 'error', failure: 'unavailable' },
+      reload: vi.fn(),
+      setupPlayerName: vi.fn(),
+    });
+    renderHeader();
+    await screen.findByText(/Playing offline as/);
+    openOfflineMenu();
+    expect(
+      screen.queryByRole('button', { name: 'Restore online session' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Downloads & saved attempts' }),
+    ).toBeVisible();
+  });
+
   it('keeps the full Explore layout when the saved account cannot reach the identity API', async () => {
     await saveAccount();
     window.history.replaceState({}, '', '/explore');

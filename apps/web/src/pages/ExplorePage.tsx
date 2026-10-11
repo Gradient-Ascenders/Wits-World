@@ -285,12 +285,13 @@ export default function ExplorePage({
     apiBaseUrl,
     enabled: exploreMode === 'territories' && !usingSaved,
     getAccessToken,
+    onConnectionFailure: reportConnectionFailure,
     onSelectedZoneUnavailable: clearTerritorySelection,
     selectedZoneId: selectedTerritoryId,
   });
 
   useEffect(() => {
-    if (!online || !isAuthenticated) return;
+    if (!online || !isAuthenticated || connectionFailed) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       controller.abort();
@@ -353,6 +354,7 @@ export default function ExplorePage({
     reportConnectionFailure,
     online,
     isAuthenticated,
+    connectionFailed,
   ]);
   useEffect(() => {
     if (usingSaved) {
@@ -391,6 +393,12 @@ export default function ExplorePage({
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted && mounted.current) {
+          if (
+            error instanceof TrailDiscoveryError &&
+            error.failure === 'unavailable'
+          ) {
+            reportConnectionFailure();
+          }
           setTrailDiscovery((current) =>
             !(
               error instanceof TrailDiscoveryError &&
@@ -418,7 +426,7 @@ export default function ExplorePage({
           trailListRequest.current = null;
         }
       });
-  }, [apiBaseUrl, getAccessToken]);
+  }, [apiBaseUrl, getAccessToken, reportConnectionFailure]);
 
   const openTrail = useCallback(
     (trailId: string): void => {
@@ -440,6 +448,12 @@ export default function ExplorePage({
         })
         .catch((error: unknown) => {
           if (!controller.signal.aborted && mounted.current) {
+            if (
+              error instanceof TrailDiscoveryError &&
+              error.failure === 'unavailable'
+            ) {
+              reportConnectionFailure();
+            }
             setTrailDetail({
               failure:
                 error instanceof TrailDiscoveryError
@@ -456,7 +470,7 @@ export default function ExplorePage({
           }
         });
     },
-    [apiBaseUrl, getAccessToken],
+    [apiBaseUrl, getAccessToken, reportConnectionFailure],
   );
 
   const clearEligibilityTimer = useCallback((): void => {
@@ -663,6 +677,7 @@ export default function ExplorePage({
               error instanceof NearbyUnvisitedError
                 ? error.failure
                 : 'unavailable';
+            if (failure === 'unavailable') reportConnectionFailure();
             nearbyNeedsFreshClaimRef.current = failure === 'location-retry';
             setNearbyDiscovery((current) =>
               failure === 'unavailable' &&
@@ -683,7 +698,7 @@ export default function ExplorePage({
           }
         });
     },
-    [apiBaseUrl, getAccessToken],
+    [apiBaseUrl, getAccessToken, reportConnectionFailure],
   );
   loadNearbyRef.current = loadNearbyFromClaim;
 

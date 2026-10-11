@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
 import { createPrecachePolicy } from './precache-policy';
+import { retireDevelopmentServiceWorker } from './dev-service-worker';
 
 const sprint1Fixture = (name: string) =>
   decodeURIComponent(
@@ -12,6 +13,7 @@ export default defineConfig(({ mode }) => {
   const precachePolicy = createPrecachePolicy();
   return {
     plugins: [
+      retireDevelopmentServiceWorker(),
       react(),
       precachePolicy.plugin,
       VitePWA({
@@ -27,6 +29,8 @@ export default defineConfig(({ mode }) => {
             // Preserve the campus PNG's offline availability after format conversion.
             // Other WebP artwork retains its existing cache policy.
             'assets/campus-transparent-*.webp',
+            // Keep the existing homepage artwork available in every offline session.
+            'assets/great-hall-hero*.webp',
           ],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         },

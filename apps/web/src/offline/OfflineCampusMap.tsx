@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Minus, Plus } from '@phosphor-icons/react';
+import { Info, Minus, Plus } from '@phosphor-icons/react';
 import type {
+  MapBounds,
   MapPoint,
   ReportedMapLocation,
 } from '../components/exploration/map-provider';
 import campus from './campus-map.json';
 import './offline.css';
+import { ExploreConnectionStatus } from './OfflineProvider';
 
 const WIDTH = 1600;
 const HEIGHT = 1220;
@@ -42,6 +44,8 @@ export function OfflineCampusMap({
   locationStale,
   focusPointRequest,
   recenterRequest,
+  initialBounds,
+  onViewChange,
 }: {
   points: readonly MapPoint[];
   selectedPoint: MapPoint | null;
@@ -50,13 +54,49 @@ export function OfflineCampusMap({
   locationStale: boolean;
   focusPointRequest: number;
   recenterRequest: number;
+  initialBounds?: MapBounds;
+  onViewChange?: (bounds: MapBounds) => void;
 }) {
-  const [view, setView] = useState({
-    x: 0,
-    y: 0,
-    width: WIDTH,
-    height: HEIGHT,
+  const [view, setView] = useState(() => {
+    if (initialBounds) {
+      const [x, y] = projectCampusPoint(
+        initialBounds[0][0],
+        initialBounds[1][1],
+      );
+      const [right, bottom] = projectCampusPoint(
+        initialBounds[1][0],
+        initialBounds[0][1],
+      );
+      return {
+        x,
+        y,
+        width: Math.max(1, right - x),
+        height: Math.max(1, bottom - y),
+      };
+    }
+    return {
+      x: 0,
+      y: 0,
+      width: WIDTH,
+      height: HEIGHT,
+    };
   });
+  const viewListener = useRef(onViewChange);
+  viewListener.current = onViewChange;
+  useEffect(() => {
+    viewListener.current?.([
+      [
+        west + (view.x / WIDTH) * (east - west),
+        north - ((view.y + view.height) / HEIGHT) * (north - south),
+      ],
+      [
+        west + ((view.x + view.width) / WIDTH) * (east - west),
+        north - (view.y / HEIGHT) * (north - south),
+      ],
+    ]);
+  }, [view]);
+  const previousFocusRequest = useRef(initialBounds ? focusPointRequest : 0);
+  const previousRecenterRequest = useRef(initialBounds ? recenterRequest : 0);
   const svgRef = useRef<SVGSVGElement>(null);
   const [dimensions, setDimensions] = useState({
     width: WIDTH,
@@ -127,16 +167,20 @@ export function OfflineCampusMap({
   };
   useEffect(() => {
     const point = focusRef.current.selectedPoint;
-    if (focusPointRequest > 0 && point) centre(point);
+    if (focusPointRequest > previousFocusRequest.current && point)
+      centre(point);
+    previousFocusRequest.current = focusPointRequest;
   }, [focusPointRequest]);
   useEffect(() => {
     const point = focusRef.current.reportedLocation;
-    if (recenterRequest > 0 && point) centre(point);
+    if (recenterRequest > previousRecenterRequest.current && point)
+      centre(point);
+    previousRecenterRequest.current = recenterRequest;
   }, [recenterRequest]);
   const zoom = (factor: number) =>
     setView((current) => {
       const width = Math.max(160, Math.min(WIDTH * 2, current.width * factor));
-      const height = (width * HEIGHT) / WIDTH;
+      const height = width * (current.height / current.width);
       return {
         x: current.x + (current.width - width) / 2,
         y: current.y + (current.height - height) / 2,
@@ -302,16 +346,10 @@ export function OfflineCampusMap({
           </g>
         )}
       </svg>
-      <div className="offline-campus-map__legend">
-        <span>Campus map · north up</span>
-        {location && (
-          <span>
-            {locationStale
-              ? 'Last known location'
-              : 'Current reported location'}
-          </span>
-        )}
-      </div>
+      <ExploreConnectionStatus />
+      {location && locationStale && (
+        <p className="offline-campus-map__legend">Last known location</p>
+      )}
       <div className="offline-campus-map__zoom">
         <button
           type="button"
@@ -330,13 +368,25 @@ export function OfflineCampusMap({
           <Minus size={20} />
         </button>
       </div>
-      <p className="offline-campus-map__attribution">
-        <a href="https://www.openstreetmap.org/copyright">
-          © OpenStreetMap contributors · ODbL
-        </a>{' '}
-        · Map data {campus.updatedAt.slice(0, 10)}. Paths are not verified
-        walking directions.
-      </p>
+      <div
+        className="offline-campus-map__attribution"
+        role="group"
+        aria-label="Map attribution"
+      >
+        <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a>
+        <a href="https://opendatacommons.org/licenses/odbl/1-0/">ODbL</a>
+        <details>
+          <summary aria-label="Map data details" title="Map data details">
+            <Info aria-hidden="true" size={18} />
+          </summary>
+          <p>
+            © OpenStreetMap contributors. Campus map · north up.
+            <br />
+            Map data {campus.updatedAt.slice(0, 10)}. Paths are not verified
+            walking directions.
+          </p>
+        </details>
+      </div>
     </div>
   );
 }

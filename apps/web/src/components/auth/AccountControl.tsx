@@ -1,4 +1,9 @@
-import { UserIcon, CaretDownIcon, GearIcon } from '@phosphor-icons/react';
+import {
+  UserIcon,
+  CaretDownIcon,
+  GearIcon,
+  DownloadSimpleIcon,
+} from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { confirmOfflineSignOut } from '../../offline/store';
 import { useOffline } from '../../offline/OfflineProvider';
@@ -149,18 +154,34 @@ export function AccountControl() {
               <p className="account-control__identity">
                 Reconnect to restore online access.
               </p>
-              <Link className="button button--quiet" href="/offline">
-                Downloads & saved attempts
+              <Link
+                aria-label="Downloads & saved attempts"
+                className="account-disclosure__destination"
+                href="/offline"
+                onClick={() => setIsDisclosureOpen(false)}
+              >
+                <DownloadSimpleIcon
+                  aria-hidden="true"
+                  className="account-disclosure__destination-icon"
+                  size={20}
+                />
+                <span>
+                  <strong>Downloads & saved attempts</strong>
+                  <small>Saved on this device</small>
+                </span>
               </Link>
-              {online && !isLoading && !isAuthenticated && (
-                <button
-                  className="button button--quiet"
-                  onClick={signIn}
-                  type="button"
-                >
-                  Restore online session
-                </button>
-              )}
+              {online &&
+                !connectionFailed &&
+                !isLoading &&
+                !isAuthenticated && (
+                  <button
+                    className="button button--quiet"
+                    onClick={signIn}
+                    type="button"
+                  >
+                    Restore online session
+                  </button>
+                )}
               <button
                 className="button button--quiet"
                 onClick={() => void signOut(true)}
@@ -290,6 +311,23 @@ export function AccountControl() {
                 </span>
               </Link>
               <div aria-hidden="true" className="account-disclosure__divider" />
+              <Link
+                aria-current={pathname === '/offline' ? 'page' : undefined}
+                aria-label="Downloads & saved attempts"
+                className="account-disclosure__destination"
+                href="/offline"
+                onClick={() => setIsDisclosureOpen(false)}
+              >
+                <DownloadSimpleIcon
+                  aria-hidden="true"
+                  className="account-disclosure__destination-icon"
+                  size={20}
+                />
+                <span>
+                  <strong>Downloads & saved attempts</strong>
+                  <small>Saved on this device</small>
+                </span>
+              </Link>
               <button
                 className="button button--quiet account-disclosure__sign-out"
                 onClick={() => void signOut()}

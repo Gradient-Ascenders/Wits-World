@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { Link, useLocation } from 'wouter';
+import { WifiSlash } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { READ_TIMEOUT_MS } from '../components/loading-policy';
 import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
@@ -722,7 +723,10 @@ export function OfflineProvider({
         preparationTotal,
         canSync: !!playerId && !syncMessage.includes('Sign in'),
         restoreSession,
-        connectionFailed,
+        connectionFailed:
+          connectionFailed ||
+          (state.status === 'error' &&
+            (state.failure === 'unavailable' || state.failure === 'timeout')),
         prepare,
         reportConnectionFailure,
         retryConnection,
@@ -824,37 +828,25 @@ function isAuthenticationFailure(failure: unknown) {
   );
 }
 
-export function OfflineStatus() {
-  const [path] = useLocation();
-  const { online, connectionFailed, savedCount, preparing, syncing } =
-    useOffline();
-  const { state } = useCurrentPlayer();
-  if (state.status !== 'ready' && !boundOfflinePlayer()) return null;
-  if (path === '/offline' && online && !connectionFailed) return null;
-  if (online && !connectionFailed)
-    return (
-      <aside aria-label="Download readiness" className="offline-status">
-        <span>
-          {syncing
-            ? 'Checking saved answers…'
-            : preparing
-              ? 'Preparing offline exploration…'
-              : `${savedCount} ${savedCount === 1 ? 'challenge' : 'challenges'} downloaded`}
-        </span>
-        <Link href="/offline">Downloads & saved attempts</Link>
-      </aside>
-    );
+export function ExploreConnectionStatus() {
+  const { online, connectionFailed, savedCount } = useOffline();
+  if (online && !connectionFailed) return null;
   return (
-    <aside
-      aria-label="Connection status"
-      className="offline-status offline-status--disconnected"
-    >
+    <div className="explore-connection-status">
+      <WifiSlash aria-hidden="true" size={18} />
       <span role="status">
-        {online ? 'We can’t reach Wits World.' : 'You’re offline.'} Explore
-        downloaded events—your answers stay on this device.
+        {online ? 'Connection unavailable' : 'Offline'}
+        <span className="sr-only">
+          {online ? '. We can’t reach Wits World.' : '.'}
+          {savedCount > 0
+            ? ' Saved events available.'
+            : ' No downloaded challenges are ready.'}
+        </span>
       </span>
-      <Link href="/offline">View downloads</Link>
-    </aside>
+      <Link href="/offline" aria-label="Downloads & saved attempts">
+        {savedCount > 0 ? 'Saved events' : 'View downloads'}
+      </Link>
+    </div>
   );
 }
 
