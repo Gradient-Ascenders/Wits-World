@@ -719,8 +719,8 @@ test('trading journey is focused, responsive, and server-owned', async ({
   await expect(page.getByLabel('Trade version 3')).toBeVisible();
   await expect(page.getByText('Rarity warning')).toBeVisible();
   await expect(
-    page.getByRole('button', { name: 'Accept offer' }),
-  ).toBeDisabled();
+    page.getByRole('button', { name: 'Accept', exact: true }),
+  ).toBeEnabled();
   await expectNoHorizontalOverflow(page);
   await clearFocus(page);
   await captureScreenshot(test.info(), page, {
@@ -780,7 +780,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
   }
 
   await page.setViewportSize({ width: 1440, height: 960 });
-  await page.getByRole('link', { name: 'Edit your side' }).click();
+  await page.getByRole('link', { name: 'Counter' }).click();
   await expect(page).toHaveURL(`/collection/trades/${TRADE_ID}/edit`);
   await expect(page.getByText('Editing version 3')).toBeVisible();
   await expect(page.locator('.trade-builder')).toBeVisible();
@@ -800,9 +800,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
   await editingCollection
     .getByRole('button', { name: 'Offer one more Courier Ibis' })
     .click();
-  await expect(
-    page.getByRole('button', { name: 'Review offer' }),
-  ).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Counter' })).toBeEnabled();
   for (const width of [320, 390, 490, 768, 1440]) {
     await page.setViewportSize({
       width,
@@ -817,23 +815,17 @@ test('trading journey is focused, responsive, and server-owned', async ({
       path: testInfo.outputPath(`trade-edit-${width}.png`),
     });
   }
-  await page.getByRole('button', { name: 'Review offer' }).click();
+  await page.getByRole('button', { name: 'Counter' }).click();
   const revisionDialog = page.getByRole('dialog', {
-    name: 'Update this offer?',
+    name: 'Send this counter offer?',
   });
   await expect(revisionDialog).toContainText(
-    'Publish version 4? Both players will need to accept again',
+    'Confirming sends version 4 for them to accept.',
   );
-  await expect(
-    revisionDialog.getByRole('heading', { name: 'other_player gives' }),
-  ).toBeVisible();
-  await expect(
-    revisionDialog.getByRole('heading', { name: 'other_player requested' }),
-  ).toBeVisible();
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 960 });
     await expect(
-      revisionDialog.getByRole('button', { name: 'Publish new version' }),
+      revisionDialog.getByRole('button', { name: 'Send counter' }),
     ).toBeInViewport();
     await expectNoHorizontalOverflow(page);
     await captureScreenshot(test.info(), page, {
@@ -841,19 +833,18 @@ test('trading journey is focused, responsive, and server-owned', async ({
     });
   }
   await revisionDialog.getByRole('button', { name: 'Keep reviewing' }).click();
-  await expect(
-    page.getByRole('button', { name: 'Review offer' }),
-  ).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Counter' })).toBeFocused();
   expect(revisions).toHaveLength(0);
-  await page.getByRole('button', { name: 'Review offer' }).click();
+  await page.getByRole('button', { name: 'Counter' }).click();
   await page
-    .getByRole('dialog', { name: 'Update this offer?' })
-    .getByRole('button', { name: 'Publish new version' })
+    .getByRole('dialog', { name: 'Send this counter offer?' })
+    .getByRole('button', { name: 'Send counter' })
     .click();
   await expect(page).toHaveURL(`/collection/trades/${TRADE_ID}`);
   await expect(page.getByLabel('Trade version 4')).toBeVisible();
   expect(revisions).toEqual([
     {
+      confirmOffer: true,
       expectedVersion: 3,
       offeredOwnedCardIds: [buildUuid(20), buildUuid(21)],
       requestedDefinitions: [{ cardDefinitionId: buildUuid(10), quantity: 1 }],
@@ -881,6 +872,295 @@ function definition(index = 0) {
     rarity: fixture.rarity,
   };
 }
+
+test('rarity warning belongs to review and waits for current availability', async ({
+  page,
+}, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  let releasePreview: (() => void) | undefined;
+  let holdCompletePreview = true;
+  await page.route(`${API_BASE_URL}/**`, async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith('/auth/me'))
+      return json(route, {
+        connectionStrategy: 'auth0',
+        id: buildUuid(980),
+        lifecycleStatus: 'active',
+        playerName: 'kevin-tester9',
+        playerNameSetupRequired: false,
+        requestId: 'fixture-player',
+        role: 'player',
+      });
+    if (pathname.endsWith('/events'))
+      return json(route, { events: [], requestId: 'fixture-events' });
+    if (pathname.endsWith('/cards/trading-catalogue'))
+      return json(route, {
+        definitions: CARD_FIXTURES.map((_, index) =>
+          catalogueDefinition(index),
+        ),
+        requestId: 'catalogue',
+      });
+    if (pathname.endsWith('/trades/recipient'))
+      return json(route, {
+        playerName: 'other_player',
+        requestId: 'recipient',
+      });
+    if (pathname.endsWith('/trades/selection-preview')) {
+      const body = route.request().postDataJSON() as Parameters<
+        typeof preview
+      >[0];
+      const result = preview(body);
+      if (result.valid && holdCompletePreview)
+        await new Promise<void>((resolve) => {
+          releasePreview = resolve;
+        });
+      return json(route, {
+        ...result,
+        imbalanceWarningRequired: result.valid,
+        requestedRarityPoints: body.requestedDefinitions.length * 5,
+      });
+    }
+    throw new Error(`Unexpected request: ${pathname}`);
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/collection/trades/new');
+  await page.getByRole('textbox', { name: 'Player Name' }).fill('other_player');
+  await page.getByRole('button', { name: 'Choose cards' }).click();
+  await page
+    .getByRole('button', { name: 'Offer one more Courier Ibis' })
+    .click();
+  await page.getByRole('button', { name: 'You request', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Request one more Arcalyron' })
+    .click();
+  const review = page.getByRole('button', { name: 'Review offer' });
+  await expect(review).toBeDisabled();
+  await expect(page.locator('.trade-builder__check')).toContainText(
+    'Checking trade availability',
+  );
+  await expect.poll(() => Boolean(releasePreview)).toBe(true);
+  holdCompletePreview = false;
+  releasePreview!();
+  await expect(review).toBeEnabled();
+  const warning = page.locator('#trade-rarity-warning');
+  await expect(
+    page.locator('.trade-builder__table .trade-preview-warning'),
+  ).toHaveCount(0);
+  await expect(page.locator('.trade-builder__review-bar')).toContainText(
+    'Rarity imbalance.',
+  );
+  await expect(review).toHaveAccessibleDescription(
+    'Rarity imbalance. Both players must acknowledge this before accepting.',
+  );
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await review.scrollIntoViewIfNeeded();
+    await expect(warning).toBeInViewport();
+    await expect(review).toBeInViewport();
+    await expectNoHorizontalOverflow(page);
+    const warningBox = await warning.boundingBox();
+    const reviewBox = await review.boundingBox();
+    expect(warningBox!.y + warningBox!.height).toBeLessThanOrEqual(
+      reviewBox!.y,
+    );
+    await captureScreenshot(testInfo, page, {
+      fullPage: true,
+      path: testInfo.outputPath(`trade-review-${width}.png`),
+    });
+  }
+  await review.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByRole('dialog', { name: 'Send this trade offer?' }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('accept and counter use one confirmation and prefill the incoming proposal', async ({
+  page,
+}, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  const empty = {
+    accepted: false,
+    imbalanceAcknowledged: false,
+    offeredCopies: [],
+    requestedDefinitions: [],
+    rarityPoints: 0,
+  };
+  let current = {
+    ...tradeView(),
+    role: 'recipient',
+    complete: false,
+    self: empty,
+    counterparty: { ...tradeView().counterparty, accepted: true },
+  };
+  const accepts: object[] = [];
+  const counters: object[] = [];
+  await page.route(`${API_BASE_URL}/**`, async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('/auth/me'))
+      return json(route, {
+        connectionStrategy: 'auth0',
+        id: buildUuid(980),
+        lifecycleStatus: 'active',
+        playerName: 'kevin-tester9',
+        playerNameSetupRequired: false,
+        requestId: 'player',
+        role: 'player',
+      });
+    if (path.endsWith('/cards/trading-catalogue'))
+      return json(route, {
+        definitions: CARD_FIXTURES.map((_, index) =>
+          catalogueDefinition(index),
+        ),
+        requestId: 'catalogue',
+      });
+    if (path.endsWith('/cards/collection'))
+      return json(route, { cards: [], requestId: 'collection' });
+    if (path.endsWith('/events'))
+      return json(route, { events: [], requestId: 'events' });
+    if (path.endsWith('/trades/selection-preview'))
+      return json(route, preview(request.postDataJSON()));
+    if (path.endsWith(`/trades/${TRADE_ID}/accept`)) {
+      accepts.push(request.postDataJSON());
+      return json(route, {
+        requestId: 'accepted',
+        trade: {
+          ...current,
+          status: 'completed',
+          complete: true,
+          terminalAt: new Date().toISOString(),
+          self: { ...tradeView().self, accepted: true },
+          settlement: { completedAt: new Date().toISOString() },
+        },
+      });
+    }
+    if (path.endsWith(`/trades/${TRADE_ID}`)) {
+      if (request.method() === 'PUT') {
+        counters.push(request.postDataJSON());
+        current = {
+          ...current,
+          version: current.version + 1,
+          self: { ...empty, accepted: true },
+          counterparty: { ...current.counterparty, accepted: false },
+        };
+      }
+      return json(route, { trade: current, requestId: 'detail' });
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/collection/trades/${TRADE_ID}`);
+  const accept = page.getByRole('button', { name: 'Accept', exact: true });
+  await expect(accept).toBeEnabled();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(page.locator('.trade-comparison .trade-side')).toHaveCount(2);
+    await expect(
+      page.getByRole('heading', { name: 'You give', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'other_player gives', exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('.trade-request-grid')).toHaveCount(0);
+    await clearFocus(page);
+    await captureScreenshot(testInfo, page, {
+      fullPage: true,
+      path: testInfo.outputPath(`trade-two-sides-${width}.png`),
+    });
+    await accept.click();
+    const dialog = page.getByRole('dialog', { name: 'Accept this offer?' });
+    await expect(dialog).toContainText(
+      'Your cards will be exchanged immediately.',
+    );
+    await expect(
+      dialog.getByRole('button', { name: 'Accept', exact: true }),
+    ).toBeInViewport();
+    await expectNoHorizontalOverflow(page);
+    await captureScreenshot(testInfo, page, {
+      path: testInfo.outputPath(`trade-accept-confirm-${width}.png`),
+    });
+    await page.keyboard.press('Escape');
+    await expect(accept).toBeFocused();
+  }
+  expect(accepts).toEqual([]);
+  await page.getByRole('link', { name: 'Counter', exact: true }).click();
+  const counter = page.getByRole('button', { name: 'Counter', exact: true });
+  await expect(counter).toBeEnabled();
+  await expect(
+    page.locator('.trade-builder-selection-strip .trade-card-thumbnail--full'),
+  ).toHaveCount(2);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await counter.scrollIntoViewIfNeeded();
+    await expectNoHorizontalOverflow(page);
+    await captureScreenshot(testInfo, page, {
+      fullPage: true,
+      path: testInfo.outputPath(`trade-counter-prefilled-${width}.png`),
+    });
+    await counter.click();
+    const dialog = page.getByRole('dialog', {
+      name: 'Send this counter offer?',
+    });
+    await expect(dialog).toContainText(
+      'Confirming sends version 4 for them to accept.',
+    );
+    await expect(
+      dialog.getByRole('button', { name: 'Send counter' }),
+    ).toBeInViewport();
+    await captureScreenshot(testInfo, page, {
+      path: testInfo.outputPath(`trade-counter-confirm-${width}.png`),
+    });
+    await page.keyboard.press('Escape');
+  }
+  await counter.click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Send counter' })
+    .click();
+  await expect(page).toHaveURL(`/collection/trades/${TRADE_ID}`);
+  expect(counters).toEqual([
+    {
+      confirmOffer: true,
+      expectedVersion: 3,
+      offeredOwnedCardIds: [buildUuid(20)],
+      requestedDefinitions: [{ cardDefinitionId: buildUuid(10), quantity: 1 }],
+      submissionId: expect.any(String),
+    },
+  ]);
+  // Restore an incoming proposal to exercise the independent accept journey.
+  current = {
+    ...current,
+    self: empty,
+    counterparty: { ...current.counterparty, accepted: true },
+  };
+  await page.reload();
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Accept', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Trade completed' }),
+  ).toBeVisible();
+  expect(accepts).toEqual([
+    {
+      confirmOffer: true,
+      expectedVersion: 4,
+      submissionId: expect.any(String),
+    },
+  ]);
+  expect(errors).toEqual([]);
+});
 
 function catalogueDefinition(index = 0) {
   const card = definition(index);

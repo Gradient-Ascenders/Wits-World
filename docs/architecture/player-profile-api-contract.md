@@ -14,6 +14,11 @@ experience, and the [API reference](../api-reference.md) for bearer
 authentication and the shared error format. Successful profile responses use
 `Cache-Control: private, no-store`.
 
+The server reads profile visibility, progression, showcase selection, and shared
+activity together, then loads presentation data only for the selected owned
+copies. These reads share a read-only repeatable-read transaction. Private
+profile and visitor-field restrictions apply before returning the response.
+
 ## Routes
 
 | Method | Route                                  | Result                                                          |

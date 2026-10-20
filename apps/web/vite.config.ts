@@ -3,6 +3,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
 import { createPrecachePolicy } from './precache-policy';
 import { retireDevelopmentServiceWorker } from './dev-service-worker';
+import { preconnectSessionOrigins } from './session-connections.js';
 
 const sprint1Fixture = (name: string) =>
   decodeURIComponent(
@@ -13,6 +14,7 @@ export default defineConfig(({ mode }) => {
   const precachePolicy = createPrecachePolicy();
   return {
     plugins: [
+      preconnectSessionOrigins(),
       retireDevelopmentServiceWorker(),
       react(),
       precachePolicy.plugin,

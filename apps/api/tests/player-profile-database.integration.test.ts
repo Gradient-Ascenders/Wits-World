@@ -1,3 +1,4 @@
+import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   buildDatabaseConfig,
@@ -100,7 +101,24 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
         version: 1,
         featuredOwnedCardIds: [ownedId],
       });
-      const visitor = await service.get(visitorId, 'profile-one');
+      const statements: Array<{ sql: string; values?: unknown[] }> = [];
+      const reader = createPlayerProfileService({
+        async connect() {
+          const client = await pool.connect();
+          return {
+            query(sql: string, values?: unknown[]) {
+              statements.push({ sql, values });
+              return client.query(sql, values);
+            },
+            release: () => client.release(),
+          } as unknown as pg.PoolClient;
+        },
+      });
+      const visitor = await reader.get(visitorId, 'profile-one');
+      expect(statements).toHaveLength(4);
+      expect(
+        statements.find(({ sql }) => sql.includes('owned.id = any('))?.values,
+      ).toEqual([ownerId, [ownedId]]);
       expect(visitor).toMatchObject({
         isOwner: false,
         version: null,

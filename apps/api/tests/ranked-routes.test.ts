@@ -24,6 +24,7 @@ describe('ranked HTTP routes', () => {
   let app: FastifyInstance;
   let join: ReturnType<typeof vi.fn>;
   let accept: ReturnType<typeof vi.fn>;
+  let heartbeat: ReturnType<typeof vi.fn>;
   let settlement: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
@@ -64,11 +65,12 @@ describe('ranked HTTP routes', () => {
           'The ranked proposal is unavailable.',
         ),
       );
+    heartbeat = vi.fn();
     const service = {
       join,
       accept,
       status: vi.fn().mockResolvedValue({ status: 'idle' }),
-      heartbeat: vi.fn(),
+      heartbeat,
       cancel: vi.fn(),
       decline: vi.fn(),
       expireQueueEntries: vi.fn(),
@@ -111,6 +113,7 @@ describe('ranked HTTP routes', () => {
     } as unknown as RankedReadService;
     app = await buildApp({
       authConfig,
+      corsConfig: { allowedOrigin: 'https://witsworld.co.za' },
       accessTokenVerifier: verifier,
       playerIdentityService: { resolve },
       ranked: { service, reads },
@@ -119,6 +122,31 @@ describe('ranked HTTP routes', () => {
   });
 
   afterEach(async () => app.close());
+
+  it('preserves a heartbeat availability error and its CORS header', async () => {
+    heartbeat.mockRejectedValue(
+      new RankedError(
+        503,
+        'GAMEPLAY_COORDINATION_UNAVAILABLE',
+        'Gameplay scheduling is temporarily unavailable. Please try again.',
+      ),
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/ranked/queue/heartbeat',
+      headers: {
+        authorization: 'Bearer test-token',
+        origin: 'https://witsworld.co.za',
+      },
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.headers['access-control-allow-origin']).toBe(
+      'https://witsworld.co.za',
+    );
+    expect(response.json()).toMatchObject({
+      code: 'GAMEPLAY_COORDINATION_UNAVAILABLE',
+    });
+  });
 
   it('uses the validated player identity and accepts only a deck intent', async () => {
     const response = await app.inject({

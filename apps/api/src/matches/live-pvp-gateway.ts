@@ -17,7 +17,8 @@ export const LIVE_PVP_HEARTBEAT_INTERVAL_MS = 20_000;
 const LIVE_PVP_MAX_PENDING_MESSAGES = 16;
 
 const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  // Catalogue IDs are deterministic PostgreSQL UUIDs, without RFC version bits.
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface LivePvpGatewayLogger {
   warn(context: Record<string, unknown>, message: string): void;

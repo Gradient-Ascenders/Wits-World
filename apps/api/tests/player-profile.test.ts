@@ -81,18 +81,16 @@ describe('profile status projections', () => {
                 status_expires_at: null,
                 today: '2026-10-03',
                 is_public: true,
-              },
-            ],
-          })
-          .mockResolvedValueOnce({
-            rows: [
-              {
-                player_name: 'owner',
-                total_points: 0,
-                standing_rank: 1,
-                current_streak: 0,
-                longest_streak: 0,
-                achievements: [],
+                featured_ids: [],
+                activity: null,
+                progression: {
+                  player_name: 'owner',
+                  total_points: 0,
+                  standing_rank: 1,
+                  current_streak: 0,
+                  longest_streak: 0,
+                  achievements: [],
+                },
               },
             ],
           });

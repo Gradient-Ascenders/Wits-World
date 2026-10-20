@@ -9,6 +9,40 @@ import {
 const PLAYER_ID = '70000000-0000-4000-8000-000000000069';
 
 describe('card collection service', () => {
+  it.each([false, true])(
+    'scopes featured owned IDs before card projection (unique=%s)',
+    async (unique) => {
+      const fixture = createFixture([]);
+      const ids = ['71000000-0000-4000-8000-000000000001'];
+      await createCardCollectionService(fixture.database).listOwnedCards(
+        PLAYER_ID,
+        unique,
+        undefined,
+        ids,
+      );
+      expect(fixture.query).toHaveBeenCalledWith(
+        expect.stringContaining('owned.id = any($2::uuid[])'),
+        [PLAYER_ID, ids],
+      );
+      expect(executedSql(fixture.query)).toContain(
+        'owned.player_id = $1::uuid',
+      );
+    },
+  );
+
+  it('does not fall back to the full collection for an empty featured selection', async () => {
+    const fixture = createFixture([]);
+    expect(
+      await createCardCollectionService(fixture.database).listOwnedCards(
+        PLAYER_ID,
+        false,
+        undefined,
+        [],
+      ),
+    ).toEqual([]);
+    expect(fixture.query).not.toHaveBeenCalled();
+  });
+
   it('scopes deck copies to both authenticated ownership and deck membership before projection', async () => {
     const fixture = createFixture([]);
     const deckId = '74000000-0000-4000-8000-000000000001';

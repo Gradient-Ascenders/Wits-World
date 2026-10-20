@@ -10,10 +10,10 @@ import { TradeCardThumbnail } from './TradeCardThumbnail';
 interface TradeComparisonProps {
   catalogue?: readonly TradingCatalogueCard[];
   counterpartyLabel: string;
-  counterpartyOffered: readonly TradeOfferedCopy[];
+  counterpartyOffered: readonly (TradeOfferedCopy | TradeRequestedDefinition)[];
   counterpartyPoints?: number;
   selfLabel?: string;
-  selfOffered: readonly TradeOfferedCopy[];
+  selfOffered: readonly (TradeOfferedCopy | TradeRequestedDefinition)[];
   selfPoints?: number;
 }
 
@@ -120,7 +120,7 @@ function TradeSide({
   points,
 }: {
   catalogue?: readonly TradingCatalogueCard[];
-  cards: readonly TradeOfferedCopy[];
+  cards: readonly (TradeOfferedCopy | TradeRequestedDefinition)[];
   empty: string;
   label: string;
   points?: number;
@@ -134,7 +134,11 @@ function TradeSide({
       {cards.length > 0 ? (
         <ul className="trade-side__cards">
           {cards.map((card) => (
-            <li key={card.ownedCardId}>
+            <li
+              key={
+                'ownedCardId' in card ? card.ownedCardId : card.cardDefinitionId
+              }
+            >
               <TradeCardThumbnail
                 card={{
                   ...catalogue?.find(
@@ -148,6 +152,9 @@ function TradeSide({
               <div>
                 <strong>{card.name}</strong>
                 <span>
+                  {'quantity' in card
+                    ? `${card.quantity} ${card.quantity === 1 ? 'copy' : 'copies'} · `
+                    : ''}
                   {titleCase(card.category)} · {titleCase(card.rarity)}
                 </span>
               </div>

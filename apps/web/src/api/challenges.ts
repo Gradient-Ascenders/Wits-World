@@ -1,5 +1,6 @@
 import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
 import type { LocationClaim } from '../browser-location';
+import { READ_TIMEOUT_MS } from '../components/loading-policy';
 
 export interface ChallengeChoice {
   choiceId: string;
@@ -54,7 +55,7 @@ export interface InProgressOrderingChallengeAttempt {
 }
 
 export interface CompletedChallengeCard {
-  affinity: 'wit' | 'grit' | 'spark' | 'spirit' | 'mystic';
+  affinity: 'wit' | 'grit' | 'spark' | 'spirit' | 'mystic' | null;
   cardDefinitionId: string;
   category: 'creature' | 'power';
   name: string;
@@ -250,7 +251,47 @@ interface RequestAttemptOptions extends ChallengeRequestBase {
 
 const ACTIVE_CHALLENGE_CONTRACT_VERSION = '2';
 
-async function requestAttempt({
+async function requestAttempt(
+  options: RequestAttemptOptions,
+): Promise<PlayerSafeChallengeAttempt> {
+  const controller = new AbortController();
+  const abort = () => controller.abort(options.signal.reason);
+  options.signal.addEventListener('abort', abort, { once: true });
+  if (options.signal.aborted) abort();
+  const timer = setTimeout(() => controller.abort('timeout'), READ_TIMEOUT_MS);
+  try {
+    return await waitForAttempt(
+      () => sendAttempt({ ...options, signal: controller.signal }),
+      controller.signal,
+    );
+  } catch (error) {
+    if (!options.signal.aborted && controller.signal.reason === 'timeout') {
+      throw new ChallengeApiError('unavailable');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    options.signal.removeEventListener('abort', abort);
+  }
+}
+
+// Bound token acquisition and response-body reads as well as fetch. A late SDK
+// result must not send an answer after the caller has stopped waiting.
+function waitForAttempt<T>(
+  work: () => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    work()
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+async function sendAttempt({
   apiBaseUrl,
   body,
   getAccessToken,
@@ -265,6 +306,8 @@ async function requestAttempt({
   } catch {
     throw new ChallengeApiError('authorization');
   }
+
+  signal.throwIfAborted();
 
   let response: Response;
 
@@ -843,7 +886,10 @@ function parseRewardCard(payload: unknown): CompletedChallengeCard {
     typeof payload.name !== 'string' ||
     payload.name.trim() === '' ||
     !isCardCategory(payload.category) ||
-    !isAffinity(payload.affinity) ||
+    !(
+      isAffinity(payload.affinity) ||
+      (payload.category === 'power' && payload.affinity === null)
+    ) ||
     !isRarity(payload.rarity)
   ) {
     throw new ChallengeApiError('unavailable');
@@ -1008,7 +1054,7 @@ function isCardCategory(value: unknown): value is 'creature' | 'power' {
 
 function isAffinity(
   value: unknown,
-): value is CompletedChallengeCard['affinity'] {
+): value is Exclude<CompletedChallengeCard['affinity'], null> {
   return (
     value === 'wit' ||
     value === 'grit' ||

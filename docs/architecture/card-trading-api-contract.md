@@ -30,7 +30,7 @@ Routes below begin with `/api/v1`.
 | GET    | `/trades/:tradeId`                           | Read an offer in which you participate.                        |
 | PUT    | `/trades/:tradeId`                           | Revise your selection and create the next offer version.       |
 | POST   | `/trades/:tradeId/imbalance-acknowledgement` | Acknowledge the current version's rarity warning.              |
-| POST   | `/trades/:tradeId/accept`                    | Approve the current version with recent authentication.        |
+| POST   | `/trades/:tradeId/accept`                    | Confirm the current offer using the signed-in session.         |
 | POST   | `/trades/:tradeId/decline`                   | Decline an offer as its recipient.                             |
 | POST   | `/trades/:tradeId/cancel`                    | Cancel an offer as its sender.                                 |
 
@@ -57,9 +57,15 @@ and `requestedDefinitions`. Revision requires `submissionId`, `expectedVersion`,
 - `expectedVersion` identifies the offer version the caller has reviewed.
 - `submissionId` is a caller-generated UUID for one offer command.
 
-Revision replaces your side's selection. It creates a new version and resets
-both players' approvals and rarity acknowledgements. It does not extend the
-original `expiresAt` deadline.
+The web sends `confirmOffer: true` on create, revision, and acceptance. Confirmed
+creation records the proposer's consent. Confirmed revision publishes a new
+proposal using the caller's exact copies and requests, removes the other side's
+old selections/reservations, and records only the countering player's consent.
+Neither operation extends the original `expiresAt` deadline.
+
+When `confirmOffer` is omitted, legacy per-side creation/revision and versioned
+approval remain supported. Legacy revision resets both approvals. Normal bearer
+authentication is required in both flows.
 
 A preview requires `offeredOwnedCardIds` and `requestedDefinitions`, and accepts
 empty arrays while drafting. Include `tradeId` and `expectedVersion` when
@@ -72,6 +78,17 @@ inspect the result before creating or revising an offer. Availability can reflec
 a saved deck, a battle commitment, another trade, an inactive definition, or a
 collection minimum. A valid preview does not reserve copies or guarantee a
 later command will succeed.
+
+New-draft previews read policy, owned-copy availability, and requested definitions
+in one database statement and snapshot, without a read-only transaction round
+trip. Existing-offer previews retain participant, lock, version, and deadline
+checks inside their transaction. The editor starts a new draft’s initial preview
+alongside its catalogue load and keeps Review offer disabled until the current
+server preview succeeds. The editing action is labelled Counter. Incoming counter
+drafts seed requests from the other player's offered definitions and select
+matching own copies from the server preview. Protected or missing copies are
+shown as unavailable; a valid current preview is still required to submit.
+Rarity warnings appear above the action and apply to the whole exchange.
 
 ## Reading offers
 
@@ -98,31 +115,39 @@ ordered newest first. Use `page` starting at 1 and `pageSize` up to 50 (default
 20). Optional `direction` filters are `sent` and `received`; `status` accepts
 `open`, `completed`, `declined`, `cancelled`, `expired`, or `invalidated`.
 
-## Approval and recent authentication
+## Confirmation and settlement
 
-Acknowledgement requires `{ submissionId, expectedVersion }`. Acceptance adds
-`reauthenticationToken`: an Auth0 ID token from a recent sign-in, separate from
-the bearer access token. Its `auth_time` must be no more than 5 minutes old,
-and its issuer and subject must match the bearer identity. The API also checks
-the configured issuer and client audience.
+Acceptance requires `{ submissionId, expectedVersion, confirmOffer: true }` and
+the existing bearer-authenticated active player. It does not request a new
+password, Auth0 redirect, ID token, or recent-authentication proof.
+`reauthenticationToken` is an optional deprecated compatibility field and is not
+used to authorize acceptance.
 
-Invalid or stale proof returns `401 RECENT_AUTHENTICATION_REQUIRED`. Obtain
-fresh proof before retrying acceptance; proof is checked on retries too.
-Decline and cancellation require `{ submissionId }` without an offer version.
+Only the other participant can accept the latest proposal. The server binds
+matching available own copies to the proposer's requested definitions. It locks
+all chosen copies in deterministic order, rechecks protections and acquisition
+snapshots, and appends a complete immutable settlement version containing both
+sides' exact copies and reciprocal requests. Both confirmations and displayed
+rarity-warning acknowledgements are recorded for that version. The original
+proposal and previous versions remain unchanged.
 
-An acceptance can record your approval while the offer remains open. Settlement
-requires both approvals for the same complete version, plus both rarity
-acknowledgements when required. The server rechecks the deadline, eligibility,
-ownership, and protections before exchanging all selected cards together.
+Settlement still rechecks the deadline, eligibility, holds, ownership, card
+protections, copy limits, daily caps, and collection minimums before exchanging
+all cards atomically. Unavailable requested copies fail safely rather than being
+substituted with another card definition. Acceptance cannot confirm a changed
+proposal silently; a stale version requires a fresh review and confirmation.
 Closed offers cannot be reopened.
+
+The legacy acknowledgement endpoint accepts `{ submissionId, expectedVersion }`.
+Decline and cancellation continue to require `{ submissionId }`.
 
 ## Conflicts and retries
 
 Reuse the same `submissionId` and command fields when retrying an uncertain
 create, revision, acknowledgement, acceptance, decline, or cancellation. An
 identical retry returns the offer's current state without repeating the action;
-it may be newer than the original response. A fresh authentication token may
-be supplied on an acceptance retry.
+it may be newer than the original response. The confirmation flag is part of
+the command digest; changed intent must use a new submission ID.
 
 | Response                           | Caller action                                                                       |
 | ---------------------------------- | ----------------------------------------------------------------------------------- |

@@ -213,6 +213,8 @@ export function PageLoadingState({
   className = '',
   description,
   delayed = false,
+  escapeHref,
+  escapeLabel,
   recovery = true,
   title,
   onRetry,
@@ -223,6 +225,8 @@ export function PageLoadingState({
   className?: string;
   description?: string;
   delayed?: boolean;
+  escapeHref?: string;
+  escapeLabel?: string;
   recovery?: boolean;
   title: string;
   onRetry?: () => void;
@@ -245,7 +249,19 @@ export function PageLoadingState({
         {description}
       </p>
       {phase === 'slow' && recovery ? (
-        <LoadingRecovery onRetry={onRetry} announce={announce} />
+        <LoadingRecovery
+          onRetry={onRetry}
+          announce={announce}
+          escapeHref={escapeHref}
+          escapeLabel={escapeLabel}
+        />
+      ) : null}
+      {escapeHref && phase !== 'slow' ? (
+        <div className="state-message__actions">
+          <Link className="button button--quiet" href={escapeHref}>
+            {escapeLabel ?? 'Return home'}
+          </Link>
+        </div>
       ) : null}
       {children}
     </section>

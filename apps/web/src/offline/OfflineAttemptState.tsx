@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createAppDateTimeFormatter } from '../date-time';
 import { StatusMessage } from '../components/StatusMessage';
-import { READ_TIMEOUT_MS } from '../components/loading-policy';
+import { READ_TIMEOUT_MS, useLoadingPhase } from '../components/loading-policy';
 import { useOffline } from './OfflineProvider';
 import {
   boundOfflinePlayer,
@@ -39,10 +39,12 @@ export function ReconnectDeadline({
   attempt,
   now,
   compact = false,
+  connected = false,
 }: {
   attempt: LocalAttempt;
   now: number;
   compact?: boolean;
+  connected?: boolean;
 }) {
   const deadline = reconnectDeadline(attempt);
   if (deadline === null) return null;
@@ -55,8 +57,12 @@ export function ReconnectDeadline({
   return (
     <p className="offline-deadline">
       {now > deadline
-        ? 'The reconnect window has ended. Connect to check the final outcome.'
-        : 'Reconnect before '}
+        ? connected
+          ? 'The submission window has ended. Check the final outcome.'
+          : 'The reconnect window has ended. Connect to check the final outcome.'
+        : connected
+          ? 'Submit saved answers before '
+          : 'Reconnect before '}
       {now <= deadline && (
         <time
           dateTime={new Date(deadline).toISOString()}
@@ -150,10 +156,26 @@ export function SyncFeedback({
     ? current?.status === 'failed' ||
       (current?.status === 'confirmed' && syncFailed)
     : syncFailed;
+  const processing =
+    (current?.status === 'syncing' ||
+      (syncing && current?.status === 'pending')) &&
+    online &&
+    !connectionFailed &&
+    canSync;
+  const phase = useLoadingPhase(processing, attempt?.clientAttemptId);
   return (
-    <div className="offline-sync" aria-busy={syncing}>
-      {!controlsOnly &&
-      (current?.message || (!attempt && syncFailed && syncMessage)) ? (
+    <div
+      className={`offline-sync${processing ? ' offline-sync--processing' : ''}`}
+      aria-busy={syncing}
+    >
+      {!controlsOnly && processing ? (
+        <p className="offline-sync__summary">
+          {phase === 'slow'
+            ? 'The server is taking a little longer. Your answers are saved, and you can return later.'
+            : 'Your result will appear here when it’s ready. You can leave this screen.'}
+        </p>
+      ) : !controlsOnly &&
+        (current?.message || (!attempt && syncFailed && syncMessage)) ? (
         <StatusMessage tone={failed ? 'error' : 'info'} role={undefined}>
           <strong>{current?.message || syncMessage}</strong>
         </StatusMessage>
@@ -165,7 +187,13 @@ export function SyncFeedback({
           </p>
         )
       )}
-      {attempt && <ReconnectDeadline attempt={attempt} now={now} />}
+      {attempt && !processing && current?.status !== 'confirmed' && (
+        <ReconnectDeadline
+          attempt={attempt}
+          now={now}
+          connected={online && !connectionFailed && canSync}
+        />
+      )}
       <div className="offline-sync__actions">
         {online && connectionFailed && connectionControl ? (
           <button className="button" onClick={retryConnection} type="button">
@@ -189,13 +217,13 @@ export function SyncFeedback({
             {syncing ? 'Syncing saved attempts…' : 'Retry sync'}
           </button>
         ) : null}
-        {syncing && (
+        {syncing && (!processing || phase === 'slow') && (
           <button
             className="button button--quiet"
             onClick={cancelSync}
             type="button"
           >
-            Cancel sync
+            {processing ? 'Stop waiting' : 'Cancel sync'}
           </button>
         )}
       </div>

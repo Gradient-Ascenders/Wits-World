@@ -23,6 +23,11 @@ description: Answer questions, resume saved progress, and review the result.
 To resume, reopen the challenge page. It returns the first unanswered question
 or the completed result. Unsaved selections are discarded after a reload.
 
+If saving an answer or checking a result takes more than 20 seconds, the page
+offers **Retry answer** or **Check result again**. Retrying keeps your current
+selection and checks the same attempt; the original server timer still applies.
+A connection failure does not prove that an answer was lost.
+
 For prepared challenges played without a connection, follow
 [Saved events and offline play](player-offline-journey.md).
 

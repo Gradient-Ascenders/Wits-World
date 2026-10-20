@@ -48,6 +48,15 @@ Production access and refresh tokens are not persisted in browser storage. The
 same-site custom domain lets fallback restoration use the Auth0 session without
 depending on third-party tenant-domain cookies.
 
+Session startup preconnects to the configured Auth0 and API origins from the
+initial HTML, before the application bundles run. The API prefetches its public
+signing keys in parallel with startup and refreshes them every nine minutes,
+before the verifier's normal ten-minute cache expires. Failed prefetches do not
+block startup; token verification retries on demand and still rejects invalid
+signatures, issuers, audiences and expiry. This caches public keys, not tokens,
+player roles, account status or other authorization decisions. The existing
+server account check still completes before protected content is shown.
+
 Local development and Playwright E2E use rotating refresh tokens with
 `cacheLocation="localstorage"` and `useRefreshTokens=true`. This is a bounded
 development fallback because localhost cannot share a product root domain with

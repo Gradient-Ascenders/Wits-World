@@ -158,6 +158,109 @@ async function restoreLocation(page: Page) {
   });
 }
 
+test('connected quiz submission shows processing and confirms without losing saved answers', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.clock.install();
+  const cached = await prepare(page);
+  const attemptId = randomUUID();
+  const startedAt = Date.now() - 60_000;
+  const attempt: LocalAttempt = {
+    clientAttemptId: randomUUID(),
+    playerId: cached.pack.playerId,
+    cached,
+    status: 'pending',
+    startedAt: new Date(startedAt).toISOString(),
+    finishedAt: new Date(startedAt + 40_000).toISOString(),
+    startLocation: {
+      latitude: cached.pack.event.latitude,
+      longitude: cached.pack.event.longitude,
+      accuracyMetres: 10,
+      acquiredAt: new Date(startedAt).toISOString(),
+    },
+    answers: cached.pack.questions.map((question, index) => ({
+      questionId: question.id,
+      answeredAt: new Date(startedAt + index * 10_000).toISOString(),
+      optionIds: [question.options[0]!.id],
+    })),
+  };
+  let confirm!: () => void;
+  const processing = new Promise<void>((resolve) => {
+    confirm = resolve;
+  });
+  let submissions = 0;
+  await page.route('**/api/v1/offline-challenge-attempts', async (route) => {
+    submissions++;
+    expect(route.request().postDataJSON().clientAttemptId).toBe(
+      attempt.clientAttemptId,
+    );
+    expect(route.request().postDataJSON().answers).toEqual(attempt.answers);
+    await processing;
+    await route.fulfill({
+      status: 201,
+      json: { attempt: { attemptId, status: 'completed' } },
+    });
+  });
+  await seed(page, { packs: [cached], attempts: [attempt], receipts: [] });
+  await page
+    .getByRole('link', { name: 'View saved: Great Hall Quest' })
+    .click();
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(
+    page.getByRole('heading', { name: 'Preparing your result…' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      /The server is checking your answers and preparing your result/,
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Your result will appear here when it’s ready/),
+  ).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('.offline-sync .state-message')).toHaveCount(0);
+  await expect(page.locator('.offline-deadline')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Cancel sync' })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole('button', { name: 'Stop waiting' })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText(/Reconnect before/)).toHaveCount(0);
+  for (const [width, height, device] of [
+    [390, 844, 'mobile'],
+    [1280, 900, 'desktop'],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await capture(page, `quiz-processing-${device}`);
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(
+    page.locator('.offline-play__state-mark--loading svg'),
+  ).toHaveCSS('animation-name', 'none');
+  await page.clock.fastForward(8_100);
+  await expect(
+    page.getByText(/The server is taking a little longer/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Stop waiting' }),
+  ).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await capture(page, 'quiz-processing-slow');
+  confirm();
+  await expect(
+    page.getByRole('heading', { name: 'Attempt confirmed' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'View confirmed result' }),
+  ).toHaveAttribute('href', `/challenge-attempts/${attemptId}`);
+  await expect(page.locator('.offline-deadline')).toHaveCount(0);
+  expect(submissions).toBe(1);
+  expect(errors).toEqual([]);
+});
+
 for (const [width, height, device] of [
   [1440, 900, 'desktop'],
   [390, 844, 'mobile'],

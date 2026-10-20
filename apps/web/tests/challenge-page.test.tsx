@@ -21,6 +21,7 @@ vi.mock('../src/api/cards', async (importOriginal) => ({
 }));
 
 import ChallengePage from '../src/pages/ChallengePage';
+import { READ_TIMEOUT_MS } from '../src/components/loading-policy';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
 const attemptId = '31000000-0000-4000-8000-000000000001';
@@ -46,6 +47,65 @@ function renderChallenge(authContext = authValue()) {
 }
 
 describe('timed player challenge', () => {
+  it('recovers from a stalled answer, retries the same intent and ignores the late response', async () => {
+    vi.useFakeTimers();
+    const lateAnswer = deferred<Response>();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(activeAttempt()))
+      .mockReturnValueOnce(lateAnswer.promise)
+      .mockResolvedValueOnce(jsonResponse(activeAttempt(1)));
+    vi.stubGlobal('fetch', fetchMock);
+    renderChallenge();
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('radio', { name: 'Choice 1.2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit answer' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS);
+    });
+    expect(screen.getByRole('button', { name: 'Retry answer' })).toBeEnabled();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'We could not confirm your answer',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry answer' }));
+    await act(async () => {});
+    expect(screen.getByRole('heading', { name: 'Question 2' })).toBeVisible();
+    expect(fetchMock.mock.calls[1]![1].body).toBe(
+      fetchMock.mock.calls[2]![1].body,
+    );
+    await act(async () => {
+      lateAnswer.resolve(jsonResponse(activeAttempt(4)));
+    });
+    expect(screen.getByRole('heading', { name: 'Question 2' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Question 5' })).toBeNull();
+  });
+
+  it('enables result recovery after a stalled deadline check', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-01T10:00:00Z'));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(activeAttempt(0, '2026-09-01T10:00:02Z')),
+      )
+      .mockImplementationOnce(() => new Promise<Response>(() => {}))
+      .mockResolvedValueOnce(jsonResponse(completedAttempt('timeout')));
+    vi.stubGlobal('fetch', fetchMock);
+    renderChallenge();
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000 + READ_TIMEOUT_MS);
+    });
+    expect(
+      screen.getByRole('button', { name: 'Check result again' }),
+    ).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Check result again' }));
+    await act(async () => {});
+    expect(
+      screen.getByRole('heading', { name: 'Your challenge result' }),
+    ).toBeVisible();
+  });
+
   it('loads one unanswered question and submits answer intent with a neutral saved state', async () => {
     const user = userEvent.setup();
     const fetchMock = vi

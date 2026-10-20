@@ -1,10 +1,8 @@
 import { createAppDateTimeFormatter } from '../date-time';
-import { useAuth0 } from '@auth0/auth0-react';
 import {
   ArrowLeft,
   CheckCircle,
   PencilSimple,
-  ShieldCheck,
   Warning,
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -13,7 +11,6 @@ import { Link, useParams } from 'wouter';
 import { listOwnedCards } from '../api/cards';
 import {
   acceptTrade,
-  acknowledgeTradeImbalance,
   cancelTrade,
   declineTrade,
   getTrade,
@@ -32,7 +29,6 @@ import {
 import { StateIcon } from '../components/StatusMessage';
 import {
   ConsentState,
-  RequestedCardList,
   TradeComparison,
 } from '../components/trades/TradeComparison';
 import { TradeConfirmationDialog } from '../components/trades/TradeConfirmationDialog';
@@ -59,18 +55,12 @@ export default function TradeDetailPage({
   const { tradeId = '' } = useParams<{ tradeId: string }>();
   const getAccessToken = useApiAccessToken();
   const retainedReads = useCollectionReads();
-  const { getIdTokenClaims, loginWithRedirect } = useAuth0();
   const [catalogue, setCatalogue] = useState<TradingCatalogueCard[]>([]);
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [readRetry, setReadRetry] = useState(0);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<TradeApiError | null>(null);
-  const [acknowledged, setAcknowledged] = useState(false);
-  const [reauthenticationToken, setReauthenticationToken] = useState<
-    string | null
-  >(null);
-  const [returnedVersion, setReturnedVersion] = useState<number | null>(null);
   const [collectionRefresh, setCollectionRefresh] = useState<
     'idle' | 'loading' | 'ready' | 'error'
   >('idle');
@@ -168,50 +158,6 @@ export default function TradeDetailPage({
   }, [load]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('action') !== 'confirm-accept') return;
-    const version = Number(params.get('version'));
-    window.history.replaceState({}, '', `/collection/trades/${tradeId}`);
-    if (!Number.isInteger(version) || version < 1) return;
-    setPendingAction('reauthenticating');
-    void getIdTokenClaims()
-      .then((claims) => {
-        if (!claims?.__raw) throw new Error('Missing ID token');
-        setReturnedVersion(version);
-        setReauthenticationToken(claims.__raw);
-      })
-      .catch(() => {
-        setActionError(new TradeApiError('recent-authentication'));
-      })
-      .finally(() => setPendingAction(null));
-  }, [getIdTokenClaims, tradeId]);
-
-  useEffect(() => {
-    if (
-      state.status !== 'ready' ||
-      returnedVersion === null ||
-      reauthenticationToken === null
-    ) {
-      return;
-    }
-    if (
-      state.trade.version !== returnedVersion ||
-      state.trade.status !== 'open'
-    ) {
-      setActionError(
-        new TradeApiError('stale', {
-          detail:
-            'The offer changed while you verified your identity. Review the current version before accepting.',
-        }),
-      );
-      setReauthenticationToken(null);
-      setReturnedVersion(null);
-      return;
-    }
-    setConfirmation('accept');
-  }, [reauthenticationToken, returnedVersion, state]);
-
-  useEffect(() => {
     if (actionError) errorHeading.current?.focus();
   }, [actionError]);
 
@@ -281,13 +227,11 @@ export default function TradeDetailPage({
   const open = trade.status === 'open';
   const canAccept =
     open &&
-    trade.complete &&
-    (!trade.imbalanceWarningRequired || trade.self.imbalanceAcknowledged) &&
-    !trade.self.accepted;
+    !trade.self.accepted &&
+    trade.counterparty.offeredCopies.length > 0 &&
+    trade.counterparty.requestedDefinitions.length > 0;
 
-  async function applyMutation(
-    action: 'accept' | 'acknowledge' | 'cancel' | 'decline',
-  ) {
+  async function applyMutation(action: 'accept' | 'cancel' | 'decline') {
     if (state.status !== 'ready' || state.refreshing || state.refreshError)
       return;
     const controller = new AbortController();
@@ -310,22 +254,14 @@ export default function TradeDetailPage({
           ? await acceptTrade({
               ...base,
               expectedVersion: trade.version,
-              reauthenticationToken: reauthenticationToken!,
+              confirmOffer: true,
             })
-          : action === 'acknowledge'
-            ? await acknowledgeTradeImbalance({
-                ...base,
-                expectedVersion: trade.version,
-              })
-            : action === 'cancel'
-              ? await cancelTrade(base)
-              : await declineTrade(base);
+          : action === 'cancel'
+            ? await cancelTrade(base)
+            : await declineTrade(base);
       if (controller.signal.aborted) return;
       setState({ status: 'ready', trade: updated });
-      setAcknowledged(false);
       setConfirmation(null);
-      setReauthenticationToken(null);
-      setReturnedVersion(null);
       confirmAction(actionSuccessCopy(action, updated));
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -351,22 +287,6 @@ export default function TradeDetailPage({
     if (reconciliationError && !controller.signal.aborted) {
       await load();
       setActionError(reconciliationError);
-    }
-  }
-
-  async function startAcceptance() {
-    setPendingAction('reauthenticating');
-    setActionError(null);
-    try {
-      await loginWithRedirect({
-        appState: {
-          returnTo: `/collection/trades/${trade.tradeId}?action=confirm-accept&version=${trade.version}`,
-        },
-        authorizationParams: { max_age: 0, prompt: 'login' },
-      });
-    } catch {
-      setActionError(new TradeApiError('recent-authentication'));
-      setPendingAction(null);
     }
   }
 
@@ -469,24 +389,27 @@ export default function TradeDetailPage({
       <TradeComparison
         catalogue={catalogue}
         counterpartyLabel={trade.counterpartyPlayerName}
-        counterpartyOffered={trade.counterparty.offeredCopies}
-        counterpartyPoints={trade.counterparty.rarityPoints}
-        selfOffered={trade.self.offeredCopies}
-        selfPoints={trade.self.rarityPoints}
+        counterpartyOffered={
+          trade.counterparty.offeredCopies.length > 0
+            ? trade.counterparty.offeredCopies
+            : trade.self.requestedDefinitions
+        }
+        counterpartyPoints={
+          trade.counterparty.offeredCopies.length > 0
+            ? trade.counterparty.rarityPoints
+            : undefined
+        }
+        selfOffered={
+          trade.self.offeredCopies.length > 0
+            ? trade.self.offeredCopies
+            : trade.counterparty.requestedDefinitions
+        }
+        selfPoints={
+          trade.self.offeredCopies.length > 0
+            ? trade.self.rarityPoints
+            : undefined
+        }
       />
-
-      <div className="trade-request-grid">
-        <RequestedCardList
-          catalogue={catalogue}
-          definitions={trade.self.requestedDefinitions}
-          label="You requested"
-        />
-        <RequestedCardList
-          catalogue={catalogue}
-          definitions={trade.counterparty.requestedDefinitions}
-          label={`${trade.counterpartyPlayerName} requested`}
-        />
-      </div>
 
       {trade.imbalanceWarningRequired ? (
         <section
@@ -500,36 +423,7 @@ export default function TradeDetailPage({
               Rarity points differ. They aren’t prices. Both players must
               confirm they’ve reviewed this warning.
             </p>
-            {!trade.self.imbalanceAcknowledged && open ? (
-              <label>
-                <input
-                  checked={acknowledged}
-                  disabled={pendingAction !== null || readOutdated}
-                  onChange={(event) => setAcknowledged(event.target.checked)}
-                  type="checkbox"
-                />
-                <span>I’ve reviewed the rarity difference.</span>
-              </label>
-            ) : trade.self.imbalanceAcknowledged ? (
-              <p className="trade-acknowledged">
-                <ShieldCheck aria-hidden="true" size={18} />
-                Warning reviewed.
-              </p>
-            ) : null}
-            {!trade.self.imbalanceAcknowledged && open ? (
-              <button
-                className="button button--quiet"
-                disabled={
-                  !acknowledged || pendingAction !== null || readOutdated
-                }
-                onClick={() => void applyMutation('acknowledge')}
-                type="button"
-              >
-                {pendingAction === 'acknowledge'
-                  ? 'Confirming trade warning…'
-                  : 'Confirm warning'}
-              </button>
-            ) : null}
+            <p>Confirming the offer acknowledges this rarity difference.</p>
           </div>
         </section>
       ) : null}
@@ -537,26 +431,29 @@ export default function TradeDetailPage({
       {open ? (
         <section className="trade-actions" aria-label="Trade actions">
           <div className="trade-actions__buttons">
-            <Link
-              className="button button--quiet"
-              href={`/collection/trades/${trade.tradeId}/edit`}
-            >
-              <PencilSimple aria-hidden="true" size={19} />
-              Edit your side
-            </Link>
             <button
               className="button"
               disabled={!canAccept || pendingAction !== null || readOutdated}
-              onClick={() => void startAcceptance()}
+              onClick={() => setConfirmation('accept')}
               ref={acceptanceTrigger}
               type="button"
             >
-              {pendingAction === 'reauthenticating'
-                ? 'Verifying…'
-                : trade.self.accepted
-                  ? 'Accepted'
-                  : 'Accept offer'}
+              {trade.self.accepted ? 'Accepted' : 'Accept'}
             </button>
+            <Link
+              className="button button--quiet"
+              href={`/collection/trades/${trade.tradeId}/edit`}
+              aria-disabled={
+                pendingAction !== null || readOutdated || undefined
+              }
+              onClick={(event) => {
+                if (pendingAction !== null || readOutdated)
+                  event.preventDefault();
+              }}
+            >
+              <PencilSimple aria-hidden="true" size={19} />
+              Counter
+            </Link>
             <button
               className="button button--danger"
               disabled={pendingAction !== null || readOutdated}
@@ -566,12 +463,12 @@ export default function TradeDetailPage({
               ref={terminalTrigger}
               type="button"
             >
-              {trade.role === 'sender' ? 'Cancel offer' : 'Decline offer'}
+              {trade.role === 'sender' ? 'Cancel offer' : 'Decline'}
             </button>
           </div>
-          {!trade.complete ? (
+          {trade.self.accepted ? (
             <p className="trade-actions__explanation">
-              Both players need to choose the requested cards before accepting.
+              Waiting for {trade.counterpartyPlayerName} to accept or counter.
             </p>
           ) : null}
         </section>
@@ -583,19 +480,19 @@ export default function TradeDetailPage({
           confirmLabel={confirmationLabel(confirmation)}
           description={confirmationDescription(confirmation, trade)}
           destructive={confirmation !== 'accept'}
-          onCancel={() => {
-            setConfirmation(null);
-            if (confirmation === 'accept') {
-              setReauthenticationToken(null);
-              setReturnedVersion(null);
-            }
-          }}
+          onCancel={() => setConfirmation(null)}
           onConfirm={() => void applyMutation(confirmation)}
           returnFocusRef={
             confirmation === 'accept' ? acceptanceTrigger : terminalTrigger
           }
           title={confirmationTitle(confirmation)}
-        />
+        >
+          {confirmation === 'accept' && trade.imbalanceWarningRequired ? (
+            <p className="trade-preview-warning">
+              Rarity imbalance. Confirming accepts this difference.
+            </p>
+          ) : null}
+        </TradeConfirmationDialog>
       ) : null}
     </div>
   );
@@ -611,10 +508,10 @@ function confirmationTitle(confirmation: Exclude<Confirmation, null>) {
 
 function confirmationLabel(confirmation: Exclude<Confirmation, null>) {
   return confirmation === 'accept'
-    ? 'Accept offer'
+    ? 'Accept'
     : confirmation === 'cancel'
       ? 'Cancel offer'
-      : 'Decline offer';
+      : 'Decline';
 }
 
 function confirmationDescription(
@@ -622,7 +519,7 @@ function confirmationDescription(
   trade: CardTrade,
 ) {
   if (confirmation === 'accept') {
-    return `Accept version ${trade.version} with ${trade.counterpartyPlayerName}? If they’ve already accepted it, your cards will be exchanged now.`;
+    return `Accept this offer from ${trade.counterpartyPlayerName}? Your cards will be exchanged immediately.`;
   }
   return confirmation === 'cancel'
     ? 'Cancel this offer and release its cards? This cannot be undone.'

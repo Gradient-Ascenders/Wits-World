@@ -77,7 +77,7 @@ export class ProgressionProfileUnavailableError extends Error {
   }
 }
 
-interface ProfileRow extends pg.QueryResultRow {
+export interface ProgressionProfileRow extends pg.QueryResultRow {
   player_name: string;
   total_points: number;
   standing_rank: number;
@@ -92,7 +92,7 @@ interface StandingsRow extends pg.QueryResultRow {
   total_players: number;
 }
 
-const PROFILE_QUERY = `
+export const PROGRESSION_PROFILE_QUERY = `
   with metrics as (
     select
       count(*) filter (
@@ -156,28 +156,30 @@ const PROFILE_QUERY = `
   where standings.player_id = $1::uuid
 `;
 
+export function mapProgressionProfile(
+  profile: ProgressionProfileRow | null | undefined,
+): CurrentProgressionProfile {
+  if (!profile) throw new ProgressionProfileUnavailableError();
+  return {
+    playerName: profile.player_name,
+    points: profile.total_points,
+    rank: profile.standing_rank,
+    currentStreak: profile.current_streak,
+    longestStreak: profile.longest_streak,
+    achievements: profile.achievements,
+  };
+}
+
 export function createProgressionReadService(
   database: ProgressionReadDatabase,
 ): ProgressionReadService {
   return {
     async getCurrentProfile(playerId) {
-      const result = await database.query<ProfileRow>(PROFILE_QUERY, [
-        playerId,
-      ]);
-      const profile = result.rows[0];
-
-      if (!profile) {
-        throw new ProgressionProfileUnavailableError();
-      }
-
-      return {
-        playerName: profile.player_name,
-        points: profile.total_points,
-        rank: profile.standing_rank,
-        currentStreak: profile.current_streak,
-        longestStreak: profile.longest_streak,
-        achievements: profile.achievements,
-      };
+      const result = await database.query<ProgressionProfileRow>(
+        PROGRESSION_PROFILE_QUERY,
+        [playerId],
+      );
+      return mapProgressionProfile(result.rows[0]);
     },
 
     async listStandings(input) {

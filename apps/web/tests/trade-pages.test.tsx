@@ -204,6 +204,50 @@ describe('card trade pages', () => {
     }
   });
 
+  it('starts the new-draft availability check before the catalogue finishes loading', async () => {
+    let resolveCatalogue!: (response: Response) => void;
+    const catalogue = new Promise<Response>((resolve) => {
+      resolveCatalogue = resolve;
+    });
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).endsWith('/cards/trading-catalogue')) return catalogue;
+      if (String(input).endsWith('/trades/selection-preview')) {
+        return jsonResponse(
+          buildPreviewResponse({
+            offeredOwnedCardIds: [],
+            requestedDefinitions: [],
+          }),
+        );
+      }
+      throw new Error(`Unexpected request: ${String(input)}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    window.history.replaceState({}, '', '/collection/trades/new');
+    render(
+      <Auth0Context.Provider value={authValue()}>
+        <GuardedRouter>
+          <TradeEditorPage apiBaseUrl={apiBaseUrl} />
+        </GuardedRouter>
+      </Auth0Context.Provider>,
+    );
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url]) =>
+          String(url).endsWith('/trades/selection-preview'),
+        ),
+      ).toBe(true),
+    );
+    resolveCatalogue(
+      jsonResponse({
+        definitions: [buildCatalogueDefinition()],
+        requestId: 'catalogue',
+      }),
+    );
+    expect(
+      await screen.findByRole('textbox', { name: 'Player Name' }),
+    ).toBeVisible();
+  });
+
   it('guards a dirty mobile-first draft and publishes only a current server preview', async () => {
     const fetchMock = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
@@ -524,6 +568,90 @@ describe('card trade pages', () => {
     );
   });
 
+  it.each([false, true, 'missing', 'partial'])(
+    'prefills an incoming counter draft and keeps protected copies visible (locked: %s)',
+    async (locked) => {
+      const previews: Array<{
+        offeredOwnedCardIds: string[];
+        requestedDefinitions: { cardDefinitionId: string; quantity: number }[];
+      }> = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+          const url = String(input);
+          if (url.endsWith('/cards/trading-catalogue'))
+            return jsonResponse({
+              definitions: [buildCatalogueDefinition()],
+              requestId: 'catalogue',
+            });
+          if (url.endsWith('/trades/selection-preview')) {
+            const body = JSON.parse(String(init?.body));
+            previews.push(body);
+            const result = buildPreviewResponse(body);
+            if (locked === 'missing') result.ownedCopies = [];
+            if (locked === 'partial')
+              result.ownedCopies = result.ownedCopies.slice(0, 1);
+            return jsonResponse({
+              ...result,
+              valid: result.valid && locked !== true,
+              ownedCopies: result.ownedCopies.map((copy) => ({
+                ...copy,
+                availability:
+                  locked === true ? 'saved_deck' : copy.availability,
+              })),
+            });
+          }
+          return jsonResponse({
+            trade: buildTrade({
+              role: 'recipient',
+              complete: false,
+              counterparty:
+                locked === 'partial'
+                  ? {
+                      ...buildParty(),
+                      requestedDefinitions: [
+                        { ...buildDefinition(), quantity: 2 },
+                      ],
+                    }
+                  : buildParty(),
+              self: {
+                ...buildParty(),
+                offeredCopies: [],
+                requestedDefinitions: [],
+              },
+            }),
+            requestId: 'detail',
+          });
+        }),
+      );
+      renderRoute(
+        `/collection/trades/${tradeId}/edit`,
+        <Route path="/collection/trades/:tradeId/edit">
+          <TradeEditorPage apiBaseUrl={apiBaseUrl} />
+        </Route>,
+      );
+      await screen.findByRole('heading', { name: 'Trade with other_player' });
+      expect(previews.at(-1)).toMatchObject({
+        offeredOwnedCardIds: locked === 'missing' ? [] : [ownedCardId],
+        requestedDefinitions: [{ cardDefinitionId: definitionId, quantity: 1 }],
+      });
+      expect(
+        document.querySelectorAll(
+          '.trade-builder-selection-strip .trade-card-thumbnail--full',
+        ),
+      ).toHaveLength(2);
+      const counter = screen.getByRole('button', {
+        name: 'Counter',
+      });
+      if (locked) {
+        expect(counter).toBeDisabled();
+        expect(
+          screen.getByText('Unavailable — choose another copy'),
+        ).toBeVisible();
+      } else expect(counter).toBeEnabled();
+    },
+  );
+
   it('edits a saved offer in the shared builder and publishes only its own exact copies at the loaded version', async () => {
     const revisions: unknown[] = [];
     const previews: Record<string, unknown>[] = [];
@@ -587,28 +715,15 @@ describe('card trade pages', () => {
     await user.click(
       screen.getByRole('button', { name: 'Request one more Courier Ibis' }),
     );
-    const review = screen.getByRole('button', { name: 'Review offer' });
+    const review = screen.getByRole('button', { name: 'Counter' });
     await waitFor(() => expect(review).toBeEnabled());
     await user.click(review);
-    const dialog = screen.getByRole('dialog', { name: 'Update this offer?' });
+    const dialog = screen.getByRole('dialog', {
+      name: 'Send this counter offer?',
+    });
     expect(dialog).toHaveTextContent(
-      'Publish version 2? Both players will need to accept again',
+      'Confirming sends version 2 for them to accept.',
     );
-    expect(
-      within(dialog).getByRole('heading', { name: 'other_player gives' }),
-    ).toBeVisible();
-    expect(
-      within(dialog).getByRole('heading', { name: 'other_player requested' }),
-    ).toBeVisible();
-    const inspect = within(dialog).getAllByRole('button', {
-      name: 'View Courier Ibis details',
-    })[0]!;
-    await user.click(inspect);
-    const cardDetails = screen.getByRole('dialog', { name: 'Courier Ibis' });
-    expect(within(cardDetails).getByText('Express Delivery')).toBeVisible();
-    await user.keyboard('{Escape}');
-    expect(dialog).toBeVisible();
-    expect(inspect).toHaveFocus();
     await user.click(
       within(dialog).getByRole('button', { name: 'Keep reviewing' }),
     );
@@ -617,11 +732,12 @@ describe('card trade pages', () => {
     await user.click(review);
     await user.click(
       within(
-        screen.getByRole('dialog', { name: 'Update this offer?' }),
-      ).getByRole('button', { name: 'Publish new version' }),
+        screen.getByRole('dialog', { name: 'Send this counter offer?' }),
+      ).getByRole('button', { name: 'Send counter' }),
     );
     await waitFor(() => expect(revisions).toHaveLength(1));
     expect(revisions[0]).toEqual({
+      confirmOffer: true,
       expectedVersion: 1,
       offeredOwnedCardIds: [buildUuid(20), buildUuid(21)],
       requestedDefinitions: [{ cardDefinitionId: definitionId, quantity: 2 }],
@@ -658,13 +774,11 @@ describe('card trade pages', () => {
       </Route>,
     );
     const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole('button', { name: 'Review offer' }),
-    );
+    await user.click(await screen.findByRole('button', { name: 'Counter' }));
     await user.click(
       within(
-        screen.getByRole('dialog', { name: 'Update this offer?' }),
-      ).getByRole('button', { name: 'Publish new version' }),
+        screen.getByRole('dialog', { name: 'Send this counter offer?' }),
+      ).getByRole('button', { name: 'Send counter' }),
     );
     expect(
       await screen.findByRole('heading', { name: 'The offer changed' }),

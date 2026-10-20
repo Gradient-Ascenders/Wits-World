@@ -254,6 +254,9 @@ const emptyAcquisitions = () => ({
   peak_active_holds_count: 0,
 });
 const context = new AsyncLocalStorage<Scope>();
+export function currentPoolCategory(): PoolCategory {
+  return context.getStore()?.category ?? 'other';
+}
 export function withPoolObservation<T>(
   category: PoolCategory,
   operation: () => T,

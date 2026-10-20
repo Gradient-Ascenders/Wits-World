@@ -8,8 +8,12 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OfflineProvider } from '../src/offline/OfflineProvider';
 import { OfflineExplorePage } from '../src/offline/OfflinePages';
+import { SyncFeedback } from '../src/offline/OfflineAttemptState';
 import type { CachedPack, LocalAttempt } from '../src/offline/store';
-import { READ_TIMEOUT_MS } from '../src/components/loading-policy';
+import {
+  LONG_WAIT_MS,
+  READ_TIMEOUT_MS,
+} from '../src/components/loading-policy';
 
 const mocks = vi.hoisted(() => ({
   sessionFailure: null as
@@ -116,6 +120,161 @@ afterEach(() => {
 });
 
 describe('offline synchronization recovery', () => {
+  it('keeps routine processing calm and offers recovery only after a longer wait', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url, { signal }) =>
+          new Promise((_resolve, reject) =>
+            signal.addEventListener('abort', () => reject(signal.reason)),
+          ),
+      ),
+    );
+    const { container } = render(
+      <OfflineProvider apiBaseUrl="https://api.example.test/api/v1">
+        <SyncFeedback attempt={attempt} />
+      </OfflineProvider>,
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(
+      screen.getByText(/Your result will appear here when it’s ready/),
+    ).toBeInTheDocument();
+    expect(container.querySelector('.offline-sync .state-message')).toBeNull();
+    expect(container.querySelector('.offline-deadline')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stop waiting' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancel sync' })).toBeNull();
+
+    await act(async () => vi.advanceTimersByTimeAsync(LONG_WAIT_MS));
+    expect(
+      screen.getByText(/The server is taking a little longer/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Stop waiting' }));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole('button', { name: 'Retry sync' })).toBeEnabled();
+    expect(
+      screen.getByText(/Stopped waiting for sync/, { selector: 'strong' }),
+    ).toBeInTheDocument();
+    expect(mocks.recordOfflineReceipt).not.toHaveBeenCalled();
+  });
+
+  it.each(['server-error', 'stalled-upload', 'receipt-error'] as const)(
+    'continues syncing later attempts after an individual %s',
+    async (failure) => {
+      vi.useFakeTimers();
+      const first = {
+        ...attempt,
+        clientAttemptId: 'first',
+        startedAt: new Date(Date.now() - 1000).toISOString(),
+      };
+      const second = {
+        ...attempt,
+        clientAttemptId: 'second',
+        cached: {
+          ...cached,
+          pack: {
+            ...cached.pack,
+            event: {
+              ...cached.pack.event,
+              eventId: 'second-event',
+              title: 'Second event',
+            },
+          },
+        },
+      };
+      const state = {
+        session: { playerId: 'player', playerName: 'Player' },
+        packs: [cached],
+        attempts: [first, second],
+        receipts: [],
+      };
+      mocks.readOfflineState.mockImplementation(async () => state);
+      mocks.recordOfflineReceipt.mockImplementation(
+        async (value: LocalAttempt) => {
+          if (failure === 'receipt-error' && value.clientAttemptId === 'first')
+            throw new Error('Storage unavailable');
+          state.attempts = state.attempts.filter(
+            (item) => item.clientAttemptId !== value.clientAttemptId,
+          );
+        },
+      );
+      const uploaded: string[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url: string, options: { body: string }) => {
+          const id = (JSON.parse(options.body) as { clientAttemptId: string })
+            .clientAttemptId;
+          uploaded.push(id);
+          if (id === 'first') {
+            if (failure === 'stalled-upload')
+              return new Promise<Response>(() => {});
+            if (failure === 'server-error')
+              return new Response(JSON.stringify({ code: 'INTERNAL_ERROR' }), {
+                status: 500,
+              });
+          }
+          return new Response(
+            JSON.stringify({
+              attempt: { status: 'completed', attemptId: `confirmed-${id}` },
+            }),
+          );
+        }),
+      );
+      renderOffline();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      if (failure === 'stalled-upload')
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS);
+        });
+      expect(uploaded).toEqual(['first', 'second']);
+      expect(mocks.recordOfflineReceipt).toHaveBeenCalledWith(
+        second,
+        'accepted',
+        'confirmed-second',
+      );
+      expect(state.attempts).toEqual([first]);
+      expect(screen.getByRole('button', { name: 'Retry sync' })).toBeEnabled();
+      if (failure === 'receipt-error')
+        expect(
+          screen.getByText(
+            /The server confirmed this result. The receipt could not be saved/,
+          ),
+        ).toBeInTheDocument();
+    },
+  );
+
+  it.each([401, 403])(
+    'stops the batch on HTTP %i and retains every unconfirmed attempt',
+    async (status) => {
+      vi.useFakeTimers();
+      const second = { ...attempt, clientAttemptId: 'second' };
+      mocks.readOfflineState.mockResolvedValue({
+        session: { playerId: 'player', playerName: 'Player' },
+        packs: [cached],
+        attempts: [attempt, second],
+        receipts: [],
+      });
+      const fetch = vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status }),
+        );
+      vi.stubGlobal('fetch', fetch);
+      renderOffline();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(mocks.recordOfflineReceipt).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole('button', { name: 'Sign in to check answers' }),
+      ).toBeEnabled();
+    },
+  );
+
   it('keeps answers and asks for sign-in when the SDK requires authentication instead of retrying forever', async () => {
     vi.useFakeTimers();
     mocks.getToken.mockRejectedValue(
@@ -272,6 +431,13 @@ describe('offline synchronization recovery', () => {
     expect(
       await screen.findByRole('region', { name: 'Awaiting confirmation' }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The server is checking your answers and preparing your result.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Submit saved answers before/)).toBeInTheDocument();
+    expect(screen.queryByText(/Reconnect before/)).toBeNull();
     window.dispatchEvent(new Event('focus'));
     expect(fetch).toHaveBeenCalledTimes(1);
     await act(async () =>

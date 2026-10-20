@@ -90,6 +90,7 @@ interface QueueViewRow extends QueueRow {
   acceptance_deadline: Date | null;
   acceptance_status: AcceptanceStatus | null;
   match_id: string | null;
+  match_status: 'active' | 'completed' | null;
 }
 
 export interface RankedQueueView {
@@ -622,7 +623,7 @@ async function loadQueueView(
             queue.terminal_at, queue.version, queue.territory_contender,
             proposal.acceptance_deadline,
             response.acceptance_status,
-            receipt.match_id::text
+            receipt.match_id::text, matched_match.status as match_status
        from private.ranked_queue_entries queue
        left join lateral (
          select participant.proposal_id, participant.acceptance_status
@@ -636,13 +637,17 @@ async function loadQueueView(
          on proposal.id = response.proposal_id
        left join private.ranked_matchmaking_receipts receipt
          on receipt.proposal_id = response.proposal_id
+       left join public.live_pvp_matches matched_match
+         on matched_match.id = receipt.match_id
       where queue.player_id = $1::uuid
       order by queue.created_at desc, queue.id desc
       limit 1`,
     [playerId],
   );
   const row = result.rows[0];
-  if (!row) {
+  // A committed matchmaking receipt remains historical after its battle ends.
+  // Only an active battle should send players back out of the lobby.
+  if (!row || (row.status === 'matched' && row.match_status !== 'active')) {
     return {
       status: 'idle',
       queueEntryId: null,

@@ -15,29 +15,32 @@ gifts, currency, or real-money payments.
 2. Enter the recipient's exact **Player Name** and choose **Choose cards**.
 3. Select copies you will give, then request card names and quantities from the
    catalogue. Choose **Review offer**, check both sides, and confirm **Send offer**.
-4. The recipient opens the offer and uses **Edit your side** to select matching
-   copies or propose changes. Confirm changes with **Publish new version**.
-5. Both players review the current offer. If a rarity warning appears,
-   review it and choose **Confirm warning**. Each player chooses **Accept offer**,
-   completes the identity check, and confirms acceptance. The second acceptance
-   completes the exchange.
+4. The recipient chooses **Accept**, **Counter**, or **Decline**. Accept opens a
+   confirmation popup; confirming exchanges the cards in one transaction using
+   the existing signed-in session.
+5. **Counter** opens the editor with the offered and requested cards already in
+   the middle. Adjust the proposal, choose **Counter**, then confirm **Send counter**.
+   The new version is sent directly to the other player to accept or counter.
 
-Sending or editing an offer does not count as acceptance. Any new version clears
-both players' previous acceptances and rarity-warning acknowledgements.
+Confirming Send offer or Send counter approves that proposal and acknowledges
+its displayed rarity warning. Countering clears the other player's earlier
+approval. Accepting the current proposal confirms the other player's consent;
+it does not require an additional login, password, or identity-verification step.
+The server still enforces account eligibility, card availability and all limits.
 
 ## Limits and consent
 
 These are the current `card-trade-v1` policy defaults, enforced by the server:
 
-| Rule                         | Limit                                                                            |
-| ---------------------------- | -------------------------------------------------------------------------------- |
-| Participants                 | Two distinct, active accounts, each at least 24 hours old                        |
-| Cards given by each player   | 1–5 owned copies                                                                 |
-| Open offers per player       | 5 across sent and received offers                                                |
-| Completed trades per player  | 5 in a rolling 24-hour period                                                    |
-| Offer lifetime               | 24 hours from original creation; revisions do not extend it                      |
-| Collection after exchange    | At least 3 Creature copies and 2 Power copies per player                         |
-| Identity proof at acceptance | Auth0 reauthentication no more than 5 minutes old, matching the signed-in player |
+| Rule                        | Limit                                                       |
+| --------------------------- | ----------------------------------------------------------- |
+| Participants                | Two distinct, active accounts, each at least 24 hours old   |
+| Cards given by each player  | 1–5 owned copies                                            |
+| Open offers per player      | 5 across sent and received offers                           |
+| Completed trades per player | 5 in a rolling 24-hour period                               |
+| Offer lifetime              | 24 hours from original creation; revisions do not extend it |
+| Collection after exchange   | At least 3 Creature copies and 2 Power copies per player    |
+| Identity at acceptance      | Existing authenticated, active player session               |
 
 The collection minimum does not guarantee a legal ten-point deck. A new account
 created after deletion starts the account-age requirement again.
@@ -62,8 +65,9 @@ before trying to use them elsewhere.
 
 ## Offer outcomes
 
-An offer remains **Open** while negotiating or awaiting approval. Both sides must
-supply exact copies matching the requested cards before either can accept.
+An offer remains **Open** while negotiating or awaiting approval. The proposer selects exact own copies and requests definitions and quantities.
+At acceptance, the server selects matching available copies from the accepting
+player’s collection, locks them, and rechecks protections before settlement.
 
 | Outcome     | Meaning                                                          |
 | ----------- | ---------------------------------------------------------------- |

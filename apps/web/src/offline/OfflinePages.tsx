@@ -44,6 +44,7 @@ export function OfflineExplorePage() {
     syncFailed,
     attemptSync = {},
     connectionFailed,
+    canSync,
   } = useOffline();
   const [, navigate] = useLocation();
   const [query, setQuery] = useState('');
@@ -219,7 +220,7 @@ export function OfflineExplorePage() {
         : continuing
           ? 'In progress'
           : current?.status === 'syncing'
-            ? 'Checking answers'
+            ? 'Preparing your result'
             : current?.status === 'confirmed'
               ? 'Confirmed'
               : !online || connectionFailed
@@ -251,7 +252,12 @@ export function OfflineExplorePage() {
                 {formatRemainingTime(attempt, now)} remaining
               </span>
             ) : !receipt && !confirmedId && attempt.status === 'pending' ? (
-              <ReconnectDeadline attempt={attempt} now={now} compact />
+              <ReconnectDeadline
+                attempt={attempt}
+                now={now}
+                compact
+                connected={online && !connectionFailed && canSync}
+              />
             ) : (
               <span className="offline-board__status">{status}</span>
             )}

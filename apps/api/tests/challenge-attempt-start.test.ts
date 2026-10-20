@@ -23,6 +23,37 @@ const acceptingMovementEvidenceService = {
 };
 
 describe('challenge attempt start service', () => {
+  it.each(['multiple_choice', 'ordering'] as const)(
+    'batches the five %s questions and twenty options without exposing answer keys',
+    async (format) => {
+      const fixture = createDatabaseFixture({ format });
+      const result = await createChallengeAttemptStartService(
+        fixture.database,
+        {
+          clock: () => startedAt,
+          movementEvidenceService: acceptingMovementEvidenceService,
+          randomIndex: () => 0,
+        },
+      ).startOrResume(validInput());
+      if (result.attempt.status !== 'in_progress')
+        throw new Error('Expected an active attempt');
+      expect(result.attempt.questions).toHaveLength(5);
+      const optionReads = fixture.query.mock.calls.filter(([sql]) =>
+        /from public.challenge_(choices|ordering_items)/.test(sql),
+      );
+      const snapshotWrites = fixture.query.mock.calls.filter(([sql]) =>
+        sql.includes('insert into public.attempt_questions'),
+      );
+      expect(optionReads).toHaveLength(1);
+      expect(optionReads[0]![1]![0]).toHaveLength(5);
+      expect(snapshotWrites).toHaveLength(1);
+      expect(JSON.parse(String(snapshotWrites[0]![1]![1]))).toHaveLength(5);
+      expect(JSON.parse(String(snapshotWrites[0]![1]![2]))).toHaveLength(20);
+      expect(JSON.stringify(result.attempt)).not.toContain('sourceQuestionId');
+      expect(JSON.stringify(result.attempt)).not.toContain('explanation');
+    },
+  );
+
   it('starts at the event boundary with the maximum tolerated accuracy', async () => {
     const fixture = createDatabaseFixture({ distanceMetres: 75 });
     const service = createChallengeAttemptStartService(fixture.database, {
@@ -588,24 +619,26 @@ function createDatabaseFixture({
     }
 
     if (sql.includes('from public.challenge_choices choice')) {
-      const questionId = String(values[0]);
-
       return {
-        rows: Array.from({ length: 4 }, (_, index) => ({
-          choice_id: sourceChoiceId(questionId, index + 1),
-          choice_text: `Choice ${questionNumber(questionId)}.${index + 1}`,
-        })),
+        rows: (values[0] as string[]).flatMap((questionId) =>
+          Array.from({ length: 4 }, (_, index) => ({
+            question_id: questionId,
+            choice_id: sourceChoiceId(questionId, index + 1),
+            choice_text: `Choice ${questionNumber(questionId)}.${index + 1}`,
+          })),
+        ),
       };
     }
 
     if (sql.includes('from public.challenge_ordering_items item')) {
-      const questionId = String(values[0]);
-
       return {
-        rows: Array.from({ length: 4 }, (_, index) => ({
-          item_id: sourceOrderingItemId(questionId, index + 1),
-          item_text: `Item ${questionNumber(questionId)}.${index + 1}`,
-        })),
+        rows: (values[0] as string[]).flatMap((questionId) =>
+          Array.from({ length: 4 }, (_, index) => ({
+            question_id: questionId,
+            item_id: sourceOrderingItemId(questionId, index + 1),
+            item_text: `Item ${questionNumber(questionId)}.${index + 1}`,
+          })),
+        ),
       };
     }
 
@@ -628,65 +661,56 @@ function createDatabaseFixture({
     }
 
     if (sql.includes('insert into public.attempt_questions')) {
-      const position = Number(values[2]);
-      const id = attemptQuestionId(position);
-
-      snapshotQuestions.push({
-        id,
-        sourceQuestionId: String(values[1]),
-        position,
-        prompt: String(values[3]),
-        difficulty: Number(values[4]),
-        explanation: values[5] === null ? null : String(values[5]),
-      });
-
+      const questions = JSON.parse(String(values[1])) as Array<{
+        source_question_id: string;
+        position: number;
+        prompt: string;
+        difficulty: number;
+        explanation: string | null;
+      }>;
+      const items = JSON.parse(String(values[2])) as Array<{
+        source_question_id: string;
+        source_id: string;
+        position: number;
+        text: string;
+      }>;
+      for (const question of questions) {
+        const id = attemptQuestionId(question.position);
+        snapshotQuestions.push({
+          id,
+          sourceQuestionId: question.source_question_id,
+          position: question.position,
+          prompt: question.prompt,
+          difficulty: question.difficulty,
+          explanation: question.explanation,
+        });
+        for (const item of items.filter(
+          (item) => item.source_question_id === question.source_question_id,
+        )) {
+          if (format === 'multiple_choice') {
+            snapshotChoices.push({
+              id: attemptChoiceId(question.position, item.position),
+              attemptQuestionId: id,
+              sourceQuestionId: item.source_question_id,
+              sourceChoiceId: item.source_id,
+              displayPosition: item.position,
+              text: item.text,
+            });
+          } else {
+            snapshotOrderingItems.push({
+              id: attemptOrderingItemId(question.position, item.position),
+              attemptQuestionId: id,
+              sourceQuestionId: item.source_question_id,
+              sourceItemId: item.source_id,
+              displayPosition: item.position,
+              text: item.text,
+            });
+          }
+        }
+      }
       return {
-        rows: [
-          {
-            attempt_question_id: id,
-          },
-        ],
+        rows: [{ question_count: questions.length, item_count: items.length }],
       };
-    }
-
-    if (sql.includes('insert into public.attempt_question_choices')) {
-      const attemptQuestion = String(values[0]);
-      const displayPosition = Number(values[3]);
-
-      snapshotChoices.push({
-        id: attemptChoiceId(
-          questionPosition(snapshotQuestions, attemptQuestion),
-          displayPosition,
-        ),
-        attemptQuestionId: attemptQuestion,
-        sourceQuestionId: String(values[1]),
-        sourceChoiceId: String(values[2]),
-        displayPosition,
-        text: String(values[4]),
-      });
-
-      return {
-        rows: [],
-      };
-    }
-
-    if (sql.includes('insert into public.attempt_question_ordering_items')) {
-      const attemptQuestion = String(values[0]);
-      const displayPosition = Number(values[3]);
-
-      snapshotOrderingItems.push({
-        id: attemptOrderingItemId(
-          questionPosition(snapshotQuestions, attemptQuestion),
-          displayPosition,
-        ),
-        attemptQuestionId: attemptQuestion,
-        sourceQuestionId: String(values[1]),
-        sourceItemId: String(values[2]),
-        displayPosition,
-        text: String(values[4]),
-      });
-
-      return { rows: [] };
     }
 
     throw new Error(`Unexpected SQL in test fixture: ${sql}`);

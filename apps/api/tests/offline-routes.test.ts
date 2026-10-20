@@ -6,8 +6,123 @@ import type { OfflineChallengeService } from '../src/challenges/offline-challeng
 import { OfflineRejection } from '../src/challenges/offline-policy.js';
 import { TrustActivityRestrictedError } from '../src/trust/trust-restrictions.js';
 import { registerErrorHandlers } from '../src/errors/error-handler.js';
+import type {
+  CompletedChallengeAttempt,
+  CompletedOrderingChallengeAttempt,
+} from '../src/challenges/challenge-attempt-reader.js';
 
 describe('offline HTTP boundary', () => {
+  it.each(['multiple_choice', 'ordering'] as const)(
+    'returns a typeless Power reward for initial and replayed %s sync',
+    async (format) => {
+      const playerId = randomUUID();
+      const completed:
+        CompletedChallengeAttempt | CompletedOrderingChallengeAttempt = {
+        attemptId: randomUUID(),
+        eventId: randomUUID(),
+        format: 'multiple_choice',
+        status: 'completed',
+        completedAt: '2026-10-20T10:00:00.000Z',
+        completionReason: 'answered',
+        totalQuestions: 5,
+        scoreCorrect: 5,
+        reward: {
+          cards: [
+            {
+              ownedCardId: randomUUID(),
+              cardDefinitionId: randomUUID(),
+              name: 'Power reward',
+              category: 'power',
+              affinity: null,
+              rarity: 'common',
+            },
+          ],
+        },
+        review: Array.from({ length: 5 }, (_, index) => {
+          const choice = { choiceId: randomUUID(), text: 'Correct answer' };
+          return {
+            attemptQuestionId: randomUUID(),
+            position: index + 1,
+            prompt: 'Question',
+            selectedChoice: choice,
+            correctChoice: choice,
+            isCorrect: true,
+          };
+        }),
+      };
+      const attempt:
+        CompletedChallengeAttempt | CompletedOrderingChallengeAttempt =
+        format === 'ordering'
+          ? {
+              ...completed,
+              format,
+              review: completed.review.map((question) => {
+                const items = Array.from({ length: 4 }, () => ({
+                  itemId: randomUUID(),
+                  text: 'Item',
+                }));
+                return {
+                  attemptQuestionId: question.attemptQuestionId,
+                  position: question.position,
+                  prompt: question.prompt,
+                  selectedItems: items,
+                  correctItems: items,
+                  explanation: 'Explanation',
+                  isCorrect: true,
+                };
+              }),
+            }
+          : completed;
+      const submit = vi.fn<OfflineChallengeService['submit']>();
+      const app = Fastify();
+      registerErrorHandlers(app);
+      app.decorate('authenticate', async (request: FastifyRequest) => {
+        Object.assign(request, { player: { id: playerId } });
+      });
+      app.decorate('requireActivePlayer', async () => {});
+      await app.register(offlineChallengeRoutes, {
+        service: { packs: vi.fn(), submit },
+      });
+      const acquiredAt = '2026-10-20T09:59:00.000Z';
+      const payload = {
+        clientAttemptId: randomUUID(),
+        packToken: 'fixture-pack',
+        startedAt: acquiredAt,
+        finishedAt: attempt.completedAt,
+        startLocation: {
+          latitude: 0,
+          longitude: 0,
+          accuracyMetres: 10,
+          acquiredAt,
+        },
+        answers: [],
+      };
+      try {
+        for (const created of [true, false]) {
+          submit.mockResolvedValue({ created, attempt });
+          const response = await app.inject({
+            method: 'POST',
+            url: '/offline-challenge-attempts',
+            headers: {
+              authorization: 'Bearer fixture',
+              'x-wits-offline-contract-version': '1',
+            },
+            payload,
+          });
+          expect(response.statusCode).toBe(created ? 201 : 200);
+          expect(response.json()).toEqual({
+            attempt,
+            requestId: expect.any(String),
+          });
+        }
+        expect(submit).toHaveBeenCalledTimes(2);
+        expect(submit).toHaveBeenCalledWith(playerId, payload);
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it('maps trust restrictions to a neutral offline-pack response', async () => {
     const playerId = randomUUID();
     const eventId = randomUUID();

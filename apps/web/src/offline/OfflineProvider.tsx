@@ -303,6 +303,8 @@ export function OfflineProvider({
           });
         }
         const token = await syncWork(getToken(), controller.signal);
+        clearTimeout(timer);
+        let failureSummary = '';
         for (const attempt of attempts) {
           if (
             !mounted.current ||
@@ -311,97 +313,139 @@ export function OfflineProvider({
           )
             break;
           controller.signal.throwIfAborted();
-          updateAttempt(attempt.clientAttemptId, {
-            status: 'syncing',
-            message: 'Awaiting confirmation…',
+          const attemptController = new AbortController();
+          const cancelAttempt = () =>
+            attemptController.abort(controller.signal.reason);
+          controller.signal.addEventListener('abort', cancelAttempt, {
+            once: true,
           });
-          const response = await syncWork(
-            fetch(`${apiBaseUrl}/offline-challenge-attempts`, {
-              method: 'POST',
-              signal: controller.signal,
-              cache: 'no-store',
-              headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                'X-Wits-Offline-Contract-Version': '1',
-              },
-              body: JSON.stringify({
-                clientAttemptId: attempt.clientAttemptId,
-                packToken: attempt.cached.packToken,
-                startedAt: attempt.startedAt,
-                finishedAt: attempt.finishedAt,
-                answers: attempt.answers,
-                startLocation: attempt.startLocation,
-                finishLocation: attempt.finishLocation,
-              }),
-            }),
-            controller.signal,
+          const attemptTimer = window.setTimeout(
+            () => attemptController.abort('timeout'),
+            READ_TIMEOUT_MS,
           );
-          const body = (await syncWork(response.json(), controller.signal)) as {
-            code?: string;
-            attempt?: { attemptId?: string; status?: string };
-          };
-          if (
-            !mounted.current ||
-            currentPlayer.current !== playerId ||
-            boundOfflinePlayer() !== playerId
-          )
-            break;
-          if (
-            response.ok &&
-            body.attempt?.status === 'completed' &&
-            typeof body.attempt.attemptId === 'string'
-          ) {
-            const outcome: AttemptSyncState = {
-              status: 'confirmed',
-              message: 'The server confirmed this result.',
-              attemptId: body.attempt.attemptId,
-            };
-            serverOutcomes.set(attempt.clientAttemptId, outcome);
-            updateAttempt(attempt.clientAttemptId, outcome);
-            await syncWork(
-              recordOfflineReceipt(
-                attempt,
-                'accepted',
-                body.attempt.attemptId,
-              ).then(refresh),
-              controller.signal,
-            );
-          } else if (
-            response.status === 422 ||
-            (response.status === 409 &&
-              body.code === 'OFFLINE_ATTEMPT_CONFLICT')
-          ) {
-            const outcome: AttemptSyncState = {
-              status: 'failed',
+          try {
+            updateAttempt(attempt.clientAttemptId, {
+              status: 'syncing',
               message:
-                'The server rejected this attempt. No reward was issued.',
+                'The server is checking your answers and preparing your result.',
+            });
+            const response = await syncWork(
+              fetch(`${apiBaseUrl}/offline-challenge-attempts`, {
+                method: 'POST',
+                signal: attemptController.signal,
+                cache: 'no-store',
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                  'X-Wits-Offline-Contract-Version': '1',
+                },
+                body: JSON.stringify({
+                  clientAttemptId: attempt.clientAttemptId,
+                  packToken: attempt.cached.packToken,
+                  startedAt: attempt.startedAt,
+                  finishedAt: attempt.finishedAt,
+                  answers: attempt.answers,
+                  startLocation: attempt.startLocation,
+                  finishLocation: attempt.finishLocation,
+                }),
+              }),
+              attemptController.signal,
+            );
+            const body = (await syncWork(
+              response.json(),
+              attemptController.signal,
+            )) as {
+              code?: string;
+              attempt?: { attemptId?: string; status?: string };
             };
-            serverOutcomes.set(attempt.clientAttemptId, outcome);
-            updateAttempt(attempt.clientAttemptId, outcome);
-            await syncWork(
-              recordOfflineReceipt(
-                attempt,
-                body.code ?? 'OFFLINE_REJECTED',
-              ).then(refresh),
-              controller.signal,
+            if (
+              !mounted.current ||
+              currentPlayer.current !== playerId ||
+              boundOfflinePlayer() !== playerId
+            )
+              break;
+            if (
+              response.ok &&
+              body.attempt?.status === 'completed' &&
+              typeof body.attempt.attemptId === 'string'
+            ) {
+              const outcome: AttemptSyncState = {
+                status: 'confirmed',
+                message: 'The server confirmed this result.',
+                attemptId: body.attempt.attemptId,
+              };
+              serverOutcomes.set(attempt.clientAttemptId, outcome);
+              updateAttempt(attempt.clientAttemptId, outcome);
+              await syncWork(
+                recordOfflineReceipt(
+                  attempt,
+                  'accepted',
+                  body.attempt.attemptId,
+                ).then(refresh),
+                attemptController.signal,
+              );
+            } else if (
+              response.status === 422 ||
+              (response.status === 409 &&
+                body.code === 'OFFLINE_ATTEMPT_CONFLICT')
+            ) {
+              const outcome: AttemptSyncState = {
+                status: 'failed',
+                message:
+                  'The server rejected this attempt. No reward was issued.',
+              };
+              serverOutcomes.set(attempt.clientAttemptId, outcome);
+              updateAttempt(attempt.clientAttemptId, outcome);
+              await syncWork(
+                recordOfflineReceipt(
+                  attempt,
+                  body.code ?? 'OFFLINE_REJECTED',
+                ).then(refresh),
+                attemptController.signal,
+              );
+            } else {
+              throw new Error(
+                response.status === 401 || response.status === 403
+                  ? 'account'
+                  : 'unavailable',
+              );
+            }
+            remaining.delete(attempt.clientAttemptId);
+          } catch (failure) {
+            if (controller.signal.aborted || isAuthenticationFailure(failure))
+              throw failure;
+            const detail = describeSyncFailure(
+              failure,
+              attemptController.signal.reason,
             );
-          } else {
-            throw new Error(
-              response.status === 401 || response.status === 403
-                ? 'account'
-                : 'unavailable',
+            const outcome = serverOutcomes.get(attempt.clientAttemptId);
+            failureSummary = outcome
+              ? 'A server result could not be saved on this device. Review the result beside each attempt; retry to recover the same result.'
+              : detail;
+            updateAttempt(
+              attempt.clientAttemptId,
+              outcome
+                ? {
+                    ...outcome,
+                    message: `${outcome.message} The receipt could not be saved on this device; retry to recover it.`,
+                  }
+                : { status: 'failed', message: detail },
             );
+            remaining.delete(attempt.clientAttemptId);
+          } finally {
+            clearTimeout(attemptTimer);
+            controller.signal.removeEventListener('abort', cancelAttempt);
           }
-          remaining.delete(attempt.clientAttemptId);
         }
         if (
           mounted.current &&
           currentPlayer.current === playerId &&
           boundOfflinePlayer() === playerId
         ) {
+          setSyncFailed(failureSummary !== '');
           setSyncMessage(
-            'Server checks finished. See the confirmed or rejected result beside each attempt.',
+            failureSummary ||
+              'Server checks finished. See the confirmed or rejected result beside each attempt.',
           );
         }
       } catch (failure) {
@@ -411,14 +455,7 @@ export function OfflineProvider({
           boundOfflinePlayer() !== playerId
         )
           return;
-        const detail =
-          controller.signal.reason === 'timeout'
-            ? 'Sync timed out. Server confirmation is unknown. Your answers remain saved; retry to check this same attempt.'
-            : controller.signal.reason === 'cancelled'
-              ? 'Stopped waiting for sync. Server confirmation is unknown. Your answers remain saved; retry to check this same attempt.'
-              : isAuthenticationFailure(failure)
-                ? 'Sign in with the original account to check your answers. Your answers remain saved.'
-                : 'Sync failed. Server confirmation is unknown. Your answers remain saved; we’ll retry automatically.';
+        const detail = describeSyncFailure(failure, controller.signal.reason);
         const knownResults = [...remaining].some((id) =>
           serverOutcomes.has(id),
         );
@@ -837,6 +874,16 @@ function isAuthenticationFailure(failure: unknown) {
       value.error ?? '',
     )
   );
+}
+
+function describeSyncFailure(failure: unknown, reason: unknown) {
+  return reason === 'timeout'
+    ? 'Sync timed out. Server confirmation is unknown. Your answers remain saved; retry to check this same attempt.'
+    : reason === 'cancelled'
+      ? 'Stopped waiting for sync. Server confirmation is unknown. Your answers remain saved; retry to check this same attempt.'
+      : isAuthenticationFailure(failure)
+        ? 'Sign in with the original account to check your answers. Your answers remain saved.'
+        : 'Sync failed. Server confirmation is unknown. Your answers remain saved; we’ll retry automatically.';
 }
 
 export function ExploreConnectionStatus() {

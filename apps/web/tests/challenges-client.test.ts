@@ -6,6 +6,7 @@ import {
   startChallengeAttempt,
   submitChallengeAnswer,
 } from '../src/api/challenges';
+import { READ_TIMEOUT_MS } from '../src/components/loading-policy';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
 const attemptId = '31000000-0000-4000-8000-000000000001';
@@ -18,9 +19,149 @@ const claim = {
   longitude: 28.03038,
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 describe('challenge attempt client', () => {
+  it.each(['multiple_choice', 'ordering'] as const)(
+    'accepts typeless Power rewards in a completed %s result',
+    async (format) => {
+      const card = {
+        ownedCardId: '51000000-0000-4000-8000-000000000001',
+        cardDefinitionId: '50000000-0000-4000-8000-000000000009',
+        name: 'Power reward',
+        category: 'power',
+        affinity: null,
+        rarity: 'common',
+      };
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          jsonResponse({
+            ...(format === 'ordering'
+              ? completedOrderingAttempt()
+              : completedAttempt()),
+            reward: { cards: [card] },
+          }),
+        ),
+      );
+      await expect(
+        getChallengeAttempt({
+          apiBaseUrl,
+          attemptId,
+          getAccessToken: async () => 'fixture-token',
+          signal: new AbortController().signal,
+        }),
+      ).resolves.toMatchObject({
+        status: 'completed',
+        reward: { cards: [card] },
+      });
+    },
+  );
+
+  it('continues to reject a Creature reward without an affinity', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ...completedAttempt(),
+          reward: {
+            cards: [
+              {
+                ownedCardId: '51000000-0000-4000-8000-000000000001',
+                cardDefinitionId: '50000000-0000-4000-8000-000000000009',
+                name: 'Invalid Creature',
+                category: 'creature',
+                affinity: null,
+                rarity: 'common',
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    await expectCompletedAttemptToBeRejected();
+  });
+
+  it.each(['token', 'fetch', 'body', 'error-body'] as const)(
+    'bounds a stalled %s and returns a retryable failure',
+    async (phase) => {
+      vi.useFakeTimers();
+      const never = () => new Promise<never>(() => {});
+      const fetchMock = vi.fn<() => Promise<Response>>(never);
+      if (phase === 'body' || phase === 'error-body') {
+        const response = new Response(null, {
+          status: phase === 'body' ? 200 : 500,
+        });
+        vi.spyOn(response, 'json').mockImplementation(never);
+        fetchMock.mockResolvedValue(response);
+      }
+      vi.stubGlobal('fetch', fetchMock);
+      const request = getChallengeAttempt({
+        apiBaseUrl,
+        attemptId,
+        getAccessToken: phase === 'token' ? never : async () => 'fixture-token',
+        signal: new AbortController().signal,
+      });
+      const failure = expect(request).rejects.toMatchObject({
+        failure: 'unavailable',
+      });
+      await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS);
+      await failure;
+      if (phase === 'token') expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not send an answer when token acquisition finishes after the request timed out', async () => {
+    vi.useFakeTimers();
+    let finishToken!: (token: string) => void;
+    const token = new Promise<string>((resolve) => {
+      finishToken = resolve;
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const request = submitChallengeAnswer({
+      apiBaseUrl,
+      attemptId,
+      attemptQuestionId: questionId(1),
+      choiceId: choiceId(1, 1),
+      getAccessToken: () => token,
+      signal: new AbortController().signal,
+    });
+    const failure = expect(request).rejects.toMatchObject({
+      failure: 'unavailable',
+    });
+    await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS);
+    await failure;
+    finishToken('late-fixture-token');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('propagates cancellation even when fetch does not settle', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => new Promise<Response>(() => {}));
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+    const request = getChallengeAttempt({
+      apiBaseUrl,
+      attemptId,
+      getAccessToken: async () => 'fixture-token',
+      signal: controller.signal,
+    });
+    const failure = expect(request).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    await Promise.resolve();
+    controller.abort();
+    await failure;
+    expect(fetchMock.mock.calls[0]![1].signal.aborted).toBe(true);
+  });
+
   it('starts a challenge with only a location claim and parses player-safe questions', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(activeAttempt()));
     vi.stubGlobal('fetch', fetchMock);
@@ -46,7 +187,7 @@ describe('challenge attempt client', () => {
           'X-Wits-Challenge-Contract-Version': challengeContractVersion,
         },
         method: 'POST',
-        signal: controller.signal,
+        signal: expect.any(AbortSignal),
       },
     );
   });
@@ -120,7 +261,7 @@ describe('challenge attempt client', () => {
           'X-Wits-Challenge-Contract-Version': challengeContractVersion,
         },
         method: 'GET',
-        signal: controller.signal,
+        signal: expect.any(AbortSignal),
       },
     );
   });

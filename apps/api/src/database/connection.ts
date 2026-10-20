@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { limitRoutineMaintenance } from './maintenance-admission.js';
 
 import type {
   DatabaseConfig,
@@ -91,6 +92,7 @@ function createPool(
     );
   });
 
+  if (poolRole === 'shared') limitRoutineMaintenance(pool);
   instrumentPool(pool, logger, poolRole);
   return pool;
 }

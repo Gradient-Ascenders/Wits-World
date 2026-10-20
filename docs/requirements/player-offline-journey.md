@@ -44,6 +44,11 @@ and browser. The app attempts to sync when reopened, reconnected, or brought to
 the foreground. Failures offer **Retry sync**, connection recovery, or session restoration
 when needed; routine synchronisation happens automatically.
 
+If one attempt needs another sync attempt, the app continues checking other
+pending attempts. Answers remain saved for retry. A sign-in failure or choosing
+**Cancel sync** on Saved play, or **Stop waiting** on a result screen, stops
+waiting for the batch.
+
 | Status                        | What to do                                                                         |
 | ----------------------------- | ---------------------------------------------------------------------------------- |
 | Awaiting confirmation         | Keep the saved attempt and reconnect; rewards are still unconfirmed.               |
@@ -54,6 +59,12 @@ when needed; routine synchronisation happens automatically.
 The server checks timing, location, content availability, and answers. A retry
 cannot award rewards twice. A detected network connection alone does not confirm
 that the server is reachable or that sync succeeded.
+While a submission is running, **Preparing your result** and a blue loading
+indicator show that the server is working. Your answers stay saved, and you can
+leave the screen and return later. After a longer wait, **Stop waiting** stops
+waiting for confirmation; it cannot cancel work the server already received.
+Reconnect instructions and submission deadlines appear when recovery is needed,
+rather than during normal loading.
 
 ## Protect unsynced work
 

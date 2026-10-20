@@ -7,6 +7,7 @@ import {
   participantProjection,
   queueState,
   rankedProfile,
+  rankedSettlement,
   rankedSeason,
   rankedStandings,
   spectatorProjection,
@@ -14,6 +15,7 @@ import {
 } from '../tests/fixtures/live';
 import { buildSavedDeck } from '../tests/fixtures/decks';
 import { buildStarterCards } from '../tests/fixtures/cards';
+import { buildCreature } from '../tests/fixtures/matches';
 import artworkManifest from '../../../artwork/cards/manifest.json' with { type: 'json' };
 
 test.beforeEach(async ({ page }) => {
@@ -255,7 +257,12 @@ test('renders authoritative participant and private spectator views responsively
   page,
 }, testInfo) => {
   const participant = participantProjection();
+  participant.self.creatures[0]!.name = 'Quillip';
+  participant.self.creatures[0]!.rarity = 'rare';
+  participant.opponent.activeCreature.name = 'Ciphra';
   const spectator = spectatorProjection({ currentActor: 'playerTwo' });
+  spectator.playerOne.activeCreature = buildCreature(1, { name: 'Quillip' });
+  spectator.playerTwo.activeCreature = buildCreature(2, { name: 'Ciphra' });
   participant.opponent.playerName = 'campus_champion_2026';
   let role: 'participant' | 'spectator' = 'participant';
   const runtimeErrors: string[] = [];
@@ -303,11 +310,31 @@ test('renders authoritative participant and private spectator views responsively
     /battle-stage--player/,
   );
   await expect(
-    page.getByRole('heading', { name: 'Battle activity' }),
+    page.getByRole('heading', { name: 'Activity', exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Copy private link' }),
   ).toBeVisible();
+  const images = page.locator('.battle-arena .battle-creature-artwork img');
+  await expect(images).toHaveCount(2);
+  await images.evaluateAll(async (elements) => {
+    await Promise.all(
+      elements.map((element) => (element as HTMLImageElement).decode()),
+    );
+  });
+  await expect(page.locator('.combatant--player .card-frame')).toHaveClass(
+    /card-frame--rare/,
+  );
+  await expect(page.locator('.battle-resolution')).toBeVisible();
+  for (const creature of ['Quillip', 'Ciphra']) {
+    const picture = page
+      .getByRole('button', { name: `View ${creature} details` })
+      .first();
+    await picture.click();
+    await expect(page.getByRole('dialog', { name: creature })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(picture).toBeFocused();
+  }
   await expectNoHorizontalOverflow(page);
   await captureScreenshot(test.info(), page, {
     animations: 'disabled',
@@ -317,25 +344,19 @@ test('renders authoritative participant and private spectator views responsively
 
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
-  await expect(
-    page.getByRole('heading', { name: /Live against campus_champion_2026/ }),
-  ).toBeVisible();
+  await expect(page.locator('.battle-stage__turn')).toBeVisible();
   const actionPanel = page.locator('.battle-actions');
   const firstAction = page.getByRole('button', {
     name: /Knowledge Strike 1/i,
   });
-  await expect(firstAction).toBeInViewport();
+  await expect(firstAction).toBeVisible();
   const firstActionBox = await firstAction.boundingBox();
   const stageBox = await page.locator('.battle-stage').boundingBox();
   const actionPanelBox = await actionPanel.boundingBox();
   expect(firstActionBox).not.toBeNull();
   expect(stageBox).not.toBeNull();
   expect(actionPanelBox).not.toBeNull();
-  expect(firstActionBox!.y + firstActionBox!.height).toBeLessThanOrEqual(844);
-  expect(actionPanelBox!.y).toBeLessThan(stageBox!.y);
-  expect(actionPanelBox!.y + actionPanelBox!.height).toBeLessThanOrEqual(
-    stageBox!.y,
-  );
+  expect(stageBox!.y + stageBox!.height).toBeLessThanOrEqual(actionPanelBox!.y);
   await expect(page.locator('.primary-navigation--mobile')).toBeHidden();
 
   await page.evaluate(() => window.scrollTo(0, 560));
@@ -357,13 +378,12 @@ test('renders authoritative participant and private spectator views responsively
   expect(stickyGeometry).not.toBeNull();
   expect(stickyGeometry!.statusPosition).toBe('sticky');
   expect(stickyGeometry!.actionPosition).toBe('relative');
-  expect(stickyGeometry!.actionsBottom).toBeLessThanOrEqual(
+  expect(stickyGeometry!.actionsBottom).toBeGreaterThan(
     stickyGeometry!.stageTop,
   );
 
-  const resignCard = page.locator('.pvp-resign-card');
-  await resignCard.locator('summary').click();
-  await resignCard.getByRole('button', { name: 'Forfeit battle' }).click();
+  const forfeit = page.getByRole('button', { name: 'Forfeit battle' });
+  await forfeit.click();
   const dialog = page.getByRole('alertdialog', {
     name: 'Forfeit this battle?',
   });
@@ -392,9 +412,7 @@ test('renders authoritative participant and private spectator views responsively
   expect(dialogGeometry.bottom).toBeLessThanOrEqual(844);
   expect(dialogGeometry.dialogZ).toBeGreaterThan(dialogGeometry.trayZ);
   await dialog.getByRole('button', { name: 'Keep playing' }).click();
-  await expect(
-    resignCard.getByRole('button', { name: 'Forfeit battle' }),
-  ).toBeFocused();
+  await expect(forfeit).toBeFocused();
   await page.evaluate(() => window.scrollTo(0, 0));
   await captureScreenshot(test.info(), page, {
     animations: 'disabled',
@@ -406,7 +424,7 @@ test('renders authoritative participant and private spectator views responsively
   // 200% browser zoom.
   await page.setViewportSize({ height: 900, width: 720 });
   await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
-  await expect(firstAction).toBeInViewport();
+  await expect(firstAction).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await captureScreenshot(test.info(), page, {
     animations: 'disabled',
@@ -445,6 +463,411 @@ test('renders authoritative participant and private spectator views responsively
   await expect(page.locator(':focus-visible')).toHaveCount(1);
 
   expect(runtimeErrors).toEqual([]);
+});
+
+test('shows opening and replacement cards and enables server-approved selections', async ({
+  page,
+}, testInfo) => {
+  const base = participantProjection();
+  const creatures = [
+    buildCreature(1, { name: 'Quillip', rarity: 'rare' }),
+    buildCreature(3, { name: 'Ciphra' }),
+    buildCreature(4, { name: 'Axiomar', rarity: 'legendary' }),
+  ];
+  let match = participantProjection();
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await routeCurrentPlayer(page);
+  await page.route('**/api/v1/matches/live/**', async (route) => {
+    if (
+      new URL(route.request().url()).pathname.endsWith('/connection-tickets')
+    ) {
+      return json(
+        route,
+        {
+          expiresAt: '2026-09-25T12:01:00.000Z',
+          protocolVersion: 1,
+          role: 'participant',
+          ticket: 'participant-ticket-value-with-enough-random-characters',
+          webSocketUrl: 'wss://live-browser.invalid/api/v1/realtime/live',
+          requestId: 'selection-ticket',
+        },
+        201,
+      );
+    }
+    return json(route, {
+      ...match,
+      requestId: 'selection-projection',
+      serverTime: LIVE_SERVER_TIME,
+    });
+  });
+  for (const phase of ['initial_selection', 'replacement'] as const) {
+    match = participantProjection({
+      phase,
+      currentActor: phase === 'initial_selection' ? null : 'self',
+      self: { ...base.self, creatures, activeCreatureId: null },
+      opponent: {
+        ...base.opponent,
+        activeCreature:
+          phase === 'initial_selection'
+            ? null
+            : buildCreature(2, { name: 'Ciphra' }),
+      },
+      history: [],
+      lastAction: null,
+      legalActions: creatures.map((creature) => ({
+        type:
+          phase === 'initial_selection'
+            ? 'select_initial_creature'
+            : 'select_replacement',
+        creatureId: creature.id,
+      })),
+    });
+    for (const width of [390, 1280]) {
+      await installRealtimeFixture(page, match, spectatorProjection());
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
+      await expect(page.getByText('Connected', { exact: true })).toBeVisible();
+      const choices = page.getByRole('list', { name: 'Your Creature choices' });
+      await expect(choices.locator('img')).toHaveCount(3);
+      await choices.locator('img').evaluateAll(async (elements) => {
+        await Promise.all(
+          elements.map((element) => (element as HTMLImageElement).decode()),
+        );
+      });
+      const clippedRarity = await choices
+        .locator('.card-frame__rarity')
+        .evaluateAll((elements) =>
+          elements
+            .filter((element) => element.scrollWidth > element.clientWidth)
+            .map((element) => ({
+              label: element.textContent,
+              width: element.clientWidth,
+              contentWidth: element.scrollWidth,
+            })),
+        );
+      expect(clippedRarity).toEqual([]);
+      const choice = choices.getByRole('button').first();
+      await expect(choice).toBeEnabled();
+      await expectNoHorizontalOverflow(page);
+      await captureScreenshot(testInfo, page, {
+        animations: 'disabled',
+        fullPage: true,
+        path: testInfo.outputPath(`live-${phase}-${width}.png`),
+      });
+      await choice.click();
+      await expect(choice).toBeDisabled();
+      await expect(
+        page.getByText('Submitting action', { exact: true }),
+      ).toBeVisible();
+    }
+  }
+  expect(errors).toEqual([]);
+});
+
+test('aligns live connection recovery actions on mobile and desktop', async ({
+  page,
+}, testInfo) => {
+  await page.clock.install();
+  await routeCurrentPlayer(page);
+  let reads = 0;
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.route('**/api/v1/matches/live/**', async (route) => {
+    reads++;
+    await route.abort('internetdisconnected');
+  });
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
+    await expect(
+      page.getByRole('heading', { name: 'Connecting…' }),
+    ).toBeVisible();
+    await page.clock.fastForward(8_100);
+    const actions = page.locator('.page-loading-state .state-message__actions');
+    await expect(actions).toHaveCount(1);
+    await expect(actions.locator('.button')).toHaveCount(3);
+    await expect(
+      actions.getByRole('link', { name: 'Return to Live Ranked' }),
+    ).toHaveAttribute('href', '/matches/live');
+    const boxes = await actions.locator('.button').evaluateAll((elements) =>
+      elements.map((element) => {
+        const { x, y, width, height } = element.getBoundingClientRect();
+        return { x, y, width, height };
+      }),
+    );
+    if (width === 390) {
+      expect(
+        Math.max(...boxes.map((box) => box.x)) -
+          Math.min(...boxes.map((box) => box.x)),
+      ).toBeLessThan(1);
+      expect(
+        Math.max(...boxes.map((box) => box.width)) -
+          Math.min(...boxes.map((box) => box.width)),
+      ).toBeLessThan(1);
+      expect(boxes[1]!.y).toBeGreaterThan(boxes[0]!.y + boxes[0]!.height);
+    } else {
+      expect(
+        Math.max(...boxes.map((box) => box.y)) -
+          Math.min(...boxes.map((box) => box.y)),
+      ).toBeLessThan(1);
+    }
+    await expectNoHorizontalOverflow(page);
+    await captureScreenshot(testInfo, page, {
+      animations: 'disabled',
+      fullPage: true,
+      path: testInfo.outputPath(`live-connecting-${width}.png`),
+    });
+    const retry = actions.getByRole('button', { name: 'Try again' });
+    await retry.focus();
+    await expect(retry).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(
+      actions.getByRole('link', { name: 'Return to Live Ranked' }),
+    ).toBeFocused();
+    const before = reads;
+    await retry.click();
+    await expect.poll(() => reads).toBeGreaterThan(before);
+  }
+  expect(errors).toEqual([]);
+});
+
+test('returns to the live lobby from a completed report and the battle hub', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await routeReadyLobby(page, [buildSavedDeck({ isSelected: true })]);
+  await page.route('**/api/v1/matches/live/**', (route) =>
+    json(route, {
+      ...participantProjection({
+        status: 'completed',
+        phase: 'completed',
+        currentActor: null,
+        turnDeadline: null,
+        legalActions: [],
+        outcome: 'win',
+        completionReason: 'abandonment_forfeit',
+        completedAt: LIVE_SERVER_TIME,
+      }),
+      requestId: 'completed-navigation',
+      serverTime: LIVE_SERVER_TIME,
+    }),
+  );
+  await page.route('**/api/v1/ranked/matches/*/settlement', (route) =>
+    json(route, rankedSettlement()),
+  );
+  await page.route('**/api/v1/matches/cpu/entry**', (route) =>
+    json(route, {
+      activeMatch: null,
+      selectedDeck: null,
+      requestId: 'navigation-entry',
+    }),
+  );
+  await page.route('**/api/v1/matches/history**', (route) =>
+    json(route, { matches: [], requestId: 'navigation-history' }),
+  );
+
+  await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
+  await page.getByRole('link', { name: 'Back to Live Ranked' }).click();
+  await expect(page).toHaveURL('/matches/live');
+  await expect(page.getByRole('button', { name: 'Find battle' })).toBeEnabled();
+
+  await page.goto('/matches');
+  await page.getByRole('link', { name: 'Play or watch live' }).click();
+  await expect(page).toHaveURL('/matches/live');
+  await expect(page.getByRole('button', { name: 'Find battle' })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test('presents compact completed live reports with rating recovery', async ({
+  page,
+}, testInfo) => {
+  const base = participantProjection();
+  base.self.creatures[0]!.name = 'Quillip';
+  base.self.creatures[0]!.rarity = 'rare';
+  base.opponent.activeCreature.name = 'Ciphra';
+  const completed = participantProjection({
+    ...base,
+    status: 'completed',
+    phase: 'completed',
+    currentActor: null,
+    turnDeadline: null,
+    legalActions: [],
+    outcome: 'win',
+    completionReason: 'abandonment_forfeit',
+    completedAt: LIVE_SERVER_TIME,
+    consecutiveTimeouts: { self: 2, opponent: 3 },
+    history: [
+      ...base.history,
+      { type: 'abandonment_forfeit', loser: 'playerTwo', winner: 'playerOne' },
+    ],
+  });
+  let match: Record<string, unknown> = completed;
+  let settlement = rankedSettlement({
+    ratingBefore: 1000,
+    ratingAfter: 1020,
+    appliedDelta: 20,
+    territory: null,
+  });
+  let ratingUnavailable = false;
+  let ratingReads = 0;
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await routeCurrentPlayer(page);
+  await page.route('**/api/v1/matches/live/**', (route) =>
+    json(route, {
+      ...match,
+      requestId: 'completed-report',
+      serverTime: LIVE_SERVER_TIME,
+    }),
+  );
+  await page.route('**/api/v1/ranked/matches/*/settlement', (route) => {
+    ratingReads++;
+    return json(
+      route,
+      ratingUnavailable
+        ? { code: 'UNAVAILABLE', title: 'Unavailable', status: 503 }
+        : settlement,
+      ratingUnavailable ? 503 : 200,
+    );
+  });
+  for (const outcome of ['win', 'loss'] as const) {
+    match = {
+      ...completed,
+      outcome,
+      completionReason:
+        outcome === 'win' ? 'abandonment_forfeit' : 'voluntary_resignation',
+      history: [
+        ...base.history,
+        outcome === 'win'
+          ? {
+              type: 'abandonment_forfeit',
+              loser: 'playerTwo',
+              winner: 'playerOne',
+            }
+          : {
+              type: 'voluntary_resignation',
+              loser: 'playerOne',
+              winner: 'playerTwo',
+            },
+      ],
+    };
+    settlement = rankedSettlement({
+      outcome,
+      ratingBefore: 1000,
+      ratingAfter: outcome === 'win' ? 1020 : 980,
+      appliedDelta: outcome === 'win' ? 20 : -20,
+      territory: null,
+    });
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
+      await expect(
+        page.getByRole('heading', {
+          name: outcome === 'win' ? 'Victory' : 'Defeat',
+          exact: true,
+        }),
+      ).toBeFocused();
+      const rating = page.getByRole('region', { name: 'Season rating' });
+      await expect(rating).toContainText(outcome === 'win' ? '+20' : '-20');
+      await expect(
+        page.getByRole('link', { name: 'Back to Live Ranked' }),
+      ).toBeInViewport();
+      await expect(
+        page.locator(
+          '.battle-status-dock, .live-timeout-summary, .battle-header',
+        ),
+      ).toHaveCount(0);
+      await expect(page.getByText('No territory was contested.')).toHaveCount(
+        0,
+      );
+      const images = page.locator('.battle-report__portrait img');
+      await expect(images).toHaveCount(2);
+      await images.evaluateAll(async (elements) => {
+        await Promise.all(
+          elements.map((element) => (element as HTMLImageElement).decode()),
+        );
+      });
+      const history = page.locator('.battle-report__disclosure');
+      await expect(history).not.toHaveAttribute('open', '');
+      await expectNoHorizontalOverflow(page);
+      await captureScreenshot(testInfo, page, {
+        fullPage: true,
+        animations: 'disabled',
+        path: testInfo.outputPath(`live-result-${outcome}-${width}.png`),
+      });
+      await history.locator('summary').focus();
+      await page.keyboard.press('Enter');
+      await expect(history).toHaveAttribute('open', '');
+      await expect(history).toContainText(
+        outcome === 'win'
+          ? 'lost after three consecutive missed decisions'
+          : 'You forfeited the battle.',
+      );
+      const picture = page.getByRole('button', {
+        name: 'View Quillip details',
+      });
+      await picture.click();
+      await expect(page.getByRole('dialog', { name: 'Quillip' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(picture).toBeFocused();
+    }
+  }
+  match = completed;
+  await page.setViewportSize({ width: 390, height: 900 });
+  settlement = rankedSettlement({
+    status: 'pending',
+    ratingBefore: null,
+    ratingAfter: null,
+    appliedDelta: null,
+    settledAt: null,
+    territory: null,
+  });
+  await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
+  await expect(
+    page.getByText('Rating pending.', { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('.live-result-rating')).toHaveCount(0);
+  await captureScreenshot(testInfo, page, {
+    fullPage: true,
+    path: testInfo.outputPath('live-result-pending-390.png'),
+  });
+  ratingUnavailable = true;
+  await page.reload();
+  const retry = page.getByRole('button', { name: 'Retry rating' });
+  await expect(retry).toBeVisible();
+  await captureScreenshot(testInfo, page, {
+    fullPage: true,
+    path: testInfo.outputPath('live-result-rating-error-390.png'),
+  });
+  settlement = rankedSettlement();
+  ratingUnavailable = false;
+  await retry.click();
+  await expect(page.getByText('+30 influence.', { exact: true })).toBeVisible();
+  const readsBeforeSpectator = ratingReads;
+  match = spectatorProjection({
+    status: 'completed',
+    phase: 'completed',
+    currentActor: null,
+    turnDeadline: null,
+    winner: 'playerTwo',
+    completedAt: LIVE_SERVER_TIME,
+  });
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Battle complete', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Season rating' }),
+  ).toHaveCount(0);
+  expect(ratingReads).toBe(readsBeforeSpectator);
+  await expectNoHorizontalOverflow(page);
+  await captureScreenshot(testInfo, page, {
+    fullPage: true,
+    path: testInfo.outputPath('live-result-spectator-390.png'),
+  });
+  expect(errors).toEqual([]);
 });
 
 test('explains unavailable ranked entry at mobile and desktop widths', async ({

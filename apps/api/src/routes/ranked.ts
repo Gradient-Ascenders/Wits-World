@@ -337,7 +337,13 @@ export const rankedRoutes: FastifyPluginAsync<Options> = async (
         response: { ...authenticated.response, 200: queueSchema },
       },
     },
-    async (request) => service.heartbeat(playerId(request)),
+    async (request) => {
+      try {
+        return await service.heartbeat(playerId(request));
+      } catch (error) {
+        throw toApiError(error);
+      }
+    },
   );
 
   app.delete(

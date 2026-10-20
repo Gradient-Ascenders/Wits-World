@@ -92,6 +92,18 @@ to view older records.
    turns. See [Battle rules](battle-rules.md#decision-deadlines) for live deadlines
    and missed decisions.
 
+The live battlefield uses the CPU battle card artwork, rarity frames, card
+inspection, action tabs, and latest-resolution panel. Confirmed damage and healing
+appear beside the cards and in expandable activity. On mobile, the battlefield
+comes before actions during combat; opening and replacement choices come first
+when a Creature must be selected. **Forfeit** stays visible in the activity panel.
+
+Completed live battles use the same report layout as asynchronous battles:
+Victory or Defeat, the opponent, last moves and final revealed Creatures, with
+full battle history collapsed. The report shows a compact season rating change
+and any contested territory result. Pending or unavailable rating updates have
+their own status and retry; they do not change the battle result.
+
 **Cancel search** ends a search while you are waiting. Once the battle starts,
 use **Forfeit** to concede. Reconnecting does not pause the battle deadline.
 

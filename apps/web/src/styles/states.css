@@ -166,6 +166,15 @@
   margin-top: 0;
 }
 
+.page-loading-state .loading-recovery {
+  text-align: center;
+}
+
+.page-loading-state .state-message__actions {
+  align-items: stretch;
+  justify-content: center;
+}
+
 .state-loading--subtle.state-message {
   border: 0;
   padding: var(--space-3) 0;

@@ -46,6 +46,16 @@ from the last timely answer when all five are saved, or from the original timer
 deadline for a partial attempt. A delayed finishing GPS reading does not extend
 the twelve-hour submission window. Reconnection updates the current saved-result
 screen in place; **View confirmed result** opens the canonical result explicitly.
+An active submission shows **Preparing your result**, a blue activity indicator
+and the saved-answer count. Queued submissions identify that they are waiting to
+send; uploads explain that the server is checking answers. Normal processing
+does not show an alert notice, a submission deadline or a cancel button. After
+eight seconds, **Stop waiting** becomes available with a calm explanation that
+the answers remain saved. It stops waiting for confirmation without claiming to
+cancel server processing. Real failures keep their recovery actions; reconnect
+instructions apply when reconnection or session restoration is needed. Deadlines
+remain available for pending work outside active submission, and disappear after
+confirmation. Reduced-motion preferences stop the activity indicator's rotation.
 
 **Ready for offline play** requires downloaded packs and confirmation from the
 controlling service worker that its essential application files are present.
@@ -100,6 +110,15 @@ eligible packs, it uses seven database round trips including discovery and
 transaction boundaries, plus the existing trust-restriction checks when enabled.
 It does not perform per-event or per-question reads. This bounds query count;
 real download time still depends on authentication, database and network latency.
+
+Saved-attempt submission validates the five source-question versions in one
+read and persists snapshots with one insert per table: three writes for a fully
+answered multiple-choice quiz, or four for ordering. Empty and partial attempts
+retain all five question snapshots and only their timely answers. Content is
+copied from server-owned source rows, preserving signed display order and the
+submitted ordering. Validation, marking, rewards and completion remain in the
+same transaction, with the existing replay and duplicate-reward protection.
+These query-count bounds do not establish a production response-time guarantee.
 
 Explore switches to saved data when the browser reports offline, when discovery
 fails or times out, or when a bound player's session cannot be restored. A connected
@@ -239,7 +258,13 @@ rate-limit, connection, and server failures.
 | Other `422 OFFLINE_*` responses       | The pack, times, answers, location, or movement failed validation. Treat the submitted attempt as rejected.      |
 
 The web application synchronises pending attempts sequentially on reopening,
-reconnection, foregrounding, and manual retry. Transient failures retry every
+reconnection, foregrounding, and manual retry. Each attempt has its own
+20-second upload/response/receipt deadline; initial storage and token acquisition
+also have a bounded wait. An individual server error, timeout, or receipt-storage
+failure preserves that attempt and allows later pending attempts to continue.
+Authentication failures, cancellation, and account changes stop the batch.
+Known confirmations survive receipt-storage failures and are recovered by
+retrying the identical attempt. Transient failures retry every
 15 seconds while visible. Bound-session connection recovery uses foreground
 retries with exponential backoff capped at 30 seconds; explicit authentication
 failures still require sign-in. Background Sync is not required, and upload is
@@ -265,6 +290,12 @@ only a safe receipt. Old receipts are pruned after seven days during preparation
 The API stores only the accepted start sample under the existing movement
 [movement retention policy](../database/movement-evidence.md#retention-and-access). Account deletion removes that evidence and its decision
 audit. Offline payloads are redacted from API logs.
+If Explore already stored the same arrival for that player, event and acquisition
+time, sync reuses the immutable sample and any accepted eligibility decision.
+Coordinates and reported accuracy must match exactly; conflicting samples or
+previously rejected decisions fail with `OFFLINE_MOVEMENT_CONFLICT`. Sync still
+checks the signed location policy and neighbouring accepted observations before
+reusing evidence, and does not extend its retention period.
 
 ## Browser application cache
 

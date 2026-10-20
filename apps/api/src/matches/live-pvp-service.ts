@@ -24,6 +24,7 @@ import {
 } from '../database/pool-observability.js';
 
 import type { TrustService } from '../trust/trust-service.js';
+import type { CardRarity } from '../cards/card-types.js';
 import { settleRankedMatch } from './ranked-settlement.js';
 
 const DECISION_WINDOW_MS = 60_000;
@@ -283,6 +284,7 @@ interface PublicActionRow extends pg.QueryResultRow {
 interface LockedMatchContext {
   match: MatchRow;
   participants: readonly [ParticipantRow, ParticipantRow];
+  cardPresentation: ReadonlyMap<string, { name: string; rarity: CardRarity }>;
 }
 
 interface PublicSelfParticipant {
@@ -1356,7 +1358,31 @@ async function loadMatchContext(
   return {
     match,
     participants: [participantResult.rows[0]!, participantResult.rows[1]!],
+    cardPresentation: forUpdate
+      ? new Map()
+      : await loadCardPresentation(client, matchId),
   };
+}
+
+async function loadCardPresentation(
+  client: LivePvpDatabaseClient,
+  matchId: string,
+): Promise<LockedMatchContext['cardPresentation']> {
+  const result = await client.query<{
+    battle_card_id: string;
+    name: string;
+    rarity: CardRarity;
+  }>(
+    `select card.battle_card_id::text,
+            coalesce(card.card_snapshot ->> 'name', definition.name) as name,
+            card.rarity
+       from private.live_pvp_deck_snapshot_cards card
+       join private.live_pvp_deck_snapshots snapshot on snapshot.id = card.snapshot_id
+       left join public.card_definitions definition on definition.id = card.source_card_definition_id
+      where snapshot.match_id = $1::uuid`,
+    [matchId],
+  );
+  return new Map(result.rows.map((card) => [card.battle_card_id, card]));
 }
 
 async function loadReceipt(
@@ -1538,14 +1564,20 @@ function projectParticipant(
       viewer.participant_side === 'player_one' ? 'playerOne' : 'playerTwo',
     self: {
       playerName: viewer.player_name ?? 'Deleted player',
-      creatures: self.creatures.map(publicCreature),
+      creatures: self.creatures.map((creature) =>
+        publicCreature(creature, context.cardPresentation),
+      ),
       powerCards: self.powerCards.map((card) =>
-        publicPowerCard(card, self.usedPowerCardIds),
+        publicPowerCard(card, self.usedPowerCardIds, context.cardPresentation),
       ),
       usedPowerCardIds: [...self.usedPowerCardIds],
       activeCreatureId: self.activeCreatureId,
     },
-    opponent: opponentProjection(opponentRow, opponent),
+    opponent: opponentProjection(
+      opponentRow,
+      opponent,
+      context.cardPresentation,
+    ),
     legalActions,
     history,
     lastAction: history.at(-1) ?? null,
@@ -1595,8 +1627,16 @@ function projectSpectator(
       playerOne: one.consecutive_timeout_count,
       playerTwo: two.consecutive_timeout_count,
     },
-    playerOne: opponentProjection(one, state.participants.player),
-    playerTwo: opponentProjection(two, state.participants.cpu),
+    playerOne: opponentProjection(
+      one,
+      state.participants.player,
+      context.cardPresentation,
+    ),
+    playerTwo: opponentProjection(
+      two,
+      state.participants.cpu,
+      context.cardPresentation,
+    ),
     history,
     presence,
     completionReason: context.match.completion_reason,
@@ -1610,6 +1650,7 @@ function projectSpectator(
 function opponentProjection(
   participant: ParticipantRow,
   state: BattleState['participants'][BattleSide],
+  presentation: LockedMatchContext['cardPresentation'],
 ): PublicOpponentParticipant {
   return {
     playerName: participant.player_name ?? 'Deleted player',
@@ -1620,17 +1661,20 @@ function opponentProjection(
             state.creatures.find(
               (creature) => creature.card.id === state.activeCreatureId,
             )!,
+            presentation,
           ),
     defeatedCreatures: state.creatures
       .filter((creature) => creature.defeated)
-      .map(publicCreature),
+      .map((creature) => publicCreature(creature, presentation)),
     remainingCreatureCount: state.creatures.filter(
       (creature) =>
         !creature.defeated && creature.card.id !== state.activeCreatureId,
     ).length,
     playedPowerCards: state.powerCards
       .filter((card) => state.usedPowerCardIds.includes(card.id))
-      .map((card) => publicPowerCard(card, state.usedPowerCardIds)),
+      .map((card) =>
+        publicPowerCard(card, state.usedPowerCardIds, presentation),
+      ),
     remainingPowerCardCount:
       state.powerCards.length - state.usedPowerCardIds.length,
   };
@@ -1638,10 +1682,16 @@ function opponentProjection(
 
 function publicCreature(
   creature: BattleState['participants'][BattleSide]['creatures'][number],
+  presentation: LockedMatchContext['cardPresentation'],
 ): unknown {
   return {
     id: creature.card.id,
-    name: `${titleCase(creature.card.affinity)} Creature`,
+    name:
+      presentation.get(creature.card.id)?.name ??
+      `${titleCase(creature.card.affinity)} Creature`,
+    ...(presentation.has(creature.card.id)
+      ? { rarity: presentation.get(creature.card.id)!.rarity }
+      : {}),
     affinity: creature.card.affinity,
     maxHp: creature.card.maxHp,
     maxPower: creature.card.maxPower,
@@ -1673,12 +1723,13 @@ function publicCreature(
 function publicPowerCard(
   card: BattleState['participants'][BattleSide]['powerCards'][number],
   usedIds: readonly string[],
+  presentation: LockedMatchContext['cardPresentation'],
 ): unknown {
   return {
     id: card.id,
-    name: card.affinity
-      ? `${titleCase(card.affinity)} Power card`
-      : 'Power card',
+    name:
+      presentation.get(card.id)?.name ??
+      (card.affinity ? `${titleCase(card.affinity)} Power card` : 'Power card'),
     affinity: card.affinity,
     effects: card.effects.map(publicEffect),
     available: !usedIds.includes(card.id),

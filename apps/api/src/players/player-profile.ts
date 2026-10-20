@@ -5,7 +5,9 @@ import { createCardCollectionService } from '../cards/card-collection.js';
 import type { OwnedCard } from '../cards/card-types.js';
 import { ApiError } from '../errors/api-error.js';
 import {
-  createProgressionReadService,
+  mapProgressionProfile,
+  PROGRESSION_PROFILE_QUERY,
+  type ProgressionProfileRow,
   type CurrentProgressionProfile,
 } from '../progression/progression-read-service.js';
 
@@ -63,6 +65,9 @@ interface ProfileRow extends pg.QueryResultRow {
   is_public: boolean | null;
   activity_visible: boolean | null;
   today: string;
+  progression: ProgressionProfileRow | null;
+  featured_ids: string[];
+  activity: { date: string; count: number }[] | null;
 }
 
 function problem(statusCode: number, code: string, detail: string) {
@@ -122,6 +127,7 @@ export function createPlayerProfileService(
       await client.query('begin isolation level repeatable read read only');
       const result = await client.query<ProfileRow>(
         `
+        with profile_base as (
         select p.id, profile.*,
           (profile.status_expires_at is null or profile.status_expires_at > now()) as status_active,
           (now() at time zone 'Africa/Johannesburg')::date::text as today
@@ -130,6 +136,22 @@ export function createPlayerProfileService(
         where p.lifecycle_status = 'active' and p.player_name is not null
           and (($2::text is null and p.id = $1::uuid) or lower(p.player_name) = lower($2))
           and (p.id = $1::uuid or profile.is_public = true)
+        )
+        select profile_base.*, to_jsonb(progression) as progression,
+          (select coalesce(jsonb_agg(showcase.owned_card_id::text order by showcase.position), '[]'::jsonb)
+             from public.player_profile_cards showcase
+             join public.player_cards owned on owned.id = showcase.owned_card_id and owned.player_id = showcase.player_id
+            where showcase.player_id = profile_base.id) as featured_ids,
+          case when profile_base.id = $1::uuid or profile_base.activity_visible then (
+            select coalesce(jsonb_agg(jsonb_build_object('date', activity_day::text, 'count', completed_activity_count) order by activity_day), '[]'::jsonb)
+              from public.player_activity_days
+             where player_id = profile_base.id
+               and activity_day between profile_base.today::date - 364 and profile_base.today::date
+          ) else null end as activity
+        from profile_base
+        left join lateral (
+          ${PROGRESSION_PROFILE_QUERY.replaceAll('$1::uuid', 'profile_base.id')}
+        ) progression on true
       `,
         [viewerId, playerName ?? null],
       );
@@ -141,20 +163,15 @@ export function createPlayerProfileService(
           'This player profile is not available.',
         );
       const isOwner = row.id === viewerId;
-      const progression = await createProgressionReadService(
-        client,
-      ).getCurrentProfile(row.id);
-      const selected = await client.query<{ owned_card_id: string }>(
-        `
-        select showcase.owned_card_id from public.player_profile_cards showcase
-        join public.player_cards owned on owned.id = showcase.owned_card_id and owned.player_id = showcase.player_id
-        where showcase.player_id = $1::uuid order by showcase.position
-      `,
-        [row.id],
-      );
-      const selectedIds = selected.rows.map((entry) => entry.owned_card_id);
+      const progression = mapProgressionProfile(row.progression);
+      const selectedIds = row.featured_ids;
       const owned = selectedIds.length
-        ? await createCardCollectionService(client).listOwnedCards(row.id)
+        ? await createCardCollectionService(client).listOwnedCards(
+            row.id,
+            false,
+            undefined,
+            selectedIds,
+          )
         : [];
       const featuredCards = selectedIds.flatMap((id) => {
         const card = owned.find((entry) => entry.ownedCardId === id);
@@ -177,20 +194,7 @@ export function createPlayerProfileService(
           },
         ];
       });
-      const activity =
-        isOwner || row.activity_visible
-          ? (
-              await client.query<{ date: string; count: number }>(
-                `
-        select activity_day::text as date, completed_activity_count as count
-        from public.player_activity_days where player_id = $1::uuid
-          and activity_day between $2::date - 364 and $2::date
-        order by activity_day
-      `,
-                [row.id, row.today],
-              )
-            ).rows
-          : null;
+      const activity = row.activity;
       await client.query('commit');
       return {
         ...progression,

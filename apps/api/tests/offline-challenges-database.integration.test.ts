@@ -46,8 +46,13 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
         });
     }, 30000);
 
-    for (const format of ['multiple_choice', 'ordering'] as const) {
-      it(`creates no pack rows and atomically syncs ${format} once after event expiry`, async () => {
+    it.each(
+      (['multiple_choice', 'ordering'] as const).flatMap((format) =>
+        [0, 2, 5].map((answerCount) => ({ format, answerCount })),
+      ),
+    )(
+      'atomically syncs $format with $answerCount answers once after event expiry',
+      async ({ format, answerCount }) => {
         const playerId = randomUUID(),
           eventId = randomUUID(),
           challengeId = randomUUID();
@@ -168,6 +173,24 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
                 : [question.options.find((option) => option.text === '0')!.id],
           })),
         };
+        input.answers = input.answers.slice(0, answerCount);
+        if (answerCount < 5) {
+          input.finishedAt = new Date(
+            Date.parse(input.startedAt) + pack.timeLimitSeconds * 1000,
+          ).toISOString();
+        }
+        if (answerCount === 2) {
+          // Keep a deliberately wrong answer to verify that shuffled source
+          // IDs still mark correctly after batching both answer formats.
+          if (format === 'ordering') input.answers[0]!.optionIds.reverse();
+          else {
+            input.answers[0]!.optionIds = [
+              pack.questions[0]!.options.find((option) => option.text !== '0')!
+                .id,
+            ];
+          }
+        }
+        const scoreCorrect = answerCount === 2 ? 1 : answerCount;
         now = new Date('2026-09-06T12:00:00Z');
         for (const sample of ['startLocation'] as const) {
           await expect(
@@ -215,6 +238,34 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
             )
           ).rows,
         ).toHaveLength(0);
+        // Explore can already have recorded the arrival reused by saved play.
+        // Sync must preserve that immutable sample instead of inserting it again.
+        const arrivalEvidenceId = randomUUID();
+        await pool.query(
+          `insert into public.movement_evidence
+          (id,player_id,event_id,latitude,longitude,accuracy_metres,acquired_at,received_at,expires_at,created_at)
+          values ($1,$2,$3,-26,28,150,$4,$4,'2026-09-07T12:00:00Z',$4)`,
+          [
+            arrivalEvidenceId,
+            playerId,
+            eventId,
+            input.startLocation.acquiredAt,
+          ],
+        );
+        if (format === 'multiple_choice') {
+          await pool.query(
+            `insert into public.movement_eligibility_decisions
+            (id,movement_evidence_id,reachability_status,journey_outcome,max_plausible_speed_metres_per_second,created_at)
+            values ($1,$2,'reachable','baseline',20,$3)`,
+            [randomUUID(), arrivalEvidenceId, input.startLocation.acquiredAt],
+          );
+        }
+        await expect(
+          service.submit(playerId, {
+            ...input,
+            startLocation: { ...input.startLocation, latitude: -26.00001 },
+          }),
+        ).rejects.toMatchObject({ code: 'OFFLINE_MOVEMENT_CONFLICT' });
         // A newer observation collected on reconnect must not invalidate an
         // otherwise plausible historical visit.
         await pool.query(
@@ -254,6 +305,61 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
             [question.id, question.version + 1, question.version],
           );
           expect(historical.rows[0]).toEqual({ before: true, after: false });
+          // Batched validation must reject the whole submission when even one
+          // source question had already retired before this claimed start.
+          await expect(
+            service.submit(playerId, {
+              ...input,
+              startedAt: '2026-09-06T10:04:00Z',
+              finishedAt: '2026-09-06T10:05:30Z',
+              startLocation: {
+                ...input.startLocation,
+                acquiredAt: '2026-09-06T10:04:00Z',
+              },
+              answers: input.answers.map((answer) => ({
+                ...answer,
+                answeredAt: new Date(
+                  Date.parse(answer.answeredAt) + 3 * 60_000,
+                ).toISOString(),
+              })),
+            }),
+          ).rejects.toMatchObject({ code: 'OFFLINE_CONTENT_UNAVAILABLE' });
+        }
+        if (format === 'multiple_choice' && answerCount === 5) {
+          const finalizer = createChallengeAttemptCompletionFinalizer({
+            randomInt: () => 0,
+          });
+          const failing = createOfflineChallengeService(pool, {
+            signingKey: 'test-only-offline-key-at-least-32-bytes',
+            maxSpeed: 20,
+            retentionMs: 86400_000,
+            clock: () => now,
+            finalizer: {
+              async finalizeAttempt(database, input) {
+                await finalizer.finalizeAttempt(database, input);
+                throw new Error('Controlled failure after reward issuance');
+              },
+            },
+          });
+          await expect(failing.submit(playerId, input)).rejects.toThrow(
+            'Controlled failure after reward issuance',
+          );
+          expect(
+            (
+              await pool.query(
+                'select id from public.challenge_attempts where player_id=$1',
+                [playerId],
+              )
+            ).rows,
+          ).toHaveLength(0);
+          expect(
+            (
+              await pool.query(
+                'select id from public.player_cards where player_id=$1',
+                [playerId],
+              )
+            ).rows,
+          ).toHaveLength(0);
         }
         const results = await Promise.all([
           service.submit(playerId, input),
@@ -262,11 +368,51 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
         expect(results.filter((result) => result.created)).toHaveLength(1);
         expect(results[0]!.attempt).toMatchObject({
           status: 'completed',
-          scoreCorrect: 5,
+          scoreCorrect,
+          completionReason: answerCount === 5 ? 'answered' : 'timeout',
         });
         expect(results[0]!.attempt?.attemptId).toBe(
           results[1]!.attempt?.attemptId,
         );
+        const snapshots = await pool.query(
+          `select question.source_question_id::text as question_id,question.position,
+            coalesce(
+              array_agg(choice.source_choice_id::text order by choice.display_position)
+                filter (where choice.id is not null),
+              array_agg(item.source_item_id::text order by item.display_position)
+                filter (where item.id is not null)
+            ) as option_ids
+          from public.attempt_questions question
+          left join public.attempt_question_choices choice on choice.attempt_question_id=question.id
+          left join public.attempt_question_ordering_items item on item.attempt_question_id=question.id
+          where question.attempt_id=$1
+          group by question.id order by question.position`,
+          [results[0]!.attempt?.attemptId],
+        );
+        expect(snapshots.rows).toEqual(
+          pack.questions.map((question, index) => ({
+            question_id: question.id,
+            position: index + 1,
+            option_ids: question.options.map((option) => option.id),
+          })),
+        );
+        expect(
+          (
+            await pool.query(
+              `select evidence.id, evidence.evidence_origin,
+                count(decision.id)::integer as decisions
+              from public.movement_evidence evidence
+              left join public.movement_eligibility_decisions decision
+                on decision.movement_evidence_id=evidence.id
+              where evidence.player_id=$1 and evidence.event_id=$2
+                and evidence.acquired_at=$3
+              group by evidence.id`,
+              [playerId, eventId, input.startLocation.acquiredAt],
+            )
+          ).rows,
+        ).toEqual([
+          { id: arrivalEvidenceId, evidence_origin: 'online', decisions: 1 },
+        ]);
         expect(
           (
             await pool.query(
@@ -282,7 +428,7 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
               [playerId],
             )
           ).rows,
-        ).toHaveLength(2);
+        ).toHaveLength(answerCount === 5 ? 2 : 0);
         await expect(
           service.submit(playerId, { ...input, clientAttemptId: randomUUID() }),
         ).rejects.toMatchObject({ code: 'OFFLINE_ATTEMPT_CONFLICT' });
@@ -311,8 +457,9 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
         await expect(service.submit(randomUUID(), input)).rejects.toMatchObject(
           { code: 'OFFLINE_INVALID_PACK' },
         );
-      }, 90000);
-    }
+      },
+      90000,
+    );
     it('uses observation chronology and elapsed time when online play resumes after offline sync', async () => {
       const playerId = randomUUID(),
         eventA = randomUUID(),

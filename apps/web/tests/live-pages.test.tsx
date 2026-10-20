@@ -10,6 +10,7 @@ import {
   renderHook,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -23,6 +24,7 @@ import { deckListResponse, buildSavedDeck } from './fixtures/decks';
 import { buildCard, buildStarterCards } from './fixtures/cards';
 import {
   LIVE_MATCH_ID,
+  LIVE_SERVER_TIME,
   participantProjection,
   projectionResponse,
   rankedProfile,
@@ -356,28 +358,24 @@ describe('live lobby and battle experience', () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(
-      screen.getByRole('heading', { name: 'Season settlement' }),
+      screen.getByRole('heading', { name: 'Season rating' }),
     ).toBeVisible();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
     expect(
-      screen.getByRole('heading', { name: 'Season settlement' }),
+      screen.getByRole('heading', { name: 'Season rating' }),
     ).toBeVisible();
-    expect(
-      screen.getByText(/last server check was still pending/),
-    ).toBeVisible();
+    expect(screen.getByText(/Last check is pending/)).toBeVisible();
     expect(screen.queryByText('+24')).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('+30 influence awarded.'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('+30 influence.')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retry update' }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(settlementReads).toBe(3);
     expect(screen.getByText('+24')).toBeVisible();
-    expect(screen.getByText('+30 influence awarded.')).toBeVisible();
+    expect(screen.getByText('+30 influence.')).toBeVisible();
   });
 
   it('serializes slow queue polls and delivers a deferred lease heartbeat', async () => {
@@ -1269,6 +1267,126 @@ describe('live lobby and battle experience', () => {
     expect(join).toBeEnabled();
   });
 
+  it('keeps the live socket open for duplicate and older battle transitions', async () => {
+    const initial = participantProjection();
+    const fetchMock = liveFetch([initial]);
+    vi.stubGlobal('fetch', fetchMock);
+    renderLiveMatch();
+    const socket = await connect(initial);
+
+    act(() => {
+      socket.emit(transitionMessage(initial, 3));
+      socket.emit(transitionMessage(initial, 3));
+      socket.emit(transitionMessage(participantProjection({ version: 3 }), 2));
+    });
+
+    expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Connected', { exact: true })).toBeVisible();
+  });
+
+  it('refreshes ahead-of-state presence and version gaps without replacing the socket', async () => {
+    const initial = participantProjection();
+    const refreshed = participantProjection({ version: 6 });
+    let finishRead: (response: Response) => void = () => undefined;
+    const fetchMock = liveFetch([initial]);
+    vi.stubGlobal('fetch', fetchMock);
+    renderLiveMatch();
+    const socket = await connect(initial);
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          finishRead = resolve;
+        }),
+    );
+    act(() => {
+      socket.emit({
+        protocolVersion: 1,
+        type: 'presence.changed',
+        eventId: '72000000-0000-4000-8000-000000000001',
+        version: 6,
+        serverTime: LIVE_SERVER_TIME,
+        participants: { playerOneConnected: true, playerTwoConnected: true },
+        spectatorCount: 0,
+      });
+      socket.emit(transitionMessage(refreshed, 5));
+    });
+    await act(async () => finishRead(projectionResponse(refreshed)));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(screen.getByText('Connected', { exact: true })).toBeVisible();
+    act(() =>
+      socket.emit(transitionMessage(participantProjection({ version: 7 }), 6)),
+    );
+    expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(['acknowledgement', 'deadline'] as const)(
+    'refreshes a missing %s update without replaying intent or replacing the socket',
+    async (trigger) => {
+      vi.useFakeTimers();
+      const initial = participantProjection({
+        turnDeadline:
+          trigger === 'deadline'
+            ? LIVE_SERVER_TIME
+            : '2026-09-25T12:01:00.000Z',
+      });
+      const refreshed = participantProjection({
+        version: 5,
+        currentActor: 'opponent',
+        legalActions: [],
+      });
+      const fetchMock = liveFetch([initial, refreshed]);
+      vi.stubGlobal('fetch', fetchMock);
+      const getAccessToken = vi.fn().mockResolvedValue('access-token');
+      const { result } = renderHook(() =>
+        useLiveBattleSession({
+          apiBaseUrl,
+          getAccessToken,
+          matchId: LIVE_MATCH_ID,
+        }),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      const socket = FakeWebSocket.instances[0]!;
+      act(() => socket.emit(readyMessage(initial)));
+      if (trigger === 'acknowledgement') {
+        const match = result.current.match;
+        if (match?.role !== 'participant')
+          throw new Error('Expected participant');
+        act(() => {
+          result.current.submitAction(match.legalActions[0]!);
+        });
+        const submitted = JSON.parse(socket.sent[0]!);
+        act(() =>
+          socket.emit({
+            protocolVersion: 1,
+            type: 'action.acknowledged',
+            messageId: submitted.messageId,
+            eventId: '72000000-0000-4000-8000-000000000001',
+            version: 5,
+            serverTime: LIVE_SERVER_TIME,
+          }),
+        );
+      }
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+      expect(result.current.match?.version).toBe(5);
+      expect(result.current.pending).toBeNull();
+      expect(result.current.connection).toBe('connected');
+      expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+      expect(socket.sent).toHaveLength(trigger === 'acknowledgement' ? 1 : 0);
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    },
+  );
+
   it('locks immediately, prevents duplicate actions, and reconciles a stale action from authority', async () => {
     const initial = participantProjection();
     const recovered = participantProjection({
@@ -1329,11 +1447,20 @@ describe('live lobby and battle experience', () => {
       }),
     );
 
-    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
-    act(() => FakeWebSocket.instances[1]!.emit(readyMessage(recovered)));
-    expect(await screen.findByText('Battle recovered')).toBeVisible();
-    expect(screen.getAllByText("OPPONENT'S TURN").length).toBeGreaterThan(0);
-    expect(screen.getByText('You used a move.')).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getAllByText("Opponent's turn").length).toBeGreaterThan(0),
+    );
+    expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(screen.getByText('Connected', { exact: true })).toBeVisible();
+    fireEvent.click(
+      screen.getByText('Latest', { selector: '.battle-log__summary-label' }),
+    );
+    expect(
+      within(
+        screen.getByRole('log', { name: 'Complete battle activity' }),
+      ).getByText('You used a move.'),
+    ).toBeVisible();
   });
 
   it('recovers after transport loss, reports dropout and timeout, then renders the terminal server result', async () => {
@@ -1398,16 +1525,195 @@ describe('live lobby and battle experience', () => {
       FakeWebSocket.instances[1]!.emit(transitionMessage(completed, 4)),
     );
     expect(
-      await screen.findByRole('heading', { name: 'You won the live battle' }),
+      await screen.findByRole('heading', { name: 'Victory' }),
     ).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Victory' })).toHaveFocus();
     expect(
-      screen.getAllByText(/three consecutive missed decisions/i).length,
+      screen.queryByRole('region', { name: 'Battle status' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Consecutive misses:/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Copy private link' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getAllByText(/missed three decisions/i).length,
     ).toBeGreaterThan(0);
     expect(
-      await screen.findByRole('heading', { name: 'Season settlement' }),
+      await screen.findByRole('heading', { name: 'Season rating' }),
     ).toBeVisible();
     expect(screen.getByText('+24')).toBeVisible();
-    expect(screen.getByText('+30 influence awarded.')).toBeVisible();
+    expect(screen.getByText('+30 influence.')).toBeVisible();
+  });
+
+  it('shows a concise defeat and retries an unavailable rating without repeating match actions', async () => {
+    const completed = participantProjection({
+      status: 'completed',
+      phase: 'completed',
+      currentActor: null,
+      turnDeadline: null,
+      outcome: 'loss',
+      completionReason: 'voluntary_resignation',
+      completedAt: '2026-09-25T12:01:00.000Z',
+      legalActions: [],
+    });
+    let ratingReads = 0;
+    const baseFetch = liveFetch([completed]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (new URL(String(input)).pathname.endsWith('/settlement')) {
+          ratingReads++;
+          return Promise.resolve(
+            ratingReads === 1
+              ? new Response(null, { status: 503 })
+              : jsonResponse(
+                  rankedSettlement({
+                    outcome: 'loss',
+                    ratingBefore: 1000,
+                    ratingAfter: 980,
+                    appliedDelta: -20,
+                    territory: null,
+                  }),
+                ),
+          );
+        }
+        return baseFetch(input, init);
+      }),
+    );
+    renderLiveMatch();
+    expect(
+      await screen.findByRole('heading', { name: 'Defeat' }),
+    ).toBeVisible();
+    expect(screen.getByText('You forfeited.')).toBeVisible();
+    const retry = await screen.findByRole('button', { name: 'Retry rating' });
+    fireEvent.click(retry);
+    expect(await screen.findByText('-20')).toBeVisible();
+    expect(
+      screen.queryByText('No territory was contested.'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Back to Live Ranked' }),
+    ).toHaveAttribute('href', '/matches/live');
+    expect(ratingReads).toBe(2);
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  it('shows a completed spectator report without requesting a participant rating', async () => {
+    const completed = spectatorProjection({
+      status: 'completed',
+      phase: 'completed',
+      currentActor: null,
+      turnDeadline: null,
+      winner: 'playerTwo',
+      completionReason: 'defeat',
+      completedAt: '2026-09-25T12:01:00.000Z',
+    });
+    const fetchMock = liveFetch([completed]);
+    vi.stubGlobal('fetch', fetchMock);
+    renderLiveMatch();
+    expect(
+      await screen.findByRole('heading', { name: 'Battle complete' }),
+    ).toBeVisible();
+    expect(screen.getByText('BraamBear won')).toBeVisible();
+    expect(
+      screen.queryByRole('heading', { name: 'Season rating' }),
+    ).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('allows opening selection from legal actions before a current actor is assigned, then locks the submitted choice', async () => {
+    const base = participantProjection();
+    const creature = base.self.creatures[0]!;
+    const opening = {
+      type: 'select_initial_creature',
+      creatureId: creature.id,
+    };
+    const initial = participantProjection({
+      phase: 'initial_selection',
+      currentActor: null,
+      history: [],
+      lastAction: null,
+      self: { ...base.self, activeCreatureId: null },
+      opponent: { ...base.opponent, activeCreature: null },
+      legalActions: [opening],
+    });
+    vi.stubGlobal('fetch', liveFetch([initial]));
+    renderLiveMatch();
+    const socket = await connect(initial);
+    const choice = screen.getAllByRole('button', {
+      name: /^Choose Creature/,
+    })[0]!;
+    expect(choice).toBeEnabled();
+    fireEvent.click(choice);
+    expect(JSON.parse(socket.sent[0]!)).toMatchObject({
+      type: 'action.submit',
+      expectedVersion: 4,
+      action: opening,
+    });
+    const selected = { ...initial, version: 5, legalActions: [] };
+    act(() => socket.emit(transitionMessage(selected, 4)));
+    expect(
+      screen.getByRole('heading', {
+        name: 'Waiting for the opposing opening Creature',
+      }),
+    ).toBeVisible();
+    expect(choice).toBeDisabled();
+    expect(socket.sent).toHaveLength(1);
+  });
+
+  it('renders confirmed live damage in the shared resolution panel and on the affected card', async () => {
+    const initial = participantProjection();
+    initial.self.creatures[0]!.name = 'Quillip';
+    initial.opponent.activeCreature.name = 'Ciphra';
+    const result = {
+      type: 'participant_action',
+      side: 'playerOne',
+      action: initial.legalActions[0],
+      defeatedCreatureId: null,
+      effects: [
+        {
+          effectType: 'damage',
+          targetSide: 'playerTwo',
+          targetCreatureId: initial.opponent.activeCreature.id,
+          amount: 12,
+        },
+      ],
+    };
+    const updated = participantProjection({
+      ...initial,
+      version: 5,
+      currentActor: 'opponent',
+      legalActions: [],
+      opponent: {
+        ...initial.opponent,
+        activeCreature: { ...initial.opponent.activeCreature, currentHp: 88 },
+      },
+      history: [...initial.history, result],
+      lastAction: result,
+    });
+    vi.stubGlobal('fetch', liveFetch([initial]));
+    renderLiveMatch();
+    const socket = await connect(initial);
+    act(() => socket.emit(transitionMessage(updated, 4)));
+    const resolution = screen.getByRole('region', {
+      name: 'Latest battle resolution',
+    });
+    expect(
+      within(resolution).getByText('You used Knowledge Strike 1.'),
+    ).toBeVisible();
+    expect(
+      within(resolution).getByText("BraamBear's Creature took 12 damage."),
+    ).toBeVisible();
+    expect(document.querySelector('.combatant--cpu')).toHaveAttribute(
+      'data-feedback',
+      'damage',
+    );
+    expect(
+      screen.getByRole('progressbar', { name: 'Ciphra HP' }),
+    ).toHaveAttribute('value', '88');
+    expect(
+      screen.getByRole('button', { name: /Knowledge Strike 1/i }),
+    ).toBeDisabled();
   });
 
   it('keeps spectator mode unmistakably read-only and renders only the public projection', async () => {
@@ -1416,7 +1722,7 @@ describe('live lobby and battle experience', () => {
     renderLiveMatch();
     await connect(spectator);
 
-    expect(screen.getAllByText('WATCHING — READ ONLY').length).toBeGreaterThan(
+    expect(screen.getAllByText('Watching — read only').length).toBeGreaterThan(
       0,
     );
     expect(
@@ -1424,7 +1730,7 @@ describe('live lobby and battle experience', () => {
     ).toBeVisible();
     expect(
       screen.getAllByText(/public battlefield and battle activity/i),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(screen.queryByText('Bench')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /Forfeit battle/i }),

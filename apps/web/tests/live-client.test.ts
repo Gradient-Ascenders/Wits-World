@@ -44,6 +44,73 @@ function options() {
 }
 
 describe('live battle API client', () => {
+  it('accepts catalogue move UUIDs in HTTP and socket actions and history', async () => {
+    // Obsidian Horn's deterministic PostgreSQL UUID from migration 0041.
+    const moveId = 'ae6526b9-b164-210b-c746-c4af1b45747a';
+    const action = { type: 'use_move', moveId };
+    const match = participantProjection({ legalActions: [action] });
+    match.self.creatures[0]!.moves[0]!.id = moveId;
+    match.history[0]!.action = action;
+    match.lastAction.action = action;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(projectionResponse(match)),
+    );
+
+    const response = await getLiveProjection({
+      ...options(),
+      matchId: LIVE_MATCH_ID,
+    });
+    expect(response.match).toMatchObject({
+      legalActions: [action],
+      history: [expect.objectContaining({ action })],
+      lastAction: expect.objectContaining({ action }),
+    });
+    expect(
+      parseLiveServerMessage(JSON.stringify(readyMessage(match))),
+    ).toMatchObject({ match: response.match });
+  });
+
+  it('preserves real card presentation and committed effects while discarding extra effect fields', async () => {
+    const match = participantProjection();
+    match.self.creatures[0]!.name = 'Quillip';
+    match.self.creatures[0]!.rarity = 'rare';
+    const effect = {
+      effectType: 'damage',
+      targetSide: 'playerOne',
+      targetCreatureId: match.self.creatures[0]!.id,
+      amount: 12,
+    };
+    const projection = participantProjection({
+      ...match,
+      history: [
+        {
+          ...match.history[0],
+          effects: [{ ...effect, privateDetail: 'must not be retained' }],
+        },
+      ],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(projectionResponse(projection)),
+    );
+    const response = await getLiveProjection({
+      ...options(),
+      matchId: LIVE_MATCH_ID,
+    });
+    expect(response.match).toMatchObject({
+      self: {
+        creatures: [
+          expect.objectContaining({ name: 'Quillip', rarity: 'rare' }),
+          expect.anything(),
+          expect.anything(),
+        ],
+      },
+      history: [expect.objectContaining({ effects: [effect] })],
+    });
+    expect(JSON.stringify(response.match)).not.toContain('privateDetail');
+  });
+
   it('parses the participant projection and authenticates snapshot and ticket requests', async () => {
     const fetchMock = vi
       .fn()

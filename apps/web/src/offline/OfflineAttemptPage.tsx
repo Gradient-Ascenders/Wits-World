@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'wouter';
-import { CheckCircle, LockSimple, WarningCircle } from '@phosphor-icons/react';
+import {
+  CheckCircle,
+  LockSimple,
+  SpinnerGap,
+  WarningCircle,
+} from '@phosphor-icons/react';
 import { LoadingState } from '../components/LoadingState';
 import { StatusMessage } from '../components/StatusMessage';
 import {
@@ -36,9 +41,11 @@ export function OfflineAttemptPage() {
     refresh,
     revision,
     sync,
+    syncing,
     attemptSync = {},
     online,
     connectionFailed,
+    canSync,
   } = useOffline();
   const attempt = state?.attempts.find(
     (item) => item.clientAttemptId === clientAttemptId,
@@ -80,6 +87,12 @@ export function OfflineAttemptPage() {
     ? attemptSync[attempt.clientAttemptId]
     : undefined;
   const serverConfirmed = currentAttemptSync?.status === 'confirmed';
+  const processing =
+    (currentAttemptSync?.status === 'syncing' ||
+      (syncing && currentAttemptSync?.status === 'pending')) &&
+    online &&
+    !connectionFailed &&
+    canSync;
   useEffect(() => {
     if (resultState && resultState !== 'active') resultHeading.current?.focus();
   }, [resultState]);
@@ -323,23 +336,33 @@ export function OfflineAttemptPage() {
       {attempt.status === 'pending' ? (
         <div className="offline-play__completion">
           <div className="offline-play__result-heading">
-            <span className="offline-play__state-mark">
-              <CheckCircle aria-hidden="true" size={28} />
+            <span
+              className={`offline-play__state-mark${processing ? ' offline-play__state-mark--loading' : serverConfirmed ? ' offline-play__state-mark--success' : ''}`}
+            >
+              {processing ? (
+                <SpinnerGap aria-hidden="true" size={36} />
+              ) : (
+                <CheckCircle aria-hidden="true" size={28} />
+              )}
             </span>
             <div>
               <h2 tabIndex={-1} ref={resultHeading}>
                 {serverConfirmed
                   ? 'Attempt confirmed'
-                  : currentAttemptSync?.status === 'syncing'
-                    ? 'Checking answers…'
+                  : processing
+                    ? 'Preparing your result…'
                     : !online || connectionFailed
                       ? 'Awaiting reconnection'
                       : 'Answers saved'}
               </h2>
               <p>
                 {attempt.answers.length} of{' '}
-                {attempt.cached.pack.questions.length} answers saved. You can
-                leave this screen and return to your result.
+                {attempt.cached.pack.questions.length} answers saved.{' '}
+                {processing
+                  ? currentAttemptSync?.status === 'syncing'
+                    ? 'The server is checking your answers and preparing your result.'
+                    : 'Your saved answers are waiting to be sent to the server.'
+                  : 'You can leave this screen and return to your result.'}
               </p>
             </div>
           </div>
@@ -362,12 +385,22 @@ export function OfflineAttemptPage() {
               className={`offline-play__step ${
                 serverConfirmed
                   ? 'offline-play__step--complete'
-                  : 'offline-play__step--current'
+                  : processing
+                    ? 'offline-play__step--current offline-play__step--processing'
+                    : 'offline-play__step--current'
               }`}
             >
               <span aria-hidden="true">3</span>
-              <strong>Server confirmation</strong>
-              <small>{serverConfirmed ? 'Complete' : 'Pending'}</small>
+              <strong>Your result</strong>
+              <small>
+                {serverConfirmed
+                  ? 'Complete'
+                  : processing
+                    ? currentAttemptSync?.status === 'syncing'
+                      ? 'Preparing…'
+                      : 'Queued'
+                    : 'Pending'}
+              </small>
             </li>
           </ol>
           <SyncFeedback attempt={attempt} now={now} />

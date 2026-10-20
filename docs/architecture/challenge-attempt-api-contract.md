@@ -45,6 +45,12 @@ attempt and another player's attempt both return `404 ATTEMPT_NOT_FOUND`.
 
 ## Start and resume
 
+New attempts bulk-load the selected questions' options and persist all five
+question snapshots and twenty shuffled choices or ordering items in one SQL
+statement. Snapshot creation stays inside the attempt transaction: a failed
+write rolls back the attempt, and concurrent starts still converge on the
+persisted winner. Resuming returns the saved snapshot without reshuffling.
+
 The start body requires a location claim:
 
 ```json
@@ -131,6 +137,11 @@ A completed response has `status: "completed"`. It retains `attemptId`,
 | `review`                          | 5 entries in question order, containing the saved response and correct answer.                                                        |
 | `ownerBonus`                      | Optional separate territory bonus result; see [owner card bonuses](../requirements/contested-campus-zone-policy.md#owner-card-bonus). |
 
+Reward cards include `category` and `affinity`. Creature affinity is one of
+`wit`, `grit`, `spark`, `spirit`, or `mystic`; typeless Power cards use
+`affinity: null`. Both challenge formats and saved-attempt sync return this
+same reward representation, including when reopening an older result.
+
 Multiple-choice review entries contain `attemptQuestionId`, `position`,
 `prompt`, `selectedChoice`, `correctChoice`, and `isCorrect`. An unanswered
 question has `selectedChoice: null`. Multiple-choice review omits explanations.
@@ -156,6 +167,13 @@ If an answer response is lost, fetch current state or repeat the identical
 answer. An identical saved-answer retry can return the completed result;
 a new or changed answer after completion is rejected. Do not interpret a
 connection failure as proof that an answer was unsaved.
+
+The web client bounds each challenge request to 20 seconds, including token
+acquisition and reading its response body. A stalled submission offers
+**Retry answer** with the same selection; a stalled deadline check offers
+**Check result again**. Late responses cannot replace recovered state, and
+timing out does not change the server deadline or establish whether an answer
+was committed.
 
 ## AI declaration
 

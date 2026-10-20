@@ -25,6 +25,7 @@ import { createAccountDeletionLifecycle } from './players/account-deletion-lifec
 import { createAccountDeletionRetryProcessor } from './players/account-deletion-retry-processor.js';
 import { createAccountDeletionRetryScheduler } from './players/account-deletion-retry-scheduler.js';
 import { createReauthenticationTokenVerifier } from './auth/reauthentication-token-verifier.js';
+import { createAccessTokenVerifier } from './auth/access-token-verifier.js';
 import { createChallengeAttemptStartService } from './challenges/challenge-attempt-start.js';
 import { createStarterGrantService } from './cards/starter-grant.js';
 import { createChallengeAnswerSubmissionService } from './challenges/challenge-answer-submission.js';
@@ -102,6 +103,20 @@ async function startServer(): Promise<void> {
           policies: config.rateLimitPolicies,
         });
   const authConfig = buildAuthConfig();
+  const accessTokenVerifier = createAccessTokenVerifier(authConfig);
+  // Run in parallel with startup; a failed prefetch must not prevent the API
+  // starting. Normal verification still retries the resolver on demand.
+  const signingKeyWarmupStartedAt = performance.now();
+  const signingKeyWarmup = accessTokenVerifier.warmup?.().then(
+    () => ({
+      ready: true,
+      durationMs: performance.now() - signingKeyWarmupStartedAt,
+    }),
+    () => ({
+      ready: false,
+      durationMs: performance.now() - signingKeyWarmupStartedAt,
+    }),
+  );
   const authManagementConfig = buildAuthManagementConfig({
     authConfig,
   });
@@ -274,6 +289,7 @@ async function startServer(): Promise<void> {
     authConfig,
     corsConfig,
     playerIdentityService,
+    accessTokenVerifier,
     trustReviewService,
     playerNameSetupService: playerIdentityService,
     rateProtection,
@@ -341,6 +357,28 @@ async function startServer(): Promise<void> {
     },
   });
   gameplayLogger.error = (context, message) => app.log.error(context, message);
+  void signingKeyWarmup?.then((result) => {
+    const context = { event: 'auth_signing_keys_warmup', ...result };
+    if (result.ready)
+      app.log.info(context, 'Authentication signing keys ready');
+    else
+      app.log.warn(
+        context,
+        'Signing-key prefetch unavailable; verification will retry on demand',
+      );
+  });
+  // Refresh public keys before jose's normal ten-minute cache expires, so the
+  // first returning player after an idle period does not pay that fetch either.
+  const signingKeyRefresh = setInterval(() => {
+    void accessTokenVerifier.warmup?.().catch(() => {
+      app.log.warn(
+        { event: 'auth_signing_keys_refresh', ready: false },
+        'Signing-key refresh unavailable; verification will retry on demand',
+      );
+    });
+  }, 9 * 60_000);
+  signingKeyRefresh.unref();
+  app.addHook('onClose', async () => clearInterval(signingKeyRefresh));
 
   const accountDeletionRetryProcessor = createAccountDeletionRetryProcessor(
     auth0ManagementClient,

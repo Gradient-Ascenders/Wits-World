@@ -35,7 +35,10 @@ export interface LiveSelf {
 }
 
 export interface LiveHistoryEntry {
+  action: CpuMatchIntent | null;
   actionType: CpuMatchIntent['type'] | null;
+  effects: LiveAppliedEffect[];
+  defeatedCreatureId: string | null;
   automatic: boolean;
   loser: 'playerOne' | 'playerTwo' | null;
   side: 'playerOne' | 'playerTwo' | null;
@@ -49,6 +52,13 @@ export interface LiveHistoryEntry {
     | 'voluntary_resignation'
     | 'account_deletion_forfeit';
   winner: 'playerOne' | 'playerTwo' | null;
+}
+
+export interface LiveAppliedEffect {
+  effectType: 'damage' | 'heal' | 'buff' | 'debuff';
+  targetSide: 'playerOne' | 'playerTwo';
+  targetCreatureId: string;
+  amount: number;
 }
 
 interface LiveProjectionBase {
@@ -818,7 +828,14 @@ function parseHistoryEntry(value: unknown): LiveHistoryEntry {
         : value.action.type
       : null;
   return {
+    action: actionType ? parseLiveAction(value.action) : null,
     actionType,
+    effects: Array.isArray(value.effects)
+      ? value.effects.map(parseLiveAppliedEffect)
+      : [],
+    defeatedCreatureId: isUuid(value.defeatedCreatureId)
+      ? value.defeatedCreatureId
+      : null,
     automatic: value.automatic === true,
     loser: isEnum(value.loser, ['playerOne', 'playerTwo']) ? value.loser : null,
     side: isEnum(value.side, ['playerOne', 'playerTwo']) ? value.side : null,
@@ -826,6 +843,25 @@ function parseHistoryEntry(value: unknown): LiveHistoryEntry {
     winner: isEnum(value.winner, ['playerOne', 'playerTwo'])
       ? value.winner
       : null,
+  };
+}
+
+function parseLiveAppliedEffect(value: unknown): LiveAppliedEffect {
+  if (
+    !isRecord(value) ||
+    !isEnum(value.effectType, ['damage', 'heal', 'buff', 'debuff']) ||
+    !isEnum(value.targetSide, ['playerOne', 'playerTwo']) ||
+    !isUuid(value.targetCreatureId) ||
+    typeof value.amount !== 'number' ||
+    !Number.isFinite(value.amount)
+  ) {
+    throw new LiveApiError('unavailable');
+  }
+  return {
+    effectType: value.effectType,
+    targetSide: value.targetSide,
+    targetCreatureId: value.targetCreatureId,
+    amount: value.amount,
   };
 }
 
@@ -1256,9 +1292,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isUuid(value: unknown): value is string {
+  // Catalogue IDs are deterministic PostgreSQL UUIDs, without RFC version bits.
   return (
     typeof value === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
       value,
     )
   );

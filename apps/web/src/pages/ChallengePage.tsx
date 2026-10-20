@@ -505,7 +505,9 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
 
       setError(challengeError);
       setViewState('ready');
-      setStatusMessage('Your answer was not saved. Choose Retry to try again.');
+      setStatusMessage(
+        'We could not confirm your answer. Retry to check your saved progress.',
+      );
     } finally {
       if (answerRequest.current === controller) {
         answerRequest.current = null;

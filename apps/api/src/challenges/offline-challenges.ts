@@ -352,58 +352,12 @@ export function createOfflineChallengeService(
             pack.placementAssignmentId ?? null,
           ],
         );
-        for (const [index, question] of pack.questions.entries()) {
-          const questionId = randomUUID();
-          await client.query(
-            `insert into public.attempt_questions
-            (id, attempt_id, source_question_id, position, prompt_snapshot, difficulty_snapshot, explanation_snapshot)
-            select $1,$2,id,$3,prompt,difficulty,case when $4 = 'ordering' then explanation else null end
-            from public.challenge_questions where id = $5`,
-            [questionId, attemptId, index + 1, pack.format, question.id],
-          );
-          const ids = new Map<string, string>();
-          for (const [position, item] of question.options.entries()) {
-            const id = randomUUID();
-            ids.set(item.id, id);
-            if (pack.format === 'ordering') {
-              await client.query(
-                `insert into public.attempt_question_ordering_items
-                (id,attempt_question_id,source_question_id,source_item_id,display_position,item_text_snapshot)
-                select $1,$2,question_id,id,$3,item_text from public.challenge_ordering_items where id=$4 and question_id=$5`,
-                [id, questionId, position + 1, item.id, question.id],
-              );
-            } else {
-              await client.query(
-                `insert into public.attempt_question_choices
-                (id,attempt_question_id,source_question_id,source_choice_id,display_position,choice_text_snapshot)
-                select $1,$2,question_id,id,$3,choice_text from public.challenge_choices where id=$4 and question_id=$5`,
-                [id, questionId, position + 1, item.id, question.id],
-              );
-            }
-          }
-          const answer = timing.timelyAnswers.find(
-            (item) => item.questionId === question.id,
-          );
-          if (!answer) continue;
-          if (pack.format === 'ordering') {
-            await client.query(
-              'insert into public.attempt_ordering_answers (attempt_question_id,answered_at) values ($1,$2)',
-              [questionId, answer.answeredAt],
-            );
-            for (const [position, id] of answer.optionIds.entries()) {
-              await client.query(
-                `insert into public.attempt_ordering_answer_items
-                (attempt_question_id,selected_item_id,submitted_position) values ($1,$2,$3)`,
-                [questionId, ids.get(id), position + 1],
-              );
-            }
-          } else {
-            await client.query(
-              'insert into public.attempt_answers (attempt_question_id,selected_choice_id,answered_at) values ($1,$2,$3)',
-              [questionId, ids.get(answer.optionIds[0]!), answer.answeredAt],
-            );
-          }
-        }
+        await persistOfflineSnapshot(
+          client,
+          attemptId,
+          pack,
+          timing.timelyAnswers,
+        );
         const score = await calculateChallengeAttemptScore(client, attemptId);
         await options.finalizer.finalizeAttempt(client, {
           playerId,
@@ -444,6 +398,123 @@ export function createOfflineChallengeService(
       }
     },
   };
+}
+
+async function persistOfflineSnapshot(
+  client: pg.PoolClient,
+  attemptId: string,
+  pack: OfflinePack,
+  timelyAnswers: OfflineSubmission['answers'],
+) {
+  const questions = pack.questions.map((question, index) => ({
+    id: randomUUID(),
+    source_question_id: question.id,
+    position: index + 1,
+    options: question.options.map((option, position) => ({
+      id: randomUUID(),
+      source_item_id: option.id,
+      display_position: position + 1,
+    })),
+  }));
+  const items = questions.flatMap((question) =>
+    question.options.map((option) => ({
+      ...option,
+      attempt_question_id: question.id,
+      source_question_id: question.source_question_id,
+    })),
+  );
+  const answers = timelyAnswers.map((answer) => {
+    const question = questions.find(
+      (question) => question.source_question_id === answer.questionId,
+    )!;
+    return {
+      attempt_question_id: question.id,
+      answered_at: answer.answeredAt,
+      selected_ids: answer.optionIds.map(
+        (id) => question.options.find((item) => item.source_item_id === id)!.id,
+      ),
+    };
+  });
+
+  // Retain source-owned content and signed display order, with one write per
+  // table instead of one database round trip per question, option and answer.
+  await client.query(
+    `insert into public.attempt_questions
+      (id,attempt_id,source_question_id,position,prompt_snapshot,difficulty_snapshot,explanation_snapshot)
+    select snapshot.id,$1,source.id,snapshot.position,source.prompt,source.difficulty,
+      case when $3 = 'ordering' then source.explanation else null end
+    from jsonb_to_recordset($2::jsonb)
+      as snapshot(id uuid,source_question_id uuid,position integer)
+    join public.challenge_questions source on source.id=snapshot.source_question_id`,
+    [attemptId, JSON.stringify(questions), pack.format],
+  );
+  if (pack.format === 'ordering') {
+    await client.query(
+      `insert into public.attempt_question_ordering_items
+        (id,attempt_question_id,source_question_id,source_item_id,display_position,item_text_snapshot)
+      select snapshot.id,snapshot.attempt_question_id,source.question_id,source.id,
+        snapshot.display_position,source.item_text
+      from jsonb_to_recordset($1::jsonb)
+        as snapshot(id uuid,attempt_question_id uuid,source_question_id uuid,source_item_id uuid,display_position integer)
+      join public.challenge_ordering_items source
+        on source.id=snapshot.source_item_id and source.question_id=snapshot.source_question_id`,
+      [JSON.stringify(items)],
+    );
+    if (!answers.length) return;
+    await client.query(
+      `insert into public.attempt_ordering_answers (attempt_question_id,answered_at)
+      select attempt_question_id,answered_at
+      from jsonb_to_recordset($1::jsonb)
+        as answer(attempt_question_id uuid,answered_at timestamptz)`,
+      [JSON.stringify(answers)],
+    );
+    await client.query(
+      `insert into public.attempt_ordering_answer_items
+        (attempt_question_id,selected_item_id,submitted_position)
+      select attempt_question_id,selected_item_id,submitted_position
+      from jsonb_to_recordset($1::jsonb)
+        as answer(attempt_question_id uuid,selected_item_id uuid,submitted_position integer)`,
+      [
+        JSON.stringify(
+          answers.flatMap((answer) =>
+            answer.selected_ids.map((id, index) => ({
+              attempt_question_id: answer.attempt_question_id,
+              selected_item_id: id,
+              submitted_position: index + 1,
+            })),
+          ),
+        ),
+      ],
+    );
+  } else {
+    await client.query(
+      `insert into public.attempt_question_choices
+        (id,attempt_question_id,source_question_id,source_choice_id,display_position,choice_text_snapshot)
+      select snapshot.id,snapshot.attempt_question_id,source.question_id,source.id,
+        snapshot.display_position,source.choice_text
+      from jsonb_to_recordset($1::jsonb)
+        as snapshot(id uuid,attempt_question_id uuid,source_question_id uuid,source_item_id uuid,display_position integer)
+      join public.challenge_choices source
+        on source.id=snapshot.source_item_id and source.question_id=snapshot.source_question_id`,
+      [JSON.stringify(items)],
+    );
+    if (!answers.length) return;
+    await client.query(
+      `insert into public.attempt_answers (attempt_question_id,selected_choice_id,answered_at)
+      select attempt_question_id,selected_choice_id,answered_at
+      from jsonb_to_recordset($1::jsonb)
+        as answer(attempt_question_id uuid,selected_choice_id uuid,answered_at timestamptz)`,
+      [
+        JSON.stringify(
+          answers.map((answer) => ({
+            attempt_question_id: answer.attempt_question_id,
+            selected_choice_id: answer.selected_ids[0],
+            answered_at: answer.answered_at,
+          })),
+        ),
+      ],
+    );
+  }
 }
 
 function digestOfflineSubmission(
@@ -533,15 +604,23 @@ async function validateSources(
   );
   if (!source.rows.length)
     throw new OfflineRejection('OFFLINE_CONTENT_UNAVAILABLE');
-  for (const question of pack.questions) {
-    const result = await client.query(
-      `select id from public.challenge_questions where id=$1 and challenge_id=$2
-      and public.offline_content_was_available('question',id,status,version,$3,$4)`,
-      [question.id, pack.challengeId, question.version, startedAt],
-    );
-    if (!result.rows.length)
-      throw new OfflineRejection('OFFLINE_CONTENT_UNAVAILABLE');
-  }
+  const result = await client.query(
+    `select source.id from public.challenge_questions source
+    join jsonb_to_recordset($1::jsonb) as signed(id uuid,version integer)
+      on signed.id=source.id
+    where source.challenge_id=$2
+      and public.offline_content_was_available(
+        'question',source.id,source.status,source.version,signed.version,$3)`,
+    [
+      JSON.stringify(
+        pack.questions.map(({ id, version }) => ({ id, version })),
+      ),
+      pack.challengeId,
+      startedAt,
+    ],
+  );
+  if (result.rows.length !== pack.questions.length)
+    throw new OfflineRejection('OFFLINE_CONTENT_UNAVAILABLE');
 }
 
 async function distance(
@@ -600,6 +679,38 @@ async function validateMovement(
       : null;
   if (within?.outcome === 'too_fast')
     throw new OfflineRejection('OFFLINE_JOURNEY_TOO_FAST');
+  // Saved play can reuse an arrival that Explore already recorded online.
+  // The player lock in submit serializes both paths; never replace that sample
+  // or turn an existing rejected decision into accepted movement evidence.
+  const existingArrival = await client.query<{
+    id: string;
+    latitude: number;
+    longitude: number;
+    accuracy_metres: number;
+    reachability_status: string | null;
+    journey_outcome: string | null;
+  }>(
+    `select evidence.id, evidence.latitude, evidence.longitude,
+      evidence.accuracy_metres, decision.reachability_status, decision.journey_outcome
+    from public.movement_evidence evidence
+    left join public.movement_eligibility_decisions decision
+      on decision.movement_evidence_id = evidence.id
+    where evidence.player_id=$1 and evidence.event_id=$2 and evidence.acquired_at=$3`,
+    [pack.playerId, pack.event.eventId, start.acquiredAt],
+  );
+  const arrival = existingArrival.rows[0];
+  if (
+    arrival &&
+    (arrival.latitude !== start.latitude ||
+      arrival.longitude !== start.longitude ||
+      arrival.accuracy_metres !== start.accuracyMetres ||
+      (arrival.journey_outcome !== null &&
+        (arrival.reachability_status !== 'reachable' ||
+          !['baseline', 'same_event', 'plausible'].includes(
+            arrival.journey_outcome,
+          ))))
+  )
+    throw new OfflineRejection('OFFLINE_MOVEMENT_CONFLICT');
   const prior = await client.query<{
     id: string;
     latitude: number;
@@ -611,13 +722,14 @@ async function validateMovement(
   }>(
     `select * from public.movement_evidence
     where player_id=$1 and expires_at > $2
+      and ($4::uuid is null or id <> $4::uuid)
       and exists (select 1 from public.movement_eligibility_decisions decision
         where decision.movement_evidence_id = movement_evidence.id
           and decision.reachability_status = 'reachable'
           and decision.journey_outcome in ('baseline','same_event','plausible'))
       and (case when evidence_origin='offline' then acquired_at else received_at end) <= $3
     order by (case when evidence_origin='offline' then acquired_at else received_at end) desc limit 1`,
-    [pack.playerId, receivedAt, start.acquiredAt],
+    [pack.playerId, receivedAt, start.acquiredAt, arrival?.id ?? null],
   );
   const anchor = prior.rows[0];
   // Reconnecting may already have produced a newer online observation. Check
@@ -625,13 +737,14 @@ async function validateMovement(
   const following = await client.query<(typeof prior.rows)[number]>(
     `
     select * from public.movement_evidence where player_id=$1 and expires_at > $2
+      and ($4::uuid is null or id <> $4::uuid)
       and exists (select 1 from public.movement_eligibility_decisions decision
         where decision.movement_evidence_id = movement_evidence.id
           and decision.reachability_status = 'reachable'
           and decision.journey_outcome in ('baseline','same_event','plausible'))
       and (case when evidence_origin='offline' then acquired_at else received_at end) > $3
     order by (case when evidence_origin='offline' then acquired_at else received_at end) asc limit 1`,
-    [pack.playerId, receivedAt, start.acquiredAt],
+    [pack.playerId, receivedAt, start.acquiredAt, arrival?.id ?? null],
   );
   const next = following.rows[0];
   if (next) {
@@ -668,24 +781,27 @@ async function validateMovement(
     if (journey.outcome === 'too_fast')
       throw new OfflineRejection('OFFLINE_JOURNEY_TOO_FAST');
   }
-  const evidenceId = randomUUID();
-  await client.query(
-    `insert into public.movement_evidence
+  // Keep the original decision and observation times after all current checks.
+  if (arrival?.journey_outcome != null) return;
+  const evidenceId = arrival?.id ?? randomUUID();
+  if (!arrival)
+    await client.query(
+      `insert into public.movement_evidence
     (id,player_id,event_id,latitude,longitude,accuracy_metres,acquired_at,received_at,expires_at,created_at,evidence_origin,offline_pack_id)
     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$8,'offline',$10)`,
-    [
-      evidenceId,
-      pack.playerId,
-      pack.event.eventId,
-      start.latitude,
-      start.longitude,
-      start.accuracyMetres,
-      start.acquiredAt,
-      receivedAt,
-      new Date(receivedAt.getTime() + options.retentionMs),
-      pack.packId,
-    ],
-  );
+      [
+        evidenceId,
+        pack.playerId,
+        pack.event.eventId,
+        start.latitude,
+        start.longitude,
+        start.accuracyMetres,
+        start.acquiredAt,
+        receivedAt,
+        new Date(receivedAt.getTime() + options.retentionMs),
+        pack.packId,
+      ],
+    );
   await client.query(
     `insert into public.movement_eligibility_decisions
     (id,movement_evidence_id,prior_movement_evidence_id,reachability_status,journey_outcome,distance_metres,

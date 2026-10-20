@@ -94,7 +94,7 @@ export async function createRankedLiveMatch(
           card.category,
           card.affinity,
           card.rarity,
-          JSON.stringify(card.battleCard),
+          JSON.stringify({ ...card.battleCard, name: card.name }),
         ],
       );
     }

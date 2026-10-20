@@ -6,6 +6,7 @@ import { readInteractivePlayerClaims } from './interactive-player-claims.js';
 
 export interface AccessTokenVerifier {
   verify(token: string): Promise<AuthenticatedPrincipal>;
+  warmup?(): Promise<void>;
 }
 
 interface CreateAccessTokenVerifierOptions {
@@ -22,6 +23,11 @@ export function createAccessTokenVerifier(
       : undefined;
 
   return {
+    async warmup() {
+      // Fetch public signing keys before the first player request, using the
+      // same resolver/cache as verification. No tokens or identities are cached.
+      await remoteJwks?.reload();
+    },
     async verify(token) {
       const verificationOptions = {
         algorithms: ['RS256'],

@@ -32,6 +32,7 @@ import {
   type TradeSelectionAvailability,
   type TradeSelectionCopy,
   type TradeSelectionPreview,
+  type TradeRequestedDefinition,
 } from '../api/trades';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { useUnsavedAuthorChanges } from '../components/author/AuthorNavigationGuard';
@@ -44,10 +45,6 @@ import {
   UpdatingIndicator,
 } from '../components/LoadingState';
 import { StateIcon } from '../components/StatusMessage';
-import {
-  RequestedCardList,
-  TradeComparison,
-} from '../components/trades/TradeComparison';
 import { TradeConfirmationDialog } from '../components/trades/TradeConfirmationDialog';
 import { type TradeCardDetail } from '../components/trades/TradeCardDetailsDialog';
 import { TradeCardThumbnail } from '../components/trades/TradeCardThumbnail';
@@ -138,33 +135,79 @@ export default function TradeEditorPage({
             tradeId,
           })
         : Promise.resolve(null),
+      tradeId
+        ? Promise.resolve(null)
+        : previewTradeSelection({
+            apiBaseUrl,
+            getAccessToken,
+            offeredOwnedCardIds: retained ? previous.offeredOwnedCardIds : [],
+            requestedDefinitions: retained ? previous.requestedDefinitions : [],
+            signal: controller.signal,
+          }),
     ])
-      .then(async ([catalogue, originalTrade]) => {
+      .then(async ([catalogue, originalTrade, initialPreview]) => {
         if (controller.signal.aborted) return;
-        const initialOffered = retained
+        let initialOffered = retained
           ? previous.offeredOwnedCardIds
           : (originalTrade?.self.offeredCopies.map(
               (copy) => copy.ownedCardId,
             ) ?? []);
         const initialRequested = retained
           ? previous.requestedDefinitions
-          : (originalTrade?.self.requestedDefinitions.map((definition) => ({
-              cardDefinitionId: definition.cardDefinitionId,
-              quantity: definition.quantity,
-            })) ?? []);
+          : originalTrade
+            ? originalTrade.self.requestedDefinitions.length > 0
+              ? originalTrade.self.requestedDefinitions.map(
+                  ({ cardDefinitionId, quantity }) => ({
+                    cardDefinitionId,
+                    quantity,
+                  }),
+                )
+              : requestsForCopies(originalTrade.counterparty.offeredCopies)
+            : [];
         const draftTrade =
           retained && previous.state.status === 'ready'
             ? previous.state.originalTrade
             : originalTrade;
-        const preview = await previewTradeSelection({
-          apiBaseUrl,
-          expectedVersion: draftTrade?.version,
-          getAccessToken,
-          offeredOwnedCardIds: initialOffered,
-          requestedDefinitions: initialRequested,
-          signal: controller.signal,
-          tradeId,
-        });
+        let preview =
+          initialPreview ??
+          (await previewTradeSelection({
+            apiBaseUrl,
+            expectedVersion: draftTrade?.version,
+            getAccessToken,
+            offeredOwnedCardIds: initialOffered,
+            requestedDefinitions: initialRequested,
+            signal: controller.signal,
+            tradeId,
+          }));
+        if (!retained && originalTrade && initialOffered.length === 0) {
+          initialOffered =
+            originalTrade.counterparty.requestedDefinitions.flatMap(
+              (definition) =>
+                preview.ownedCopies
+                  .filter(
+                    (copy) =>
+                      copy.cardDefinitionId === definition.cardDefinitionId,
+                  )
+                  .sort(
+                    (a, b) =>
+                      Number(b.availability === 'available') -
+                      Number(a.availability === 'available'),
+                  )
+                  .slice(0, definition.quantity)
+                  .map((copy) => copy.ownedCardId),
+            );
+          if (initialOffered.length > 0) {
+            preview = await previewTradeSelection({
+              apiBaseUrl,
+              expectedVersion: draftTrade?.version,
+              getAccessToken,
+              offeredOwnedCardIds: initialOffered,
+              requestedDefinitions: initialRequested,
+              signal: controller.signal,
+              tradeId,
+            });
+          }
+        }
         if (controller.signal.aborted) return;
         if (!retained) {
           setRecipientPlayerName(originalTrade?.counterpartyPlayerName ?? '');
@@ -313,6 +356,21 @@ export default function TradeEditorPage({
     );
     return copy ? [copy] : [];
   });
+  const missingOffers =
+    !dirty &&
+    state.originalTrade &&
+    state.originalTrade.self.offeredCopies.length === 0
+      ? state.originalTrade.counterparty.requestedDefinitions.flatMap(
+          (request) => {
+            const missing =
+              request.quantity -
+              selectedCopies.filter(
+                (copy) => copy.cardDefinitionId === request.cardDefinitionId,
+              ).length;
+            return missing > 0 ? [{ ...request, quantity: missing }] : [];
+          },
+        )
+      : [];
   const normalizedRequests = requestedDefinitions.flatMap((request) => {
     const definition = state.catalogue.find(
       (candidate) => candidate.cardDefinitionId === request.cardDefinitionId,
@@ -406,6 +464,7 @@ export default function TradeEditorPage({
   async function publish() {
     if (
       !readyState.preview.valid ||
+      missingOffers.length > 0 ||
       Boolean(readyState.refreshing || readyState.refreshError) ||
       previewBusy ||
       previewOutdated ||
@@ -421,6 +480,7 @@ export default function TradeEditorPage({
     try {
       const base = {
         apiBaseUrl,
+        confirmOffer: true,
         getAccessToken,
         offeredOwnedCardIds,
         requestedDefinitions,
@@ -558,6 +618,7 @@ export default function TradeEditorPage({
           copies={state.preview.ownedCopies}
           copySearch={copySearch}
           maximum={maximum}
+          missingOffers={missingOffers}
           mobileCatalogue={mobileCatalogue}
           normalizedRequests={normalizedRequests}
           offeredOwnedCardIds={offeredOwnedCardIds}
@@ -606,44 +667,30 @@ export default function TradeEditorPage({
           onConfirm={() => void publish()}
           returnFocusRef={publishButton}
           title="Send this trade offer?"
-        />
+        >
+          {state.preview.imbalanceWarningRequired ? (
+            <p className="trade-preview-warning">
+              Rarity imbalance. Sending this offer acknowledges the difference.
+            </p>
+          ) : null}
+        </TradeConfirmationDialog>
       ) : null}
       {confirmRevision && state.originalTrade ? (
         <TradeConfirmationDialog
           busy={submitting}
-          confirmLabel="Publish new version"
-          description={`Publish version ${state.originalTrade.version + 1}? Both players will need to accept again and review any rarity warning.`}
+          confirmLabel="Send counter"
+          description={`Give ${offeredOwnedCardIds.length} card${offeredOwnedCardIds.length === 1 ? '' : 's'} and request ${requestedCount} from ${recipientPlayerName}? Confirming sends version ${state.originalTrade.version + 1} for them to accept.`}
           onCancel={() => setConfirmRevision(false)}
           onConfirm={() => void publish()}
           returnFocusRef={publishButton}
-          title="Update this offer?"
+          title="Send this counter offer?"
         >
-          <div className="trade-revision-review">
-            <TradeComparison
-              catalogue={state.catalogue}
-              counterpartyLabel={recipientPlayerName}
-              counterpartyOffered={
-                state.originalTrade.counterparty.offeredCopies
-              }
-              counterpartyPoints={state.originalTrade.counterparty.rarityPoints}
-              selfOffered={selectedCopies}
-              selfPoints={state.preview.offeredRarityPoints}
-            />
-            <div className="trade-request-grid">
-              <RequestedCardList
-                catalogue={state.catalogue}
-                definitions={normalizedRequests}
-                label="You request"
-              />
-              <RequestedCardList
-                catalogue={state.catalogue}
-                definitions={
-                  state.originalTrade.counterparty.requestedDefinitions
-                }
-                label={`${recipientPlayerName} requested`}
-              />
-            </div>
-          </div>
+          {state.preview.imbalanceWarningRequired ? (
+            <p className="trade-preview-warning">
+              Rarity imbalance. Sending this counter acknowledges the
+              difference.
+            </p>
+          ) : null}
         </TradeConfirmationDialog>
       ) : null}
     </div>
@@ -692,6 +739,7 @@ interface TradeBuilderProps {
   copies: TradeSelectionCopy[];
   copySearch: string;
   maximum: number;
+  missingOffers: TradeRequestedDefinition[];
   mobileCatalogue: 'offer' | 'request';
   normalizedRequests: Array<TradingCatalogueCard & { quantity: number }>;
   offeredOwnedCardIds: string[];
@@ -725,6 +773,7 @@ function TradeBuilder({
   copies,
   copySearch,
   maximum,
+  missingOffers,
   mobileCatalogue,
   normalizedRequests,
   offeredOwnedCardIds,
@@ -748,16 +797,37 @@ function TradeBuilder({
   submitting,
 }: TradeBuilderProps) {
   const previewUpdating = previewBusy || previewOutdated;
-  const canSend = preview.valid && !previewUpdating && !submitting;
+  const canSend =
+    preview.valid &&
+    !previewUpdating &&
+    !submitting &&
+    missingOffers.length === 0;
   const catalogueById = new Map(
     catalogue.map((card) => [card.cardDefinitionId, card]),
   );
-  const offeredReceiptItems = groupSelectedCopies(selectedCopies).map(
-    ({ copy, quantity }) => ({
-      card: catalogueById.get(copy.cardDefinitionId) ?? copy,
-      quantity,
-    }),
-  );
+  const offeredReceiptItems: TradeReceiptItem[] = groupSelectedCopies(
+    selectedCopies,
+  ).map(({ copy, quantity }) => ({
+    card: catalogueById.get(copy.cardDefinitionId) ?? copy,
+    quantity,
+    unavailable:
+      copy.availability !== 'available' &&
+      copy.availability !== 'selected_here',
+  }));
+  for (const definition of missingOffers) {
+    const existing = offeredReceiptItems.find(
+      (item) => item.card.cardDefinitionId === definition.cardDefinitionId,
+    );
+    if (existing) {
+      existing.quantity += definition.quantity;
+      existing.unavailable = true;
+    } else
+      offeredReceiptItems.push({
+        card: definition,
+        quantity: definition.quantity,
+        unavailable: true,
+      });
+  }
   const requestedReceiptItems = normalizedRequests.map((definition) => ({
     card: definition,
     quantity: definition.quantity,
@@ -894,13 +964,6 @@ function TradeBuilder({
               tone="receive"
             />
 
-            {preview.imbalanceWarningRequired ? (
-              <p className="trade-preview-warning">
-                <WarningCircle aria-hidden="true" size={20} /> The rarity points
-                differ enough to need a warning. Both players must confirm this
-                before accepting.
-              </p>
-            ) : null}
             {previewFailed ? (
               <button
                 className="trade-preview-retry"
@@ -913,14 +976,30 @@ function TradeBuilder({
           </section>
 
           <div className="trade-builder__review-bar">
+            {preview.imbalanceWarningRequired ? (
+              <p className="trade-preview-warning" id="trade-rarity-warning">
+                <WarningCircle aria-hidden="true" size={20} />
+                <span>
+                  <strong>Rarity imbalance.</strong> Both players must
+                  acknowledge this before accepting.
+                </span>
+              </p>
+            ) : null}
             <span className="trade-builder__check" role="status">
               {previewUpdating
                 ? 'Checking trade availability…'
                 : preview.valid
-                  ? 'Ready'
+                  ? missingOffers.length > 0
+                    ? 'Choose available cards to give'
+                    : 'Ready'
                   : 'Add cards to both sides'}
             </span>
             <button
+              aria-describedby={
+                preview.imbalanceWarningRequired
+                  ? 'trade-rarity-warning'
+                  : undefined
+              }
               className="button trade-builder__send"
               disabled={!canSend}
               onClick={onReview}
@@ -930,9 +1009,11 @@ function TradeBuilder({
               <PaperPlaneTilt aria-hidden="true" size={19} weight="bold" />
               {submitting
                 ? version !== undefined
-                  ? 'Publishing…'
+                  ? 'Sending counter…'
                   : 'Sending…'
-                : 'Review offer'}
+                : version !== undefined
+                  ? 'Counter'
+                  : 'Review offer'}
             </button>
           </div>
         </div>
@@ -944,6 +1025,7 @@ function TradeBuilder({
 interface TradeReceiptItem {
   card: TradeCardDetail;
   quantity: number;
+  unavailable?: boolean;
 }
 
 function TradeReceiptLane({
@@ -991,7 +1073,7 @@ function TradeReceiptLane({
             className="trade-builder-selection-strip"
             data-item-count={items.length}
           >
-            {items.map(({ card, quantity }) => (
+            {items.map(({ card, quantity, unavailable }) => (
               <li key={card.cardDefinitionId}>
                 <TradeCardThumbnail card={card} fullFrame />
                 <span
@@ -1001,6 +1083,11 @@ function TradeReceiptLane({
                   {card.name}
                 </span>
                 <strong>×{quantity}</strong>
+                {unavailable ? (
+                  <span className="trade-builder-lane__empty">
+                    Unavailable — choose another copy
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -1325,4 +1412,19 @@ function editorErrorCopy(error: TradeApiError) {
 
 function titleCase(value: string) {
   return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
+function requestsForCopies(
+  copies: readonly { cardDefinitionId: string }[],
+): RequestedDefinitionInput[] {
+  const counts = new Map<string, number>();
+  for (const copy of copies)
+    counts.set(
+      copy.cardDefinitionId,
+      (counts.get(copy.cardDefinitionId) ?? 0) + 1,
+    );
+  return [...counts].map(([cardDefinitionId, quantity]) => ({
+    cardDefinitionId,
+    quantity,
+  }));
 }

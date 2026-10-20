@@ -21,6 +21,7 @@ export interface CardCollectionService {
     playerId: string,
     unique?: boolean,
     deckId?: string,
+    ownedCardIds?: readonly string[],
   ): Promise<OwnedCard[]>;
   listTradingCatalogue(): Promise<TradingCardDefinition[]>;
 }
@@ -81,7 +82,13 @@ export function createCardCollectionService(
   database: CardCollectionQueryable,
 ): CardCollectionService {
   return {
-    async listOwnedCards(playerId, unique = false, deckId) {
+    async listOwnedCards(playerId, unique = false, deckId, ownedCardIds) {
+      if (ownedCardIds?.length === 0) return [];
+      const values: unknown[] = [playerId];
+      if (deckId) values.push(deckId);
+      const copyScope = ownedCardIds
+        ? `and owned.id = any($${values.push(ownedCardIds)}::uuid[])`
+        : '';
       // Scope before move/effect projection (and before unique-copy selection).
       // Both the deck and the owned copy must belong to the authenticated player.
       const deckScope = deckId
@@ -155,6 +162,7 @@ export function createCardCollectionService(
             from public.player_cards owned
             where owned.player_id = $1::uuid
             ${deckScope}
+            ${copyScope}
             order by card_definition_id, acquired_at desc, id desc
           )`
               : 'public.player_cards'
@@ -163,9 +171,10 @@ export function createCardCollectionService(
             on definition.id = owned.card_definition_id
           where owned.player_id = $1::uuid
           ${unique ? '' : deckScope}
+          ${unique ? '' : copyScope}
           order by owned.acquired_at desc, owned.id desc
         `,
-        deckId ? [playerId, deckId] : [playerId],
+        values,
       );
 
       return result.rows.map(mapOwnedCard);

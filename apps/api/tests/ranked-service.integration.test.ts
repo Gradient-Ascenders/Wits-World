@@ -469,8 +469,46 @@ describe.skipIf(!enabled)('ranked service integration', () => {
     expect((await service.accept(first.playerId, proposalId!)).matchId).toBe(
       matched.matchId,
     );
+    expect(await service.status(first.playerId)).toMatchObject({
+      status: 'matched',
+      matchId: matched.matchId,
+    });
 
     const live = createLivePvpService(pool);
+    const projection = await live.getProjection({
+      matchId: matched.matchId!,
+      playerId: second.playerId,
+    });
+    const presentation = await pool.query<{
+      battle_card_id: string;
+      name: string;
+      rarity: string;
+      category: string;
+    }>(
+      `select card.battle_card_id::text, card.card_snapshot ->> 'name' as name, card.rarity, card.category
+         from private.live_pvp_deck_snapshot_cards card
+         join private.live_pvp_deck_snapshots snapshot on snapshot.id = card.snapshot_id
+        where snapshot.match_id = $1::uuid and snapshot.player_id = $2::uuid
+        order by card.position`,
+      [matched.matchId, second.playerId],
+    );
+    expect(presentation.rows).toHaveLength(5);
+    expect(presentation.rows.every((card) => Boolean(card.name))).toBe(true);
+    expect(projection.role).toBe('participant');
+    if (projection.role === 'participant') {
+      expect(projection.self.creatures).toEqual(
+        presentation.rows
+          .filter((card) => card.category === 'creature')
+          .map((card) =>
+            expect.objectContaining({
+              id: card.battle_card_id,
+              name: card.name,
+              rarity: card.rarity,
+            }),
+          ),
+      );
+      expect(projection.opponent.activeCreature).toBeNull();
+    }
     const ticket = await live.mintConnectionTicket({
       matchId: matched.matchId!,
       playerId: second.playerId,
@@ -487,6 +525,17 @@ describe.skipIf(!enabled)('ranked service integration', () => {
     const result = await live.resign(resignation);
     expect(result.replayed).toBe(false);
     expect((await live.resign(resignation)).replayed).toBe(true);
+    for (const player of [first, second]) {
+      expect(await service.status(player.playerId)).toMatchObject({
+        status: 'idle',
+        matchId: null,
+        queueEntryId: null,
+      });
+    }
+    // Retrying acceptance still returns its original receipt, not a new match.
+    expect((await service.accept(first.playerId, proposalId!)).matchId).toBe(
+      matched.matchId,
+    );
     expect(
       await reads.settlement(first.playerId, matched.matchId!),
     ).toMatchObject({

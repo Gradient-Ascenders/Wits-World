@@ -13,6 +13,46 @@ import {
 describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
   'real disposable PostgreSQL pool observations',
   () => {
+    it('leaves three native slots available while routine work queues fairly', async () => {
+      loadApiEnvironment();
+      const pool = createDatabasePool(buildDatabaseConfig({ target: 'test' }), {
+        logger: { info: vi.fn(), error: vi.fn() },
+      });
+      const held: pg.PoolClient[] = [];
+      let queued: Promise<pg.PoolClient> | undefined;
+      try {
+        held.push(
+          await withPoolObservation('trust_evaluation', () => pool.connect()),
+        );
+        queued = withPoolObservation('movement_retention', () =>
+          pool.connect(),
+        );
+        const callback = vi.fn();
+        void queued.then(callback);
+        for (const category of [
+          'request',
+          'live_deadline',
+          'async_pvp_deadline',
+        ] as const) {
+          held.push(await withPoolObservation(category, () => pool.connect()));
+        }
+        expect(pool.options.max).toBe(4);
+        expect(pool.totalCount).toBe(4);
+        expect(callback).not.toHaveBeenCalled();
+        held.shift()!.release();
+        const next = await queued;
+        queued = undefined;
+        held.push(next);
+        expect((await next.query('select 1::integer as value')).rows).toEqual([
+          { value: 1 },
+        ]);
+      } finally {
+        held.forEach((client) => client.release());
+        if (queued) (await queued).release();
+        await pool.end();
+      }
+    });
+
     it('counts native promise/callback queries and delegated client work once under background ownership', async () => {
       loadApiEnvironment();
       const config = buildDatabaseConfig({ target: 'test' });

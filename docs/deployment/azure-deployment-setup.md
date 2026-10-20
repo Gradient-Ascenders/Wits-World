@@ -138,6 +138,15 @@ before selecting an application rollback.
 
 ## Monitoring and maintenance
 
+Session restoration uses early HTML connection hints for the configured Auth0
+and API origins. Each API process also preloads public signing keys and refreshes
+them before the normal key-cache expiry. The `auth_signing_keys_warmup` log event
+records whether startup prefetch succeeded and its duration; refresh failures use
+`auth_signing_keys_refresh`. A failure falls back to normal on-demand token
+verification. Check request `auth` and `identity` timings separately when
+investigating slow `/auth/me` calls; these server timings do not include browser
+Auth0 restoration or network time.
+
 ### Service health
 
 `/health` confirms that the API process accepts requests; it does not query
@@ -148,6 +157,19 @@ Redis timeouts. A healthy process can still have a failing dependency.
 failures on different requests.
 
 ### Background maintenance
+
+Routine maintenance uses at most one connection at a time from each API
+process's existing four-connection shared pool. This includes trust evaluation
+and retention, movement retention, live cleanup, account-deletion retries,
+placement sweeps, and trade-history retention. Waiting routine checkouts queue
+before entering the native pool and remain visible in checkout timings. Pool
+shutdown rejects queued checkouts.
+
+Player requests, battle deadlines, trade expiry, placement boundaries,
+coordination, and probes retain direct admission. The limit does not add
+connections or change worker intervals, transaction boundaries, or authoritative
+deadlines. Monitor routine backlogs and pool waits alongside foreground latency;
+lower SQL counts alone do not establish production speed improvements.
 
 Review sweep failures, repeated account-deletion retries, and growing backlogs
 of overdue work or expired records. A configured cleanup interval schedules

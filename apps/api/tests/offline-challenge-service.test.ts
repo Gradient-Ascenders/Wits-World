@@ -300,136 +300,227 @@ describe('offline challenge service', () => {
     expect(fixture.release).toHaveBeenCalledOnce();
   });
 
-  it('issues a signed pack and persists a valid delayed submission atomically', async () => {
-    const questionIds = Array.from({ length: 5 }, () => randomUUID());
-    const fixture = databaseWith((sql) => {
-      if (sql.includes('from public.card_definitions'))
-        return {
-          rows: [
-            { id: '17250000-0000-4000-8000-000000000001', rarity: 'common' },
-          ],
-        };
-      if (
-        sql.includes('event_placement_state') &&
-        !sql.includes('from public.event_challenges')
-      ) {
-        return {
-          rows: [
-            {
-              placement_assignment_id: null,
-              next_boundary: new Date('2026-09-29T00:00:00.000Z'),
-            },
-          ],
-        };
-      }
-      if (sql.includes('from public.event_challenges challenge join')) {
-        return {
-          rows: [
-            {
-              id: challengeId,
-              event_id: eventId,
-              version: 3,
-              event_version: 4,
-              format: 'multiple_choice',
-              placement_assignment_id: null,
-              next_boundary: null,
-            },
-          ],
-        };
-      }
-      if (sql.includes('from public.challenge_questions')) {
-        return {
-          rows: questionIds.map((id, index) => ({
-            id,
-            challenge_id: challengeId,
-            version: 1,
-            prompt: `Question ${index + 1}`,
-            difficulty: 1,
-          })),
-        };
-      }
-      if (sql.includes('from public.challenge_choices')) {
-        return {
-          rows: questionIds.flatMap((question_id) =>
-            Array.from({ length: 4 }, (_, index) => ({
-              id: randomUUID(),
-              question_id,
-              text: `Choice ${index + 1}`,
+  it.each([
+    'new',
+    'accepted',
+    'undecided',
+    'conflicting',
+    'rejected',
+    'implausible-next',
+  ] as const)(
+    'persists a delayed submission with a %s arrival safely',
+    async (arrivalState) => {
+      const arrivalEvidenceId = randomUUID();
+      const questionIds = Array.from({ length: 5 }, () => randomUUID());
+      const fixture = databaseWith((sql, values) => {
+        if (sql.includes('from public.card_definitions'))
+          return {
+            rows: [
+              { id: '17250000-0000-4000-8000-000000000001', rarity: 'common' },
+            ],
+          };
+        if (
+          sql.includes('event_placement_state') &&
+          !sql.includes('from public.event_challenges')
+        ) {
+          return {
+            rows: [
+              {
+                placement_assignment_id: null,
+                next_boundary: new Date('2026-09-29T00:00:00.000Z'),
+              },
+            ],
+          };
+        }
+        if (sql.includes('from public.event_challenges challenge join')) {
+          return {
+            rows: [
+              {
+                id: challengeId,
+                event_id: eventId,
+                version: 3,
+                event_version: 4,
+                format: 'multiple_choice',
+                placement_assignment_id: null,
+                next_boundary: null,
+              },
+            ],
+          };
+        }
+        if (sql.includes('from public.challenge_questions')) {
+          return {
+            rows: questionIds.map((id, index) => ({
+              id,
+              challenge_id: challengeId,
+              version: 1,
+              prompt: `Question ${index + 1}`,
+              difficulty: 1,
             })),
-          ),
-        };
-      }
-      if (sql.includes('from public.players'))
-        return { rows: [{ id: playerId }] };
-      if (
-        sql.includes(
-          'from public.challenge_attempts\n          where player_id',
+          };
+        }
+        if (sql.includes('from public.challenge_choices')) {
+          return {
+            rows: questionIds.flatMap((question_id) =>
+              Array.from({ length: 4 }, (_, index) => ({
+                id: randomUUID(),
+                question_id,
+                text: `Choice ${index + 1}`,
+              })),
+            ),
+          };
+        }
+        if (sql.includes('from public.players'))
+          return { rows: [{ id: playerId }] };
+        if (
+          sql.includes(
+            'from public.challenge_attempts\n          where player_id',
+          )
         )
-      )
+          return { rows: [] };
+        if (sql.includes('from public.event_placement_portability'))
+          return { rows: [] };
+        if (sql.includes('select event.id from public.events'))
+          return { rows: [{ id: eventId }] };
+        if (sql.includes('select id from public.challenge_questions where id='))
+          return { rows: [{ id: 'question' }] };
+        if (sql.includes('st_distance'))
+          return {
+            rows: [
+              {
+                distance:
+                  arrivalState === 'implausible-next' && values?.[2] === 0
+                    ? 1_000_000
+                    : 0,
+              },
+            ],
+          };
+        if (sql.includes('select evidence.id, evidence.latitude'))
+          return {
+            rows:
+              arrivalState === 'new'
+                ? []
+                : [
+                    {
+                      id: arrivalEvidenceId,
+                      latitude:
+                        arrivalState === 'conflicting' ? -26.193 : -26.1929,
+                      longitude: 28.0305,
+                      accuracy_metres: 5,
+                      reachability_status:
+                        arrivalState === 'undecided' ? null : 'reachable',
+                      journey_outcome:
+                        arrivalState === 'undecided'
+                          ? null
+                          : arrivalState === 'rejected'
+                            ? 'too_fast'
+                            : 'baseline',
+                    },
+                  ],
+          };
+        if (sql.includes('select * from public.movement_evidence'))
+          return {
+            rows:
+              arrivalState === 'implausible-next' && sql.includes('> $3')
+                ? [
+                    {
+                      id: randomUUID(),
+                      latitude: 0,
+                      longitude: 0,
+                      accuracy_metres: 5,
+                      acquired_at: new Date('2026-09-28T10:01:01Z'),
+                      received_at: new Date('2026-09-28T10:01:01Z'),
+                      evidence_origin: 'online',
+                    },
+                  ]
+                : [],
+          };
         return { rows: [] };
-      if (sql.includes('from public.event_placement_portability'))
-        return { rows: [] };
-      if (sql.includes('select event.id from public.events'))
-        return { rows: [{ id: eventId }] };
-      if (sql.includes('select id from public.challenge_questions where id='))
-        return { rows: [{ id: 'question' }] };
-      if (sql.includes('st_distance')) return { rows: [{ distance: 0 }] };
-      if (sql.includes('select * from public.movement_evidence'))
-        return { rows: [] };
-      return { rows: [] };
-    });
-    const serviceOptions = options();
-    serviceOptions.clock = vi
-      .fn()
-      .mockReturnValueOnce(now)
-      .mockReturnValue(new Date('2026-09-28T10:03:00.000Z'));
-    const service = createOfflineChallengeService(
-      fixture.database,
-      serviceOptions,
-    );
+      });
+      const serviceOptions = options();
+      serviceOptions.clock = vi
+        .fn()
+        .mockReturnValueOnce(now)
+        .mockReturnValue(new Date('2026-09-28T10:03:00.000Z'));
+      const service = createOfflineChallengeService(
+        fixture.database,
+        serviceOptions,
+      );
 
-    const packs = await service.packs(playerId, [eventId]);
+      const packs = await service.packs(playerId, [eventId]);
 
-    expect(packs).toHaveLength(1);
-    expect(packs[0]!.pack.questions).toHaveLength(5);
-    expect(packs[0]!.pack.rewardContext).toEqual({
-      policyVersion: 'points-cards-v2',
-      cards: [
-        {
-          cardDefinitionId: '17250000-0000-4000-8000-000000000001',
-          rarity: 'common',
-        },
-      ],
-    });
-    expect(packs[0]!.packToken).not.toContain(challengeId);
-    expect(
-      serviceOptions.trustRestrictions.assertAllowed,
-    ).toHaveBeenCalledTimes(2);
+      expect(packs).toHaveLength(1);
+      expect(packs[0]!.pack.questions).toHaveLength(5);
+      expect(packs[0]!.pack.rewardContext).toEqual({
+        policyVersion: 'points-cards-v2',
+        cards: [
+          {
+            cardDefinitionId: '17250000-0000-4000-8000-000000000001',
+            rarity: 'common',
+          },
+        ],
+      });
+      expect(packs[0]!.packToken).not.toContain(challengeId);
+      expect(
+        serviceOptions.trustRestrictions.assertAllowed,
+      ).toHaveBeenCalledTimes(2);
 
-    const input = submission(packs[0]!.packToken, packs[0]!.pack);
-    const result = await service.submit(playerId, input);
+      const input = submission(packs[0]!.packToken, packs[0]!.pack);
+      if (
+        arrivalState === 'conflicting' ||
+        arrivalState === 'rejected' ||
+        arrivalState === 'implausible-next'
+      ) {
+        await expect(service.submit(playerId, input)).rejects.toMatchObject({
+          code:
+            arrivalState === 'implausible-next'
+              ? 'OFFLINE_JOURNEY_TOO_FAST'
+              : 'OFFLINE_MOVEMENT_CONFLICT',
+        });
+        expect(serviceOptions.finalizer.finalizeAttempt).not.toHaveBeenCalled();
+        expect(fixture.query).toHaveBeenCalledWith('rollback');
+        return;
+      }
+      const result = await service.submit(playerId, input);
 
-    expect(result).toEqual({
-      created: true,
-      attempt: { attemptId: 'attempt-result' },
-    });
-    expect(serviceOptions.finalizer.finalizeAttempt).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        playerId,
-        completionReason: 'answered',
-        scoreCorrect: 5,
-        offlineRewardContext: packs[0]!.pack.rewardContext,
-      }),
-    );
-    expect(
-      fixture.query.mock.calls.filter(([sql]) =>
-        String(sql).includes('insert into public.attempt_answers'),
-      ),
-    ).toHaveLength(5);
-    expect(fixture.query).toHaveBeenCalledWith('commit');
-    expect(fixture.release).toHaveBeenCalledTimes(2);
-  });
+      expect(result).toEqual({
+        created: true,
+        attempt: { attemptId: 'attempt-result' },
+      });
+      expect(serviceOptions.finalizer.finalizeAttempt).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          playerId,
+          completionReason: 'answered',
+          scoreCorrect: 5,
+          offlineRewardContext: packs[0]!.pack.rewardContext,
+        }),
+      );
+      expect(
+        fixture.query.mock.calls.filter(([sql]) =>
+          String(sql).includes('insert into public.attempt_answers'),
+        ),
+      ).toHaveLength(1);
+      const snapshotWrites = fixture.query.mock.calls.filter(([sql]) =>
+        sql.includes('insert into public.attempt_'),
+      );
+      expect(snapshotWrites).toHaveLength(3);
+      expect(JSON.parse(snapshotWrites[0]![1]![1] as string)).toHaveLength(5);
+      expect(JSON.parse(snapshotWrites[1]![1]![0] as string)).toHaveLength(20);
+      expect(JSON.parse(snapshotWrites[2]![1]![0] as string)).toHaveLength(5);
+      expect(fixture.query).toHaveBeenCalledWith('commit');
+      expect(fixture.release).toHaveBeenCalledTimes(2);
+      expect(
+        fixture.query.mock.calls.filter(([sql]) =>
+          sql.includes('insert into public.movement_evidence'),
+        ),
+      ).toHaveLength(arrivalState === 'new' ? 1 : 0);
+      expect(
+        fixture.query.mock.calls.filter(([sql]) =>
+          sql.includes('insert into public.movement_eligibility_decisions'),
+        ),
+      ).toHaveLength(arrivalState === 'accepted' ? 0 : 1);
+    },
+  );
 
   it('returns an existing attempt for an identical retry', async () => {
     const questionIds = Array.from({ length: 5 }, () => randomUUID());

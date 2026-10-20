@@ -10,6 +10,48 @@ const AUTHOR_ID = '18370000-0000-4000-8000-000000000001';
 const EVENT_ID = '18370000-0000-4000-8000-000000000002';
 
 describe('author campaign service validation', () => {
+  it.each(['eventIds', 'trailIds'] as const)(
+    'accepts canonical PostgreSQL UUIDs without RFC bits in %s for create and update',
+    async (field) => {
+      const databaseBoundary = new Error(
+        'Validated input reached the transaction boundary',
+      );
+      const connect = vi.fn().mockRejectedValue(databaseBoundary);
+      const service = createAuthorCampaignService({
+        connect,
+      } as AuthorCampaignDatabase);
+      const input = {
+        ...validInput(),
+        [field]: ['AE6526B9-B164-210B-C746-C4AF1B45747A'],
+      };
+      await expect(service.createCampaign(input)).rejects.toBe(
+        databaseBoundary,
+      );
+      await expect(
+        service.updateCampaign({
+          ...input,
+          campaignId: EVENT_ID,
+          expectedVersion: 0,
+        }),
+      ).rejects.toBe(databaseBoundary);
+      expect(connect).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each(['not-a-uuid', 'ae6526b9-b164-210b-c746-c4af1b45747z'])(
+    'rejects malformed membership identifier %s before opening a transaction',
+    async (id) => {
+      const connect = vi.fn();
+      const service = createAuthorCampaignService({
+        connect,
+      } as AuthorCampaignDatabase);
+      await expect(
+        service.createCampaign({ ...validInput(), eventIds: [id] }),
+      ).rejects.toBeInstanceOf(InvalidAuthorCampaignError);
+      expect(connect).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects a blank title before opening a transaction', async () => {
     const connect = vi.fn();
     await expect(

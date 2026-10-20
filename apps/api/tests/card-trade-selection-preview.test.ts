@@ -106,10 +106,30 @@ describe('card trade selection preview', () => {
       .map(([statement]) => String(statement))
       .join('\n');
     expect(sql).not.toContain('insert into private.card_trade_reservations');
-    expect(query).toHaveBeenCalledWith('begin');
-    expect(query).toHaveBeenCalledWith('commit');
+    expect(query).toHaveBeenCalledOnce();
+    expect(query.mock.calls[0]?.[1]).toEqual([
+      PLAYER_ID,
+      null,
+      [REQUESTED_DEFINITION_ID],
+      'card-trade-v1',
+    ]);
     expect(release).toHaveBeenCalledOnce();
     expect(client).toBeDefined();
+  });
+
+  it('releases a new-draft connection if its snapshot query fails', async () => {
+    const failure = new Error('Database unavailable');
+    const { database, release } = tradeDatabase(async () => {
+      throw failure;
+    });
+    await expect(
+      createCardTradeService(database).previewSelection({
+        playerId: PLAYER_ID,
+        offeredOwnedCardIds: [],
+        requestedDefinitions: [],
+      }),
+    ).rejects.toBe(failure);
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it('rejects duplicate copy identifiers before opening a transaction', async () => {
@@ -244,12 +264,17 @@ function tradeListRow(
 
 function createPreviewDatabase() {
   const release = vi.fn();
-  const query = vi.fn(
-    async (statement: string): Promise<{ rows: pg.QueryResultRow[] }> => {
-      if (statement.includes('from private.card_trade_policy_versions')) {
-        return {
-          rows: [
-            {
+  const query = vi.fn<
+    (
+      statement: string,
+      values?: unknown[],
+    ) => Promise<{ rows: pg.QueryResultRow[] }>
+  >(async (statement) => {
+    if (statement.includes('with policy as')) {
+      return {
+        rows: [
+          {
+            policy: {
               policy_version: 'card-trade-v1',
               minimum_account_age_seconds: 86_400,
               maximum_open_offers: 5,
@@ -260,45 +285,31 @@ function createPreviewDatabase() {
               minimum_creature_copies: 3,
               minimum_power_copies: 2,
             },
-          ],
-        };
-      }
-      if (
-        statement.includes('from public.player_cards owned') &&
-        statement.includes('as saved_deck')
-      ) {
-        return {
-          rows: [
-            copyRow(1, 'creature'),
-            copyRow(2, 'creature', { saved_deck: true }),
-            copyRow(3, 'creature'),
-            copyRow(4, 'creature'),
-            copyRow(5, 'power'),
-            copyRow(6, 'power'),
-          ],
-        };
-      }
-      if (
-        statement.includes('from public.card_definitions definition') &&
-        statement.includes('definition.id = any')
-      ) {
-        return {
-          rows: [
-            {
-              card_definition_id: REQUESTED_DEFINITION_ID,
-              name: 'Rare Power',
-              category: 'power',
-              affinity: 'wit',
-              rarity: 'rare',
-              image_url: '/cards/rare-power.webp',
-              image_alt: 'A glowing card over the Great Hall.',
-            },
-          ],
-        };
-      }
-      return { rows: [] };
-    },
-  );
+            copies: [
+              copyRow(1, 'creature'),
+              copyRow(2, 'creature', { saved_deck: true }),
+              copyRow(3, 'creature'),
+              copyRow(4, 'creature'),
+              copyRow(5, 'power'),
+              copyRow(6, 'power'),
+            ],
+            definitions: [
+              {
+                card_definition_id: REQUESTED_DEFINITION_ID,
+                name: 'Rare Power',
+                category: 'power',
+                affinity: 'wit',
+                rarity: 'rare',
+                image_url: '/cards/rare-power.webp',
+                image_alt: 'A glowing card over the Great Hall.',
+              },
+            ],
+          },
+        ],
+      };
+    }
+    return { rows: [] };
+  });
   const client = { query, release } as unknown as CardTradeClient;
   const database: CardTradeDatabase = {
     connect: vi.fn().mockResolvedValue(client),

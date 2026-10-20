@@ -537,6 +537,47 @@ describe('challenge answer submission API', () => {
     expect(submitAnswer).not.toHaveBeenCalled();
   });
 
+  it.each(['multiple_choice', 'ordering'] as const)(
+    'returns typeless Power rewards when starting, submitting or fetching a completed %s quiz',
+    async (format) => {
+      const attempt =
+        format === 'ordering' ? completedOrderingAttempt() : completedAttempt();
+      attempt.reward.cards = [
+        {
+          ownedCardId: '51000000-0000-4000-8000-000000000001',
+          cardDefinitionId: '50000000-0000-4000-8000-000000000009',
+          name: 'Power reward',
+          category: 'power',
+          affinity: null,
+          rarity: 'common',
+        },
+      ];
+      startOrResume.mockResolvedValue({ outcome: 'resumed', attempt });
+      fetchAttempt.mockResolvedValue(attempt);
+      submitAnswer.mockResolvedValue(attempt);
+      const responses = [
+        await authenticatedStartRequest(),
+        await authenticatedFetchRequest(),
+        await authenticatedAnswerRequest(
+          format === 'ordering'
+            ? {
+                format: 'ordering',
+                attemptQuestionId: attempt.review[0]!.attemptQuestionId,
+                itemIds: orderingItems(1).map((item) => item.itemId),
+              }
+            : undefined,
+        ),
+      ];
+      for (const response of responses) {
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual({
+          ...attempt,
+          requestId: expect.any(String),
+        });
+      }
+    },
+  );
+
   it('returns the completed representation with five review entries', async () => {
     const attempt = completedAttempt();
 

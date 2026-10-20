@@ -28,6 +28,7 @@ interface RequestedDefinitionBody {
 }
 
 interface CreateTradeBody {
+  confirmOffer?: boolean;
   submissionId: string;
   recipientPlayerName: string;
   offeredOwnedCardIds: string[];
@@ -35,6 +36,7 @@ interface CreateTradeBody {
 }
 
 interface ReviseTradeBody {
+  confirmOffer?: boolean;
   submissionId: string;
   expectedVersion: number;
   offeredOwnedCardIds: string[];
@@ -47,7 +49,8 @@ interface VersionedTradeBody {
 }
 
 interface AcceptTradeBody extends VersionedTradeBody {
-  reauthenticationToken: string;
+  confirmOffer?: boolean;
+  reauthenticationToken?: string;
 }
 
 interface SubmissionBody {
@@ -337,7 +340,7 @@ const selectionPreviewResponseSchema = {
 
 export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
   app,
-  { service, reauthenticationVerifier },
+  { service },
 ) => {
   const secured = [app.authenticate, app.requireActivePlayer];
 
@@ -417,6 +420,11 @@ export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
             'requestedDefinitions',
           ],
           properties: {
+            confirmOffer: {
+              type: 'boolean',
+              description:
+                'Confirm this proposal for the other player to accept.',
+            },
             submissionId: uuid,
             recipientPlayerName: {
               type: 'string',
@@ -634,6 +642,11 @@ export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
             'requestedDefinitions',
           ],
           properties: {
+            confirmOffer: {
+              type: 'boolean',
+              description:
+                'Confirm this proposal for the other player to accept.',
+            },
             ...versionedBodySchema.properties,
             offeredOwnedCardIds: {
               type: 'array',
@@ -708,26 +721,23 @@ export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
         operationId: 'acceptCardTrade',
         summary: 'Accept the current trade version',
         description:
-          'Requires fresh Auth0 reauthentication proof. Both participants must accept the same immutable version before settlement.',
+          'Confirm the reviewed proposal using the current signed-in session. With confirmOffer, bind available own copies and settle atomically.',
         tags: ['Trading'],
         security: [{ bearerAuth: [] }],
         params: tradeParamsSchema,
         body: {
           type: 'object',
           additionalProperties: false,
-          required: [
-            'submissionId',
-            'expectedVersion',
-            'reauthenticationToken',
-          ],
+          required: ['submissionId', 'expectedVersion'],
           properties: {
             ...versionedBodySchema.properties,
+            confirmOffer: { type: 'boolean' },
             reauthenticationToken: {
               type: 'string',
               minLength: 1,
               maxLength: 16384,
               description:
-                'Fresh Auth0 ID token used only as recent-authentication proof.',
+                'Deprecated compatibility field; no additional sign-in is required.',
             },
           },
         },
@@ -735,7 +745,6 @@ export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
       },
     },
     async (request) => {
-      await requireRecentAuthentication(request, reauthenticationVerifier);
       try {
         return tradeEnvelope(
           await service.acceptTrade({
@@ -743,6 +752,7 @@ export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
             playerId: playerId(request),
             submissionId: request.body.submissionId,
             expectedVersion: request.body.expectedVersion,
+            ...(request.body.confirmOffer ? { confirmOffer: true } : {}),
           }),
           request,
         );
@@ -816,32 +826,6 @@ export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
 function playerId(request: FastifyRequest): string {
   if (!request.player) throw new Error('Active player context is missing.');
   return request.player.id;
-}
-
-async function requireRecentAuthentication(
-  request: FastifyRequest<{ Body: AcceptTradeBody }>,
-  verifier: ReauthenticationTokenVerifier,
-): Promise<void> {
-  const identity = request.auth;
-  if (!identity) throw new Error('Authenticated identity context is missing.');
-  try {
-    const proof = await verifier.verify(request.body.reauthenticationToken);
-    if (
-      proof.identity.issuer !== identity.issuer ||
-      proof.identity.subject !== identity.subject
-    ) {
-      throw new Error(
-        'Reauthentication identity does not match access identity.',
-      );
-    }
-  } catch {
-    throw new ApiError({
-      statusCode: 401,
-      code: 'RECENT_AUTHENTICATION_REQUIRED',
-      title: 'Recent authentication required',
-      detail: 'Recent authentication is required to accept a card trade.',
-    });
-  }
 }
 
 function playerNameValidationError(): ApiError {

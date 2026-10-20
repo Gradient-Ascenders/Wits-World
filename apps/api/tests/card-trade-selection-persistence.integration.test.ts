@@ -110,6 +110,20 @@ describe.skipIf(!runIntegrationTests)(
       ).toBe(true);
     });
 
+    it('returns empty arrays for an empty collection without exposing another player’s copies', async () => {
+      const preview = await createCardTradeService(pool).previewSelection({
+        playerId: randomUUID(),
+        offeredOwnedCardIds: [randomUUID()],
+        requestedDefinitions: [],
+      });
+      expect(preview.valid).toBe(false);
+      expect(preview.issues).toEqual(
+        expect.arrayContaining(['unavailable_copy', 'request_required']),
+      );
+      expect(preview.ownedCopies).toEqual([]);
+      expect(preview.requestedDefinitions).toEqual([]);
+    });
+
     it('evaluates real ownership, saved-deck locks, and collection minimums', async () => {
       const fixture = await insertSelectionFixture(pool);
       const service = createCardTradeService(pool);

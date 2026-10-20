@@ -100,6 +100,12 @@ All routes use `/api/v1` and require an active Author:
 
 Create and edit bodies contain title, optional description, start/end,
 `eventIds`, and `trailIds`. Updates and transitions include `expectedVersion`.
+
+Membership identifiers accept canonical PostgreSQL hexadecimal UUIDs in
+`8-4-4-4-12` form, including deterministic seeded event and trail identifiers.
+RFC version and variant bits are not required. IDs are normalized to lowercase;
+malformed identifiers, missing references, and duplicate memberships remain
+invalid.
 Shared review, history, and errors are described in
 [Review and publish](diagrams/content-review.md#versions-and-history).
 

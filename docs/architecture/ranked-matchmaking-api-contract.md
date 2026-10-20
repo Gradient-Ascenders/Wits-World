@@ -60,7 +60,10 @@ return an eligible accepting player to searching with their original join time;
 the other player may enter the policy's cooldown. Render the returned state
 rather than assuming a proposal always ends in a match.
 
-Once `status` is `matched`, open `matchId` through the live API. Cancelling a
+Once `status` is `matched`, open `matchId` through the live API. Queue reads
+return `idle` with no match ID after that battle completes, so returning to the
+lobby does not reopen a historical result. Retrying acceptance still returns
+the original committed match receipt. Cancelling a
 queue does not cancel a match that has already committed. Use live resignation
 when conceding an active battle.
 

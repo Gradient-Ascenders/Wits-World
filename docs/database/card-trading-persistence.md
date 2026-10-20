@@ -34,6 +34,16 @@ Each counteroffer appends a version. Approvals and warning acknowledgements are
 keyed by trade, version, and participant, so an old approval cannot authorise a
 new offer. Earlier versions remain as history.
 
+The web's confirmed-offer flow records proposal consent when Send offer or Send
+counter is confirmed. A counter version contains only its proposer's selections,
+requests, reservations, and consent. Accepting binds matching available own
+copies under ownership locks and appends a complete settlement version; it does
+not update immutable rows from the proposal. The server carries forward the
+unchanged proposer's confirmed intent and records the accepting player's consent
+and rarity acknowledgement in the same transaction as the exchange. Missing,
+protected, stale, or otherwise invalid selections cannot partially transfer.
+Legacy per-side versions remain readable and supported.
+
 ## Reservations and cross-feature locks
 
 `card_trade_reservations.owned_card_id` is the primary key. One live copy can
@@ -82,6 +92,13 @@ flowchart TB
 All steps after acceptance share one transaction. Settlement rechecks effective
 trade holds, rolling completion caps, matching requests, reservations, definition
 availability, and post-exchange inventory minimums.
+
+Version items, requests, reservations, approvals, transfer movements, and
+recipient grants use bulk writes. The locked version state is reused during
+settlement; reservation and protection checks still run against the database.
+Offer responses load policy, participants, version state, and settlement details
+in one statement snapshot. Participant and expiry checks still precede that
+projection on the same transaction client.
 
 A transfer consumes the outgoing `player_cards` row and creates a new
 recipient-owned row with `acquisition_kind = 'trade'` and

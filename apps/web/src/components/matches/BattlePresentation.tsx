@@ -249,9 +249,11 @@ export function BattleActionPanel({
             {opponentReplacement
               ? `${opponentLabel} is choosing a replacement`
               : selectionPhase
-                ? phase === 'replacement'
-                  ? 'Choose a replacement'
-                  : 'Choose your first Creature'
+                ? waiting
+                  ? 'Waiting for the opposing opening Creature'
+                  : phase === 'replacement'
+                    ? 'Choose a replacement'
+                    : 'Choose your first Creature'
                 : waiting
                   ? 'Actions paused'
                   : 'Choose your action'}

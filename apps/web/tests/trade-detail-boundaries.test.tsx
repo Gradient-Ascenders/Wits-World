@@ -28,196 +28,143 @@ afterEach(() => {
 });
 
 describe('trade detail action boundaries', () => {
-  it('acknowledges an imbalance with the displayed version and updates consent', async () => {
-    const calls: Array<{ path: string; body?: unknown }> = [];
+  it('confirms an incoming offer and its rarity warning once without redirecting to sign in', async () => {
+    const calls: unknown[] = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = new URL(String(input));
-        if (url.pathname.endsWith('/cards/trading-catalogue'))
+        const path = new URL(String(input)).pathname;
+        if (path.endsWith('/cards/trading-catalogue'))
           return jsonResponse({ definitions: [], requestId: 'catalogue' });
-        if (
-          url.pathname.endsWith(`/trades/${tradeId}/imbalance-acknowledgement`)
-        ) {
-          const body = JSON.parse(String(init?.body)) as Record<
-            string,
-            unknown
-          >;
-          calls.push({ path: url.pathname, body });
+        if (path.endsWith('/cards/collection'))
+          return jsonResponse({ cards: [], requestId: 'collection' });
+        if (path.endsWith('/accept')) {
+          calls.push(JSON.parse(String(init?.body)));
           return jsonResponse({
-            requestId: 'acknowledged',
             trade: buildTrade({
-              imbalanceWarningRequired: true,
-              self: party({ imbalanceAcknowledged: true }),
+              status: 'completed',
+              terminalAt: '2026-10-08T10:00:00.000Z',
+              self: party({ accepted: true }),
+              counterparty: party({ accepted: true }),
             }),
-          });
-        }
-        if (url.pathname.endsWith(`/trades/${tradeId}`))
-          return jsonResponse({
-            trade: buildTrade({ imbalanceWarningRequired: true }),
-            requestId: 'detail',
-          });
-        throw new Error(`Unexpected request: ${url.pathname}`);
-      }),
-    );
-
-    renderDetail(`/collection/trades/${tradeId}`);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole('checkbox'));
-    await user.click(screen.getByRole('button', { name: 'Confirm warning' }));
-
-    expect(await screen.findByText('Warning reviewed.')).toBeVisible();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({
-      path: `/api/v1/trades/${tradeId}/imbalance-acknowledgement`,
-      body: { expectedVersion: 1, submissionId: expect.any(String) },
-    });
-  });
-
-  it('resumes acceptance only for the version returned from the identity check', async () => {
-    const calls: Array<{ path: string; body?: unknown }> = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = new URL(String(input));
-        if (url.pathname.endsWith('/cards/trading-catalogue'))
-          return jsonResponse({ definitions: [], requestId: 'catalogue' });
-        if (url.pathname.endsWith(`/trades/${tradeId}/accept`)) {
-          calls.push({
-            path: url.pathname,
-            body: JSON.parse(String(init?.body)),
-          });
-          return jsonResponse({
             requestId: 'accepted',
-            trade: buildTrade({ self: party({ accepted: true }) }),
           });
         }
-        if (url.pathname.endsWith(`/trades/${tradeId}`))
-          return jsonResponse({ trade: buildTrade(), requestId: 'detail' });
-        throw new Error(`Unexpected request: ${url.pathname}`);
+        return jsonResponse({
+          trade: buildTrade({
+            role: 'recipient',
+            complete: false,
+            self: party({ offeredCopies: [], requestedDefinitions: [] }),
+            counterparty: party({ accepted: true }),
+            imbalanceWarningRequired: true,
+          }),
+          requestId: 'detail',
+        });
       }),
     );
-
-    renderDetail(
-      `/collection/trades/${tradeId}?action=confirm-accept&version=1`,
-    );
+    const view = renderDetail(`/collection/trades/${tradeId}`);
     const user = userEvent.setup();
-    const dialog = await screen.findByRole('dialog', {
-      name: 'Accept this offer?',
+    const accept = await screen.findByRole('button', {
+      name: 'Accept',
     });
-    await user.click(
-      within(dialog).getByRole('button', { name: 'Accept offer' }),
+    expect(accept).toBeEnabled();
+    expect(screen.getByRole('link', { name: 'Counter' })).toHaveAttribute(
+      'href',
+      `/collection/trades/${tradeId}/edit`,
     );
-
+    await user.click(accept);
+    const dialog = screen.getByRole('dialog', { name: 'Accept this offer?' });
+    expect(dialog).toHaveTextContent(
+      'Your cards will be exchanged immediately',
+    );
+    expect(dialog).toHaveTextContent('Rarity imbalance');
+    expect(calls).toHaveLength(0);
+    await user.click(within(dialog).getByRole('button', { name: 'Accept' }));
     expect(
-      await screen.findByRole('button', { name: 'Accepted' }),
-    ).toBeDisabled();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({
-      path: `/api/v1/trades/${tradeId}/accept`,
-      body: {
+      await screen.findByRole('heading', { name: 'Trade completed' }),
+    ).toBeVisible();
+    expect(calls).toEqual([
+      {
+        confirmOffer: true,
         expectedVersion: 1,
-        reauthenticationToken: 'id-token',
         submissionId: expect.any(String),
       },
-    });
+    ]);
+    expect(view.loginWithRedirect).not.toHaveBeenCalled();
+    expect(view.getIdTokenClaims).not.toHaveBeenCalled();
   });
 
-  it('rejects an identity return for an outdated version without submitting acceptance', async () => {
-    const acceptCalls: unknown[] = [];
+  it('cancels the accept popup without sending a command and restores focus', async () => {
+    const mutations: string[] = [];
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = new URL(String(input));
-        if (url.pathname.endsWith('/cards/trading-catalogue'))
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname;
+        if (init?.method === 'POST') mutations.push(path);
+        if (path.endsWith('/cards/trading-catalogue'))
           return jsonResponse({ definitions: [], requestId: 'catalogue' });
-        if (url.pathname.endsWith(`/trades/${tradeId}/accept`))
-          acceptCalls.push(url);
-        if (url.pathname.endsWith(`/trades/${tradeId}`))
-          return jsonResponse({
-            trade: buildTrade({ version: 2 }),
-            requestId: 'detail',
-          });
-        throw new Error(`Unexpected request: ${url.pathname}`);
+        return jsonResponse({ trade: buildTrade(), requestId: 'detail' });
       }),
     );
-
-    renderDetail(
-      `/collection/trades/${tradeId}?action=confirm-accept&version=1`,
-    );
-
-    expect(
-      await screen.findByRole('heading', { name: 'The offer changed' }),
-    ).toBeVisible();
-    expect(
-      screen.getByText(/Review the current version before accepting/u),
-    ).toBeVisible();
-    expect(screen.getByLabelText('Trade version 2')).toBeVisible();
-    expect(acceptCalls).toHaveLength(0);
+    renderDetail(`/collection/trades/${tradeId}`);
+    const user = userEvent.setup();
+    const accept = await screen.findByRole('button', {
+      name: 'Accept',
+    });
+    await user.click(accept);
+    await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(accept).toHaveFocus();
+    expect(mutations).toEqual([]);
   });
 
-  it('reloads the offer after the accept endpoint reports a stale version', async () => {
-    let detailReads = 0;
-    let acceptCalls = 0;
+  it('reloads a stale offer and requires fresh confirmation rather than accepting the new version', async () => {
+    let reads = 0;
+    const calls: unknown[] = [];
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = new URL(String(input));
-        if (url.pathname.endsWith('/cards/trading-catalogue'))
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname;
+        if (path.endsWith('/cards/trading-catalogue'))
           return jsonResponse({ definitions: [], requestId: 'catalogue' });
-        if (url.pathname.endsWith(`/trades/${tradeId}/accept`)) {
-          acceptCalls += 1;
+        if (path.endsWith('/accept')) {
+          calls.push(JSON.parse(String(init?.body)));
           return jsonResponse(
-            {
-              code: 'TRADE_VERSION_STALE',
-              detail: 'The offer changed before acceptance.',
-              requestId: 'stale-acceptance',
-            },
+            { code: 'TRADE_VERSION_STALE', requestId: 'stale' },
             409,
           );
         }
-        if (url.pathname.endsWith(`/trades/${tradeId}`)) {
-          detailReads += 1;
-          return jsonResponse({
-            trade: buildTrade({ version: detailReads }),
-            requestId: `detail-${detailReads}`,
-          });
-        }
-        throw new Error(`Unexpected request: ${url.pathname}`);
+        return jsonResponse({
+          trade: buildTrade({ version: ++reads }),
+          requestId: 'detail',
+        });
       }),
     );
-
-    renderDetail(
-      `/collection/trades/${tradeId}?action=confirm-accept&version=1`,
-    );
+    renderDetail(`/collection/trades/${tradeId}`);
     const user = userEvent.setup();
-    const dialog = await screen.findByRole('dialog', {
-      name: 'Accept this offer?',
-    });
+    await user.click(await screen.findByRole('button', { name: 'Accept' }));
     await user.click(
-      within(dialog).getByRole('button', { name: 'Accept offer' }),
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Accept',
+      }),
     );
-
     expect(
       await screen.findByRole('heading', { name: 'The offer changed' }),
     ).toBeVisible();
     expect(screen.getByLabelText('Trade version 2')).toBeVisible();
-    expect(
-      screen.getByText(
-        'The offer changed while you verified your identity. Review the current version before accepting.',
-      ),
-    ).toBeVisible();
-    expect(detailReads).toBe(2);
-    expect(acceptCalls).toBe(1);
-    expect(
-      screen.queryByRole('dialog', { name: 'Accept this offer?' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(calls).toEqual([
+      {
+        confirmOffer: true,
+        expectedVersion: 1,
+        submissionId: expect.any(String),
+      },
+    ]);
   });
 
   it.each([
     ['sender', 'Cancel offer', 'cancel', 'cancelled'],
-    ['recipient', 'Decline offer', 'decline', 'declined'],
+    ['recipient', 'Decline', 'decline', 'declined'],
   ] as const)(
     '%s can %s and sees the server terminal state',
     async (role, action, endpoint, status) => {
@@ -389,7 +336,7 @@ function renderDetail(path: string) {
     isLoading: false,
     loginWithRedirect: vi.fn().mockResolvedValue(undefined),
   } as Auth0ContextInterface;
-  return render(
+  const view = render(
     <Auth0Context.Provider value={auth}>
       <Router>
         <Route path="/collection/trades/:tradeId">
@@ -398,6 +345,11 @@ function renderDetail(path: string) {
       </Router>
     </Auth0Context.Provider>,
   );
+  return {
+    ...view,
+    loginWithRedirect: auth.loginWithRedirect,
+    getIdTokenClaims: auth.getIdTokenClaims,
+  };
 }
 
 function definition() {

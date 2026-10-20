@@ -78,6 +78,17 @@ and lifecycle timestamps. HTTP adds
 `selfSide` maps the participant to the stable `playerOne` or `playerTwo` history
 side. During initial selection, the opponent's selected Creature stays hidden
 until both opening selections resolve.
+`currentActor` is `null` during simultaneous opening selection. Use returned
+`select_initial_creature` legal actions to enable your opening choice; after it
+is committed, wait for the opponent rather than submitting it again.
+
+Creature projections include the actual card `name` and snapshot `rarity`, so
+live battles use the same artwork and rarity frames as CPU battles. Power cards
+also retain their names. New ranked matches freeze names in their immutable deck
+snapshots; older snapshots resolve names from their source card definitions.
+This presentation data is returned only for the player's own cards and revealed
+opponent cards. Public action history includes committed effect amounts and
+targets; clients display those effects without calculating battle outcomes.
 
 Spectator presence includes participant connection booleans and an aggregate
 spectator count. It does not identify spectators or expose private account,
@@ -121,6 +132,11 @@ Use the latest `legalActions` and their returned IDs. The server revalidates
 each action against the current match version and deadline. Clients do not
 submit damage, effects, random outcomes, or timeout actions.
 
+IDs use PostgreSQL's canonical UUID form (`8-4-4-4-12` hexadecimal digits).
+Catalogue move IDs are deterministic and need not carry RFC UUID version or
+variant bits. Accept these IDs in projections, history, and submitted actions;
+do not reject an authoritative battle update based on those bits.
+
 Resignation uses `type: "resign.submit"` with the same envelope fields and no
 `action`. It is available to an active participant regardless of whose turn it
 is. Spectators cannot submit either message type.
@@ -142,8 +158,14 @@ the committed version and `serverTime`.
 Acknowledge and transition delivery can occur separately. Use `messageId` to
 resolve pending commands, `eventId` to recognise repeated events, and `version`
 to order gameplay. Replace state from complete projections rather than
-reconstructing combat from messages. Ignore older versions; a version gap or
-ambiguous outcome can be repaired with an HTTP GET.
+reconstructing combat from messages. Ignore duplicate and older transitions;
+connection and presence notifications can repeat an already-applied version.
+Repair version gaps, ahead-of-state presence, and ambiguous outcomes with an
+HTTP GET while keeping a healthy socket open. A complete authoritative snapshot
+may advance across several versions. If a committed acknowledgement has no
+corresponding update after 1.5 seconds, or a deadline passes without an update,
+refresh the server projection without resubmitting the command. These reads do
+not replace server deadline or outcome authority.
 
 ## Deadlines and reconnect
 

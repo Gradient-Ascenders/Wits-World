@@ -281,8 +281,10 @@ const rewardCardSchema = {
       enum: ['creature', 'power'],
     },
     affinity: {
-      type: 'string',
-      enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+      anyOf: [
+        { type: 'string', enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'] },
+        { type: 'null' },
+      ],
     },
     rarity: {
       type: 'string',

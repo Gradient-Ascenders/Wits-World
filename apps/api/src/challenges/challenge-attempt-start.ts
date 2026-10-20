@@ -127,21 +127,19 @@ interface PublishedQuestionRow extends pg.QueryResultRow {
 }
 
 interface PublishedChoiceRow extends pg.QueryResultRow {
+  question_id: string;
   choice_id: string;
   choice_text: string;
 }
 
 interface PublishedOrderingItemRow extends pg.QueryResultRow {
+  question_id: string;
   item_id: string;
   item_text: string;
 }
 
 interface AttemptInsertRow extends pg.QueryResultRow {
   attempt_id: string;
-}
-
-interface AttemptQuestionInsertRow extends pg.QueryResultRow {
-  attempt_question_id: string;
 }
 
 interface PreparedQuestionBase {
@@ -345,29 +343,41 @@ export function createChallengeAttemptStartService(
         );
 
         const preparedQuestions: PreparedQuestion[] = [];
+        const selectedQuestionIds = selectedQuestions.map(
+          (question) => question.question_id,
+        );
+        const orderingItems =
+          challenge.format === 'ordering'
+            ? await client.query<PublishedOrderingItemRow>(
+                `select item.question_id::text, item.id::text as item_id, item.item_text
+                 from public.challenge_ordering_items item
+                where item.question_id = any($1::uuid[])
+                order by item.question_id, item.id`,
+                [selectedQuestionIds],
+              )
+            : undefined;
+        const choices =
+          challenge.format === 'multiple_choice'
+            ? await client.query<PublishedChoiceRow>(
+                `select choice.question_id::text, choice.id::text as choice_id, choice.choice_text
+                 from public.challenge_choices choice
+                where choice.question_id = any($1::uuid[])
+                order by choice.question_id, choice.authoring_position`,
+                [selectedQuestionIds],
+              )
+            : undefined;
 
         for (const question of selectedQuestions) {
           if (challenge.format === 'ordering') {
-            const itemResult = await client.query<PublishedOrderingItemRow>(
-              `
-                select
-                  item.id::text as item_id,
-                  item.item_text
-                from public.challenge_ordering_items item
-                where item.question_id = $1::uuid
-                order by item.id
-              `,
-              [question.question_id],
+            const itemRows = orderingItems!.rows.filter(
+              (item) => item.question_id === question.question_id,
             );
 
-            if (itemResult.rows.length !== 4 || question.explanation === null) {
+            if (itemRows.length !== 4 || question.explanation === null) {
               throw new ChallengeUnavailableError();
             }
 
-            const shuffledItems = shuffleChallengeItems(
-              itemResult.rows,
-              randomIndex,
-            );
+            const shuffledItems = shuffleChallengeItems(itemRows, randomIndex);
 
             preparedQuestions.push({
               format: 'ordering',
@@ -383,24 +393,16 @@ export function createChallengeAttemptStartService(
             continue;
           }
 
-          const choiceResult = await client.query<PublishedChoiceRow>(
-            `
-              select
-                choice.id::text as choice_id,
-                choice.choice_text
-              from public.challenge_choices choice
-              where choice.question_id = $1::uuid
-              order by choice.authoring_position
-            `,
-            [question.question_id],
+          const choiceRows = choices!.rows.filter(
+            (choice) => choice.question_id === question.question_id,
           );
 
-          if (choiceResult.rows.length !== 4) {
+          if (choiceRows.length !== 4) {
             throw new ChallengeUnavailableError();
           }
 
           const shuffledChoices = shuffleChallengeItems(
-            choiceResult.rows,
+            choiceRows,
             randomIndex,
           );
 
@@ -487,83 +489,79 @@ export function createChallengeAttemptStartService(
           });
         }
 
-        for (const [questionIndex, question] of preparedQuestions.entries()) {
-          const questionInsert = await client.query<AttemptQuestionInsertRow>(
-            `
-                insert into public.attempt_questions (
-                  attempt_id,
-                  source_question_id,
-                  position,
-                  prompt_snapshot,
-                  difficulty_snapshot,
-                  explanation_snapshot
-                )
-                values ($1, $2, $3, $4, $5, $6)
-                returning id::text as attempt_question_id
-              `,
-            [
-              insertedAttempt.attempt_id,
-              question.sourceQuestionId,
-              questionIndex + 1,
-              question.prompt,
-              question.difficulty,
-              question.explanation,
-            ],
+        const questionSnapshots = preparedQuestions.map((question, index) => ({
+          source_question_id: question.sourceQuestionId,
+          position: index + 1,
+          prompt: question.prompt,
+          difficulty: question.difficulty,
+          explanation: question.explanation,
+        }));
+        const itemSnapshots = preparedQuestions.flatMap((question) => {
+          const items =
+            question.format === 'multiple_choice'
+              ? question.choices.map((choice) => ({
+                  source_id: choice.sourceChoiceId,
+                  text: choice.text,
+                }))
+              : question.items.map((item) => ({
+                  source_id: item.sourceItemId,
+                  text: item.text,
+                }));
+          return items.map((item, index) => ({
+            source_question_id: question.sourceQuestionId,
+            source_id: item.source_id,
+            position: index + 1,
+            text: item.text,
+          }));
+        });
+        const multipleChoice = challenge.format === 'multiple_choice';
+        // Read generated question IDs through RETURNING, rather than querying a
+        // table changed by the same statement's snapshot.
+        const snapshot = await client.query<{
+          question_count: number;
+          item_count: number;
+        }>(
+          `with questions as (
+             insert into public.attempt_questions (
+               attempt_id, source_question_id, position, prompt_snapshot,
+               difficulty_snapshot, explanation_snapshot
+             )
+             select $1::uuid, source_question_id, position, prompt, difficulty, explanation
+               from jsonb_to_recordset($2::jsonb) as row(
+                 source_question_id uuid, position integer, prompt text,
+                 difficulty integer, explanation text
+               )
+             order by position
+             returning id, source_question_id
+           ), items as (
+             insert into public.${multipleChoice ? 'attempt_question_choices' : 'attempt_question_ordering_items'} (
+               attempt_question_id, source_question_id,
+               ${multipleChoice ? 'source_choice_id' : 'source_item_id'}, display_position,
+               ${multipleChoice ? 'choice_text_snapshot' : 'item_text_snapshot'}
+             )
+             select question.id, item.source_question_id, item.source_id, item.position, item.text
+               from questions question
+               join jsonb_to_recordset($3::jsonb) as item(
+                 source_question_id uuid, source_id uuid, position integer, text text
+               ) on item.source_question_id = question.source_question_id
+             order by question.id, item.position
+             returning id
+           )
+           select (select count(*)::integer from questions) as question_count,
+                  (select count(*)::integer from items) as item_count`,
+          [
+            insertedAttempt.attempt_id,
+            JSON.stringify(questionSnapshots),
+            JSON.stringify(itemSnapshots),
+          ],
+        );
+        if (
+          snapshot.rows[0]?.question_count !== 5 ||
+          snapshot.rows[0].item_count !== 20
+        ) {
+          throw new Error(
+            'Challenge attempt snapshots were not created completely.',
           );
-
-          const attemptQuestion = questionInsert.rows[0];
-
-          if (!attemptQuestion) {
-            throw new Error(
-              'Challenge attempt question snapshot was not created.',
-            );
-          }
-
-          if (question.format === 'multiple_choice') {
-            for (const [choiceIndex, choice] of question.choices.entries()) {
-              await client.query(
-                `
-                  insert into public.attempt_question_choices (
-                    attempt_question_id,
-                    source_question_id,
-                    source_choice_id,
-                    display_position,
-                    choice_text_snapshot
-                  )
-                  values ($1, $2, $3, $4, $5)
-                `,
-                [
-                  attemptQuestion.attempt_question_id,
-                  question.sourceQuestionId,
-                  choice.sourceChoiceId,
-                  choiceIndex + 1,
-                  choice.text,
-                ],
-              );
-            }
-          } else {
-            for (const [itemIndex, item] of question.items.entries()) {
-              await client.query(
-                `
-                  insert into public.attempt_question_ordering_items (
-                    attempt_question_id,
-                    source_question_id,
-                    source_item_id,
-                    display_position,
-                    item_text_snapshot
-                  )
-                  values ($1, $2, $3, $4, $5)
-                `,
-                [
-                  attemptQuestion.attempt_question_id,
-                  question.sourceQuestionId,
-                  item.sourceItemId,
-                  itemIndex + 1,
-                  item.text,
-                ],
-              );
-            }
-          }
         }
 
         const createdAttempt = await reader.findByPlayerAndEvent(

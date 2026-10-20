@@ -1,11 +1,16 @@
 import { createAppDateTimeFormatter } from '../date-time';
 import {
+  ArrowRight,
   Broadcast,
+  CaretDown,
   CheckCircle,
   Copy,
   Eye,
+  Flag,
   Plugs,
   WarningCircle,
+  Trophy,
+  XCircle,
 } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -19,7 +24,7 @@ import {
   type LiveProjection,
   type RankedSettlement,
 } from '../api/live';
-import type { CpuMatchIntent } from '../api/matches';
+import type { MatchCreature, CpuMatchIntent } from '../api/matches';
 import {
   type ApiAccessTokenProvider,
   useApiAccessToken,
@@ -33,9 +38,11 @@ import {
   BattleActionPanel,
   BattleBench,
   BattleCombatant,
+  CreatureDetailsPicture,
+  BattleResolution,
+  type BattleResolutionMoment,
 } from '../components/matches/BattlePresentation';
 import {
-  BattleOutcomePanel,
   BattleShellHeader,
   BattleStatusDock,
 } from '../components/matches/BattleShell';
@@ -70,6 +77,7 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     countdown.seconds,
     session.match,
   );
+  const feedbackVersion = useLiveFeedback(session.match);
 
   useEffect(() => {
     if (session.connection === 'unrecoverable') alert.current?.focus();
@@ -86,11 +94,10 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         description={
           session.feedback === 'Connecting…' ? undefined : session.feedback
         }
-      >
-        <Link className="button button--quiet" href="/matches/live">
-          Return to Live Ranked
-        </Link>
-      </PageLoadingState>
+        escapeHref="/matches/live"
+        escapeLabel="Return to Live Ranked"
+        onRetry={session.recover}
+      />
     );
   }
 
@@ -141,6 +148,15 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   }
 
   const match = session.match;
+  if (match.status === 'completed') {
+    return (
+      <CompletedLiveBattle
+        apiBaseUrl={apiBaseUrl}
+        getAccessToken={getAccessToken}
+        match={match}
+      />
+    );
+  }
   const participant = match.role === 'participant' ? match : null;
   const spectator = match.role === 'spectator';
   const expired = match.status === 'active' && countdown.seconds <= 0;
@@ -157,7 +173,7 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   return (
     <main
-      className={`matches-page live-match-page${spectator ? ' live-match-page--spectator' : ''}`}
+      className={`matches-page battle-page live-match-page battle-page--live${spectator ? ' live-match-page--spectator' : ''}`}
     >
       <p aria-live="polite" className="sr-only" role="status">
         {session.feedback} {timerAnnouncement}
@@ -201,14 +217,8 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         }
         backHref="/matches/live"
         backLabel="Live Ranked"
-        description={
-          spectator
-            ? 'Watch the public battlefield and battle activity in real time.'
-            : 'Each decision has one minute. Three consecutive missed decisions end the battle as a ranked loss.'
-        }
         mode="Live Ranked"
         opponentLabel={liveOpponentLabel(match)}
-        title={battleTitle(match)}
         turnNumber={match.turnNumber}
       />
 
@@ -216,37 +226,27 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         connection={<ConnectionBadge connection={session.connection} />}
         detail={authorityDetail(match)}
         label={titleCaseAuthorityLabel(authorityLabel(match))}
-        timing={
-          match.status === 'active'
-            ? {
-                detail: expired
-                  ? 'Updating battle…'
-                  : `Play by ${formatDate(match.turnDeadline!)}`,
-                label: expired
-                  ? 'Deadline reached'
-                  : formatCountdown(countdown.seconds),
-                tone: expired
-                  ? 'danger'
-                  : countdown.seconds <= 10
-                    ? 'warning'
-                    : undefined,
-              }
-            : {
-                detail: 'The result is final.',
-                label: 'Battle complete',
-                tone: 'complete',
-              }
-        }
+        timing={{
+          detail: expired
+            ? 'Updating battle…'
+            : `Play by ${formatDate(match.turnDeadline!)}`,
+          label: expired
+            ? 'Deadline reached'
+            : formatCountdown(countdown.seconds),
+          tone: expired
+            ? 'danger'
+            : countdown.seconds <= 10
+              ? 'warning'
+              : undefined,
+        }}
         tone={
-          match.status === 'completed'
-            ? 'complete'
-            : spectator
-              ? 'spectator'
-              : expired
-                ? 'danger'
-                : match.currentActor === 'self'
-                  ? 'player'
-                  : 'opponent'
+          spectator
+            ? 'spectator'
+            : expired
+              ? 'danger'
+              : participant && ownsDecision(participant)
+                ? 'player'
+                : 'opponent'
         }
       />
 
@@ -317,117 +317,144 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         </div>
       ) : null}
 
-      {match.status === 'completed' ? (
-        <CompletedLiveBattle
-          apiBaseUrl={apiBaseUrl}
-          getAccessToken={getAccessToken}
-          match={match}
-        />
-      ) : (
-        <div className="battle-live-layout live-battle-layout">
-          <section
-            aria-label="Current live battlefield"
-            className={`battle-stage battle-stage--${combatants.one.acting ? 'player' : combatants.two.acting ? 'cpu' : 'selection'}`}
-          >
-            <div aria-hidden="true" className="battle-stage__field-lines" />
-            <div className="battle-stage__label">
-              <span>
-                {spectator ? 'Public battlefield' : 'Live battlefield'}
-              </span>
-              <strong>{authorityLabel(match)}</strong>
-            </div>
-            <div className="battle-arena">
-              <BattleCombatant
-                creature={combatants.one.creature}
-                emptyText="This Creature has not been revealed yet."
-                heading={combatants.one.label}
-                isActing={combatants.one.acting}
-                visualSide="player"
-              />
-              <div aria-hidden="true" className="battle-versus">
-                LIVE
-              </div>
-              <BattleCombatant
-                creature={combatants.two.creature}
-                emptyText="This Creature has not been revealed yet."
-                heading={combatants.two.label}
-                isActing={combatants.two.acting}
-                visualSide="cpu"
-              />
-            </div>
-          </section>
-
-          {participant ? (
-            <BattleActionPanel
-              activeCreatureId={participant.self.activeCreatureId}
-              busy={session.pending !== null}
-              creatures={participant.self.creatures}
-              currentActor={participant.currentActor === 'self'}
-              idPrefix="live"
-              inputBlocked={inputBlocked}
-              key={`${participant.phase}:${participant.self.activeCreatureId ?? 'none'}`}
-              legalActions={participant.legalActions}
-              onAction={(action: CpuMatchIntent) =>
-                session.submitAction(action)
+      <div className="battle-live-layout live-battle-layout">
+        <section
+          aria-label="Current live battlefield"
+          className={`battle-stage battle-stage--${combatants.one.acting ? 'player' : combatants.two.acting ? 'cpu' : 'selection'}`}
+        >
+          <div aria-hidden="true" className="battle-stage__field-lines" />
+          <div className="battle-stage__label">
+            <span>{spectator ? 'Public battlefield' : 'Live battlefield'}</span>
+          </div>
+          <h1 className="battle-stage__turn">
+            {match.phase === 'initial_selection' &&
+            participant &&
+            ownsDecision(participant)
+              ? 'Choose your first Creature'
+              : match.phase === 'replacement' &&
+                  participant?.currentActor === 'self'
+                ? 'Choose a replacement'
+                : titleCaseAuthorityLabel(authorityLabel(match))}
+          </h1>
+          <div className="battle-arena">
+            <BattleCombatant
+              creature={combatants.one.creature}
+              emptyText={
+                participant
+                  ? match.phase === 'replacement'
+                    ? 'Defeated Creature removed. Choose a replacement.'
+                    : 'Choose your initial Creature.'
+                  : 'This Creature has not been revealed yet.'
               }
-              opponentLabel={participant.opponent.playerName}
-              phase={
-                participant.phase === 'completed' ? 'active' : participant.phase
-              }
-              powerCards={participant.self.powerCards}
+              heading={combatants.one.label}
+              isActing={combatants.one.acting}
+              feedbackKey={feedbackVersion ?? undefined}
+              {...liveCombatantFeedback(
+                match,
+                combatants.one.creature?.id,
+                feedbackVersion,
+              )}
+              visualSide="player"
             />
-          ) : (
-            <section
-              className="live-spectator-lock"
-              aria-labelledby="spectator-lock-title"
-            >
-              <Eye size={30} aria-hidden="true" />
-              <h2 id="spectator-lock-title">Watching live — read only</h2>
-              <p>
-                You can see the public battlefield and battle activity. Player
-                hands, private choices, and actions stay private.
-              </p>
-            </section>
-          )}
+            <BattleResolution
+              activeIndex={null}
+              activeMoment={null}
+              emptyText={
+                match.phase === 'initial_selection'
+                  ? spectator
+                    ? 'Opening choices stay hidden until both players are ready.'
+                    : 'Choose your opening Creature. Both choices stay hidden until the battle begins.'
+                  : 'No public battle action has been recorded yet.'
+              }
+              moments={liveResolutionMoments(match.history.at(-1), match)}
+            />
+            <BattleCombatant
+              creature={combatants.two.creature}
+              emptyText="This Creature has not been revealed yet."
+              heading={combatants.two.label}
+              isActing={combatants.two.acting}
+              feedbackKey={feedbackVersion ?? undefined}
+              {...liveCombatantFeedback(
+                match,
+                combatants.two.creature?.id,
+                feedbackVersion,
+              )}
+              visualSide="cpu"
+            />
+          </div>
+        </section>
 
-          <aside
-            aria-label="Live battle activity and details"
-            className="battle-side-rail live-side-rail"
+        {participant ? (
+          <BattleActionPanel
+            activeCreatureId={participant.self.activeCreatureId}
+            busy={session.pending !== null}
+            creatures={participant.self.creatures}
+            currentActor={ownsDecision(participant)}
+            idPrefix="live"
+            inputBlocked={inputBlocked}
+            key={`${participant.phase}:${participant.self.activeCreatureId ?? 'none'}`}
+            legalActions={participant.legalActions}
+            lockReason={
+              session.connection !== 'connected'
+                ? 'Waiting for connection…'
+                : expired
+                  ? 'Updating battle…'
+                  : undefined
+            }
+            onAction={(action: CpuMatchIntent) => session.submitAction(action)}
+            opponentLabel={participant.opponent.playerName}
+            phase={
+              participant.phase === 'completed' ? 'active' : participant.phase
+            }
+            powerCards={participant.self.powerCards}
+          />
+        ) : (
+          <section
+            className="live-spectator-lock"
+            aria-labelledby="spectator-lock-title"
           >
-            <LiveBattleHistory history={match.history} match={match} />
-            {participant ? (
-              <BattleBench
-                activeCreatureId={participant.self.activeCreatureId}
-                creatures={participant.self.creatures}
-              />
-            ) : (
-              <SpectatorPresence
-                match={match as Extract<LiveProjection, { role: 'spectator' }>}
-              />
-            )}
-            <LiveMatchDetails match={match} />
-            {participant ? (
-              <details className="battle-rail-card pvp-resign-card">
-                <summary>Leave this battle</summary>
-                <h2>Forfeit live battle</h2>
-                <p>
-                  Forfeiting records an immediate ranked loss. Closing the
-                  browser does not forfeit or pause the deadline.
-                </p>
-                <button
-                  className="button button--danger"
-                  disabled={inputBlocked}
-                  onClick={() => setConfirmingResignation(true)}
-                  ref={resignTrigger}
-                  type="button"
-                >
-                  Forfeit battle
-                </button>
-              </details>
-            ) : null}
-          </aside>
-        </div>
-      )}
+            <Eye size={30} aria-hidden="true" />
+            <h2 id="spectator-lock-title">Watching live — read only</h2>
+            <p>
+              You can see the public battlefield and battle activity. Player
+              hands, private choices, and actions stay private.
+            </p>
+          </section>
+        )}
+
+        <aside
+          aria-label="Live battle activity and details"
+          className="battle-side-rail live-side-rail"
+        >
+          <header className="battle-side-rail__heading">
+            <h2>Activity</h2>
+          </header>
+          <LiveBattleHistory history={match.history} match={match} />
+          {participant && match.phase === 'active' ? (
+            <BattleBench
+              activeCreatureId={participant.self.activeCreatureId}
+              creatures={participant.self.creatures}
+            />
+          ) : spectator ? (
+            <SpectatorPresence
+              match={match as Extract<LiveProjection, { role: 'spectator' }>}
+            />
+          ) : null}
+          <LiveMatchDetails match={match} />
+          {participant ? (
+            <button
+              aria-label="Forfeit battle"
+              className="battle-side-rail__forfeit"
+              disabled={inputBlocked}
+              onClick={() => setConfirmingResignation(true)}
+              ref={resignTrigger}
+              type="button"
+            >
+              <Flag aria-hidden="true" size={17} /> Forfeit
+            </button>
+          ) : null}
+        </aside>
+      </div>
 
       {confirmingResignation && participant ? (
         <ResignMatchDialog
@@ -492,28 +519,57 @@ function LiveBattleHistory({
   history: LiveHistoryEntry[];
   match: LiveProjection;
 }) {
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (body.current) body.current.scrollTop = body.current.scrollHeight;
+  }, [history.length]);
   return (
-    <section
-      className="battle-rail-card live-history"
-      aria-labelledby="live-history-title"
+    <details
+      className="battle-log battle-rail-card"
+      onToggle={(event) => {
+        if (event.currentTarget.open && body.current)
+          body.current.scrollTop = body.current.scrollHeight;
+      }}
     >
-      <div className="live-history__heading">
-        <h2 id="live-history-title">Battle activity</h2>
-        <span>{history.length} events</span>
+      <summary>
+        <span className="battle-log__summary-label">
+          Latest <strong>{history.length} events</strong>
+        </span>
+        <span className="battle-log__preview">
+          {history.length
+            ? historyLabel(history.at(-1)!, match)
+            : 'No actions yet.'}
+        </span>
+      </summary>
+      <div
+        aria-label="Complete battle activity"
+        className="battle-log__body"
+        ref={body}
+        role="log"
+        tabIndex={0}
+      >
+        {history.length === 0 ? (
+          <p>No public battle action has been committed yet.</p>
+        ) : (
+          <ol className="battle-log__groups">
+            {history.map((entry, index) => (
+              <li className="battle-log__group" key={`${index}-${entry.type}`}>
+                <p>{historyLabel(entry, match)}</p>
+                {entry.effects.length ? (
+                  <ul className="battle-log__effects">
+                    {liveResolutionMoments(entry, match)
+                      .slice(1)
+                      .map((moment) => (
+                        <li key={moment.id}>{moment.message}</li>
+                      ))}
+                  </ul>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
-      {history.length === 0 ? (
-        <p>No public battle action has been committed yet.</p>
-      ) : (
-        <ol>
-          {history.map((entry, index) => (
-            <li key={`${index}-${entry.type}`}>
-              <span>{index + 1}</span>
-              <p>{historyLabel(entry, match)}</p>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
+    </details>
   );
 }
 
@@ -590,59 +646,190 @@ function CompletedLiveBattle({
   getAccessToken: ApiAccessTokenProvider;
   match: LiveProjection;
 }) {
-  const title =
-    match.role === 'participant'
-      ? match.outcome === 'win'
-        ? 'You won the live battle'
-        : 'You lost the live battle'
-      : match.winner === 'playerOne'
-        ? `${match.playerOne.playerName} won`
-        : match.winner === 'playerTwo'
-          ? `${match.playerTwo.playerName} won`
-          : 'Live battle complete';
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    heading.current?.focus();
+  }, []);
+  const participant = match.role === 'participant';
+  const title = participant
+    ? match.outcome === 'win'
+      ? 'Victory'
+      : match.outcome === 'loss'
+        ? 'Defeat'
+        : 'Battle complete'
+    : 'Battle complete';
+  const OutcomeIcon =
+    participant && match.outcome === 'win'
+      ? Trophy
+      : participant && match.outcome === 'loss'
+        ? XCircle
+        : Flag;
+  const combatants = battleCombatants(match);
+  const lastMoves = match.history
+    .filter(
+      (entry) => entry.type === 'participant_action' && entry.action !== null,
+    )
+    .slice(-2);
+  const opponent = participant
+    ? `Against ${match.opponent.playerName}`
+    : match.winner
+      ? `${match.winner === 'playerOne' ? match.playerOne.playerName : match.playerTwo.playerName} won`
+      : `${match.playerOne.playerName} vs ${match.playerTwo.playerName}`;
   return (
-    <div className="battle-completed-layout">
-      <BattleOutcomePanel
-        action={
-          <Link className="button" href="/matches/live">
-            Return to Live Ranked
+    <main className="matches-page battle-page live-match-page battle-page--completed battle-report live-battle-report">
+      <div className="battle-report__panel">
+        <section
+          aria-labelledby="live-complete-title"
+          className="completed-match battle-report__outcome"
+          data-outcome={participant ? match.outcome : undefined}
+        >
+          <div className="battle-report__result">
+            <OutcomeIcon size={32} aria-hidden="true" />
+            <h1 id="live-complete-title" ref={heading} tabIndex={-1}>
+              {title}
+            </h1>
+          </div>
+          <p className="battle-report__opponent">{opponent}</p>
+          {match.completionReason && match.completionReason !== 'defeat' ? (
+            <p className="battle-report__reason">{completionLabel(match)}</p>
+          ) : null}
+          <dl className="battle-report__facts">
+            <div>
+              <dt>Ended on turn</dt>
+              <dd>{match.turnNumber}</dd>
+            </div>
+            {match.completedAt ? (
+              <div>
+                <dt className="sr-only">Completed</dt>
+                <dd>
+                  <time dateTime={match.completedAt}>
+                    {formatDate(match.completedAt)}
+                  </time>
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+          {participant ? (
+            <RankedSettlementSummary
+              apiBaseUrl={apiBaseUrl}
+              getAccessToken={getAccessToken}
+              matchId={match.matchId}
+            />
+          ) : null}
+          <Link
+            className="button live-battle-report__return"
+            href="/matches/live"
+          >
+            Back to Live Ranked
           </Link>
-        }
-        facts={[
-          { label: 'Final turn', value: match.turnNumber },
-          {
-            label: 'Completed',
-            value: match.completedAt
-              ? formatDate(match.completedAt)
-              : 'Not returned',
-          },
-        ]}
-        mode="Live Ranked"
-        summary={completionLabel(match.completionReason)}
-        title={title}
-        titleId="live-complete-title"
-        tone={
-          match.role === 'participant'
-            ? match.outcome === 'win'
-              ? 'victory'
-              : 'defeat'
-            : 'neutral'
-        }
-      >
-        <p className="battle-outcome__context">
-          This result is final. Refreshing cannot replay an action or change the
-          outcome.
-        </p>
-        {match.role === 'participant' ? (
-          <RankedSettlementSummary
-            apiBaseUrl={apiBaseUrl}
-            getAccessToken={getAccessToken}
-            matchId={match.matchId}
-          />
+        </section>
+        <section
+          aria-labelledby="live-last-moves-title"
+          className="battle-report__final-turn"
+        >
+          <div className="battle-report__section-heading">
+            <h2 id="live-last-moves-title">Last moves</h2>
+          </div>
+          {lastMoves.length ? (
+            <LiveRecordedActions entries={lastMoves} match={match} />
+          ) : (
+            <p className="battle-report__note">No moves recorded.</p>
+          )}
+          {combatants.one.creature || combatants.two.creature ? (
+            <div className="battle-report__combatants">
+              <LiveReportCombatant
+                creature={combatants.one.creature}
+                label={combatants.one.label}
+              />
+              <LiveReportCombatant
+                creature={combatants.two.creature}
+                label={combatants.two.label}
+              />
+            </div>
+          ) : null}
+        </section>
+        {match.history.length ? (
+          <details className="battle-report__disclosure">
+            <summary>
+              <span>Battle history</span>
+              <CaretDown size={20} aria-hidden="true" />
+            </summary>
+            <div className="live-battle-report__history">
+              <LiveRecordedActions entries={match.history} match={match} />
+            </div>
+          </details>
         ) : null}
-      </BattleOutcomePanel>
-      <LiveBattleHistory history={match.history} match={match} />
-    </div>
+      </div>
+    </main>
+  );
+}
+
+function LiveRecordedActions({
+  entries,
+  match,
+}: {
+  entries: LiveHistoryEntry[];
+  match: LiveProjection;
+}) {
+  return (
+    <ol className="battle-report__events">
+      {entries.map((entry, index) => (
+        <li key={index}>
+          <p>{historyLabel(entry, match)}</p>
+          {liveResolutionMoments(entry, match)
+            .slice(1)
+            .map((moment) => (
+              <p className="battle-report__effect" key={moment.id}>
+                {moment.message}
+              </p>
+            ))}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function LiveReportCombatant({
+  creature,
+  label,
+}: {
+  creature: MatchCreature | null;
+  label: string;
+}) {
+  return (
+    <section
+      className="battle-report__combatant"
+      aria-label={`${label}'s final Creature`}
+    >
+      <h3>{label}</h3>
+      {creature ? (
+        <>
+          <p className="battle-report__creature-name">{creature.name}</p>
+          <div className="battle-report__portrait">
+            <CreatureDetailsPicture creature={creature} />
+            <div className="battle-report__hp">
+              <div>
+                <span>HP</span>
+                <strong>
+                  {creature.currentHp} / {creature.maxHp}
+                </strong>
+              </div>
+              <meter
+                aria-label={`${creature.name} final HP`}
+                min={0}
+                max={creature.maxHp}
+                value={creature.currentHp}
+              />
+            </div>
+          </div>
+          {creature.defeated ? (
+            <p className="battle-report__defeated">Defeated</p>
+          ) : null}
+        </>
+      ) : (
+        <p className="battle-report__note">No Creature revealed.</p>
+      )}
+    </section>
   );
 }
 
@@ -705,7 +892,7 @@ function RankedSettlementSummary({
                 ...current,
                 refreshing: false,
                 refreshError:
-                  'Settlement updates are unavailable. The last server check was still pending; no rating or influence outcome is confirmed here.',
+                  'Rating update unavailable. Last check is pending.',
               }
             : { error, status: 'error' },
         );
@@ -733,7 +920,7 @@ function RankedSettlementSummary({
     return (
       <LoadingState
         className="ranked-settlement ranked-settlement--loading"
-        label="Confirming result…"
+        label="Loading rating…"
       />
     );
   }
@@ -744,17 +931,14 @@ function RankedSettlementSummary({
         aria-labelledby="ranked-settlement-title"
         className="ranked-settlement"
       >
-        <h3 id="ranked-settlement-title">Ranked result unavailable</h3>
-        <p>
-          Your battle result remains final. Rating and territory details could
-          not be loaded yet.
-        </p>
+        <h2 id="ranked-settlement-title">Season rating</h2>
+        <p>Rating unavailable.</p>
         <button
           className="button button--quiet"
           onClick={() => setRevision((value) => value + 1)}
           type="button"
         >
-          Retry ranked result
+          Retry rating
         </button>
       </section>
     );
@@ -773,49 +957,33 @@ function RankedSettlementSummary({
       aria-labelledby="ranked-settlement-title"
       className="ranked-settlement"
     >
-      <div className="ranked-settlement__heading">
-        <h3 id="ranked-settlement-title">Season settlement</h3>
-        <span>
-          {settlement.status === 'settled' ? 'Settled' : 'Finalizing'}
-        </span>
-      </div>
+      <h2 id="ranked-settlement-title">Season rating</h2>
       <UpdatingIndicator
         active={Boolean(state.refreshing)}
-        label="Updating result"
+        label="Updating rating"
         error={state.refreshError}
         onRetry={() => setRevision((value) => value + 1)}
         announce={false}
       />
       {ratingReady ? (
-        <div className="ranked-rating-change">
-          <span>
-            <small>Before</small>
-            <strong>{numberFormatter.format(settlement.ratingBefore!)}</strong>
-          </span>
-          <strong className="ranked-rating-change__delta">
+        <p className="live-result-rating">
+          <span>{numberFormatter.format(settlement.ratingBefore!)}</span>
+          <ArrowRight size={18} aria-hidden="true" />
+          <span className="sr-only">to</span>
+          <strong>{numberFormatter.format(settlement.ratingAfter!)}</strong>
+          <strong
+            className="live-result-rating__delta"
+            data-direction={settlement.appliedDelta! < 0 ? 'down' : 'up'}
+          >
             {formatRatingDelta(settlement.appliedDelta!)}
-            <small>rating</small>
+            <span className="sr-only"> rating</span>
           </strong>
-          <span>
-            <small>After</small>
-            <strong>{numberFormatter.format(settlement.ratingAfter!)}</strong>
-          </span>
-        </div>
-      ) : (
-        <p>
-          Your rating is still being finalized by the server. This panel will{' '}
-          {state.refreshError
-            ? 'resume after retrying the server check.'
-            : 'update automatically.'}
         </p>
-      )}
+      ) : !state.refreshError ? (
+        <p role="status">Rating pending.</p>
+      ) : null}
       {!state.refreshError ? (
         <TerritorySettlementResult settlement={settlement} />
-      ) : null}
-      {settlement.settledAt ? (
-        <time dateTime={settlement.settledAt}>
-          Settled {formatDate(settlement.settledAt)}
-        </time>
       ) : null}
     </section>
   );
@@ -827,18 +995,14 @@ function TerritorySettlementResult({
   settlement: RankedSettlement;
 }) {
   const territory = settlement.territory;
-  if (!territory) {
-    return (
-      <p className="ranked-territory-result">No territory was contested.</p>
-    );
-  }
+  if (!territory) return null;
   const detail =
     territory.outcome === 'pending'
-      ? 'Territory influence is still being finalized.'
+      ? 'Influence pending.'
       : territory.outcome === 'lost'
-        ? 'No influence was awarded because this battle was lost.'
+        ? 'No influence awarded.'
         : territory.outcome === 'accepted'
-          ? `+${numberFormatter.format(territory.influencePoints)} influence awarded.`
+          ? `+${numberFormatter.format(territory.influencePoints)} influence.`
           : territoryExclusionMessage(territory.exclusionReason);
   return (
     <p className="ranked-territory-result">
@@ -852,16 +1016,12 @@ function territoryExclusionMessage(
   reason: NonNullable<RankedSettlement['territory']>['exclusionReason'],
 ): string {
   return {
-    daily_cap_reached:
-      'No influence was awarded because the daily territory limit was reached.',
+    daily_cap_reached: 'Daily influence limit reached.',
     placement_matches_remaining:
-      'No influence was awarded while placement matches remain.',
-    player_unavailable:
-      'No influence was awarded because the player territory record was unavailable.',
-    result_not_eligible:
-      'No influence was awarded because this result was ineligible.',
-    zone_unavailable:
-      'No influence was awarded because the territory was unavailable.',
+      'Complete placement matches to earn influence.',
+    player_unavailable: 'Player territory record unavailable.',
+    result_not_eligible: 'Result ineligible for influence.',
+    zone_unavailable: 'Territory unavailable.',
   }[reason ?? 'result_not_eligible'];
 }
 
@@ -899,7 +1059,7 @@ function battleCombatants(match: LiveProjection) {
     ) ?? null;
   return {
     one: {
-      acting: match.currentActor === 'self',
+      acting: ownsDecision(match),
       creature: selfCreature,
       label: 'You',
     },
@@ -914,8 +1074,20 @@ function battleCombatants(match: LiveProjection) {
 function authorityLabel(match: LiveProjection): string {
   if (match.role === 'spectator') return 'WATCHING — READ ONLY';
   if (match.status === 'completed') return 'MATCH COMPLETE';
+  if (match.phase === 'initial_selection')
+    return ownsDecision(match)
+      ? 'CHOOSE YOUR FIRST CREATURE'
+      : 'WAITING FOR OPPONENT';
   if (match.currentActor === 'self') return 'YOUR TURN';
   return "OPPONENT'S TURN";
+}
+
+function ownsDecision(match: LiveParticipantProjection): boolean {
+  return match.phase === 'initial_selection'
+    ? match.legalActions.some(
+        (action) => action.type === 'select_initial_creature',
+      )
+    : match.currentActor === 'self';
 }
 
 function authorityDetail(match: LiveProjection): string {
@@ -923,17 +1095,10 @@ function authorityDetail(match: LiveProjection): string {
     return 'Watching only. Player actions are unavailable.';
   }
   if (match.status === 'completed') return 'The final result is saved.';
-  if (match.currentActor === 'self') {
+  if (ownsDecision(match)) {
     return `${match.legalActions.length} available action${match.legalActions.length === 1 ? '' : 's'}. Choose before time runs out.`;
   }
   return `Waiting for ${match.opponent.playerName}.`;
-}
-
-function battleTitle(match: LiveProjection): string {
-  if (match.role === 'participant') {
-    return `Live against ${match.opponent.playerName}`;
-  }
-  return `${match.playerOne.playerName} vs ${match.playerTwo.playerName}`;
 }
 
 function historyLabel(entry: LiveHistoryEntry, match: LiveProjection): string {
@@ -966,7 +1131,141 @@ function historyLabel(entry: LiveHistoryEntry, match: LiveProjection): string {
     use_move: 'used a move',
     use_power_card: 'used a Power card',
   }[entry.actionType ?? 'use_move'];
+  const intent = entry.action;
+  const creatures =
+    match.role === 'participant'
+      ? [
+          ...match.self.creatures,
+          match.opponent.activeCreature,
+          ...match.opponent.defeatedCreatures,
+        ]
+      : [
+          match.playerOne.activeCreature,
+          ...match.playerOne.defeatedCreatures,
+          match.playerTwo.activeCreature,
+          ...match.playerTwo.defeatedCreatures,
+        ];
+  const powers =
+    match.role === 'participant'
+      ? [...match.self.powerCards, ...match.opponent.playedPowerCards]
+      : [
+          ...match.playerOne.playedPowerCards,
+          ...match.playerTwo.playedPowerCards,
+        ];
+  if (intent && 'creatureId' in intent) {
+    const creature = creatures.find(
+      (candidate) => candidate?.id === intent.creatureId,
+    );
+    if (creature)
+      return `${actor} ${entry.actionType === 'swap_creature' ? 'swapped in' : 'selected'} ${creature.name}.`;
+  }
+  if (intent?.type === 'use_move') {
+    const move = creatures
+      .flatMap((creature) => creature?.moves ?? [])
+      .find((candidate) => candidate.id === intent.moveId);
+    if (move) return `${actor} used ${move.name}.`;
+  }
+  if (intent?.type === 'use_power_card') {
+    const power = powers.find(
+      (candidate) => candidate.id === intent.powerCardId,
+    );
+    if (power) return `${actor} used ${power.name}.`;
+  }
   return `${actor} ${action}.`;
+}
+
+function liveResolutionMoments(
+  entry: LiveHistoryEntry | undefined,
+  match: LiveProjection,
+): BattleResolutionMoment[] {
+  if (!entry) return [];
+  return [
+    { id: 'action', message: historyLabel(entry, match), tone: 'action' },
+    ...entry.effects.map((effect, index): BattleResolutionMoment => {
+      const target =
+        match.role === 'participant' && effect.targetSide === match.selfSide
+          ? 'Your Creature'
+          : `${sideLabel(effect.targetSide, match)}'s Creature`;
+      const amount = Math.abs(effect.amount);
+      return {
+        id: `effect-${index}`,
+        tone: effect.effectType,
+        message:
+          effect.effectType === 'damage'
+            ? `${target} took ${amount} damage.`
+            : effect.effectType === 'heal'
+              ? `${target} restored ${amount} HP.`
+              : `${target} received a ${effect.effectType}.`,
+        stat:
+          effect.effectType === 'damage' || effect.effectType === 'heal'
+            ? {
+                direction: effect.effectType === 'heal' ? 'up' : 'down',
+                resource: 'HP',
+                value: amount,
+              }
+            : null,
+      };
+    }),
+    ...(entry.defeatedCreatureId
+      ? [
+          {
+            id: 'defeat',
+            message: 'A Creature was defeated.',
+            tone: 'defeat' as const,
+          },
+        ]
+      : []),
+  ];
+}
+
+function liveCombatantFeedback(
+  match: LiveProjection,
+  creatureId: string | undefined,
+  version: string | null,
+) {
+  if (!version || !creatureId) return {};
+  const entry = match.history.at(-1);
+  const effect = entry?.effects
+    .filter((candidate) => candidate.targetCreatureId === creatureId)
+    .at(-1);
+  if (!effect) return {};
+  return {
+    feedbackTone: effect.effectType,
+    feedbackText:
+      effect.effectType === 'damage'
+        ? `−${Math.abs(effect.amount)} HP`
+        : effect.effectType === 'heal'
+          ? `+${Math.abs(effect.amount)} HP`
+          : effect.effectType === 'buff'
+            ? 'Buff applied'
+            : 'Debuff applied',
+  };
+}
+
+function useLiveFeedback(match: LiveProjection | null) {
+  const previous = useRef<{ matchId: string; version: number } | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
+  const matchId = match?.matchId;
+  const matchVersion = match?.version;
+  useEffect(() => {
+    const before = previous.current;
+    previous.current =
+      matchId && matchVersion !== undefined
+        ? { matchId, version: matchVersion }
+        : null;
+    setVersion(null);
+    if (
+      !matchId ||
+      matchVersion === undefined ||
+      before?.matchId !== matchId ||
+      before.version >= matchVersion
+    )
+      return;
+    setVersion(`${matchId}:${matchVersion}`);
+    const timer = window.setTimeout(() => setVersion(null), 1_200);
+    return () => window.clearTimeout(timer);
+  }, [matchId, matchVersion]);
+  return version;
 }
 
 function liveOpponentLabel(match: LiveProjection) {
@@ -1003,14 +1302,24 @@ function opponentIsDisconnected(
     : !presence.playerOneConnected;
 }
 
-function completionLabel(reason: LiveProjection['completionReason']): string {
-  return {
-    defeat: 'The opposing team was defeated.',
-    abandonment_forfeit:
-      'The battle ended after three consecutive missed decisions.',
-    voluntary_resignation: 'A participant forfeited the match.',
-    account_deletion_forfeit: 'A participant account became unavailable.',
-  }[reason ?? 'defeat'];
+function completionLabel(match: LiveProjection): string {
+  if (match.completionReason === 'account_deletion_forfeit')
+    return 'A player’s account became unavailable.';
+  const loser =
+    match.role === 'participant'
+      ? match.outcome === 'win'
+        ? 'Opponent'
+        : match.outcome === 'loss'
+          ? 'You'
+          : 'A player'
+      : match.winner === 'playerOne'
+        ? match.playerTwo.playerName
+        : match.winner === 'playerTwo'
+          ? match.playerOne.playerName
+          : 'A player';
+  return match.completionReason === 'abandonment_forfeit'
+    ? `${loser} missed three decisions.`
+    : `${loser} forfeited.`;
 }
 
 function useAuthoritativeCountdown(

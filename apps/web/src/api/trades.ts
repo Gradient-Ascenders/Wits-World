@@ -374,6 +374,7 @@ export async function previewTradeSelection(
 
 export async function createTrade(
   options: BaseOptions & {
+    confirmOffer?: boolean;
     offeredOwnedCardIds: string[];
     recipientPlayerName: string;
     requestedDefinitions: RequestedDefinitionInput[];
@@ -381,6 +382,7 @@ export async function createTrade(
   },
 ): Promise<CardTrade> {
   return mutateTrade(options, '/trades', 'POST', {
+    ...(options.confirmOffer ? { confirmOffer: true } : {}),
     offeredOwnedCardIds: options.offeredOwnedCardIds,
     recipientPlayerName: options.recipientPlayerName,
     requestedDefinitions: options.requestedDefinitions,
@@ -390,6 +392,7 @@ export async function createTrade(
 
 export async function reviseTrade(
   options: BaseOptions & {
+    confirmOffer?: boolean;
     expectedVersion: number;
     offeredOwnedCardIds: string[];
     requestedDefinitions: RequestedDefinitionInput[];
@@ -402,6 +405,7 @@ export async function reviseTrade(
     `/trades/${encodeURIComponent(options.tradeId)}`,
     'PUT',
     {
+      ...(options.confirmOffer ? { confirmOffer: true } : {}),
       expectedVersion: options.expectedVersion,
       offeredOwnedCardIds: options.offeredOwnedCardIds,
       requestedDefinitions: options.requestedDefinitions,
@@ -422,8 +426,9 @@ export async function acknowledgeTradeImbalance(
 
 export async function acceptTrade(
   options: BaseOptions & {
+    confirmOffer?: boolean;
     expectedVersion: number;
-    reauthenticationToken: string;
+    reauthenticationToken?: string;
     submissionId: string;
     tradeId: string;
   },
@@ -433,8 +438,11 @@ export async function acceptTrade(
     `/trades/${encodeURIComponent(options.tradeId)}/accept`,
     'POST',
     {
+      ...(options.confirmOffer ? { confirmOffer: true } : {}),
       expectedVersion: options.expectedVersion,
-      reauthenticationToken: options.reauthenticationToken,
+      ...(options.reauthenticationToken
+        ? { reauthenticationToken: options.reauthenticationToken }
+        : {}),
       submissionId: options.submissionId,
     },
   );

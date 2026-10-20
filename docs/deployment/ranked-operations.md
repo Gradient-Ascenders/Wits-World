@@ -146,6 +146,12 @@ Existing live actions do not require Redis gameplay coordination, but they still
 pass the independent HTTP request policies. [Rate limits](../architecture/rate-limiting.md)
 explains which policies reject requests during a Redis outage.
 
+`RATE_LIMIT_TIMEOUT_MS` also bounds Redis gameplay coordination calls (default
+`500` ms, maximum `10000` ms). When logs report coordination `timeout` failures,
+check latency from the deployed region and allow a bounded latency budget;
+production uses `2000` ms following observed failures at `500` ms. Preserve the
+mutation guard and request quotas when adjusting this timeout.
+
 A closing season waits for ranked results to settle and for territory
 finalisation to record its close receipt before the standings archive seals.
 Investigate a season stuck in `closing`, a terminal match without settlement,

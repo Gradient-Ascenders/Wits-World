@@ -73,6 +73,7 @@ export function useLiveBattleSession({
   const epoch = useRef(0);
   const socket = useRef<WebSocket | null>(null);
   const request = useRef<AbortController | null>(null);
+  const snapshotRequest = useRef<AbortController | null>(null);
   const reconnectTimer = useRef<number | null>(null);
   const recoveredTimer = useRef<number | null>(null);
   const reconnectAttempt = useRef(0);
@@ -158,6 +159,48 @@ export function useLiveBattleSession({
     (reason: 'initial' | 'manual' | 'transport') => void
   >(() => undefined);
 
+  // Resynchronizing gameplay must not replace a healthy participant socket.
+  // Replacing it changes connection generation and broadcasts another presence
+  // update, which can otherwise make both participants repeatedly reconnect.
+  const refreshSnapshot = useCallback(() => {
+    if (snapshotRequest.current || !mounted.current) return;
+    const controller = new AbortController();
+    snapshotRequest.current = controller;
+    const currentEpoch = epoch.current;
+    void getLiveProjection({
+      apiBaseUrl,
+      getAccessToken,
+      matchId,
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (controller.signal.aborted || currentEpoch !== epoch.current) return;
+        if (applyMatch(response.match, true) === 'obsolete') return;
+        anchorServerTime(response.serverTime);
+        update((previous) => ({
+          ...previous,
+          feedback: connectionFeedback(response.match),
+        }));
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || currentEpoch !== epoch.current) return;
+        if (error instanceof LiveApiError && error.failure !== 'unavailable') {
+          recoverRef.current('transport');
+        }
+      })
+      .finally(() => {
+        if (snapshotRequest.current === controller)
+          snapshotRequest.current = null;
+      });
+  }, [
+    apiBaseUrl,
+    getAccessToken,
+    matchId,
+    anchorServerTime,
+    applyMatch,
+    update,
+  ]);
+
   const scheduleReconnect = useCallback(
     (currentEpoch: number) => {
       if (
@@ -193,6 +236,16 @@ export function useLiveBattleSession({
   const handleServerMessage = useCallback(
     (message: LiveServerMessage, currentEpoch: number) => {
       if (!mounted.current || currentEpoch !== epoch.current) return;
+      const currentMatch = stateRef.current.match;
+      if (
+        currentMatch &&
+        ((message.type === 'match.transition' &&
+          message.version <= currentMatch.version) ||
+          ((message.type === 'match.snapshot' ||
+            message.type === 'presence.changed') &&
+            message.version < currentMatch.version))
+      )
+        return;
       anchorServerTime(message.serverTime);
 
       if (message.type === 'connection.ready') {
@@ -245,7 +298,7 @@ export function useLiveBattleSession({
           (message.previousVersion !== current.version ||
             message.version > current.version + 1)
         ) {
-          recoverRef.current('transport');
+          refreshSnapshot();
           return;
         }
         if (applyMatch(message.match, true) === 'gap') {
@@ -260,9 +313,7 @@ export function useLiveBattleSession({
       }
 
       if (message.type === 'match.snapshot') {
-        if (applyMatch(message.match) === 'gap') {
-          recoverRef.current('transport');
-        }
+        applyMatch(message.match, true);
         return;
       }
 
@@ -270,8 +321,7 @@ export function useLiveBattleSession({
         const current = stateRef.current.match;
         if (!current || message.version < current.version) return;
         if (message.version > current.version) {
-          recoverRef.current('transport');
-          return;
+          refreshSnapshot();
         }
         const presence = {
           ...message.participants,
@@ -334,9 +384,9 @@ export function useLiveBattleSession({
             : 'Action not applied. Updating turn…',
         pending: null,
       }));
-      recoverRef.current('transport');
+      refreshSnapshot();
     },
-    [anchorServerTime, applyMatch, closeTransport, update],
+    [anchorServerTime, applyMatch, closeTransport, refreshSnapshot, update],
   );
 
   const recover = useCallback(
@@ -345,6 +395,8 @@ export function useLiveBattleSession({
       clearTimers();
       closeTransport();
       request.current?.abort();
+      snapshotRequest.current?.abort();
+      snapshotRequest.current = null;
       const controller = new AbortController();
       request.current = controller;
       update((previous) => ({
@@ -474,9 +526,42 @@ export function useLiveBattleSession({
       epoch.current += 1;
       clearTimers();
       request.current?.abort();
+      snapshotRequest.current?.abort();
+      snapshotRequest.current = null;
       closeTransport();
     };
   }, [clearTimers, closeTransport, recover, update]);
+
+  useEffect(() => {
+    if (state.pending?.stage !== 'acknowledged') return;
+    // The acknowledgement can arrive even if its separate notification is lost.
+    const timer = window.setTimeout(refreshSnapshot, 1_500);
+    return () => window.clearTimeout(timer);
+  }, [state.pending, refreshSnapshot]);
+
+  useEffect(() => {
+    if (
+      state.match?.status !== 'active' ||
+      !state.match.turnDeadline ||
+      (state.connection !== 'connected' && state.connection !== 'recovered')
+    )
+      return;
+    const anchor = serverClock.current;
+    const now = anchor.serverTime + (Date.now() - anchor.clientTime);
+    const remaining = Date.parse(state.match.turnDeadline) - now;
+    // Read the authoritative result if a deadline notification does not arrive.
+    // Only the server advances the decision or resolves a timeout.
+    const timer = window.setTimeout(
+      refreshSnapshot,
+      Math.max(0, remaining) + 1_000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [
+    state.match?.status,
+    state.match?.turnDeadline,
+    state.connection,
+    refreshSnapshot,
+  ]);
 
   const sendIntent = useCallback(
     (action: CpuMatchIntent | null, type: PendingIntent['type']) => {
@@ -565,6 +650,13 @@ function connectionFeedback(match: LiveProjection | null): string {
   if (match.status === 'completed') return 'This live battle is complete.';
   if (match.role === 'spectator')
     return 'Watching the live public battle state.';
+  if (match.phase === 'initial_selection') {
+    return match.legalActions.some(
+      (action) => action.type === 'select_initial_creature',
+    )
+      ? 'Choose your first Creature.'
+      : 'Opening Creature selected. Waiting for opponent…';
+  }
   return match.currentActor === 'self'
     ? 'Your turn. Choose one of the server-approved actions.'
     : 'Waiting for opponent…';

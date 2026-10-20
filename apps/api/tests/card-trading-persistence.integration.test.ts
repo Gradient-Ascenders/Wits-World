@@ -183,6 +183,234 @@ describe.skipIf(!runIntegrationTests)(
       ]);
     });
 
+    it.each([1, 5])(
+      'keeps trade database round trips bounded for %i copies per side',
+      async (copiesPerSide) => {
+        const sender = await insertPlayerWithCollection(
+          pool,
+          `batch_${copiesPerSide}_sender`,
+        );
+        const recipient = await insertPlayerWithCollection(
+          pool,
+          `batch_${copiesPerSide}_recipient`,
+        );
+        const statements: string[] = [];
+        const service = createCardTradeService({
+          async connect() {
+            const client = await pool.connect();
+            return {
+              query(statement, values) {
+                statements.push(statement);
+                return client.query(statement, values);
+              },
+              release: () => client.release(),
+            };
+          },
+        });
+        const trade = await service.createTrade({
+          senderPlayerId: sender.id,
+          recipientPlayerId: recipient.id,
+          confirmOffer: true,
+          submissionId: randomUUID(),
+          offeredOwnedCardIds: sender.cards
+            .slice(0, copiesPerSide)
+            .map((card) => card.id),
+          requestedDefinitions: recipient.cards
+            .slice(0, copiesPerSide)
+            .map((card) => ({
+              cardDefinitionId: card.definitionId,
+              quantity: 1,
+            })),
+        });
+        statements.length = 0;
+        const before = await service.getTrade(trade.tradeId, recipient.id);
+        expect(before).toEqual(trade);
+        expect(statements).toHaveLength(5);
+        const readStatements = statements.length;
+        statements.length = 0;
+        const input = {
+          tradeId: trade.tradeId,
+          playerId: recipient.id,
+          expectedVersion: trade.version,
+          confirmOffer: true,
+          submissionId: randomUUID(),
+        };
+        const completed = await service.acceptTrade(input);
+        expect(completed.settlement?.movements).toHaveLength(copiesPerSide * 2);
+        expect(
+          statements.filter((sql) =>
+            sql.includes('insert into private.card_trade_movements'),
+          ),
+        ).toHaveLength(1);
+        expect(
+          statements.filter((sql) =>
+            sql.includes('insert into public.player_cards'),
+          ),
+        ).toHaveLength(1);
+        expect(statements.length).toBeLessThanOrEqual(55);
+        const acceptanceStatements = statements.length;
+        const replay = await service.acceptTrade(input);
+        expect(replay).toEqual(completed);
+        expect(await service.getTrade(trade.tradeId, recipient.id)).toEqual(
+          completed,
+        );
+        console.info(
+          JSON.stringify({
+            event: 'trade_round_trip_check',
+            copiesPerSide,
+            readStatements,
+            acceptanceStatements,
+          }),
+        );
+      },
+    );
+
+    it('settles a confirmed proposal in one acceptance and safely replays it', async () => {
+      const sender = await insertPlayerWithCollection(pool, 'confirm_sender');
+      const recipient = await insertPlayerWithCollection(
+        pool,
+        'confirm_recipient',
+      );
+      const service = createCardTradeService(pool);
+      const trade = await service.createTrade({
+        senderPlayerId: sender.id,
+        recipientPlayerId: recipient.id,
+        submissionId: randomUUID(),
+        confirmOffer: true,
+        offeredOwnedCardIds: [sender.cards[0]!.id],
+        requestedDefinitions: [
+          { cardDefinitionId: recipient.cards[0]!.definitionId, quantity: 1 },
+        ],
+      });
+      expect(trade.sender.accepted).toBe(true);
+      expect(trade.recipient.accepted).toBe(false);
+      const input = {
+        tradeId: trade.tradeId,
+        playerId: recipient.id,
+        expectedVersion: trade.version,
+        submissionId: randomUUID(),
+        confirmOffer: true,
+      };
+      await expect(
+        service.acceptTrade({
+          ...input,
+          playerId: sender.id,
+          submissionId: randomUUID(),
+        }),
+      ).rejects.toMatchObject({ code: 'TRADE_ACTION_NOT_ALLOWED' });
+      await expect(
+        service.acceptTrade({
+          ...input,
+          playerId: randomUUID(),
+          submissionId: randomUUID(),
+        }),
+      ).rejects.toMatchObject({ code: 'TRADE_NOT_PARTICIPANT' });
+      const completed = await service.acceptTrade(input);
+      expect(completed.status).toBe('completed');
+      expect(completed.settlement?.movements).toHaveLength(2);
+      expect(
+        completed.settlement?.movements
+          .map((movement) => movement.sourceOwnedCardId)
+          .sort(),
+      ).toEqual([sender.cards[0]!.id, recipient.cards[0]!.id].sort());
+      const replay = await service.acceptTrade(input);
+      expect(replay.settlement?.receiptId).toBe(
+        completed.settlement?.receiptId,
+      );
+    });
+
+    it('sends a confirmed counter as a new proposal and rejects stale consent', async () => {
+      const sender = await insertPlayerWithCollection(pool, 'counter_sender');
+      const recipient = await insertPlayerWithCollection(
+        pool,
+        'counter_recipient',
+      );
+      const service = createCardTradeService(pool);
+      const trade = await service.createTrade({
+        senderPlayerId: sender.id,
+        recipientPlayerId: recipient.id,
+        confirmOffer: true,
+        offeredOwnedCardIds: [sender.cards[0]!.id],
+        requestedDefinitions: [
+          { cardDefinitionId: recipient.cards[0]!.definitionId, quantity: 1 },
+        ],
+      });
+      const counter = await service.reviseTrade({
+        tradeId: trade.tradeId,
+        playerId: recipient.id,
+        expectedVersion: trade.version,
+        confirmOffer: true,
+        offeredOwnedCardIds: [recipient.cards[1]!.id],
+        requestedDefinitions: [
+          { cardDefinitionId: sender.cards[1]!.definitionId, quantity: 1 },
+        ],
+      });
+      expect(counter.version).toBe(trade.version + 1);
+      expect(counter.sender.accepted).toBe(false);
+      expect(counter.sender.offeredCopies).toEqual([]);
+      expect(counter.recipient.accepted).toBe(true);
+      await expect(
+        service.acceptTrade({
+          tradeId: trade.tradeId,
+          playerId: sender.id,
+          expectedVersion: trade.version,
+          confirmOffer: true,
+        }),
+      ).rejects.toMatchObject({ code: 'TRADE_VERSION_STALE' });
+      const accepted = await service.acceptTrade({
+        tradeId: trade.tradeId,
+        playerId: sender.id,
+        expectedVersion: counter.version,
+        confirmOffer: true,
+      });
+      expect(accepted.status).toBe('completed');
+      expect(
+        accepted.settlement?.movements
+          .map((movement) => movement.sourceOwnedCardId)
+          .sort(),
+      ).toEqual([sender.cards[1]!.id, recipient.cards[1]!.id].sort());
+    });
+
+    it('refuses protected requested copies without changing the confirmed proposal', async () => {
+      const sender = await insertPlayerWithCollection(pool, 'protected_sender');
+      const recipient = await insertPlayerWithCollection(
+        pool,
+        'protected_recipient',
+      );
+      const service = createCardTradeService(pool);
+      const trade = await service.createTrade({
+        senderPlayerId: sender.id,
+        recipientPlayerId: recipient.id,
+        confirmOffer: true,
+        offeredOwnedCardIds: [sender.cards[0]!.id],
+        requestedDefinitions: [
+          { cardDefinitionId: recipient.cards[0]!.definitionId, quantity: 1 },
+        ],
+      });
+      const deckId = randomUUID();
+      await pool.query(
+        `insert into public.player_decks (id, player_id, name) values ($1::uuid, $2::uuid, 'Protected acceptance')`,
+        [deckId, recipient.id],
+      );
+      await pool.query(
+        `insert into public.player_deck_cards (deck_id, player_id, owned_card_id, position) values ($1::uuid, $2::uuid, $3::uuid, 1)`,
+        [deckId, recipient.id, recipient.cards[0]!.id],
+      );
+      await expect(
+        service.acceptTrade({
+          tradeId: trade.tradeId,
+          playerId: recipient.id,
+          expectedVersion: trade.version,
+          confirmOffer: true,
+        }),
+      ).rejects.toMatchObject({ code: 'TRADE_COPY_CONFLICT' });
+      const current = await service.getTrade(trade.tradeId, recipient.id);
+      expect(current.status).toBe('open');
+      expect(current.version).toBe(trade.version);
+      expect(current.settlement).toBeNull();
+      expect(current.recipient.offeredCopies).toEqual([]);
+    });
+
     it('makes create and revision submissions durably idempotent', async () => {
       const sender = await insertPlayerWithCollection(
         pool,
@@ -207,6 +435,30 @@ describe.skipIf(!runIntegrationTests)(
       const created = await service.createTrade(createInput);
       const replayed = await service.createTrade(createInput);
       expect(replayed.tradeId).toBe(created.tradeId);
+
+      const previewInput = {
+        playerId: sender.id,
+        tradeId: created.tradeId,
+        expectedVersion: created.version,
+        offeredOwnedCardIds: createInput.offeredOwnedCardIds,
+        requestedDefinitions: createInput.requestedDefinitions,
+      };
+      const editablePreview = await service.previewSelection(previewInput);
+      expect(editablePreview.valid).toBe(true);
+      expect(
+        editablePreview.ownedCopies.find(
+          (copy) => copy.ownedCardId === sender.cards[0]!.id,
+        )?.availability,
+      ).toBe('selected_here');
+      await expect(
+        service.previewSelection({ ...previewInput, playerId: randomUUID() }),
+      ).rejects.toMatchObject({ code: 'TRADE_NOT_PARTICIPANT' });
+      await expect(
+        service.previewSelection({
+          ...previewInput,
+          expectedVersion: created.version + 1,
+        }),
+      ).rejects.toMatchObject({ code: 'TRADE_VERSION_STALE' });
 
       const tradeCount = await pool.query<{ count: number }>(
         `select count(*)::integer as count

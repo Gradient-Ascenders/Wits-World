@@ -92,6 +92,7 @@ export interface CardTradeView {
 }
 
 interface CreateCardTradeBaseInput {
+  confirmOffer?: boolean;
   senderPlayerId: string;
   submissionId?: string;
   offeredOwnedCardIds: readonly string[];
@@ -105,6 +106,7 @@ export type CreateCardTradeInput = CreateCardTradeBaseInput &
   );
 
 export interface ReviseCardTradeInput {
+  confirmOffer?: boolean;
   tradeId: string;
   playerId: string;
   submissionId?: string;
@@ -114,6 +116,7 @@ export interface ReviseCardTradeInput {
 }
 
 export interface VersionedCardTradeInput {
+  confirmOffer?: boolean;
   tradeId: string;
   playerId: string;
   submissionId?: string;
@@ -379,6 +382,101 @@ interface MovementRow extends pg.QueryResultRow {
   card_definition_id: string;
 }
 
+interface VersionState {
+  items: VersionItemRow[];
+  requests: VersionRequestRow[];
+  acceptances: ApprovalRow[];
+  acknowledgements: ApprovalRow[];
+}
+
+const VERSION_ITEMS_QUERY = `
+      select
+        item.offering_player_id::text,
+        item.position,
+        item.owned_card_id::text,
+        item.card_definition_id::text,
+        definition.name,
+        definition.category,
+        definition.affinity,
+        item.rarity,
+        definition.image_url,
+        definition.image_alt,
+        item.acquired_at,
+        item.acquisition_kind
+      from private.card_trade_version_items item
+      join public.card_definitions definition on definition.id = item.card_definition_id
+      where item.trade_id = $1::uuid
+        and item.version = $2
+      order by item.offering_player_id, item.position
+    `;
+const VERSION_REQUESTS_QUERY = `
+      select
+        request.requesting_player_id::text,
+        request.card_definition_id::text,
+        request.quantity,
+        definition.name,
+        definition.category,
+        definition.affinity,
+        definition.rarity,
+        definition.image_url,
+        definition.image_alt
+      from private.card_trade_version_requests request
+      join public.card_definitions definition on definition.id = request.card_definition_id
+      where request.trade_id = $1::uuid
+        and request.version = $2
+      order by request.requesting_player_id, request.card_definition_id
+    `;
+const RECEIPT_QUERY = `
+      select
+        id::text as receipt_id,
+        trade_id::text,
+        version,
+        completed_at,
+        policy_version,
+        minimum_account_age_seconds,
+        maximum_open_offers,
+        maximum_copies_per_side,
+        maximum_completed_trades_24h,
+        offer_lifetime_seconds,
+        imbalance_warning_threshold,
+        minimum_creature_copies,
+        minimum_power_copies
+      from private.card_trade_settlement_receipts
+      where trade_id = $1::uuid
+    `;
+const MOVEMENTS_QUERY = `
+      select id::text as movement_id, source_player_id::text,
+             recipient_player_id::text, source_owned_card_id::text,
+             new_owned_card_id::text, card_definition_id::text
+        from private.card_trade_movements
+       where receipt_id = $1::uuid
+       order by source_owned_card_id
+    `;
+
+// These substitutions are fixed SQL expressions, never request data. Each
+// projection is read from one statement snapshot on the transaction client.
+const VERSION_STATE_QUERY = `
+  select
+    (select coalesce(jsonb_agg(item order by item.offering_player_id, item.position), '[]'::jsonb)
+       from (${VERSION_ITEMS_QUERY.replaceAll('$1::uuid', 'trade.trade_id').replaceAll('$2', 'trade.current_version')}) item) as items,
+    (select coalesce(jsonb_agg(request order by request.requesting_player_id, request.card_definition_id), '[]'::jsonb)
+       from (${VERSION_REQUESTS_QUERY.replaceAll('$1::uuid', 'trade.trade_id').replaceAll('$2', 'trade.current_version')}) request) as requests,
+    (select coalesce(jsonb_agg(jsonb_build_object('player_id', player_id::text) order by player_id), '[]'::jsonb)
+       from private.card_trade_acceptances where trade_id = trade.trade_id and version = trade.current_version) as acceptances,
+    (select coalesce(jsonb_agg(jsonb_build_object('player_id', player_id::text) order by player_id), '[]'::jsonb)
+       from private.card_trade_imbalance_acknowledgements where trade_id = trade.trade_id and version = trade.current_version) as acknowledgements
+`;
+
+function versionState(row: VersionState): VersionState {
+  return {
+    ...row,
+    items: row.items.map((item) => ({
+      ...item,
+      acquired_at: new Date(item.acquired_at),
+    })),
+  };
+}
+
 interface CountRow extends pg.QueryResultRow {
   count: number;
 }
@@ -466,6 +564,7 @@ export function createCardTradeService(
 
       return withTransaction(database, async (client) => {
         const payloadHash = hashTradeSubmission({
+          ...(input.confirmOffer ? { confirmOffer: true } : {}),
           recipient:
             typeof input.recipientPlayerName === 'string'
               ? input.recipientPlayerName.trim().toLowerCase()
@@ -583,6 +682,15 @@ export function createCardTradeService(
           copies.map((copy) => copy.owned_card_id),
           now,
         );
+        if (input.confirmOffer) {
+          await recordOfferConsent(
+            client,
+            tradeId,
+            1,
+            [input.senderPlayerId],
+            now,
+          );
+        }
         await finishSubmission(
           client,
           input.senderPlayerId,
@@ -603,6 +711,7 @@ export function createCardTradeService(
 
       return withTransaction(database, async (client) => {
         const payloadHash = hashTradeSubmission({
+          ...(input.confirmOffer ? { confirmOffer: true } : {}),
           tradeId: input.tradeId,
           expectedVersion: input.expectedVersion,
           offeredOwnedCardIds: [...input.offeredOwnedCardIds],
@@ -645,7 +754,7 @@ export function createCardTradeService(
           context.trade.current_version,
         );
         const otherPlayerId = otherParticipant(context.trade, input.playerId);
-        const otherCopyIds = previousItems
+        const otherCopyIds = (input.confirmOffer ? [] : previousItems)
           .filter((item) => item.offering_player_id === otherPlayerId)
           .map((item) => item.owned_card_id);
         const allCopyIds = uniqueSorted([
@@ -705,13 +814,15 @@ export function createCardTradeService(
           createdAt: context.now,
         });
 
-        await copyOtherPartyVersionState(
-          client,
-          input.tradeId,
-          context.trade.current_version,
-          nextVersion,
-          otherPlayerId,
-        );
+        if (!input.confirmOffer) {
+          await copyOtherPartyVersionState(
+            client,
+            input.tradeId,
+            context.trade.current_version,
+            nextVersion,
+            otherPlayerId,
+          );
+        }
         await insertVersionItems(
           client,
           input.tradeId,
@@ -742,6 +853,15 @@ export function createCardTradeService(
           otherCopies.map((copy) => copy.owned_card_id),
           context.now,
         );
+        if (input.confirmOffer) {
+          await recordOfferConsent(
+            client,
+            input.tradeId,
+            nextVersion,
+            [input.playerId],
+            context.now,
+          );
+        }
         await finishSubmission(
           client,
           input.playerId,
@@ -818,6 +938,7 @@ export function createCardTradeService(
     async acceptTrade(input) {
       return withTransaction(database, async (client) => {
         const payloadHash = hashTradeSubmission({
+          ...(input.confirmOffer ? { confirmOffer: true } : {}),
           tradeId: input.tradeId,
           expectedVersion: input.expectedVersion,
         });
@@ -830,7 +951,7 @@ export function createCardTradeService(
         );
         if (replay) return loadTradeViewAfterExpiry(client, replay.trade_id);
 
-        const context = await lockTradeContext(client, input.tradeId);
+        let context = await lockTradeContext(client, input.tradeId);
         assertParticipant(context.trade, input.playerId);
         if (
           context.trade.status === 'completed' &&
@@ -852,7 +973,18 @@ export function createCardTradeService(
         assertPlayerEligibility(context.players, policy, context.now);
         await assertTradeActionNotHeld(client, context);
         await assertExistingOpenOfferLimit(client, context, policy);
-        const state = await loadCurrentVersionState(client, context.trade);
+        let state = await loadCurrentVersionState(client, context.trade);
+        if (input.confirmOffer) {
+          const trade = await bindConfirmedOffer(
+            client,
+            context.trade,
+            input.playerId,
+            state,
+            context.now,
+          );
+          context = { ...context, trade };
+          state = await loadCurrentVersionState(client, trade);
+        }
         assertVersionComplete(context.trade, state);
         try {
           assertPersistedVersionLimits(context.trade, state, policy);
@@ -980,6 +1112,7 @@ export function createCardTradeService(
             policy,
             context.now,
             createId,
+            { ...state, acceptances: acceptances.rows },
           );
         }
         await finishSubmission(
@@ -1195,105 +1328,130 @@ async function previewCardTradeSelection(
     );
   }
 
-  return withTransaction(database, async (client) => {
+  const operation = async (
+    client: CardTradeClient,
+  ): Promise<CardTradeSelectionPreview> => {
     let allowedTradeId: string | null = null;
-    let policy: CardTradePolicyLimits;
+    let policyVersion = CARD_TRADE_POLICY_VERSION;
 
     if (input.tradeId) {
       const context = await lockTradeContext(client, input.tradeId);
       assertParticipant(context.trade, input.playerId);
       await ensureTradeActionable(client, context, input.expectedVersion);
       allowedTradeId = input.tradeId;
-      policy = await loadPolicy(client, context.trade.policy_version);
-    } else {
-      policy = await loadPolicy(client);
+      policyVersion = context.trade.policy_version;
     }
 
-    const copyResult = await client.query<SelectionCopyRow>(
+    // One statement gives all preview inputs the same database snapshot and
+    // avoids a separate network round trip for every read-only policy/input.
+    const snapshot = await client.query<{
+      policy: PolicyRow;
+      copies: SelectionCopyRow[];
+      definitions: SelectionDefinitionRow[];
+    }>(
       `
-        select
-          owned.id::text as owned_card_id,
-          definition.id::text as card_definition_id,
-          definition.name,
-          definition.category,
-          definition.affinity,
-          definition.rarity,
-          definition.image_url,
-          definition.image_alt,
-          definition.is_active,
-          definition.authoring_status,
-          exists (
-            select 1
-              from public.player_deck_cards membership
-             where membership.player_id = owned.player_id
-               and membership.owned_card_id = owned.id
-          ) as saved_deck,
-          (
+        with policy as (
+          select
+            policy_version,
+            minimum_account_age_seconds,
+            maximum_open_offers,
+            maximum_copies_per_side,
+            maximum_completed_trades_24h,
+            offer_lifetime_seconds,
+            imbalance_warning_threshold,
+            minimum_creature_copies,
+            minimum_power_copies
+          from private.card_trade_policy_versions
+          where policy_version = $4
+        ), owned_copies as (
+          select
+            owned.acquired_at,
+            owned.id::text as owned_card_id,
+            definition.id::text as card_definition_id,
+            definition.name,
+            definition.category,
+            definition.affinity,
+            definition.rarity,
+            definition.image_url,
+            definition.image_alt,
+            definition.is_active,
+            definition.authoring_status,
             exists (
               select 1
-                from public.cpu_match_cards match_card
-                join public.cpu_matches match on match.id = match_card.match_id
-               where match_card.owned_card_id = owned.id
-                 and match.status = 'active'
-            )
-            or exists (
+                from public.player_deck_cards membership
+               where membership.player_id = owned.player_id
+                 and membership.owned_card_id = owned.id
+            ) as saved_deck,
+            (
+              exists (
+                select 1
+                  from public.cpu_match_cards match_card
+                  join public.cpu_matches match on match.id = match_card.match_id
+                 where match_card.owned_card_id = owned.id
+                   and match.status = 'active'
+              )
+              or exists (
+                select 1
+                  from private.async_pvp_deck_snapshot_cards snapshot_card
+                  join private.async_pvp_deck_snapshots snapshot
+                    on snapshot.id = snapshot_card.snapshot_id
+                  join public.async_pvp_invitations invitation
+                    on invitation.id = snapshot.invitation_id
+                  left join public.async_pvp_matches match
+                    on match.id = invitation.match_id
+                 where snapshot_card.source_owned_card_id = owned.id
+                   and (invitation.status = 'pending' or match.status = 'active')
+              )
+              or exists (
+                select 1
+                  from private.live_pvp_deck_snapshot_cards snapshot_card
+                  join private.live_pvp_deck_snapshots snapshot
+                    on snapshot.id = snapshot_card.snapshot_id
+                  join public.live_pvp_matches match on match.id = snapshot.match_id
+                 where snapshot_card.source_owned_card_id = owned.id
+                   and match.status = 'active'
+              )
+            ) as gameplay_commitment,
+            exists (
               select 1
-                from private.async_pvp_deck_snapshot_cards snapshot_card
-                join private.async_pvp_deck_snapshots snapshot
-                  on snapshot.id = snapshot_card.snapshot_id
-                join public.async_pvp_invitations invitation
-                  on invitation.id = snapshot.invitation_id
-                left join public.async_pvp_matches match
-                  on match.id = invitation.match_id
-               where snapshot_card.source_owned_card_id = owned.id
-                 and (invitation.status = 'pending' or match.status = 'active')
-            )
-            or exists (
-              select 1
-                from private.live_pvp_deck_snapshot_cards snapshot_card
-                join private.live_pvp_deck_snapshots snapshot
-                  on snapshot.id = snapshot_card.snapshot_id
-                join public.live_pvp_matches match on match.id = snapshot.match_id
-               where snapshot_card.source_owned_card_id = owned.id
-                 and match.status = 'active'
-            )
-          ) as gameplay_commitment,
-          exists (
-            select 1
-              from private.card_trade_reservations reservation
-             where reservation.owned_card_id = owned.id
-               and ($2::uuid is null or reservation.trade_id <> $2::uuid)
-          ) as other_trade
-        from public.player_cards owned
-        join public.card_definitions definition
-          on definition.id = owned.card_definition_id
-        where owned.player_id = $1::uuid
-        order by owned.acquired_at desc, owned.id desc
+                from private.card_trade_reservations reservation
+               where reservation.owned_card_id = owned.id
+                 and ($2::uuid is null or reservation.trade_id <> $2::uuid)
+            ) as other_trade
+          from public.player_cards owned
+          join public.card_definitions definition
+            on definition.id = owned.card_definition_id
+          where owned.player_id = $1::uuid
+        ), requested_definitions as (
+          select
+            definition.id::text as card_definition_id,
+            definition.name,
+            definition.category,
+            definition.affinity,
+            definition.rarity,
+            definition.image_url,
+            definition.image_alt
+          from public.card_definitions definition
+          where definition.id = any($3::uuid[])
+            and definition.is_active
+            and definition.authoring_status = 'published'
+        )
+        select to_jsonb(policy) as policy,
+          (select coalesce(jsonb_agg(to_jsonb(copy) - 'acquired_at'
+             order by copy.acquired_at desc, copy.owned_card_id desc), '[]'::jsonb)
+           from owned_copies copy) as copies,
+          (select coalesce(jsonb_agg(definition order by definition.card_definition_id), '[]'::jsonb)
+           from requested_definitions definition) as definitions
+        from policy
       `,
-      [input.playerId, allowedTradeId],
+      [input.playerId, allowedTradeId, requestedIds, policyVersion],
     );
-
-    const requestedResult =
-      requestedIds.length === 0
-        ? { rows: [] as SelectionDefinitionRow[] }
-        : await client.query<SelectionDefinitionRow>(
-            `
-              select
-                definition.id::text as card_definition_id,
-                definition.name,
-                definition.category,
-                definition.affinity,
-                definition.rarity,
-                definition.image_url,
-                definition.image_alt
-              from public.card_definitions definition
-              where definition.id = any($1::uuid[])
-                and definition.is_active
-                and definition.authoring_status = 'published'
-              order by definition.id
-            `,
-            [requestedIds],
-          );
+    const row = snapshot.rows[0];
+    if (!row)
+      throw new Error(`Card trade policy ${policyVersion} was not found.`);
+    const policy = policyLimits(row.policy);
+    const copyResult = { rows: row.copies };
+    const requestedResult = { rows: row.definitions };
 
     const issues = new Set<CardTradeSelectionIssue>();
     const selectedIds = new Set(
@@ -1466,7 +1624,200 @@ async function previewCardTradeSelection(
         minimumPowerCopies: policy.minimumPowerCopies,
       },
     };
+  };
+
+  // Existing offers still need the transaction, locks and version/deadline
+  // checks above. New drafts only read one atomic snapshot and reserve nothing.
+  if (input.tradeId) return withTransaction(database, operation);
+  const client = await database.connect();
+  try {
+    return await operation(client);
+  } finally {
+    client.release();
+  }
+}
+
+async function recordOfferConsent(
+  client: CardTradeClient,
+  tradeId: string,
+  version: number,
+  playerIds: readonly string[],
+  now: Date,
+): Promise<void> {
+  // Confirming the dialog also acknowledges its displayed rarity warning.
+  await client.query(
+    `insert into private.card_trade_acceptances (trade_id, version, player_id, accepted_at)
+     select $1::uuid, $2, player_id, $4::timestamptz from unnest($3::uuid[]) as participant(player_id)
+     on conflict (trade_id, version, player_id) do nothing`,
+    [tradeId, version, playerIds, now],
+  );
+  await client.query(
+    `insert into private.card_trade_imbalance_acknowledgements (trade_id, version, player_id, acknowledged_at)
+     select $1::uuid, $2, player_id, $4::timestamptz from unnest($3::uuid[]) as participant(player_id)
+     on conflict (trade_id, version, player_id) do nothing`,
+    [tradeId, version, playerIds, now],
+  );
+}
+
+async function bindConfirmedOffer(
+  client: CardTradeClient,
+  trade: TradeRow,
+  playerId: string,
+  state: { items: VersionItemRow[]; requests: VersionRequestRow[] },
+  now: Date,
+): Promise<TradeRow> {
+  const version = await client.query<{ created_by_player_id: string }>(
+    `select created_by_player_id::text from private.card_trade_versions
+     where trade_id = $1::uuid and version = $2`,
+    [trade.trade_id, trade.current_version],
+  );
+  const proposerId = version.rows[0]?.created_by_player_id;
+  if (!proposerId || proposerId !== otherParticipant(trade, playerId)) {
+    throw new CardTradeError(
+      'TRADE_ACTION_NOT_ALLOWED',
+      'Only the other player may accept this proposal.',
+    );
+  }
+  const proposedItems = state.items.filter(
+    (item) => item.offering_player_id === proposerId,
+  );
+  const proposedRequests = state.requests.filter(
+    (request) => request.requesting_player_id === proposerId,
+  );
+  if (proposedItems.length === 0 || proposedRequests.length === 0) {
+    throw new CardTradeError(
+      'TRADE_INCOMPLETE',
+      'The offer must give and request cards.',
+    );
+  }
+
+  // Choose only the accepting player's copies. These reads are advisory: lock
+  // every chosen copy in global order and recheck protections before writing.
+  const candidates = await client.query<OwnedCopyRow>(
+    ownedCopyQuery(
+      'owned.player_id = $1::uuid and owned.card_definition_id = any($2::uuid[])',
+    ).replace('for update of owned', ''),
+    [
+      playerId,
+      proposedRequests.map((request) => request.card_definition_id),
+      trade.trade_id,
+    ],
+  );
+  const previousIds = new Set(
+    state.items
+      .filter((item) => item.offering_player_id === playerId)
+      .map((item) => item.owned_card_id),
+  );
+  const chosen: OwnedCopyRow[] = [];
+  for (const request of proposedRequests) {
+    const matches = candidates.rows
+      .filter(
+        (copy) =>
+          copy.card_definition_id === request.card_definition_id &&
+          !copy.protected &&
+          copy.is_active &&
+          copy.authoring_status === 'published',
+      )
+      .sort(
+        (a, b) =>
+          Number(previousIds.has(b.owned_card_id)) -
+            Number(previousIds.has(a.owned_card_id)) ||
+          a.owned_card_id.localeCompare(b.owned_card_id),
+      );
+    if (matches.length < request.quantity) {
+      throw new CardTradeError(
+        'TRADE_COPY_CONFLICT',
+        'The requested cards are not available in your collection.',
+      );
+    }
+    chosen.push(...matches.slice(0, request.quantity));
+  }
+  const copies = await loadAndLockOwnedCopiesForParticipants(
+    client,
+    trade,
+    [
+      ...proposedItems.map((item) => item.owned_card_id),
+      ...chosen.map((copy) => copy.owned_card_id),
+    ],
+    trade.trade_id,
+  );
+  assertCopiesAvailable(copies, proposedItems.length + chosen.length);
+  const proposerCopies = copies.filter((copy) => copy.player_id === proposerId);
+  assertCopiesMatchVersion(proposerCopies, proposedItems);
+  const actorCopies = copies.filter((copy) => copy.player_id === playerId);
+  assertExactOwnedIds(
+    actorCopies,
+    chosen.map((copy) => copy.owned_card_id),
+  );
+  const next = trade.current_version + 1;
+  await client.query(
+    'delete from private.card_trade_reservations where trade_id = $1::uuid',
+    [trade.trade_id],
+  );
+  await client.query(
+    'update private.card_trades set current_version = $2 where id = $1::uuid',
+    [trade.trade_id, next],
+  );
+  await insertVersion(client, {
+    tradeId: trade.trade_id,
+    version: next,
+    createdByPlayerId: playerId,
+    createdAt: now,
   });
+  await insertVersionItems(
+    client,
+    trade.trade_id,
+    next,
+    proposerId,
+    proposerCopies,
+  );
+  await insertVersionItems(client, trade.trade_id, next, playerId, actorCopies);
+  await insertVersionRequests(
+    client,
+    trade.trade_id,
+    next,
+    proposerId,
+    proposedRequests.map((request) => ({
+      cardDefinitionId: request.card_definition_id,
+      quantity: request.quantity,
+    })),
+  );
+  const actorRequests = new Map<string, number>();
+  for (const item of proposedItems)
+    actorRequests.set(
+      item.card_definition_id,
+      (actorRequests.get(item.card_definition_id) ?? 0) + 1,
+    );
+  await insertVersionRequests(
+    client,
+    trade.trade_id,
+    next,
+    playerId,
+    [...actorRequests].map(([cardDefinitionId, quantity]) => ({
+      cardDefinitionId,
+      quantity,
+    })),
+  );
+  for (const participantId of [proposerId, playerId]) {
+    await reserveCopies(
+      client,
+      trade.trade_id,
+      next,
+      participantId,
+      copies
+        .filter((copy) => copy.player_id === participantId)
+        .map((copy) => copy.owned_card_id),
+      now,
+    );
+  }
+  await recordOfferConsent(
+    client,
+    trade.trade_id,
+    next,
+    [proposerId, playerId],
+    now,
+  );
+  return { ...trade, current_version: next };
 }
 
 async function withTransaction<T>(
@@ -1727,6 +2078,10 @@ async function loadPolicy(
   const row = result.rows[0];
   if (!row)
     throw new Error(`Card trade policy ${policyVersion} was not found.`);
+  return policyLimits(row);
+}
+
+function policyLimits(row: PolicyRow): CardTradePolicyLimits {
   return {
     policyVersion: row.policy_version,
     minimumAccountAgeSeconds: row.minimum_account_age_seconds,
@@ -1944,27 +2299,31 @@ async function expireOpenTradesForPlayers(
   );
 }
 
+async function openOfferCounts(
+  client: CardTradeClient,
+  playerIds: readonly string[],
+): Promise<number[]> {
+  const result = await client.query<CountRow>(
+    `select (select count(*)::integer from private.card_trades trade
+              where trade.status = 'open'
+                and (trade.sender_player_id = participant.player_id or trade.recipient_player_id = participant.player_id)) as count
+       from unnest($1::uuid[]) as participant(player_id) order by player_id`,
+    [uniqueSorted(playerIds)],
+  );
+  return result.rows.map((row) => Number(row.count));
+}
+
 async function assertOpenOfferLimit(
   client: CardTradeClient,
   playerIds: readonly string[],
   policy: CardTradePolicyLimits,
 ): Promise<void> {
-  for (const playerId of uniqueSorted(playerIds)) {
-    const result = await client.query<CountRow>(
-      `
-        select count(*)::integer as count
-          from private.card_trades
-         where status = 'open'
-           and (sender_player_id = $1::uuid or recipient_player_id = $1::uuid)
-      `,
-      [playerId],
+  const counts = await openOfferCounts(client, playerIds);
+  if (counts.some((count) => count >= policy.maximumOpenOffers)) {
+    throw new CardTradeError(
+      'TRADE_PLAYER_LIMIT_REACHED',
+      'A participant has reached the open trade limit.',
     );
-    if (Number(result.rows[0]?.count ?? 0) >= policy.maximumOpenOffers) {
-      throw new CardTradeError(
-        'TRADE_PLAYER_LIMIT_REACHED',
-        'A participant has reached the open trade limit.',
-      );
-    }
   }
 }
 
@@ -1973,28 +2332,21 @@ async function assertExistingOpenOfferLimit(
   context: { trade: TradeRow; players: readonly PlayerRow[]; now: Date },
   policy: CardTradePolicyLimits,
 ): Promise<void> {
-  for (const player of context.players) {
-    const result = await client.query<CountRow>(
-      `
-        select count(*)::integer as count
-          from private.card_trades
-         where status = 'open'
-           and (sender_player_id = $1::uuid or recipient_player_id = $1::uuid)
-      `,
-      [player.id],
+  const counts = await openOfferCounts(
+    client,
+    context.players.map((player) => player.id),
+  );
+  if (counts.some((count) => count > policy.maximumOpenOffers)) {
+    await invalidateTrade(
+      client,
+      context.trade.trade_id,
+      context.now,
+      'player_limit',
     );
-    if (Number(result.rows[0]?.count ?? 0) > policy.maximumOpenOffers) {
-      await invalidateTrade(
-        client,
-        context.trade.trade_id,
-        context.now,
-        'player_limit',
-      );
-      throw new CommitCardTradeError(
-        'TRADE_PLAYER_LIMIT_REACHED',
-        'A participant exceeds the open trade limit.',
-      );
-    }
+    throw new CommitCardTradeError(
+      'TRADE_PLAYER_LIMIT_REACHED',
+      'A participant exceeds the open trade limit.',
+    );
   }
 }
 
@@ -2257,30 +2609,34 @@ async function insertVersionItems(
   playerId: string,
   copies: readonly OwnedCopyRow[],
 ): Promise<void> {
-  for (const [index, copy] of copies.entries()) {
-    await client.query(
-      `
-        insert into private.card_trade_version_items (
-          trade_id, version, offering_player_id, position,
-          owned_card_id, card_definition_id, rarity, acquired_at,
-          acquisition_kind
-        ) values (
-          $1::uuid, $2, $3::uuid, $4, $5::uuid, $6::uuid, $7, $8, $9
-        )
-      `,
-      [
-        tradeId,
-        version,
-        playerId,
-        index + 1,
-        copy.owned_card_id,
-        copy.card_definition_id,
-        copy.rarity,
-        copy.acquired_at,
-        copy.acquisition_kind,
-      ],
-    );
-  }
+  if (!copies.length) return;
+  await client.query(
+    `insert into private.card_trade_version_items (
+       trade_id, version, offering_player_id, position, owned_card_id,
+       card_definition_id, rarity, acquired_at, acquisition_kind
+     )
+     select $1::uuid, $2, $3::uuid, item.position, item.owned_card_id,
+            item.card_definition_id, item.rarity, item.acquired_at, item.acquisition_kind
+       from jsonb_to_recordset($4::jsonb) as item(
+         position integer, owned_card_id uuid, card_definition_id uuid,
+         rarity text, acquired_at timestamptz, acquisition_kind text
+       ) order by item.position`,
+    [
+      tradeId,
+      version,
+      playerId,
+      JSON.stringify(
+        copies.map((copy, index) => ({
+          position: index + 1,
+          owned_card_id: copy.owned_card_id,
+          card_definition_id: copy.card_definition_id,
+          rarity: copy.rarity,
+          acquired_at: copy.acquired_at,
+          acquisition_kind: copy.acquisition_kind,
+        })),
+      ),
+    ],
+  );
 }
 
 async function insertVersionRequests(
@@ -2290,16 +2646,26 @@ async function insertVersionRequests(
   playerId: string,
   requests: readonly CardTradeRequestedDefinition[],
 ): Promise<void> {
-  for (const request of requests) {
-    await client.query(
-      `
-        insert into private.card_trade_version_requests (
-          trade_id, version, requesting_player_id, card_definition_id, quantity
-        ) values ($1::uuid, $2, $3::uuid, $4::uuid, $5)
-      `,
-      [tradeId, version, playerId, request.cardDefinitionId, request.quantity],
-    );
-  }
+  if (!requests.length) return;
+  await client.query(
+    `insert into private.card_trade_version_requests (
+       trade_id, version, requesting_player_id, card_definition_id, quantity
+     )
+     select $1::uuid, $2, $3::uuid, request.card_definition_id, request.quantity
+       from jsonb_to_recordset($4::jsonb) as request(card_definition_id uuid, quantity integer)
+       order by request.card_definition_id`,
+    [
+      tradeId,
+      version,
+      playerId,
+      JSON.stringify(
+        requests.map((request) => ({
+          card_definition_id: request.cardDefinitionId,
+          quantity: request.quantity,
+        })),
+      ),
+    ],
+  );
 }
 
 async function reserveCopies(
@@ -2310,16 +2676,13 @@ async function reserveCopies(
   ownedCardIds: readonly string[],
   reservedAt: Date,
 ): Promise<void> {
-  for (const ownedCardId of ownedCardIds) {
-    await client.query(
-      `
-        insert into private.card_trade_reservations (
-          owned_card_id, trade_id, version, player_id, reserved_at
-        ) values ($1::uuid, $2::uuid, $3, $4::uuid, $5)
-      `,
-      [ownedCardId, tradeId, version, playerId, reservedAt],
-    );
-  }
+  if (!ownedCardIds.length) return;
+  await client.query(
+    `insert into private.card_trade_reservations (owned_card_id, trade_id, version, player_id, reserved_at)
+     select owned_card_id, $1::uuid, $2, $3::uuid, $5::timestamptz
+       from unnest($4::uuid[]) as selected(owned_card_id) order by owned_card_id`,
+    [tradeId, version, playerId, ownedCardIds, reservedAt],
+  );
 }
 
 async function copyOtherPartyVersionState(
@@ -2366,95 +2729,23 @@ async function loadVersionItems(
   tradeId: string,
   version: number,
 ): Promise<VersionItemRow[]> {
-  const result = await client.query<VersionItemRow>(
-    `
-      select
-        item.offering_player_id::text,
-        item.position,
-        item.owned_card_id::text,
-        item.card_definition_id::text,
-        definition.name,
-        definition.category,
-        definition.affinity,
-        item.rarity,
-        definition.image_url,
-        definition.image_alt,
-        item.acquired_at,
-        item.acquisition_kind
-      from private.card_trade_version_items item
-      join public.card_definitions definition on definition.id = item.card_definition_id
-      where item.trade_id = $1::uuid
-        and item.version = $2
-      order by item.offering_player_id, item.position
-    `,
-    [tradeId, version],
-  );
-  return result.rows;
-}
-
-async function loadVersionRequests(
-  client: CardTradeClient,
-  tradeId: string,
-  version: number,
-): Promise<VersionRequestRow[]> {
-  const result = await client.query<VersionRequestRow>(
-    `
-      select
-        request.requesting_player_id::text,
-        request.card_definition_id::text,
-        request.quantity,
-        definition.name,
-        definition.category,
-        definition.affinity,
-        definition.rarity,
-        definition.image_url,
-        definition.image_alt
-      from private.card_trade_version_requests request
-      join public.card_definitions definition on definition.id = request.card_definition_id
-      where request.trade_id = $1::uuid
-        and request.version = $2
-      order by request.requesting_player_id, request.card_definition_id
-    `,
-    [tradeId, version],
-  );
+  const result = await client.query<VersionItemRow>(VERSION_ITEMS_QUERY, [
+    tradeId,
+    version,
+  ]);
   return result.rows;
 }
 
 async function loadCurrentVersionState(
   client: CardTradeClient,
   trade: TradeRow,
-): Promise<{
-  items: VersionItemRow[];
-  requests: VersionRequestRow[];
-  acceptances: ApprovalRow[];
-  acknowledgements: ApprovalRow[];
-}> {
-  // A pg client executes one query at a time. Keep these reads sequential so
-  // callers never overlap client.query() calls on the same transaction client.
-  const items = await loadVersionItems(
-    client,
-    trade.trade_id,
-    trade.current_version,
-  );
-  const requests = await loadVersionRequests(
-    client,
-    trade.trade_id,
-    trade.current_version,
-  );
-  const acceptances = await client.query<ApprovalRow>(
-    `select player_id::text from private.card_trade_acceptances where trade_id = $1::uuid and version = $2 order by player_id`,
+): Promise<VersionState> {
+  const result = await client.query<VersionState>(
+    `with trade as (select $1::uuid as trade_id, $2::integer as current_version)
+     ${VERSION_STATE_QUERY} from trade`,
     [trade.trade_id, trade.current_version],
   );
-  const acknowledgements = await client.query<ApprovalRow>(
-    `select player_id::text from private.card_trade_imbalance_acknowledgements where trade_id = $1::uuid and version = $2 order by player_id`,
-    [trade.trade_id, trade.current_version],
-  );
-  return {
-    items,
-    requests,
-    acceptances: acceptances.rows,
-    acknowledgements: acknowledgements.rows,
-  };
+  return versionState(result.rows[0]!);
 }
 
 function assertVersionComplete(
@@ -2621,11 +2912,11 @@ async function settleTrade(
   policy: CardTradePolicyLimits,
   now: Date,
   createId: () => string,
+  state: VersionState,
 ): Promise<void> {
   const existingReceipt = await loadSettlementReceipt(client, trade.trade_id);
   if (existingReceipt) return;
 
-  const state = await loadCurrentVersionState(client, trade);
   assertVersionComplete(trade, state);
   try {
     assertPersistedVersionLimits(trade, state, policy);
@@ -2750,54 +3041,40 @@ async function settleTrade(
     ],
   );
 
-  const grants: Array<{
-    movementId: string;
-    newOwnedCardId: string;
-    copy: OwnedCopyRow;
-    recipientPlayerId: string;
-  }> = [];
-  for (const copy of copies) {
-    const movementId = createId();
-    const newOwnedCardId = createId();
-    const recipientPlayerId = otherParticipant(trade, copy.player_id);
-    const movement = await client.query(
-      `
-        insert into private.card_trade_movements (
-          id, receipt_id, source_player_id, recipient_player_id,
-          source_owned_card_id, new_owned_card_id, card_definition_id,
-          source_acquired_at, source_acquisition_kind,
-          source_completion_id, source_starter_grant_id,
-          source_evolution_id, source_territory_bonus_id,
-          source_trade_movement_id, transferred_at
-        )
-        select
-          $1::uuid, $2::uuid, owned.player_id, $3::uuid,
-          owned.id, $4::uuid, owned.card_definition_id,
-          owned.acquired_at, owned.acquisition_kind,
-          owned.source_completion_id, owned.source_starter_grant_id,
-          owned.source_evolution_id, owned.source_territory_bonus_id,
-          owned.source_trade_movement_id, $5::timestamptz
-        from public.player_cards owned
-        where owned.id = $6::uuid
-          and owned.player_id = $7::uuid
-      `,
-      [
-        movementId,
-        receiptId,
-        recipientPlayerId,
-        newOwnedCardId,
-        now,
-        copy.owned_card_id,
-        copy.player_id,
-      ],
+  const grants = copies.map((copy) => ({
+    movement_id: createId(),
+    new_owned_card_id: createId(),
+    source_owned_card_id: copy.owned_card_id,
+    source_player_id: copy.player_id,
+    recipient_player_id: otherParticipant(trade, copy.player_id),
+    card_definition_id: copy.card_definition_id,
+  }));
+  const movement = await client.query(
+    `insert into private.card_trade_movements (
+       id, receipt_id, source_player_id, recipient_player_id, source_owned_card_id,
+       new_owned_card_id, card_definition_id, source_acquired_at, source_acquisition_kind,
+       source_completion_id, source_starter_grant_id, source_evolution_id,
+       source_territory_bonus_id, source_trade_movement_id, transferred_at
+     )
+     select transfer.movement_id, $1::uuid, owned.player_id, transfer.recipient_player_id,
+            owned.id, transfer.new_owned_card_id, owned.card_definition_id,
+            owned.acquired_at, owned.acquisition_kind, owned.source_completion_id,
+            owned.source_starter_grant_id, owned.source_evolution_id,
+            owned.source_territory_bonus_id, owned.source_trade_movement_id, $2::timestamptz
+       from jsonb_to_recordset($3::jsonb) as transfer(
+         movement_id uuid, new_owned_card_id uuid, source_owned_card_id uuid,
+         source_player_id uuid, recipient_player_id uuid
+       )
+       join public.player_cards owned on owned.id = transfer.source_owned_card_id
+        and owned.player_id = transfer.source_player_id
+       order by owned.id`,
+    [receiptId, now, JSON.stringify(grants)],
+  );
+  if (movement.rowCount !== grants.length) {
+    throw new CardTradeError(
+      'TRADE_COPY_CONFLICT',
+      'The selected card copies changed before settlement.',
     );
-    if (movement.rowCount !== 1) {
-      throw new CardTradeError(
-        'TRADE_COPY_CONFLICT',
-        'The selected card copies changed before settlement.',
-      );
-    }
-    grants.push({ movementId, newOwnedCardId, copy, recipientPlayerId });
   }
 
   await client.query(
@@ -2816,23 +3093,18 @@ async function settleTrade(
     );
   }
 
-  for (const grant of grants) {
-    await client.query(
-      `
-        insert into public.player_cards (
-          id, player_id, card_definition_id, source_trade_movement_id,
-          acquisition_kind, acquired_at
-        ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'trade', $5)
-      `,
-      [
-        grant.newOwnedCardId,
-        grant.recipientPlayerId,
-        grant.copy.card_definition_id,
-        grant.movementId,
-        now,
-      ],
-    );
-  }
+  await client.query(
+    `insert into public.player_cards (
+       id, player_id, card_definition_id, source_trade_movement_id, acquisition_kind, acquired_at
+     )
+     select transfer.new_owned_card_id, transfer.recipient_player_id, transfer.card_definition_id,
+            transfer.movement_id, 'trade', $1::timestamptz
+       from jsonb_to_recordset($2::jsonb) as transfer(
+         new_owned_card_id uuid, recipient_player_id uuid,
+         card_definition_id uuid, movement_id uuid
+       ) order by transfer.new_owned_card_id`,
+    [now, JSON.stringify(grants)],
+  );
 
   await client.query(
     `
@@ -2877,28 +3149,23 @@ async function assertCompletedTradeLimit(
   policy: CardTradePolicyLimits,
   now: Date,
 ): Promise<void> {
-  for (const playerId of uniqueSorted(playerIds)) {
-    const result = await client.query<CountRow>(
-      `
-        select count(*)::integer as count
-          from private.card_trade_settlement_receipts receipt
-         where receipt.completed_at > $2::timestamptz - interval '24 hours'
-           and receipt.completed_at <= $2::timestamptz
-           and (
-             receipt.sender_player_id = $1::uuid
-             or receipt.recipient_player_id = $1::uuid
-           )
-      `,
-      [playerId, now],
+  const result = await client.query<CountRow>(
+    `select (select count(*)::integer from private.card_trade_settlement_receipts receipt
+              where receipt.completed_at > $2::timestamptz - interval '24 hours'
+                and receipt.completed_at <= $2::timestamptz
+                and (receipt.sender_player_id = participant.player_id or receipt.recipient_player_id = participant.player_id)) as count
+       from unnest($1::uuid[]) as participant(player_id) order by player_id`,
+    [uniqueSorted(playerIds), now],
+  );
+  if (
+    result.rows.some(
+      (row) => Number(row.count) >= policy.maximumCompletedTrades24h,
+    )
+  ) {
+    throw new CardTradeError(
+      'TRADE_DAILY_LIMIT_REACHED',
+      'A participant has reached the completed trade limit.',
     );
-    if (
-      Number(result.rows[0]?.count ?? 0) >= policy.maximumCompletedTrades24h
-    ) {
-      throw new CardTradeError(
-        'TRADE_DAILY_LIMIT_REACHED',
-        'A participant has reached the completed trade limit.',
-      );
-    }
   }
 }
 
@@ -2908,23 +3175,24 @@ async function assertInventoryMinimums(
   outgoingCopies: readonly OwnedCopyRow[],
   policy: CardTradePolicyLimits,
 ): Promise<void> {
-  for (const playerId of [trade.sender_player_id, trade.recipient_player_id]) {
-    const counts = await client.query<{
-      category: CardCategory;
-      count: number;
-    }>(
-      `
-        select definition.category, count(*)::integer as count
-          from public.player_cards owned
-          join public.card_definitions definition
-            on definition.id = owned.card_definition_id
-         where owned.player_id = $1::uuid
-         group by definition.category
-      `,
-      [playerId],
-    );
+  const playerIds = [trade.sender_player_id, trade.recipient_player_id];
+  const counts = await client.query<{
+    player_id: string;
+    category: CardCategory;
+    count: number;
+  }>(
+    `select owned.player_id::text, definition.category, count(*)::integer as count
+       from public.player_cards owned
+       join public.card_definitions definition on definition.id = owned.card_definition_id
+      where owned.player_id = any($1::uuid[])
+      group by owned.player_id, definition.category`,
+    [playerIds],
+  );
+  for (const playerId of playerIds) {
     const current = new Map(
-      counts.rows.map((row) => [row.category, Number(row.count)]),
+      counts.rows
+        .filter((row) => row.player_id === playerId)
+        .map((row) => [row.category, Number(row.count)]),
     );
     const outgoing = outgoingCopies.filter(
       (copy) => copy.player_id === playerId,
@@ -2995,9 +3263,42 @@ async function loadTradeView(
   client: CardTradeClient,
   tradeId: string,
 ): Promise<CardTradeView> {
-  const trade = await loadTrade(client, tradeId);
-  const state = await loadCurrentVersionState(client, trade);
-  const policy = await loadPolicy(client, trade.policy_version);
+  const result = await client.query<
+    TradeRow &
+      VersionState & {
+        policy: PolicyRow | null;
+        sender_name: string;
+        recipient_name: string;
+        receipt: ReceiptRow | null;
+        movements: MovementRow[];
+      }
+  >(
+    `with trade as (
+       select id as trade_id, sender_player_id, recipient_player_id, policy_version,
+              current_version, status, created_at, expires_at, terminal_at, terminal_reason
+         from private.card_trades where id = $1::uuid
+     )
+     select trade.*, state.*, to_jsonb(policy) as policy,
+            coalesce(sender.player_name, 'Deleted player') as sender_name,
+            coalesce(recipient.player_name, 'Deleted player') as recipient_name,
+            to_jsonb(receipt) as receipt,
+            (select coalesce(jsonb_agg(movement order by movement.source_owned_card_id), '[]'::jsonb)
+               from (${MOVEMENTS_QUERY.replaceAll('$1::uuid', 'receipt.receipt_id::uuid')}) movement) as movements
+       from trade
+       left join private.card_trade_policy_versions policy on policy.policy_version = trade.policy_version
+       left join public.players sender on sender.id = trade.sender_player_id
+       left join public.players recipient on recipient.id = trade.recipient_player_id
+       cross join lateral (${VERSION_STATE_QUERY}) state
+       left join lateral (${RECEIPT_QUERY.replaceAll('$1::uuid', 'trade.trade_id')}) receipt on true`,
+    [tradeId],
+  );
+  const trade = result.rows[0];
+  if (!trade)
+    throw new CardTradeError('TRADE_NOT_FOUND', 'Card trade was not found.');
+  if (!trade.policy)
+    throw new Error(`Card trade policy ${trade.policy_version} was not found.`);
+  const state = versionState(trade);
+  const policy = policyLimits(trade.policy);
   const complete = isVersionComplete(trade, state.items, state.requests);
   const sender = mapParty(
     trade.sender_player_id,
@@ -3013,8 +3314,16 @@ async function loadTradeView(
     state.acceptances,
     state.acknowledgements,
   );
-  const settlement = await loadSettlementReceipt(client, trade.trade_id);
-  const names = await loadParticipantNames(client, trade);
+  const settlement = trade.receipt
+    ? settlementReceipt(
+        {
+          ...trade.receipt,
+          completed_at: new Date(trade.receipt.completed_at),
+        },
+        trade.movements,
+      )
+    : null;
+  const names = { sender: trade.sender_name, recipient: trade.recipient_name };
   return {
     tradeId: trade.trade_id,
     senderPlayerId: trade.sender_player_id,
@@ -3028,8 +3337,22 @@ async function loadTradeView(
     terminalAt: trade.terminal_at?.toISOString() ?? null,
     terminalReason: trade.terminal_reason,
     complete,
-    imbalanceWarningRequired:
-      complete && requiresImbalanceAcknowledgement(state.items, policy),
+    imbalanceWarningRequired: complete
+      ? requiresImbalanceAcknowledgement(state.items, policy)
+      : [sender, recipient].some(
+          (party) =>
+            party.offeredCopies.length > 0 &&
+            party.requestedDefinitions.length > 0 &&
+            Math.abs(
+              party.rarityPoints -
+                party.requestedDefinitions.reduce(
+                  (total, request) =>
+                    total +
+                    rarityTradePoints(request.rarity) * request.quantity,
+                  0,
+                ),
+            ) > policy.imbalanceWarningThreshold,
+        ),
     sender,
     recipient,
     settlement,
@@ -3086,63 +3409,25 @@ function mapParty(
   };
 }
 
-async function loadParticipantNames(
-  client: CardTradeClient,
-  trade: TradeRow,
-): Promise<{ sender: string; recipient: string }> {
-  const result = await client.query<PlayerNameRow>(
-    `
-      select id::text, player_name
-        from public.players
-       where id = any($1::uuid[])
-    `,
-    [[trade.sender_player_id, trade.recipient_player_id]],
-  );
-  const byId = new Map(result.rows.map((row) => [row.id, row.player_name]));
-  return {
-    sender: byId.get(trade.sender_player_id) ?? 'Deleted player',
-    recipient: byId.get(trade.recipient_player_id) ?? 'Deleted player',
-  };
-}
-
 async function loadSettlementReceipt(
   client: CardTradeClient,
   tradeId: string,
 ): Promise<CardTradeSettlementReceipt | null> {
-  const receiptResult = await client.query<ReceiptRow>(
-    `
-      select
-        id::text as receipt_id,
-        trade_id::text,
-        version,
-        completed_at,
-        policy_version,
-        minimum_account_age_seconds,
-        maximum_open_offers,
-        maximum_copies_per_side,
-        maximum_completed_trades_24h,
-        offer_lifetime_seconds,
-        imbalance_warning_threshold,
-        minimum_creature_copies,
-        minimum_power_copies
-      from private.card_trade_settlement_receipts
-      where trade_id = $1::uuid
-    `,
-    [tradeId],
-  );
+  const receiptResult = await client.query<ReceiptRow>(RECEIPT_QUERY, [
+    tradeId,
+  ]);
   const receipt = receiptResult.rows[0];
   if (!receipt) return null;
-  const movements = await client.query<MovementRow>(
-    `
-      select id::text as movement_id, source_player_id::text,
-             recipient_player_id::text, source_owned_card_id::text,
-             new_owned_card_id::text, card_definition_id::text
-        from private.card_trade_movements
-       where receipt_id = $1::uuid
-       order by source_owned_card_id
-    `,
-    [receipt.receipt_id],
-  );
+  const movements = await client.query<MovementRow>(MOVEMENTS_QUERY, [
+    receipt.receipt_id,
+  ]);
+  return settlementReceipt(receipt, movements.rows);
+}
+
+function settlementReceipt(
+  receipt: ReceiptRow,
+  movements: MovementRow[],
+): CardTradeSettlementReceipt {
   return {
     receiptId: receipt.receipt_id,
     tradeId: receipt.trade_id,
@@ -3159,7 +3444,7 @@ async function loadSettlementReceipt(
       minimumCreatureCopies: receipt.minimum_creature_copies,
       minimumPowerCopies: receipt.minimum_power_copies,
     },
-    movements: movements.rows.map((movement) => ({
+    movements: movements.map((movement) => ({
       movementId: movement.movement_id,
       sourcePlayerId: movement.source_player_id,
       recipientPlayerId: movement.recipient_player_id,

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -108,6 +109,65 @@ describe.skipIf(!runIntegrationTests)(
         );
       });
     }, 30_000);
+
+    it('batches ordering snapshots and resumes the same safe shuffled items', async () => {
+      const eventId = randomUUID();
+      const challengeId = randomUUID();
+      const playerId = randomUUID();
+      await withDatabaseClient(temporaryConfig, (client) =>
+        seedPublishedChallenge(client, 'ordering', eventId, challengeId),
+      );
+      await insertPlayer(pool, playerId, `ordering-${playerId}`);
+      const service = createChallengeAttemptStartService(pool, {
+        clock: () => STARTED_AT,
+        movementEvidenceService: createTestMovementEvidenceService(pool),
+        randomIndex: () => 0,
+      });
+      const input = { ...validInput(playerId), eventId };
+      const result = await service.startOrResume(input);
+      expect(result.outcome).toBe('created');
+      if (
+        result.attempt.format !== 'ordering' ||
+        result.attempt.status !== 'in_progress'
+      )
+        throw new Error('Expected active ordering attempt');
+      expect(result.attempt.questions).toHaveLength(5);
+      expect(
+        result.attempt.questions.every(
+          (question) => question.items.length === 4,
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(result.attempt)).not.toContain('explanation');
+      expect(JSON.stringify(result.attempt)).not.toContain('correct_position');
+      expect((await service.startOrResume(input)).attempt).toEqual(
+        result.attempt,
+      );
+    });
+
+    it('rolls back the quiz and all snapshots if a bulk option insert fails', async () => {
+      const playerId = randomUUID();
+      await insertPlayer(pool, playerId, `snapshot-rollback-${playerId}`);
+      await pool.query(`create function private.test_reject_quiz_option() returns trigger language plpgsql as $$ begin raise exception 'test quiz option failure'; end; $$;
+        create trigger test_reject_quiz_option before insert on public.attempt_question_choices for each row execute function private.test_reject_quiz_option();`);
+      try {
+        await expect(
+          createChallengeAttemptStartService(pool, {
+            clock: () => STARTED_AT,
+            movementEvidenceService: createTestMovementEvidenceService(pool),
+            randomIndex: () => 0,
+          }).startOrResume(validInput(playerId)),
+        ).rejects.toThrow('test quiz option failure');
+      } finally {
+        await pool.query(
+          'drop trigger test_reject_quiz_option on public.attempt_question_choices; drop function private.test_reject_quiz_option();',
+        );
+      }
+      const persisted = await pool.query<{ count: number }>(
+        'select count(*)::integer as count from public.challenge_attempts where player_id = $1::uuid',
+        [playerId],
+      );
+      expect(persisted.rows[0]?.count).toBe(0);
+    });
 
     it('creates exactly five persisted question snapshots with four shuffled choices each', async () => {
       await insertPlayer(pool, CREATE_PLAYER_ID, 'create-attempt');
@@ -1187,6 +1247,9 @@ async function insertPlayer(
 
 async function seedPublishedChallenge(
   client: Parameters<Parameters<typeof withDatabaseClient>[1]>[0],
+  format: 'multiple_choice' | 'ordering' = 'multiple_choice',
+  eventId = EVENT_ID,
+  challengeId = CHALLENGE_ID,
 ) {
   await client.query('begin');
 
@@ -1219,7 +1282,7 @@ async function seedPublishedChallenge(
           'controlled_seed'
         )
       `,
-      [EVENT_ID],
+      [eventId],
     );
 
     await client.query(
@@ -1230,15 +1293,16 @@ async function seedPublishedChallenge(
           format,
           status
         )
-        values ($1, $2, 'multiple_choice', 'draft')
+        values ($1, $2, $3, 'draft')
       `,
-      [CHALLENGE_ID, EVENT_ID],
+      [challengeId, eventId, format],
     );
 
     const difficulties = [1, 1, 2, 2, 3, 3] as const;
 
     for (let questionNumber = 1; questionNumber <= 6; questionNumber += 1) {
-      const questionId = sourceQuestionId(questionNumber);
+      const questionId =
+        format === 'ordering' ? randomUUID() : sourceQuestionId(questionNumber);
 
       await client.query(
         `
@@ -1247,48 +1311,49 @@ async function seedPublishedChallenge(
             challenge_id,
             prompt,
             difficulty,
-            status
+            status,
+            explanation
           )
-          values ($1, $2, $3, $4, 'draft')
+          values ($1, $2, $3, $4, 'draft', $5)
         `,
         [
           questionId,
-          CHALLENGE_ID,
+          challengeId,
           `Question ${questionNumber}`,
           difficulties[questionNumber - 1],
+          format === 'ordering' ? 'Ordering explanation' : null,
         ],
       );
 
       for (let choiceNumber = 1; choiceNumber <= 4; choiceNumber += 1) {
+        if (format === 'ordering') {
+          const itemId = randomUUID();
+          await client.query(
+            'insert into public.challenge_ordering_items(id, question_id, item_text) values ($1, $2, $3)',
+            [itemId, questionId, `Item ${questionNumber}.${choiceNumber}`],
+          );
+          await client.query(
+            'insert into private.challenge_ordering_answer_keys(question_id, item_id, correct_position) values ($1, $2, $3)',
+            [questionId, itemId, choiceNumber],
+          );
+        } else {
+          await client.query(
+            'insert into public.challenge_choices(id, question_id, authoring_position, choice_text) values ($1, $2, $3, $4)',
+            [
+              sourceChoiceId(questionNumber, choiceNumber),
+              questionId,
+              choiceNumber,
+              `Choice ${questionNumber}.${choiceNumber}`,
+            ],
+          );
+        }
+      }
+      if (format === 'multiple_choice') {
         await client.query(
-          `
-            insert into public.challenge_choices (
-              id,
-              question_id,
-              authoring_position,
-              choice_text
-            )
-            values ($1, $2, $3, $4)
-          `,
-          [
-            sourceChoiceId(questionNumber, choiceNumber),
-            questionId,
-            choiceNumber,
-            `Choice ${questionNumber}.${choiceNumber}`,
-          ],
+          'insert into private.challenge_answer_keys(question_id, accepted_choice_id) values ($1, $2)',
+          [questionId, sourceChoiceId(questionNumber, 1)],
         );
       }
-
-      await client.query(
-        `
-          insert into private.challenge_answer_keys (
-            question_id,
-            accepted_choice_id
-          )
-          values ($1, $2)
-        `,
-        [questionId, sourceChoiceId(questionNumber, 1)],
-      );
     }
 
     await client.query(
@@ -1301,7 +1366,7 @@ async function seedPublishedChallenge(
           updated_at = now()
         where challenge_id = $1
       `,
-      [CHALLENGE_ID],
+      [challengeId],
     );
 
     await client.query(
@@ -1314,7 +1379,7 @@ async function seedPublishedChallenge(
           updated_at = now()
         where id = $1
       `,
-      [CHALLENGE_ID],
+      [challengeId],
     );
 
     await client.query('commit');

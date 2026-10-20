@@ -16,7 +16,8 @@ import {
 const MATCH_ID = '11111111-1111-4111-8111-111111111111';
 const PLAYER_ID = '22222222-2222-4222-8222-222222222222';
 const MESSAGE_ID = '33333333-3333-4333-8333-333333333333';
-const MOVE_ID = '44444444-4444-4444-8444-444444444444';
+// Obsidian Horn's deterministic catalogue UUID from migration 0041.
+const MOVE_ID = 'ae6526b9-b164-210b-c746-c4af1b45747a';
 
 const participantProjection: LivePvpParticipantProjection = {
   matchId: MATCH_ID,

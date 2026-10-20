@@ -57,7 +57,7 @@ export interface CompletedChallengeCard {
   cardDefinitionId: string;
   name: string;
   category: 'creature' | 'power';
-  affinity: 'wit' | 'grit' | 'spark' | 'spirit' | 'mystic';
+  affinity: 'wit' | 'grit' | 'spark' | 'spirit' | 'mystic' | null;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
 }
 

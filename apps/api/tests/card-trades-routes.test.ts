@@ -471,54 +471,32 @@ describe('card trading HTTP routes', () => {
     });
   });
 
-  it('requires recent proof matching the access-token identity for each acceptance', async () => {
-    verifyReauthentication.mockResolvedValueOnce({
-      identity: {
-        issuer: authConfig.issuer,
-        subject: 'auth0|different-player',
-      },
-      authenticatedAt: new Date('2026-09-22T10:00:00.000Z'),
-    });
-    const rejected = await app.inject({
+  it('accepts a confirmed proposal with the existing bearer session and no identity prompt', async () => {
+    const payload = {
+      submissionId: SUBMISSION_ID,
+      expectedVersion: 1,
+      confirmOffer: true,
+    };
+    const unauthenticated = await app.inject({
       method: 'POST',
       url: `/api/v1/trades/${TRADE_ID}/accept`,
-      headers: { authorization: 'Bearer test-token' },
-      payload: {
-        submissionId: SUBMISSION_ID,
-        expectedVersion: 1,
-        reauthenticationToken: 'fresh-id-token',
-      },
+      payload,
     });
-    expect(rejected.statusCode).toBe(401);
-    expect(rejected.json()).toMatchObject({
-      code: 'RECENT_AUTHENTICATION_REQUIRED',
-    });
+    expect(unauthenticated.statusCode).toBe(401);
     expect(acceptTrade).not.toHaveBeenCalled();
-
-    verifyReauthentication.mockResolvedValueOnce({
-      identity: {
-        issuer: authConfig.issuer,
-        subject: 'auth0|trade-player',
-      },
-      authenticatedAt: new Date('2026-09-22T10:00:00.000Z'),
-    });
     const accepted = await app.inject({
       method: 'POST',
       url: `/api/v1/trades/${TRADE_ID}/accept`,
       headers: { authorization: 'Bearer test-token' },
-      payload: {
-        submissionId: SUBMISSION_ID,
-        expectedVersion: 1,
-        reauthenticationToken: 'fresh-id-token',
-      },
+      payload,
     });
     expect(accepted.statusCode).toBe(200);
     expect(acceptTrade).toHaveBeenCalledWith({
       tradeId: TRADE_ID,
       playerId: PLAYER_ID,
-      submissionId: SUBMISSION_ID,
-      expectedVersion: 1,
+      ...payload,
     });
+    expect(verifyReauthentication).not.toHaveBeenCalled();
   });
 
   it('hides a non-participant trade behind a neutral not-found response', async () => {
